@@ -2,7 +2,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus, ChevronDown, Calendar as CalendarIcon, X, Check, Building, Clock, CheckCircle2, MoreHorizontal, User, AlignLeft, Tag, LayoutGrid, List, Filter, Paperclip, Send, Image as ImageIcon, FileText, Mail, ClipboardList, Loader, CheckSquare, ArrowUpDown, Layers, Archive, History, ShieldCheck, Hammer, Zap, Droplets, Flame } from 'lucide-react';
 import { MOCK_PROPERTIES } from '../constants';
-import { CalendarEvent, TaskType, TaskStatus, Property } from '../types';
+import { CalendarEvent, TaskType, TaskStatus, Property, BookingStatus } from '../types';
+import { updateBookingStatusFromTask } from '../bookingUtils';
 
 type ViewMode = 'month' | 'week' | 'day';
 
@@ -26,9 +27,10 @@ interface AdminCalendarProps {
   onUpdateEvent: (event: CalendarEvent) => void;
   showLegend?: boolean;
   properties?: Property[];
+  onUpdateBookingStatus?: (bookingId: string | number, newStatus: BookingStatus) => void; // Callback for updating booking status
 }
 
-const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpdateEvent, showLegend = true, properties }) => {
+const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpdateEvent, showLegend = true, properties, onUpdateBookingStatus }) => {
   const [currentMonthIdx, setCurrentMonthIdx] = useState(10); // November
   const [selectedYear, setSelectedYear] = useState(2025);
   const [viewMode, setViewMode] = useState<ViewMode>('month');
@@ -257,7 +259,8 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       day: dayToAdd,
       description: newTaskComment,
       assignee: newTaskAssignee === 'Unassigned' ? undefined : newTaskAssignee,
-      status: 'pending'
+      assignedWorkerId: newTaskAssignee === 'Unassigned' ? undefined : newTaskAssignee,
+      status: newTaskAssignee === 'Unassigned' ? 'open' : 'assigned'
     };
 
     onAddEvent(newEvent);
@@ -266,8 +269,9 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
   const markTaskAsReview = (eventId: string) => {
     const targetEvent = events.find(e => e.id === eventId);
-    if (targetEvent && targetEvent.status === 'pending') {
-        const updated = { ...targetEvent, status: 'review' as TaskStatus };
+    if (targetEvent && (targetEvent.status === 'open' || targetEvent.status === 'assigned')) {
+        // Worker marks task as done - перехід на done_by_worker
+        const updated = { ...targetEvent, status: 'done_by_worker' as TaskStatus };
         onUpdateEvent(updated);
         // If this event is currently open in modal, update the local view state too
         if (viewEvent && viewEvent.id === eventId) {
@@ -279,9 +283,17 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   const approveAndArchiveTask = (eventId: string) => {
     const targetEvent = events.find(e => e.id === eventId);
     if (targetEvent) {
-        const updated = { ...targetEvent, status: 'archived' as TaskStatus };
+        const updated = { ...targetEvent, status: 'verified' as TaskStatus };
         onUpdateEvent(updated);
         setViewEvent(updated);
+        
+        // Оновити статус броні якщо таска пов'язана з бронюванням
+        if (targetEvent.bookingId && onUpdateBookingStatus) {
+            const newBookingStatus = updateBookingStatusFromTask(updated);
+            if (newBookingStatus) {
+                onUpdateBookingStatus(targetEvent.bookingId, newBookingStatus);
+            }
+        }
     }
   };
 
@@ -613,8 +625,8 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                       className={`
                         relative p-2 rounded border hover:bg-opacity-80 transition-colors flex-shrink-0
                         ${getEventColor(event.type as string)}
-                        ${event.status === 'archived' ? 'opacity-50 grayscale' : ''}
-                        ${event.status === 'review' ? 'ring-1 ring-yellow-500' : ''}
+                        ${event.status === 'archived' || event.status === 'verified' ? 'opacity-50 grayscale' : ''}
+                        ${event.status === 'done_by_worker' ? 'ring-1 ring-yellow-500' : ''}
                         ${viewMode === 'day' ? 'p-4 text-base' : ''}
                       `}
                     >
@@ -635,8 +647,8 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                          </div>
                          <span className="text-[10px] opacity-80 font-bold uppercase tracking-tighter">{event.type}</span>
                       </div>
-                      {event.status === 'review' && (
-                          <div className="mt-1 bg-yellow-500/20 text-yellow-500 text-[10px] px-1 rounded inline-block">Review Needed</div>
+                      {event.status === 'done_by_worker' && (
+                          <div className="mt-1 bg-yellow-500/20 text-yellow-500 text-[10px] px-1 rounded inline-block">Awaiting Verification</div>
                       )}
                       {viewMode === 'day' && event.description && (
                          <p className="mt-2 text-sm opacity-70">{event.description}</p>
@@ -818,7 +830,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                      <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-6">Task Details</h4>
                      
                      {/* --- ACTION AREA FOR WORKER (SIMULATION) --- */}
-                     {viewEvent.status === 'pending' && (
+                     {(viewEvent.status === 'open' || viewEvent.status === 'assigned') && (
                         <div className="mb-6 bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
                            <div className="flex items-center gap-2 text-blue-500 mb-2">
                               <Hammer className="w-5 h-5" />
@@ -889,14 +901,14 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                      )}
 
                      {/* --- REVIEW/APPROVAL MODE --- */}
-                     {viewEvent.status === 'review' ? (
+                     {viewEvent.status === 'done_by_worker' ? (
                         <div className="mb-6 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
                            <div className="flex items-center gap-2 text-yellow-500 mb-2">
                               <ShieldCheck className="w-5 h-5" />
                               <span className="font-bold text-sm">Completion Report</span>
                            </div>
                            <p className="text-xs text-gray-300 mb-4">
-                              Worker marked this task as done. Please review the timeline and chat history before approving.
+                              Worker marked this task as done. Please review the timeline and chat history before verifying.
                            </p>
                            
                            <div className="space-y-3 mb-4">
@@ -915,7 +927,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                               className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-md text-xs flex items-center justify-center gap-2 transition-colors"
                            >
                               <CheckSquare className="w-4 h-4" />
-                              Approve & Archive
+                              Verify & Complete
                            </button>
                         </div>
                      ) : null}
@@ -939,11 +951,19 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                   value={viewEvent.assignee || 'Unassigned'}
                                   onChange={(e) => {
                                       const val = e.target.value;
-                                      const updated = { ...viewEvent, assignee: val === 'Unassigned' ? undefined : val };
+                                      const newAssignee = val === 'Unassigned' ? undefined : val;
+                                      // Оновити статус: якщо призначається працівник і статус open → assigned
+                                      const newStatus = (newAssignee && viewEvent.status === 'open') ? 'assigned' : viewEvent.status;
+                                      const updated = { 
+                                          ...viewEvent, 
+                                          assignee: newAssignee,
+                                          assignedWorkerId: newAssignee ? newAssignee : undefined,
+                                          status: newStatus as TaskStatus
+                                      };
                                       onUpdateEvent(updated);
                                       setViewEvent(updated);
                                   }}
-                                  disabled={viewEvent.status === 'archived'}
+                                  disabled={viewEvent.status === 'archived' || viewEvent.status === 'verified'}
                                   className="w-full appearance-none bg-[#0D1117] border border-gray-700 hover:border-gray-500 rounded-lg py-2 pl-10 pr-8 text-sm text-white focus:border-emerald-500 focus:outline-none cursor-pointer transition-colors"
                               >
                                   {MOCK_EMPLOYEES.map(emp => (
@@ -1104,9 +1124,9 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                         onClick={(e) => handleEventClick(e, event)}
                         className={`
                           border rounded-lg p-3 transition-colors group flex items-center justify-between gap-4 shadow-sm hover:shadow-md cursor-pointer relative
-                          ${event.status === 'archived'
+                          ${event.status === 'archived' || event.status === 'verified'
                              ? 'bg-[#161B22]/50 border-gray-800 opacity-50 grayscale' 
-                             : event.status === 'review'
+                             : event.status === 'done_by_worker'
                                 ? 'bg-[#161B22] border-yellow-500/50'
                                 : `bg-[#161B22] ${getSidebarBorderClass(event.type as string)}`}
                         `}
@@ -1132,12 +1152,12 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                         <h3 className={`text-sm font-bold truncate ${event.status === 'archived' ? 'text-gray-500 line-through' : 'text-white'}`}>
                           {event.title}
                         </h3>
-                         {event.status === 'review' && (
+                         {event.status === 'done_by_worker' && (
                             <p className="text-xs text-yellow-500 mt-1 font-bold flex items-center gap-1">
-                               <ShieldCheck className="w-3 h-3" /> Needs Approval
+                               <ShieldCheck className="w-3 h-3" /> Awaiting Verification
                             </p>
                          )}
-                         {event.description && event.status !== 'review' && (
+                         {event.description && event.status !== 'done_by_worker' && (
                             <p className="text-xs text-gray-500 mt-1 line-clamp-1">
                                {event.description}
                             </p>
@@ -1152,21 +1172,21 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
                       {/* Actions Right */}
                       <div className="flex items-center gap-1">
-                         {event.status !== 'archived' && (
+                         {event.status !== 'archived' && event.status !== 'verified' && (
                              <button 
                                 className={`
                                    p-2 rounded-lg transition-colors
-                                   ${event.status === 'review' 
+                                   ${event.status === 'done_by_worker' 
                                      ? 'text-yellow-500 bg-yellow-500/10 hover:bg-yellow-500/20' 
                                      : 'text-gray-600 hover:text-emerald-500 hover:bg-emerald-500/10'}
                                 `}
-                                title={event.status === 'review' ? "Waiting for approval" : "Mark as Done (Send to Review)"}
+                                title={event.status === 'done_by_worker' ? "Waiting for verification" : "Mark as Done (Worker Action)"}
                                 onClick={(e) => { e.stopPropagation(); markTaskAsReview(event.id); }}
                              >
-                                {event.status === 'review' ? <History className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
+                                {event.status === 'done_by_worker' ? <History className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
                              </button>
                          )}
-                         {event.status === 'archived' && (
+                         {(event.status === 'archived' || event.status === 'verified') && (
                              <Archive className="w-5 h-5 text-gray-600" />
                          )}
                          

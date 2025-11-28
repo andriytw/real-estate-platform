@@ -1,8 +1,9 @@
 
 import React, { useState } from 'react';
 import { X, Briefcase, Euro, CreditCard, Mail, Phone, MapPin, User, FileText, Send, Save, Building2, ChevronDown, FilePlus2, Download, Edit3 } from 'lucide-react';
-import { Booking, OfferData } from '../types';
+import { Booking, OfferData, BookingStatus } from '../types';
 import { ROOMS } from '../constants';
+import { canSendOffer, canCreateInvoice } from '../bookingUtils';
 
 interface BookingDetailsModalProps {
   isOpen: boolean;
@@ -11,9 +12,11 @@ interface BookingDetailsModalProps {
   onConvertToOffer?: (status: 'Draft' | 'Sent', company: string, email: string) => void;
   onCreateInvoice?: (offer: OfferData) => void; // New Callback
   onEdit?: () => void; // New Edit Callback
+  onSendOffer?: () => void; // New callback for sending offer
+  onUpdateBookingStatus?: (bookingId: number, newStatus: BookingStatus) => void; // New callback for updating status
 }
 
-const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClose, booking, onConvertToOffer, onCreateInvoice, onEdit }) => {
+const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClose, booking, onConvertToOffer, onCreateInvoice, onEdit, onSendOffer, onUpdateBookingStatus }) => {
   const [isEmailPromptOpen, setIsEmailPromptOpen] = useState(false);
   const [selectedInternalCompany, setSelectedInternalCompany] = useState('Sotiso');
   const [clientEmailInput, setClientEmailInput] = useState('');
@@ -42,26 +45,31 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
   
   const handleCreateInvoice = () => {
     if (onCreateInvoice) {
-        // Construct basic OfferData from booking to pass back
-        const offerData: OfferData = {
-            id: String(booking.id),
-            clientName: booking.guest,
-            propertyId: booking.roomId,
-            internalCompany: booking.internalCompany || 'Sotiso',
-            price: booking.price,
-            dates: `${booking.start} to ${booking.end}`,
-            status: 'Sent', 
-            address: booking.address,
-            email: booking.email,
-            phone: booking.phone,
-            guests: booking.guests,
-            guestList: booking.guestList,
-            unit: booking.unit,
-            checkInTime: booking.checkInTime,
-            checkOutTime: booking.checkOutTime,
-            comments: booking.comments,
-        };
-        onCreateInvoice(offerData);
+        // Якщо це резервація, передати її напряму
+        if (booking && 'roomId' in booking) {
+            onCreateInvoice(booking as any);
+        } else {
+            // Construct basic OfferData from booking to pass back
+            const offerData: OfferData = {
+                id: String(booking.id),
+                clientName: booking.guest,
+                propertyId: booking.roomId,
+                internalCompany: booking.internalCompany || 'Sotiso',
+                price: booking.price,
+                dates: `${booking.start} to ${booking.end}`,
+                status: 'Sent', 
+                address: booking.address,
+                email: booking.email,
+                phone: booking.phone,
+                guests: booking.guests,
+                guestList: booking.guestList,
+                unit: booking.unit,
+                checkInTime: booking.checkInTime,
+                checkOutTime: booking.checkOutTime,
+                comments: booking.comments,
+            };
+            onCreateInvoice(offerData);
+        }
     }
   };
 
@@ -166,31 +174,60 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
 
                 <div className="h-px bg-gray-800"></div>
                 
-                {/* Offer / Invoice Actions */}
-                {onCreateInvoice && (
-                    <div className="flex flex-wrap gap-4">
-                        {onEdit && (
-                            <button 
-                                onClick={onEdit}
-                                className="flex-1 bg-[#1C1F24] border border-gray-700 hover:bg-gray-800 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors"
-                            >
-                                <Edit3 className="w-4 h-4" /> Edit Offer
-                            </button>
-                        )}
+                {/* Action Buttons based on Status */}
+                <div className="flex flex-wrap gap-4">
+                    {/* Send Offer Button - для статусів reserved та offer_prepared */}
+                    {onSendOffer && booking && canSendOffer(booking.status) && (
+                        <button 
+                            onClick={() => {
+                                if (onSendOffer) {
+                                    onSendOffer();
+                                }
+                                if (onUpdateBookingStatus) {
+                                    onUpdateBookingStatus(booking.id, BookingStatus.OFFER_SENT);
+                                }
+                            }}
+                            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-lg shadow-blue-900/20"
+                        >
+                            <Send className="w-4 h-4" /> Send Offer
+                        </button>
+                    )}
+                    
+                    {/* Create Invoice Button - для статусів offer_sent та offer_prepared */}
+                    {onCreateInvoice && booking && canCreateInvoice(booking.status) && (
+                        <button 
+                            onClick={() => {
+                                handleCreateInvoice();
+                                if (onUpdateBookingStatus) {
+                                    onUpdateBookingStatus(booking.id, BookingStatus.INVOICED);
+                                }
+                            }}
+                            className="flex-1 bg-purple-600 hover:bg-purple-500 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-lg shadow-purple-900/20"
+                        >
+                            <FilePlus2 className="w-4 h-4" /> Create Invoice
+                        </button>
+                    )}
+                    
+                    {/* Edit Offer Button - для offers */}
+                    {onEdit && (
+                        <button 
+                            onClick={onEdit}
+                            className="flex-1 bg-[#1C1F24] border border-gray-700 hover:bg-gray-800 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                        >
+                            <Edit3 className="w-4 h-4" /> Edit Offer
+                        </button>
+                    )}
+                    
+                    {/* Download PDF Button - для offers */}
+                    {onCreateInvoice && (
                         <button 
                             onClick={handleDownloadPdf}
                             className="flex-1 bg-[#1C1F24] border border-gray-700 hover:bg-gray-800 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors"
                         >
                             <Download className="w-4 h-4" /> Download Offer PDF
                         </button>
-                        <button 
-                            onClick={handleCreateInvoice}
-                            className="flex-1 bg-purple-600 hover:bg-purple-500 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-lg shadow-purple-900/20"
-                        >
-                            <FilePlus2 className="w-4 h-4" /> Create Invoice
-                        </button>
-                    </div>
-                )}
+                    )}
+                </div>
 
                 {/* Convert to Offer Section */}
                 {onConvertToOffer && (

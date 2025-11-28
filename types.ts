@@ -190,6 +190,17 @@ export interface Room {
 
 export type BookingType = 'GUEST' | 'BLOCK';
 
+// Booking Status State Machine
+export enum BookingStatus {
+  RESERVED = 'reserved',           // Менеджер створив резервацію в календарі
+  OFFER_PREPARED = 'offer_prepared', // Офер підготовлено (draft)
+  OFFER_SENT = 'offer_sent',       // Офер відправлено клієнту
+  INVOICED = 'invoiced',           // Інвойс створено
+  PAID = 'paid',                   // Інвойс оплачено
+  CHECK_IN_DONE = 'check_in_done', // Check-in виконано
+  COMPLETED = 'completed'          // Check-out виконано, оренда завершена
+}
+
 export interface Booking {
   id: number;
   roomId: string;
@@ -199,7 +210,7 @@ export interface Booking {
   color: string; 
   checkInTime: string;
   checkOutTime: string;
-  status: string;
+  status: BookingStatus | string; // Підтримка старого формату для сумісності
   price: string;
   balance: string;
   guests: string;
@@ -271,6 +282,7 @@ export interface InvoiceData {
   totalGross: number;
   status: 'Paid' | 'Unpaid' | 'Overdue';
   offerIdSource?: string; 
+  bookingId?: string | number; // Зв'язок з бронюванням
 }
 
 export interface Lead {
@@ -295,12 +307,16 @@ export type TaskType =
   | 'Rent Collection' | 'Utility Payment' | 'Insurance' | 'Mortgage Payment' | 'VAT Return'
   | 'Financial Report' | 'Budget Review' | 'Asset Depreciation' | 'Vendor Payment' | 'Bank Reconciliation';
 
-export type TaskStatus = 'pending' | 'review' | 'archived' | 'completed';
+// Task Status State Machine for Facility Tasks
+// open → assigned → done_by_worker → verified
+export type TaskStatus = 'open' | 'assigned' | 'done_by_worker' | 'verified' | 'pending' | 'review' | 'archived' | 'completed';
 
 export interface CalendarEvent {
   id: string;
   title: string; 
   propertyId?: string;
+  bookingId?: string | number; // Зв'язок з бронюванням
+  unitId?: string; // Додаткове поле для unit
   time?: string;
   isAllDay?: boolean;
   type: TaskType | 'other';
@@ -308,6 +324,7 @@ export interface CalendarEvent {
   date?: string; 
   description?: string;
   assignee?: string;
+  assignedWorkerId?: string; // ID працівника, якому призначено таску
   hasUnreadMessage?: boolean;
   status: TaskStatus;
   meterReadings?: {

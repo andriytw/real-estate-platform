@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard } from 'lucide-react';
-import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent } from '../types';
+import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus } from '../types';
 import { ROOMS } from '../constants';
 import BookingDetailsModal from './BookingDetailsModal';
+import { getBookingColor, getBookingBorderStyle, getBookingStyle } from '../bookingUtils';
 
 interface SalesCalendarProps {
   onSaveOffer?: (offer: OfferData) => void;
@@ -122,34 +123,52 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({ onSaveOffer, onSaveReserv
     const linkedInvoice = invoices.find(inv => inv.offerIdSource === offer.id || inv.offerIdSource === String(offer.id));
     const isPaid = linkedInvoice?.status === 'Paid';
 
-    // Determine Visual Style
-    let colorClass = 'bg-blue-600/60 border-2 border-dashed border-white/30'; // Default Offer (Blue)
+    // Determine Status using BookingStatus enum
+    let bookingStatus: BookingStatus | string = BookingStatus.OFFER_SENT;
     let statusText: string = offer.status;
 
     if (linkedInvoice) {
         if (isPaid) {
-            // Check if Einzug (Move-In) Task is Archived (Done)
-            // We match by property ID and date (simple approximation)
-            // In a real app we'd link by ID explicitly.
+            // Check if Auszug (Move-Out) Task is verified (completed)
+            const moveOutTask = adminEvents.find(e => 
+                e.propertyId === offer.propertyId && 
+                e.type === 'Auszug' && 
+                e.date === end &&
+                e.bookingId === (linkedInvoice.bookingId || offer.id)
+            );
+            
+            // Check if Einzug (Move-In) Task is verified (done)
             const moveInTask = adminEvents.find(e => 
                 e.propertyId === offer.propertyId && 
                 e.type === 'Einzug' && 
-                e.date === start
+                e.date === start &&
+                e.bookingId === (linkedInvoice.bookingId || offer.id)
             );
 
-            if (moveInTask && moveInTask.status === 'archived') {
-                colorClass = 'bg-yellow-500 border-2 border-solid border-yellow-300'; // Checked In (Yellow)
+            if (moveOutTask && moveOutTask.status === 'verified') {
+                bookingStatus = BookingStatus.COMPLETED;
+                statusText = 'Completed';
+            } else if (moveInTask && moveInTask.status === 'verified') {
+                bookingStatus = BookingStatus.CHECK_IN_DONE;
                 statusText = 'Checked In';
             } else {
-                colorClass = 'bg-emerald-600 border-2 border-solid border-emerald-400'; // Paid Invoice (Green)
+                bookingStatus = BookingStatus.PAID;
                 statusText = 'Paid';
             }
         } else {
-            // Invoice exists but not paid, keep blue but maybe solid or different
-            colorClass = 'bg-blue-600 border-2 border-solid border-blue-400';
+            bookingStatus = BookingStatus.INVOICED;
             statusText = 'Invoiced';
         }
+    } else if (offer.status === 'Sent') {
+        bookingStatus = BookingStatus.OFFER_SENT;
+        statusText = 'Offer Sent';
+    } else if (offer.status === 'Draft') {
+        bookingStatus = BookingStatus.OFFER_PREPARED;
+        statusText = 'Draft';
     }
+
+    // Use centralized color functions
+    const colorClass = getBookingStyle(bookingStatus);
 
     return {
       id: Number(offer.id) || Date.now(), // Generate a number ID if not numeric
@@ -160,7 +179,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({ onSaveOffer, onSaveReserv
       color: colorClass, 
       checkInTime: offer.checkInTime || '15:00',
       checkOutTime: offer.checkOutTime || '11:00',
-      status: statusText,
+      status: bookingStatus,
       price: offer.price,
       balance: '0.00 EUR',
       guests: offer.guests || '-',
@@ -185,9 +204,18 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({ onSaveOffer, onSaveReserv
 
   // Combine local bookings, reservations props, and converted offers
   // Filter out duplicates based on ID to prevent issues
+  // Оновити кольори для reservations на основі статусу
+  const reservationsWithColors = reservations.map(r => ({
+    ...r,
+    color: getBookingStyle(r.status)
+  }));
+  
   const allBookings = [
-    ...bookings, 
-    ...reservations.filter(r => !bookings.some(b => b.id === r.id)),
+    ...bookings.map(b => ({
+      ...b,
+      color: getBookingStyle(b.status)
+    })), 
+    ...reservationsWithColors.filter(r => !bookings.some(b => b.id === r.id)),
     ...offerBookings
   ];
 
@@ -312,10 +340,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({ onSaveOffer, onSaveReserv
       start: formData.startDate,
       end: formData.endDate,
       guest: formData.clientType === 'Company' ? formData.companyName : `${formData.firstName} ${formData.lastName}`,
-      color: 'bg-blue-600', // Requested blue for reserved
+      color: getBookingStyle(BookingStatus.RESERVED), // Use centralized color function
       checkInTime: '15:00',
       checkOutTime: '11:00',
-      status: 'Reserved',
+      status: BookingStatus.RESERVED, // Use BookingStatus enum
       price: `${gross} EUR`,
       balance: '0.00 EUR',
       guests: `${guests.length} Guests`,
@@ -500,8 +528,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({ onSaveOffer, onSaveReserv
                                         onMouseEnter={(e) => setHoveredBooking({ booking, x: e.clientX, y: e.clientY })}
                                         onMouseLeave={() => setHoveredBooking(null)}
                                         className={`
-                                            absolute top-2 h-12 rounded-md text-xs text-white flex px-2 shadow-lg z-10 border border-white/10 cursor-pointer
-                                            ${booking.color} hover:opacity-90 hover:scale-[1.01] transition-transform
+                                            absolute top-2 h-12 rounded-md text-xs text-white flex px-2 shadow-lg z-10 cursor-pointer
+                                            ${getBookingColor(booking.status)} ${getBookingBorderStyle(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
                                         `}
                                         style={{ left: `${left}px`, width: `${width}px` }}
                                     >

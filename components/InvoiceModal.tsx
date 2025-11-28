@@ -52,17 +52,28 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
         setIsEditing(false); // Default to read-only view
 
       } else if (offer) {
-        // CASE 2: Creating New Invoice from Offer
+        // CASE 2: Creating New Invoice from Offer or Reservation
         const companyKey = offer.internalCompany || 'Sotiso';
         const companyData = INTERNAL_COMPANIES_DATA[companyKey] || INTERNAL_COMPANIES_DATA['Sotiso'];
         setSenderDetails(companyData);
 
-        // Parse price
-        const priceString = offer.price.replace(/[^0-9.]/g, '');
+        // Parse price - підтримка як OfferData так і ReservationData
+        const priceString = typeof offer.price === 'string' ? offer.price.replace(/[^0-9.]/g, '') : String(offer.price || '0');
         const priceVal = parseFloat(priceString) || 0;
         const taxRate = 0.19; // 19%
         const net = priceVal / (1 + taxRate);
         const tax = priceVal - net;
+
+        // Визначити bookingId - якщо це резервація, використати id напряму
+        let bookingId: string | number | undefined;
+        if ('id' in offer && typeof offer.id === 'number') {
+            bookingId = offer.id;
+        } else if ('id' in offer) {
+            bookingId = Number(offer.id) || undefined;
+        }
+
+        // Визначити dates - для резервації використати start/end, для offer - dates
+        const dates = 'dates' in offer ? offer.dates : (`${(offer as any).start} to ${(offer as any).end}`);
 
         setInvoiceData({
           id: Date.now().toString(), // New ID
@@ -70,11 +81,11 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
           date: new Date().toISOString().split('T')[0],
           dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
           internalCompany: companyKey,
-          clientName: offer.clientName,
-          clientAddress: offer.address || '',
+          clientName: offer.clientName || (offer as any).guest,
+          clientAddress: offer.address || (offer as any).address || '',
           items: [
             {
-              description: `Accommodation: ${offer.propertyId} (${offer.dates})`,
+              description: `Accommodation: ${offer.propertyId || (offer as any).roomId} (${dates})`,
               quantity: 1,
               unitPrice: Number(net.toFixed(2)),
               total: Number(net.toFixed(2))
@@ -84,7 +95,8 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
           taxAmount: Number(tax.toFixed(2)),
           totalGross: priceVal,
           status: 'Unpaid',
-          offerIdSource: offer.id
+          offerIdSource: 'id' in offer ? String(offer.id) : undefined,
+          bookingId: bookingId
         });
         
         setClientAddress(offer.address || '');
@@ -108,7 +120,8 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
             taxAmount: invoiceData.taxAmount!,
             totalGross: invoiceData.totalGross!,
             status: invoiceData.status || 'Unpaid',
-            offerIdSource: invoiceData.offerIdSource
+            offerIdSource: invoiceData.offerIdSource,
+            bookingId: invoiceData.bookingId
         };
         onSave(finalInvoice);
     }

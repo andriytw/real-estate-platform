@@ -9,9 +9,10 @@ import InvoiceModal from './InvoiceModal';
 import OfferEditModal from './OfferEditModal';
 import PropertyAddModal from './PropertyAddModal';
 import BankingDashboard from './BankingDashboard';
-import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent } from '../types';
+import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus } from '../types';
 import { ROOMS } from '../constants';
 import { MOCK_PROPERTIES } from '../constants';
+import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingStatusFromTask } from '../bookingUtils';
 
 // --- Types ---
 type Department = 'properties' | 'facility' | 'accounting' | 'sales';
@@ -332,14 +333,54 @@ const AccountDashboard: React.FC = () => {
           unit: selectedReservation.unit,
       };
       setOffers(prev => [newOffer, ...prev]);
-      setReservations(prev => prev.filter(r => r.id !== selectedReservation.id));
+      // Оновити статус резервації на offer_sent або offer_prepared
+      const newStatus = status === 'Sent' ? BookingStatus.OFFER_SENT : BookingStatus.OFFER_PREPARED;
+      setReservations(prev => prev.map(r => 
+          r.id === selectedReservation.id
+              ? { ...r, status: newStatus }
+              : r
+      ));
       closeManageModals();
       setSalesTab('offers');
   };
   
-  const handleCreateInvoiceClick = (offer: OfferData) => {
+  const handleSendOffer = () => {
+      if (!selectedReservation) return;
+      setReservations(prev => prev.map(r => 
+          r.id === selectedReservation.id
+              ? { ...r, status: BookingStatus.OFFER_SENT }
+              : r
+      ));
+      closeManageModals();
+  };
+  
+  const handleCreateInvoiceClick = (offer: OfferData | ReservationData) => {
     closeManageModals();
-    setSelectedOfferForInvoice(offer);
+    // Якщо це резервація, конвертувати в offer для створення інвойсу
+    if ('roomId' in offer && 'start' in offer) {
+      const reservation = offer as ReservationData;
+      const offerData: OfferData = {
+        id: String(reservation.id),
+        clientName: reservation.guest,
+        propertyId: reservation.roomId,
+        internalCompany: reservation.internalCompany || 'Sotiso',
+        price: reservation.price,
+        dates: `${reservation.start} to ${reservation.end}`,
+        status: 'Sent',
+        address: reservation.address,
+        email: reservation.email,
+        phone: reservation.phone,
+        guests: reservation.guests,
+        guestList: reservation.guestList,
+        unit: reservation.unit,
+        checkInTime: reservation.checkInTime,
+        checkOutTime: reservation.checkOutTime,
+        comments: reservation.comments,
+      };
+      setSelectedOfferForInvoice(offerData);
+    } else {
+      setSelectedOfferForInvoice(offer as OfferData);
+    }
     setIsInvoiceModalOpen(true);
   };
   
@@ -358,6 +399,14 @@ const AccountDashboard: React.FC = () => {
       if (invoice.offerIdSource) {
           setOffers(prev => prev.map(o => (o.id === invoice.offerIdSource || String(o.id) === invoice.offerIdSource) ? { ...o, status: 'Sent' } : o));
       }
+      // Оновити статус резервації на invoiced якщо є bookingId
+      if (invoice.bookingId) {
+          setReservations(prev => prev.map(r => 
+              r.id === invoice.bookingId || String(r.id) === String(invoice.bookingId)
+                  ? { ...r, status: BookingStatus.INVOICED }
+                  : r
+          ));
+      }
       setIsInvoiceModalOpen(false);
       setSelectedOfferForInvoice(null);
       setSelectedInvoice(null);
@@ -370,35 +419,85 @@ const AccountDashboard: React.FC = () => {
         if (inv.id === invoiceId) {
             const newStatus = inv.status === 'Paid' ? 'Unpaid' : 'Paid';
             if (newStatus === 'Paid') {
-                const linkedOffer = offers.find(o => o.id === inv.offerIdSource || o.id === String(inv.offerIdSource));
-                if (linkedOffer) {
-                    const [startDate, endDate] = linkedOffer.dates.split(' to ');
-                    const getDay = (dateStr: string) => parseInt(dateStr.split('-')[2], 10);
-                    const propertyAddress = ROOMS.find(r => r.id === linkedOffer.propertyId)?.name || 'Unknown Property';
-
+                // Знайти пов'язану резервацію через bookingId або offerIdSource
+                let linkedBooking: ReservationData | undefined;
+                
+                if (inv.bookingId) {
+                    linkedBooking = reservations.find(r => r.id === inv.bookingId || String(r.id) === String(inv.bookingId));
+                }
+                
+                if (!linkedBooking) {
+                    const linkedOffer = offers.find(o => o.id === inv.offerIdSource || o.id === String(inv.offerIdSource));
+                    if (linkedOffer) {
+                        // Конвертувати offer в booking для створення тасок
+                        const [start, end] = linkedOffer.dates.split(' to ');
+                        linkedBooking = {
+                            id: Number(linkedOffer.id) || Date.now(),
+                            roomId: linkedOffer.propertyId,
+                            start: start,
+                            end: end || start,
+                            guest: linkedOffer.clientName,
+                            status: BookingStatus.OFFER_SENT,
+                            color: '',
+                            checkInTime: linkedOffer.checkInTime || '15:00',
+                            checkOutTime: linkedOffer.checkOutTime || '11:00',
+                            price: linkedOffer.price,
+                            balance: '0.00 EUR',
+                            guests: linkedOffer.guests || '-',
+                            unit: linkedOffer.unit || '-',
+                            comments: linkedOffer.comments || '',
+                            paymentAccount: 'Pending',
+                            company: 'N/A',
+                            ratePlan: 'Standard',
+                            guarantee: '-',
+                            cancellationPolicy: '-',
+                            noShowPolicy: '-',
+                            channel: 'Direct',
+                            type: 'GUEST'
+                        };
+                    }
+                }
+                
+                if (linkedBooking) {
+                    // Оновити статус броні на paid
+                    setReservations(prev => prev.map(r => 
+                        r.id === linkedBooking!.id
+                            ? { ...r, status: BookingStatus.PAID }
+                            : r
+                    ));
+                    
+                    // Створити Facility tasks використовуючи централізовану функцію
+                    const tasks = createFacilityTasksForBooking(linkedBooking);
+                    // Конвертувати tasks в CalendarEvent з правильним статусом
+                    const calendarEvents: CalendarEvent[] = tasks.map(task => ({
+                        ...task,
+                        status: 'open' as TaskStatus,
+                        assignee: undefined,
+                        assignedWorkerId: undefined
+                    }));
+                    setAdminEvents(prevEvents => [...prevEvents, ...calendarEvents]);
+                    
+                    // Оновити meter log в property
                     setProperties(prevProps => prevProps.map(prop => {
-                        if (prop.id === linkedOffer.propertyId) {
+                        if (prop.id === linkedBooking!.roomId) {
                             const newLogs: MeterLogEntry[] = [
-                                { date: startDate, type: 'Check-In', readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } },
-                                { date: endDate || startDate, type: 'Check-Out', readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } }
+                                { date: linkedBooking!.start, type: 'Check-In', readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } },
+                                { date: linkedBooking!.end, type: 'Check-Out', readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } }
                             ];
                             const updatedLog = [...(prop.meterLog || []), ...newLogs];
                             return { ...prop, meterLog: updatedLog };
                         }
                         return prop;
                     }));
-
-                    const newTask1: CalendarEvent = {
-                        id: `auto-task-${Date.now()}-1`, title: `${propertyAddress} - Einzug`, propertyId: linkedOffer.propertyId, time: linkedOffer.checkInTime || '15:00',
-                        type: 'Einzug', day: getDay(startDate), date: startDate, description: `Auto-generated: Move-in for ${linkedOffer.clientName}. Please record meter readings.`,
-                        assignee: 'Unassigned', status: 'pending', meterReadings: { electricity: '', water: '', gas: '' }
-                    };
-                    const newTask2: CalendarEvent = {
-                        id: `auto-task-${Date.now()}-2`, title: `${propertyAddress} - Auszug`, propertyId: linkedOffer.propertyId, time: linkedOffer.checkOutTime || '11:00',
-                        type: 'Auszug', day: getDay(endDate || startDate), date: endDate || startDate, description: `Auto-generated: Move-out for ${linkedOffer.clientName}. Please record meter readings.`,
-                        assignee: 'Unassigned', status: 'pending', meterReadings: { electricity: '', water: '', gas: '' }
-                    };
-                    setAdminEvents(prevEvents => [...prevEvents, newTask1, newTask2]);
+                }
+            } else {
+                // Якщо статус змінюється на Unpaid, повернути статус броні на invoiced
+                if (inv.bookingId) {
+                    setReservations(prev => prev.map(r => 
+                        r.id === inv.bookingId || String(r.id) === String(inv.bookingId)
+                            ? { ...r, status: BookingStatus.INVOICED }
+                            : r
+                    ));
                 }
             }
             return { ...inv, status: newStatus };
@@ -413,6 +512,18 @@ const AccountDashboard: React.FC = () => {
 
   const handleAdminEventUpdate = (updatedEvent: CalendarEvent) => {
       setAdminEvents(prev => prev.map(ev => ev.id === updatedEvent.id ? updatedEvent : ev));
+      
+      // Оновити статус броні якщо таска верифікована та пов'язана з бронюванням
+      if (updatedEvent.status === 'verified' && updatedEvent.bookingId) {
+          const newBookingStatus = updateBookingStatusFromTask(updatedEvent);
+          if (newBookingStatus) {
+              setReservations(prev => prev.map(r => 
+                  r.id === updatedEvent.bookingId || String(r.id) === String(updatedEvent.bookingId)
+                      ? { ...r, status: newBookingStatus }
+                      : r
+              ));
+          }
+      }
       
       // Update Meter Log in Property when Task is Archived
       if (updatedEvent.meterReadings && updatedEvent.status === 'archived' && (updatedEvent.type === 'Einzug' || updatedEvent.type === 'Auszug' || updatedEvent.type === 'Zählerstand')) {
@@ -939,7 +1050,13 @@ const AccountDashboard: React.FC = () => {
             onUpdateEvent={handleAdminEventUpdate}
             showLegend={true}
             properties={properties}
-            categories={FACILITY_TASK_TYPES}
+            onUpdateBookingStatus={(bookingId, newStatus) => {
+                setReservations(prev => prev.map(r => 
+                    r.id === bookingId || String(r.id) === String(bookingId)
+                        ? { ...r, status: newStatus }
+                        : r
+                ));
+            }}
         />;
     }
     if (facilityTab === 'messages') return <AdminMessages />;
@@ -965,14 +1082,14 @@ const AccountDashboard: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-800">
-                            {reservations.map(res => (
+                            {reservations.filter(res => shouldShowInReservations(res.status)).map(res => (
                                 <tr key={res.id} className="hover:bg-[#16181D]">
                                     <td className="p-4 text-gray-400">#{res.id}</td>
                                     <td className="p-4 font-bold">{res.guest}</td>
                                     <td className="p-4">{ROOMS.find(r => r.id === res.roomId)?.name || res.roomId}</td>
                                     <td className="p-4">{res.start} - {res.end}</td>
                                     <td className="p-4">
-                                        <span className={`px-2 py-1 rounded text-xs font-bold ${res.status === 'Confirmed' ? 'bg-emerald-500/20 text-emerald-500' : 'bg-blue-500/20 text-blue-500'}`}>
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${res.status === BookingStatus.RESERVED ? 'bg-blue-500/20 text-blue-500' : res.status === BookingStatus.OFFER_SENT ? 'bg-blue-500/20 text-blue-500 border border-dashed' : res.status === BookingStatus.INVOICED ? 'bg-blue-500/20 text-blue-500' : 'bg-emerald-500/20 text-emerald-500'}`}>
                                             {res.status}
                                         </span>
                                     </td>
@@ -987,7 +1104,7 @@ const AccountDashboard: React.FC = () => {
                                     </td>
                                 </tr>
                             ))}
-                            {reservations.length === 0 && (
+                            {reservations.filter(res => shouldShowInReservations(res.status)).length === 0 && (
                                 <tr>
                                     <td colSpan={7} className="p-8 text-center text-gray-500">No reservations found.</td>
                                 </tr>
@@ -1094,7 +1211,22 @@ const AccountDashboard: React.FC = () => {
       </div>
 
       {/* Modals */}
-      <BookingDetailsModal isOpen={isManageModalOpen} onClose={closeManageModals} booking={selectedReservation} onConvertToOffer={!viewingOffer ? handleConvertToOffer : undefined} onCreateInvoice={viewingOffer ? handleCreateInvoiceClick : undefined} onEdit={viewingOffer ? handleEditOfferClick : undefined} />
+      <BookingDetailsModal 
+          isOpen={isManageModalOpen} 
+          onClose={closeManageModals} 
+          booking={selectedReservation} 
+          onConvertToOffer={!viewingOffer ? handleConvertToOffer : undefined} 
+          onCreateInvoice={handleCreateInvoiceClick} 
+          onEdit={viewingOffer ? handleEditOfferClick : undefined}
+          onSendOffer={!viewingOffer ? handleSendOffer : undefined}
+          onUpdateBookingStatus={(bookingId, newStatus) => {
+              setReservations(prev => prev.map(r => 
+                  r.id === bookingId
+                      ? { ...r, status: newStatus }
+                      : r
+              ));
+          }}
+      />
       <InvoiceModal isOpen={isInvoiceModalOpen} onClose={() => { setIsInvoiceModalOpen(false); setSelectedOfferForInvoice(null); setSelectedInvoice(null); }} offer={selectedOfferForInvoice} invoice={selectedInvoice} onSave={handleSaveInvoice} />
       <OfferEditModal isOpen={isOfferEditModalOpen} onClose={() => setIsOfferEditModalOpen(false)} offer={offerToEdit} onSave={handleSaveOfferUpdate} />
       <PropertyAddModal isOpen={isPropertyAddModalOpen} onClose={() => setIsPropertyAddModalOpen(false)} onSave={handleSaveProperty} />
