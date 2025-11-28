@@ -56,7 +56,7 @@ export const MOCK_PROPERTIES: Property[] = [
     meta: "65 m² / 3",
     term: "01.01.2024 - Indefinite",
     termStatus: "green",
-    balance: -750.00,
+    balance: 119.00,
     image: 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?q=80&w=2053&auto=format&fit=crop',
     images: [
       'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?q=80&w=2053&auto=format&fit=crop',
@@ -89,6 +89,11 @@ export const MOCK_PROPERTIES: Property[] = [
         { id: 'rh-3', tenantName: 'Sydorenko V.V.', startDate: '01.01.2020', endDate: '31.12.2021', km: 400, bk: 90, hk: 40, status: 'ARCHIVED' },
         { id: 'rh-4', tenantName: 'Kovalchuk O.M.', startDate: '01.06.2018', endDate: '31.12.2019', km: 350, bk: 80, hk: 30, status: 'ARCHIVED' },
         { id: 'rh-5', tenantName: 'Melnyk A.I.', startDate: '01.01.2017', endDate: '31.05.2018', km: 320, bk: 70, hk: 25, status: 'ARCHIVED' },
+    ],
+    rentPayments: [
+        { id: 'rp-0', date: '03.11.2025', month: 'November 2025', amount: '119 € / 119 €', status: 'PAID' },
+        { id: 'rp-1', date: '01.01.2024', month: 'January 2024', amount: '750 € / 750 €', status: 'PAID' },
+        { id: 'rp-2', date: '01.01.2022', month: 'January 2022', amount: '600 € / 600 €', status: 'PAID' },
     ],
     ownerExpense: { mortgage: 400, management: 50, taxIns: 25, reserve: 25 },
     futurePayments: [
@@ -149,6 +154,7 @@ export const MOCK_PROPERTIES: Property[] = [
     rentalHistory: [
         { id: 'rh-2-1', tenantName: 'Mustermann Max', startDate: '01.06.2023', endDate: '31.05.2025', km: 1200, bk: 200, hk: 100, status: 'ACTIVE' }
     ],
+    rentPayments: [],
     ownerExpense: { mortgage: 1000, management: 150, taxIns: 100, reserve: 50 },
     futurePayments: [
         { date: "01.01.2026", recipient: "Finanzamt", amount: 350.00, category: "Property Tax", status: "PENDING", docId: "TAX-2026-BER" },
@@ -193,6 +199,7 @@ export const MOCK_PROPERTIES: Property[] = [
     meterReadings: [],
     tenant: { name: "Temporarily Vacant", phone: "-", email: "-", rent: 0, deposit: 0, startDate: "N/A", km: 0, bk: 0, hk: 0 },
     rentalHistory: [],
+    rentPayments: [],
     ownerExpense: { mortgage: 800, management: 100, taxIns: 75, reserve: 0 },
     futurePayments: [
         { date: "05.11.2025", recipient: "Repair Crew", amount: 5000.00, category: "Repair", status: "PENDING", docId: "REPAIR-KOT-NOV" },
@@ -243,6 +250,7 @@ export const MOCK_PROPERTIES: Property[] = [
     rentalHistory: [
         { id: 'rh-6-1', tenantName: 'Wozniak Anna', startDate: '01.07.2025', endDate: 'Indefinite', km: 650, bk: 150, hk: 50, status: 'ACTIVE' }
     ],
+    rentPayments: [],
     ownerExpense: { mortgage: 450, management: 100, taxIns: 40, reserve: 60 },
     futurePayments: [
         { date: "01.12.2025", recipient: "Urząd Skarbowy", amount: 180.00, category: "Tax", status: "PENDING", docId: "TAX-POL-DEC" },
@@ -270,6 +278,7 @@ export const MOCK_PROPERTIES: Property[] = [
     inventory: [],
     meterReadings: [],
     rentalHistory: [],
+    rentPayments: [],
     images: []
   },
   {
@@ -291,6 +300,7 @@ export const MOCK_PROPERTIES: Property[] = [
     inventory: [],
     meterReadings: [],
     rentalHistory: [],
+    rentPayments: [],
     images: []
   },
   {
@@ -312,6 +322,7 @@ export const MOCK_PROPERTIES: Property[] = [
     inventory: [],
     meterReadings: [],
     rentalHistory: [],
+    rentPayments: [],
     images: []
   },
   {
@@ -333,6 +344,7 @@ export const MOCK_PROPERTIES: Property[] = [
     inventory: [],
     meterReadings: [],
     rentalHistory: [],
+    rentPayments: [],
     images: []
   }
 ];

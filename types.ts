@@ -37,6 +37,14 @@ export interface RentalAgreement {
   status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED' | 'FUTURE';
 }
 
+export interface RentPayment {
+  id: string;
+  date: string;
+  month: string;
+  amount: string;
+  status: 'PAID' | 'PENDING' | 'OVERDUE';
+}
+
 export interface OwnerExpense {
   mortgage: number;
   management: number;
@@ -136,6 +144,7 @@ export interface Property {
   meterLog?: MeterLogEntry[];
   tenant?: TenantDetails;
   rentalHistory?: RentalAgreement[]; // New field for list of agreements
+  rentPayments?: RentPayment[]; // New field for rent payments
   ownerExpense?: OwnerExpense;
   futurePayments?: FuturePayment[];
   repairRequests?: RepairRequest[];
