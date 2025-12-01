@@ -1,6 +1,7 @@
 
 
 import React, { useState, useEffect, useRef } from 'react';
+import { RequestData } from '../types';
 import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard } from 'lucide-react';
 import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus } from '../types';
 import { ROOMS } from '../constants';
@@ -16,6 +17,7 @@ interface SalesCalendarProps {
   offers?: OfferData[];
   invoices?: InvoiceData[];
   adminEvents?: CalendarEvent[];
+  prefilledRequestData?: Partial<RequestData>; // Для префілу форми з Request
 }
 
 const INITIAL_BOOKINGS: Booking[] = [
@@ -87,7 +89,7 @@ const getInitialFormData = () => ({
   endDate: '',
 });
 
-const SalesCalendar: React.FC<SalesCalendarProps> = ({ onSaveOffer, onSaveReservation, onDeleteReservation, onAddLead, reservations = [], offers = [], invoices = [], adminEvents = [] }) => {
+const SalesCalendar: React.FC<SalesCalendarProps> = ({ onSaveOffer, onSaveReservation, onDeleteReservation, onAddLead, reservations = [], offers = [], invoices = [], adminEvents = [], prefilledRequestData }) => {
   // State
   const [bookings, setBookings] = useState<Booking[]>(INITIAL_BOOKINGS);
   const [currentDate, setCurrentDate] = useState(new Date(2025, 10, 1)); // Nov 1, 2025
@@ -106,7 +108,30 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({ onSaveOffer, onSaveReserv
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
   // New Booking Form State
-  const [formData, setFormData] = useState(getInitialFormData());
+  const [formData, setFormData] = useState(() => {
+    const initial = getInitialFormData();
+    // Префіл з Request якщо є
+    if (prefilledRequestData) {
+      return {
+        ...initial,
+        firstName: prefilledRequestData.firstName || initial.firstName,
+        lastName: prefilledRequestData.lastName || initial.lastName,
+        email: prefilledRequestData.email || initial.email,
+        phone: prefilledRequestData.phone || initial.phone,
+        companyName: prefilledRequestData.companyName || initial.companyName,
+        startDate: prefilledRequestData.startDate || initial.startDate,
+        endDate: prefilledRequestData.endDate || initial.endDate,
+      };
+    }
+    return initial;
+  });
+  
+  // Відкрити модал автоматично якщо є prefilled data
+  useEffect(() => {
+    if (prefilledRequestData && !isAddModalOpen) {
+      setIsAddModalOpen(true);
+    }
+  }, [prefilledRequestData]);
   
   const [guests, setGuests] = useState<{firstName: string, lastName: string}[]>([{ firstName: '', lastName: '' }]);
 

@@ -295,6 +295,24 @@ export interface Lead {
   address: string;
   status: 'Active' | 'Past' | 'Potential';
   createdAt: string;
+  source?: string; // requestId якщо створено з Request
+}
+
+export interface RequestData {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  companyName?: string;
+  peopleCount: number;
+  startDate: string;
+  endDate: string;
+  message?: string;
+  propertyId?: string;
+  status: 'pending' | 'processed' | 'archived';
+  createdAt: string;
+  processedAt?: string;
 }
 
 export interface ReservationData extends Booking {}

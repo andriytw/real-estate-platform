@@ -9,12 +9,13 @@ import PartnerModal from './components/PartnerModal';
 import Marketplace from './components/Marketplace';
 import AccountDashboard from './components/AccountDashboard';
 import { MOCK_PROPERTIES } from './constants';
-import { Property, FilterState } from './types';
+import { Property, FilterState, RequestData } from './types';
 
 const App: React.FC = () => {
   const [selectedProperty, setSelectedProperty] = useState<Property>(MOCK_PROPERTIES[0]);
   const [currentView, setCurrentView] = useState<'dashboard' | 'booking' | 'market' | 'account'>('dashboard');
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
+  const [prefilledRequestData, setPrefilledRequestData] = useState<Partial<RequestData> | undefined>(undefined);
   const [filters, setFilters] = useState<FilterState>({
     city: 'Any',
     district: 'Any',
@@ -197,7 +198,21 @@ const App: React.FC = () => {
             </div>
             {/* Right Column - Booking Form */}
             <div className="w-full lg:w-1/2 overflow-y-auto bg-[#111315]">
-              <BookingForm />
+              <BookingForm 
+                prefilledData={prefilledRequestData}
+                propertyId={selectedProperty.id}
+                onAddRequest={(request) => {
+                  // Зберегти request в localStorage для синхронізації з AccountDashboard
+                  const existingRequests = JSON.parse(localStorage.getItem('requests') || '[]');
+                  existingRequests.push(request);
+                  localStorage.setItem('requests', JSON.stringify(existingRequests));
+                  // Відправити event для оновлення AccountDashboard
+                  window.dispatchEvent(new CustomEvent('requestAdded', { detail: request }));
+                  alert('Request sent successfully! Our team will contact you soon.');
+                  setCurrentView('dashboard');
+                  setPrefilledRequestData(undefined);
+                }}
+              />
             </div>
           </div>
         );

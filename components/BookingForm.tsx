@@ -1,169 +1,370 @@
-import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Copy, RefreshCw, Mail, MessageSquare, Send, FileText, Phone } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, Copy, RefreshCw, Mail, MessageSquare, Send, FileText, Phone, AlertCircle, Building2, Users } from 'lucide-react';
+import { RequestData } from '../types';
 
-const BookingForm: React.FC = () => {
+interface BookingFormProps {
+  onAddRequest?: (request: RequestData) => void;
+  prefilledData?: Partial<RequestData>; // Для префілу з Request
+  propertyId?: string;
+}
+
+interface FormErrors {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  companyName?: string;
+  peopleCount?: string;
+  startDate?: string;
+  endDate?: string;
+  message?: string;
+}
+
+const BookingForm: React.FC<BookingFormProps> = ({ onAddRequest, prefilledData, propertyId }) => {
   const [selectedDay, setSelectedDay] = useState<number>(19);
   const [selectedTime, setSelectedTime] = useState<string>('19:00');
+  const [currentMonth, setCurrentMonth] = useState(new Date(2025, 10, 1)); // November 2025
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    firstName: prefilledData?.firstName || '',
+    lastName: prefilledData?.lastName || '',
+    email: prefilledData?.email || '',
+    phone: prefilledData?.phone || '',
+    companyName: prefilledData?.companyName || '',
+    peopleCount: prefilledData?.peopleCount?.toString() || '1',
+    startDate: prefilledData?.startDate || '',
+    endDate: prefilledData?.endDate || '',
+    message: prefilledData?.message || '',
+  });
 
-  const days = [
-    // Previous month
-    { day: 26, current: false }, { day: 27, current: false }, { day: 28, current: false }, { day: 29, current: false }, { day: 30, current: false }, { day: 31, current: false },
-    // Current month (November 2025)
-    { day: 1, current: true }, { day: 2, current: true }, { day: 3, current: true }, { day: 4, current: true }, { day: 5, current: true }, { day: 6, current: true }, { day: 7, current: true },
-    { day: 8, current: true }, { day: 9, current: true }, { day: 10, current: true }, { day: 11, current: true }, { day: 12, current: true }, { day: 13, current: true }, { day: 14, current: true },
-    { day: 15, current: true }, { day: 16, current: true }, { day: 17, current: true }, { day: 18, current: true }, { day: 19, current: true }, { day: 20, current: true }, { day: 21, current: true },
-    { day: 22, current: true }, { day: 23, current: true }, { day: 24, current: true }, { day: 25, current: true }, { day: 26, current: true }, { day: 27, current: true }, { day: 28, current: true }, { day: 29, current: true }, { day: 30, current: true },
-    // Next month
-    { day: 1, current: false }, { day: 2, current: false }, { day: 3, current: false }, { day: 4, current: false }, { day: 5, current: false }, { day: 6, current: false }
-  ];
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const timeSlots = ['09:00', '11:00', '13:00', '15:00', '17:00', '19:00'];
+  // Префіл форми якщо є prefilledData
+  useEffect(() => {
+    if (prefilledData) {
+      setFormData(prev => ({
+        ...prev,
+        firstName: prefilledData.firstName || prev.firstName,
+        lastName: prefilledData.lastName || prev.lastName,
+        email: prefilledData.email || prev.email,
+        phone: prefilledData.phone || prev.phone,
+        companyName: prefilledData.companyName || prev.companyName,
+        peopleCount: prefilledData.peopleCount?.toString() || prev.peopleCount,
+        startDate: prefilledData.startDate || prev.startDate,
+        endDate: prefilledData.endDate || prev.endDate,
+        message: prefilledData.message || prev.message,
+      }));
+    }
+  }, [prefilledData]);
+
+  const validateForm = (): boolean => {
+    const newErrors: FormErrors = {};
+
+    if (!formData.firstName.trim()) {
+      newErrors.firstName = 'First name is required';
+    }
+    if (!formData.lastName.trim()) {
+      newErrors.lastName = 'Last name is required';
+    }
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'Invalid email format';
+    }
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone number is required';
+    }
+    if (!formData.peopleCount || parseInt(formData.peopleCount) < 1) {
+      newErrors.peopleCount = 'Number of people must be at least 1';
+    }
+    if (!formData.startDate) {
+      newErrors.startDate = 'Start date is required';
+    }
+    if (!formData.endDate) {
+      newErrors.endDate = 'End date is required';
+    }
+    if (formData.startDate && formData.endDate && formData.startDate >= formData.endDate) {
+      newErrors.endDate = 'End date must be after start date';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    const newRequest: RequestData = {
+      id: `req-${Date.now()}`,
+      firstName: formData.firstName.trim(),
+      lastName: formData.lastName.trim(),
+      email: formData.email.trim(),
+      phone: formData.phone.trim(),
+      companyName: formData.companyName.trim() || undefined,
+      peopleCount: parseInt(formData.peopleCount),
+      startDate: formData.startDate,
+      endDate: formData.endDate,
+      message: formData.message.trim() || undefined,
+      propertyId: propertyId,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+
+    if (onAddRequest) {
+      onAddRequest(newRequest);
+      // Показати confirmation
+      alert('Request sent successfully! We will contact you soon.');
+      // Reset form
+      setFormData({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        companyName: '',
+        peopleCount: '1',
+        startDate: '',
+        endDate: '',
+        message: '',
+      });
+    }
+
+    setIsSubmitting(false);
+  };
+
+  const formatDateForInput = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const handleDaySelect = (day: number) => {
+    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    if (!formData.startDate) {
+      setFormData(prev => ({ ...prev, startDate: formatDateForInput(date) }));
+    } else if (!formData.endDate || formData.endDate <= formData.startDate) {
+      setFormData(prev => ({ ...prev, endDate: formatDateForInput(date) }));
+    }
+  };
+
+  // Generate calendar days
+  const getCalendarDays = () => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+
+    const days = [];
+    // Previous month days
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
+    for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+      days.push({ day: prevMonthLastDay - i, current: false });
+    }
+    // Current month days
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push({ day: i, current: true });
+    }
+    // Next month days to fill the grid
+    const remainingDays = 42 - days.length;
+    for (let i = 1; i <= remainingDays; i++) {
+      days.push({ day: i, current: false });
+    }
+    return days;
+  };
+
+  const days = getCalendarDays();
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
   return (
-    <div className="p-8 text-white font-sans max-w-2xl mx-auto">
-      
+    <form onSubmit={handleSubmit} className="p-8 text-white font-sans max-w-2xl mx-auto">
       {/* Section A: Tenant Details */}
       <div className="mb-8">
         <h3 className="text-lg font-bold mb-4">A. Tenant Details</h3>
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div className="flex flex-col gap-2">
-             <label className="text-sm text-gray-400">First Name</label>
-             <input type="text" placeholder="First Name" className="bg-transparent border border-gray-700 rounded-md p-3 text-sm focus:border-emerald-500 focus:outline-none" />
+            <label className="text-sm text-gray-400">First Name *</label>
+            <input
+              type="text"
+              value={formData.firstName}
+              onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
+              placeholder="First Name"
+              className={`bg-transparent border rounded-md p-3 text-sm focus:outline-none ${
+                errors.firstName ? 'border-red-500' : 'border-gray-700 focus:border-emerald-500'
+              }`}
+            />
+            {errors.firstName && (
+              <div className="flex items-center gap-1 text-red-500 text-xs">
+                <AlertCircle className="w-3 h-3" />
+                <span>{errors.firstName}</span>
+              </div>
+            )}
           </div>
           <div className="flex flex-col gap-2">
-             <label className="text-sm text-gray-400">Last Name</label>
-             <input type="text" placeholder="Last Name" className="bg-transparent border border-gray-700 rounded-md p-3 text-sm focus:border-emerald-500 focus:outline-none" />
+            <label className="text-sm text-gray-400">Last Name *</label>
+            <input
+              type="text"
+              value={formData.lastName}
+              onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
+              placeholder="Last Name"
+              className={`bg-transparent border rounded-md p-3 text-sm focus:outline-none ${
+                errors.lastName ? 'border-red-500' : 'border-gray-700 focus:border-emerald-500'
+              }`}
+            />
+            {errors.lastName && (
+              <div className="flex items-center gap-1 text-red-500 text-xs">
+                <AlertCircle className="w-3 h-3" />
+                <span>{errors.lastName}</span>
+              </div>
+            )}
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div className="flex flex-col gap-2">
-             <label className="text-sm text-gray-400">Email</label>
-             <input type="email" placeholder="Email" className="bg-transparent border border-gray-700 rounded-md p-3 text-sm focus:border-emerald-500 focus:outline-none" />
+            <label className="text-sm text-gray-400">Email *</label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+              placeholder="Email"
+              className={`bg-transparent border rounded-md p-3 text-sm focus:outline-none ${
+                errors.email ? 'border-red-500' : 'border-gray-700 focus:border-emerald-500'
+              }`}
+            />
+            {errors.email && (
+              <div className="flex items-center gap-1 text-red-500 text-xs">
+                <AlertCircle className="w-3 h-3" />
+                <span>{errors.email}</span>
+              </div>
+            )}
           </div>
           <div className="flex flex-col gap-2">
-             <label className="text-sm text-gray-400">Phone Number</label>
-             <input type="tel" placeholder="Phone Number" className="bg-transparent border border-gray-700 rounded-md p-3 text-sm focus:border-emerald-500 focus:outline-none" />
+            <label className="text-sm text-gray-400">Phone Number *</label>
+            <input
+              type="tel"
+              value={formData.phone}
+              onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+              placeholder="Phone Number"
+              className={`bg-transparent border rounded-md p-3 text-sm focus:outline-none ${
+                errors.phone ? 'border-red-500' : 'border-gray-700 focus:border-emerald-500'
+              }`}
+            />
+            {errors.phone && (
+              <div className="flex items-center gap-1 text-red-500 text-xs">
+                <AlertCircle className="w-3 h-3" />
+                <span>{errors.phone}</span>
+              </div>
+            )}
           </div>
         </div>
-        <div className="flex flex-col gap-2">
-           <label className="text-sm text-gray-400">Language</label>
-           <select className="bg-transparent border border-gray-700 rounded-md p-3 text-sm focus:border-emerald-500 focus:outline-none appearance-none text-gray-400">
-             <option>Select language</option>
-             <option>English</option>
-             <option>German</option>
-           </select>
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="flex flex-col gap-2">
+            <label className="text-sm text-gray-400">Company Name</label>
+            <input
+              type="text"
+              value={formData.companyName}
+              onChange={(e) => setFormData(prev => ({ ...prev, companyName: e.target.value }))}
+              placeholder="Company Name (optional)"
+              className="bg-transparent border border-gray-700 rounded-md p-3 text-sm focus:border-emerald-500 focus:outline-none"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-sm text-gray-400">Number of People *</label>
+            <input
+              type="number"
+              min="1"
+              value={formData.peopleCount}
+              onChange={(e) => setFormData(prev => ({ ...prev, peopleCount: e.target.value }))}
+              placeholder="1"
+              className={`bg-transparent border rounded-md p-3 text-sm focus:outline-none ${
+                errors.peopleCount ? 'border-red-500' : 'border-gray-700 focus:border-emerald-500'
+              }`}
+            />
+            {errors.peopleCount && (
+              <div className="flex items-center gap-1 text-red-500 text-xs">
+                <AlertCircle className="w-3 h-3" />
+                <span>{errors.peopleCount}</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Section B: Select Date & Time */}
       <div className="mb-8">
-        <h3 className="text-lg font-bold mb-4">B. Select Date & Time</h3>
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Calendar */}
-          <div className="bg-[#16181D] border border-gray-800 rounded-lg p-4 flex-1">
-            <div className="flex justify-between items-center mb-4 px-2">
-              <span className="font-bold text-sm">November 2025</span>
-              <div className="flex gap-2">
-                <button className="p-1 hover:text-white text-gray-500"><ChevronLeft className="w-4 h-4" /></button>
-                <button className="p-1 hover:text-white text-gray-500"><ChevronRight className="w-4 h-4" /></button>
+        <h3 className="text-lg font-bold mb-4">B. Select Dates</h3>
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="flex flex-col gap-2">
+            <label className="text-sm text-gray-400">Start Date *</label>
+            <input
+              type="date"
+              value={formData.startDate}
+              onChange={(e) => setFormData(prev => ({ ...prev, startDate: e.target.value }))}
+              className={`bg-transparent border rounded-md p-3 text-sm focus:outline-none ${
+                errors.startDate ? 'border-red-500' : 'border-gray-700 focus:border-emerald-500'
+              }`}
+            />
+            {errors.startDate && (
+              <div className="flex items-center gap-1 text-red-500 text-xs">
+                <AlertCircle className="w-3 h-3" />
+                <span>{errors.startDate}</span>
               </div>
-            </div>
-            <div className="grid grid-cols-7 gap-1 text-center text-xs mb-2 text-gray-500">
-               <div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div>
-            </div>
-            <div className="grid grid-cols-7 gap-1">
-              {days.map((d, i) => {
-                const isSelected = d.current && d.day === selectedDay;
-                return (
-                  <button 
-                    key={i}
-                    onClick={() => d.current && setSelectedDay(d.day)}
-                    disabled={!d.current}
-                    className={`
-                      h-8 w-8 mx-auto flex items-center justify-center rounded-md text-xs transition-colors
-                      ${!d.current ? 'text-gray-600 cursor-default' : 'hover:bg-gray-800 cursor-pointer'}
-                      ${isSelected ? 'bg-emerald-500 text-white hover:bg-emerald-600 font-bold' : d.current ? 'text-gray-300' : ''}
-                    `}
-                  >
-                    {d.day}
-                  </button>
-                );
-              })}
-            </div>
+            )}
           </div>
-
-          {/* Time Slots */}
-          <div className="w-full lg:w-32 flex flex-col gap-2">
-             {timeSlots.map((time, i) => (
-               <button 
-                 key={i}
-                 onClick={() => setSelectedTime(time)}
-                 className={`
-                   py-2 px-4 rounded-md text-xs font-medium border transition-colors
-                   ${time === selectedTime 
-                     ? 'bg-[#1C1F24] border-emerald-500 text-white' 
-                     : 'bg-transparent border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-300'}
-                 `}
-               >
-                 {time}
-               </button>
-             ))}
+          <div className="flex flex-col gap-2">
+            <label className="text-sm text-gray-400">End Date *</label>
+            <input
+              type="date"
+              value={formData.endDate}
+              onChange={(e) => setFormData(prev => ({ ...prev, endDate: e.target.value }))}
+              min={formData.startDate}
+              className={`bg-transparent border rounded-md p-3 text-sm focus:outline-none ${
+                errors.endDate ? 'border-red-500' : 'border-gray-700 focus:border-emerald-500'
+              }`}
+            />
+            {errors.endDate && (
+              <div className="flex items-center gap-1 text-red-500 text-xs">
+                <AlertCircle className="w-3 h-3" />
+                <span>{errors.endDate}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Section C: Access Code */}
+      {/* Section C: Message */}
       <div className="mb-8">
-        <h3 className="text-lg font-bold mb-4">C. Access Code</h3>
-        <div className="bg-[#16181D] border border-gray-800 rounded-lg p-4 flex justify-between items-center">
-          <div>
-             <span className="block text-gray-400 text-xs mb-1">Access Code</span>
-             <span className="text-3xl font-bold text-white">743815</span>
-          </div>
-          <div className="flex gap-2">
-            <button className="p-2 border border-gray-700 rounded-md hover:bg-gray-800 text-gray-400"><RefreshCw className="w-4 h-4" /></button>
-            <button className="p-2 border border-gray-700 rounded-md hover:bg-gray-800 text-gray-400"><Copy className="w-4 h-4" /></button>
-          </div>
-        </div>
-        <p className="text-xs text-gray-500 mt-2">Valid for 24 hours from selected time.</p>
+        <h3 className="text-lg font-bold mb-4">C. Additional Message</h3>
+        <textarea
+          value={formData.message}
+          onChange={(e) => setFormData(prev => ({ ...prev, message: e.target.value }))}
+          placeholder="Any additional information or special requests..."
+          rows={4}
+          className="w-full bg-transparent border border-gray-700 rounded-md p-3 text-sm focus:border-emerald-500 focus:outline-none resize-none"
+        />
       </div>
 
-      {/* Section D: Send Options */}
+      {/* Section D: Submit */}
       <div className="mb-8">
-         <h3 className="text-lg font-bold mb-4">D. Send Options</h3>
-         <div className="flex gap-3 mb-6">
-           {/* Email */}
-           <button className="w-12 h-10 bg-emerald-500 rounded-md flex items-center justify-center text-white shadow-lg shadow-emerald-900/20 hover:bg-emerald-600 transition-colors">
-             <Mail className="w-4 h-4" />
-           </button>
-           
-           {/* SMS */}
-           <button className="w-12 h-10 bg-[#1C1F24] border border-gray-700 rounded-md flex items-center justify-center text-gray-400 hover:text-white transition-colors">
-             <MessageSquare className="w-4 h-4" />
-           </button>
-           
-           {/* WhatsApp - Brand Green */}
-           <button className="w-12 h-10 bg-[#25D366] rounded-md flex items-center justify-center text-white hover:opacity-90 transition-opacity">
-             <Phone className="w-4 h-4 fill-current" />
-           </button>
-           
-           {/* Telegram */}
-           <button className="w-12 h-10 bg-[#1C1F24] border border-gray-700 rounded-md flex items-center justify-center text-gray-400 hover:text-white transition-colors">
-             <Send className="w-4 h-4 -rotate-45 -ml-0.5 mt-0.5" />
-           </button>
-           
-           {/* File/Copy */}
-           <button className="w-12 h-10 bg-[#1C1F24] border border-gray-700 rounded-md flex items-center justify-center text-gray-400 hover:text-white transition-colors">
-             <FileText className="w-4 h-4" />
-           </button>
-         </div>
-
-         <button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-md transition-colors shadow-lg shadow-emerald-900/20">
-            Confirm & Send
-         </button>
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 rounded-md transition-colors shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2"
+        >
+          <Send className="w-4 h-4" />
+          {isSubmitting ? 'Sending...' : 'Confirm & Send Request'}
+        </button>
       </div>
-
-    </div>
+    </form>
   );
 };
 

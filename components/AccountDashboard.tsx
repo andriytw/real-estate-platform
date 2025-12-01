@@ -8,8 +8,9 @@ import BookingDetailsModal from './BookingDetailsModal';
 import InvoiceModal from './InvoiceModal';
 import OfferEditModal from './OfferEditModal';
 import PropertyAddModal from './PropertyAddModal';
+import RequestModal from './RequestModal';
 import BankingDashboard from './BankingDashboard';
-import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus } from '../types';
+import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData } from '../types';
 import { ROOMS } from '../constants';
 import { MOCK_PROPERTIES } from '../constants';
 import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingStatusFromTask } from '../bookingUtils';
@@ -18,7 +19,7 @@ import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingS
 type Department = 'properties' | 'facility' | 'accounting' | 'sales';
 type FacilityTab = 'overview' | 'calendar' | 'messages';
 type AccountingTab = 'dashboard' | 'invoices' | 'expenses' | 'calendar' | 'banking';
-type SalesTab = 'leads' | 'calendar' | 'offers' | 'reservations'; 
+type SalesTab = 'leads' | 'calendar' | 'offers' | 'reservations' | 'requests'; 
 type PropertiesTab = 'list' | 'units';
 
 // --- TASK CATEGORIES ---
@@ -106,6 +107,44 @@ const AccountDashboard: React.FC = () => {
 
   const [activities, setActivities] = useState<ActivityItem[]>(INITIAL_ACTIVITIES);
   const [leads, setLeads] = useState<Lead[]>(INITIAL_LEADS);
+  const [requests, setRequests] = useState<RequestData[]>(() => {
+    // Завантажити requests з localStorage при ініціалізації
+    try {
+      const stored = localStorage.getItem('requests');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+  
+  // Слухати події додавання нових requests
+  React.useEffect(() => {
+    const handleRequestAdded = (event: CustomEvent<RequestData>) => {
+      setRequests(prev => [event.detail, ...prev]);
+      // Створити Lead з Request
+      const newLead: Lead = {
+          id: `lead-${Date.now()}`,
+          name: event.detail.companyName || `${event.detail.firstName} ${event.detail.lastName}`,
+          type: event.detail.companyName ? 'Company' : 'Private',
+          contactPerson: event.detail.companyName ? `${event.detail.firstName} ${event.detail.lastName}` : undefined,
+          email: event.detail.email,
+          phone: event.detail.phone,
+          address: '',
+          status: 'Active',
+          createdAt: new Date().toISOString().split('T')[0],
+          source: event.detail.id
+      };
+      setLeads(prev => [...prev, newLead]);
+    };
+    
+    window.addEventListener('requestAdded', handleRequestAdded as EventListener);
+    return () => window.removeEventListener('requestAdded', handleRequestAdded as EventListener);
+  }, []);
+  
+  // Синхронізувати requests з localStorage при змінах
+  React.useEffect(() => {
+    localStorage.setItem('requests', JSON.stringify(requests));
+  }, [requests]);
 
   const [offers, setOffers] = useState<OfferData[]>([
       { 
@@ -143,6 +182,8 @@ const AccountDashboard: React.FC = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceData | null>(null);
   const [isOfferEditModalOpen, setIsOfferEditModalOpen] = useState(false);
   const [offerToEdit, setOfferToEdit] = useState<OfferData | null>(null);
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<RequestData | null>(null);
 
   // Stats
   const activePropertiesCount = properties.length;
@@ -215,6 +256,54 @@ const AccountDashboard: React.FC = () => {
 
   const handleSaveReservation = (reservation: ReservationData) => {
       setReservations(prev => [reservation, ...prev]);
+      // Якщо резервація створена з Request, помітити Request як processed
+      if (selectedRequest) {
+          setRequests(prev => prev.map(req => 
+              req.id === selectedRequest.id 
+                  ? { ...req, status: 'processed' as const, processedAt: new Date().toISOString() }
+                  : req
+          ));
+          setSelectedRequest(null);
+      }
+  };
+
+  const handleAddRequest = (request: RequestData) => {
+      setRequests(prev => [request, ...prev]);
+      // Створити Lead з Request
+      const newLead: Lead = {
+          id: `lead-${Date.now()}`,
+          name: request.companyName || `${request.firstName} ${request.lastName}`,
+          type: request.companyName ? 'Company' : 'Private',
+          contactPerson: request.companyName ? `${request.firstName} ${request.lastName}` : undefined,
+          email: request.email,
+          phone: request.phone,
+          address: '',
+          status: 'Active',
+          createdAt: new Date().toISOString().split('T')[0],
+          source: request.id
+      };
+      setLeads(prev => [...prev, newLead]);
+  };
+
+  const handleProcessRequest = (request: RequestData) => {
+      // Відкрити модал з даними request
+      setSelectedRequest(request);
+      setIsRequestModalOpen(true);
+  };
+
+  const handleGoToCalendarFromRequest = () => {
+      // Перейти в Sales calendar та префілити форму
+      // selectedRequest вже буде використаний через prefilledRequestData prop
+      setActiveDepartment('sales');
+      setSalesTab('calendar');
+      setIsRequestModalOpen(false);
+      // selectedRequest залишається встановленим для префілу форми
+  };
+
+  const handleDeleteRequest = (requestId: string) => {
+      setRequests(prev => prev.map(req => 
+          req.id === requestId ? { ...req, status: 'archived' as const } : req
+      ));
   };
   
   const handleAddLeadFromBooking = (bookingData: any) => {
@@ -314,7 +403,7 @@ const AccountDashboard: React.FC = () => {
   const handleConvertToOffer = (status: 'Draft' | 'Sent', internalCompany: string, email: string) => {
       if (!selectedReservation) return;
       const newOffer: OfferData = {
-          id: Date.now().toString(),
+          id: String(selectedReservation.id), // Використовуємо id резервації для правильного зв'язку
           clientName: selectedReservation.guest,
           propertyId: selectedReservation.roomId, 
           internalCompany: internalCompany,
@@ -346,12 +435,41 @@ const AccountDashboard: React.FC = () => {
   
   const handleSendOffer = () => {
       if (!selectedReservation) return;
+      
+      // Створити Offer об'єкт з даних резервації
+      const newOffer: OfferData = {
+          id: String(selectedReservation.id),
+          clientName: selectedReservation.guest,
+          propertyId: selectedReservation.roomId,
+          internalCompany: selectedReservation.internalCompany || 'Sotiso',
+          price: selectedReservation.price,
+          dates: `${selectedReservation.start} to ${selectedReservation.end}`,
+          status: 'Sent',
+          createdAt: new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }),
+          guests: selectedReservation.guests,
+          email: selectedReservation.email,
+          phone: selectedReservation.phone,
+          address: selectedReservation.address,
+          checkInTime: selectedReservation.checkInTime,
+          checkOutTime: selectedReservation.checkOutTime,
+          guestList: selectedReservation.guestList,
+          comments: selectedReservation.comments,
+          unit: selectedReservation.unit,
+      };
+      
+      // Додати Offer в масив offers
+      setOffers(prev => [newOffer, ...prev]);
+      
+      // Оновити статус резервації на offer_sent
       setReservations(prev => prev.map(r => 
           r.id === selectedReservation.id
               ? { ...r, status: BookingStatus.OFFER_SENT }
               : r
       ));
+      
       closeManageModals();
+      // Переключитись на вкладку Offers
+      setSalesTab('offers');
   };
   
   const handleCreateInvoiceClick = (offer: OfferData | ReservationData) => {
@@ -396,9 +514,14 @@ const AccountDashboard: React.FC = () => {
       } else {
          setInvoices(prev => [invoice, ...prev]);
       }
+      
+      // Видалити Offer з масиву offers після створення Invoice
       if (invoice.offerIdSource) {
-          setOffers(prev => prev.map(o => (o.id === invoice.offerIdSource || String(o.id) === invoice.offerIdSource) ? { ...o, status: 'Sent' } : o));
+          setOffers(prev => prev.filter(o => 
+              o.id !== invoice.offerIdSource && String(o.id) !== invoice.offerIdSource
+          ));
       }
+      
       // Оновити статус резервації на invoiced якщо є bookingId
       if (invoice.bookingId) {
           setReservations(prev => prev.map(r => 
@@ -407,6 +530,7 @@ const AccountDashboard: React.FC = () => {
                   : r
           ));
       }
+      
       setIsInvoiceModalOpen(false);
       setSelectedOfferForInvoice(null);
       setSelectedInvoice(null);
@@ -1116,6 +1240,132 @@ const AccountDashboard: React.FC = () => {
         );
     }
 
+    if (salesTab === 'offers') {
+        return (
+            <div className="p-8 bg-[#0D1117] text-white">
+                <h2 className="text-2xl font-bold mb-6">Offers List</h2>
+                <div className="bg-[#1C1F24] border border-gray-800 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                            <tr>
+                                <th className="p-4">ID</th>
+                                <th className="p-4">Client</th>
+                                <th className="p-4">Property</th>
+                                <th className="p-4">Dates</th>
+                                <th className="p-4">Status</th>
+                                <th className="p-4 text-right">Price</th>
+                                <th className="p-4 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-800">
+                            {offers.filter(offer => offer.status === 'Sent').map(offer => (
+                                <tr key={offer.id} className="hover:bg-[#16181D]">
+                                    <td className="p-4 text-gray-400">#{offer.id}</td>
+                                    <td className="p-4 font-bold">{offer.clientName}</td>
+                                    <td className="p-4">{ROOMS.find(r => r.id === offer.propertyId)?.name || offer.propertyId}</td>
+                                    <td className="p-4">{offer.dates}</td>
+                                    <td className="p-4">
+                                        <span className="px-2 py-1 rounded text-xs font-bold bg-blue-500/20 text-blue-500 border border-dashed border-blue-500">
+                                            {offer.status}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-right font-mono">{offer.price}</td>
+                                    <td className="p-4 text-center">
+                                        <div className="flex gap-2 justify-center">
+                                            <button 
+                                                onClick={() => handleViewOffer(offer)}
+                                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors"
+                                            >
+                                                View/Edit
+                                            </button>
+                                            <button 
+                                                onClick={() => handleCreateInvoiceClick(offer)}
+                                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
+                                            >
+                                                Create Invoice
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                            {offers.filter(offer => offer.status === 'Sent').length === 0 && (
+                                <tr>
+                                    <td colSpan={7} className="p-8 text-center text-gray-500">No offers found.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    }
+
+    if (salesTab === 'requests') {
+        return (
+            <div className="p-8 bg-[#0D1117] text-white">
+                <h2 className="text-2xl font-bold mb-6">Requests List</h2>
+                <div className="bg-[#1C1F24] border border-gray-800 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                            <tr>
+                                <th className="p-4">ID</th>
+                                <th className="p-4">Name</th>
+                                <th className="p-4">Email</th>
+                                <th className="p-4">Phone</th>
+                                <th className="p-4">Dates</th>
+                                <th className="p-4">People</th>
+                                <th className="p-4">Status</th>
+                                <th className="p-4 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-800">
+                            {requests.filter(req => req.status !== 'archived').map(req => (
+                                <tr key={req.id} className="hover:bg-[#16181D]">
+                                    <td className="p-4 text-gray-400">#{req.id}</td>
+                                    <td className="p-4 font-bold">{req.firstName} {req.lastName}</td>
+                                    <td className="p-4">{req.email}</td>
+                                    <td className="p-4">{req.phone}</td>
+                                    <td className="p-4">{req.startDate} - {req.endDate}</td>
+                                    <td className="p-4">{req.peopleCount}</td>
+                                    <td className="p-4">
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                            req.status === 'pending' ? 'bg-yellow-500/20 text-yellow-500' : 
+                                            req.status === 'processed' ? 'bg-emerald-500/20 text-emerald-500' : 
+                                            'bg-gray-500/20 text-gray-500'
+                                        }`}>
+                                            {req.status}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-center">
+                                        <div className="flex gap-2 justify-center">
+                                            <button 
+                                                onClick={() => handleProcessRequest(req)}
+                                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors"
+                                            >
+                                                Process
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDeleteRequest(req.id)}
+                                                className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded text-xs font-bold transition-colors"
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                            {requests.filter(req => req.status !== 'archived').length === 0 && (
+                                <tr>
+                                    <td colSpan={8} className="p-8 text-center text-gray-500">No requests found.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    }
+
     if (salesTab === 'calendar') {
       return <SalesCalendar 
         onSaveOffer={handleSaveOffer} 
@@ -1126,6 +1376,17 @@ const AccountDashboard: React.FC = () => {
         offers={offers}
         invoices={invoices}
         adminEvents={adminEvents}
+        prefilledRequestData={selectedRequest ? {
+          firstName: selectedRequest.firstName,
+          lastName: selectedRequest.lastName,
+          email: selectedRequest.email,
+          phone: selectedRequest.phone,
+          companyName: selectedRequest.companyName,
+          peopleCount: selectedRequest.peopleCount,
+          startDate: selectedRequest.startDate,
+          endDate: selectedRequest.endDate,
+          message: selectedRequest.message,
+        } : undefined}
       />;
     }
     return <div className="p-8 text-white">Sales Content (Preserved)</div>;
@@ -1198,6 +1459,7 @@ const AccountDashboard: React.FC = () => {
                 <button onClick={() => { setActiveDepartment('sales'); setSalesTab('calendar'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Rent Calendar</button>
                 <button onClick={() => { setActiveDepartment('sales'); setSalesTab('offers'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Offers</button>
                 <button onClick={() => { setActiveDepartment('sales'); setSalesTab('reservations'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Reservations</button>
+                <button onClick={() => { setActiveDepartment('sales'); setSalesTab('requests'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Requests</button>
               </div>
           )}
         </div>
@@ -1230,6 +1492,12 @@ const AccountDashboard: React.FC = () => {
       <InvoiceModal isOpen={isInvoiceModalOpen} onClose={() => { setIsInvoiceModalOpen(false); setSelectedOfferForInvoice(null); setSelectedInvoice(null); }} offer={selectedOfferForInvoice} invoice={selectedInvoice} onSave={handleSaveInvoice} />
       <OfferEditModal isOpen={isOfferEditModalOpen} onClose={() => setIsOfferEditModalOpen(false)} offer={offerToEdit} onSave={handleSaveOfferUpdate} />
       <PropertyAddModal isOpen={isPropertyAddModalOpen} onClose={() => setIsPropertyAddModalOpen(false)} onSave={handleSaveProperty} />
+      <RequestModal 
+        isOpen={isRequestModalOpen} 
+        onClose={() => { setIsRequestModalOpen(false); setSelectedRequest(null); }} 
+        request={selectedRequest}
+        onGoToCalendar={handleGoToCalendarFromRequest}
+      />
     </div>
   );
 };

@@ -27,16 +27,20 @@ interface AdminCalendarProps {
   onUpdateEvent: (event: CalendarEvent) => void;
   showLegend?: boolean;
   properties?: Property[];
+  categories?: TaskType[]; // Task categories for filtering
   onUpdateBookingStatus?: (bookingId: string | number, newStatus: BookingStatus) => void; // Callback for updating booking status
 }
 
-const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpdateEvent, showLegend = true, properties, onUpdateBookingStatus }) => {
+const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpdateEvent, showLegend = true, properties, categories, onUpdateBookingStatus }) => {
   const [currentMonthIdx, setCurrentMonthIdx] = useState(10); // November
   const [selectedYear, setSelectedYear] = useState(2025);
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   
   // Use passed properties or fallback to mock
   const propertyList = properties || MOCK_PROPERTIES;
+  
+  // Use passed categories or fallback to default
+  const availableTaskTypes = categories || TASK_TYPES;
 
   // Selection States
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
@@ -162,7 +166,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       if (sortType === 'time') {
         return (a.time || '').localeCompare(b.time || '');
       } else {
-        return TASK_TYPES.indexOf(a.type as TaskType) - TASK_TYPES.indexOf(b.type as TaskType);
+        return availableTaskTypes.indexOf(a.type as TaskType) - availableTaskTypes.indexOf(b.type as TaskType);
       }
     });
   };
@@ -485,7 +489,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                   >
                     All Tasks
                   </div>
-                  {TASK_TYPES.map(type => (
+                  {availableTaskTypes.map(type => (
                     <div 
                       key={type}
                       onClick={() => { setFilterTask(type); setIsFilterDropdownOpen(false); }}
@@ -546,7 +550,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
           {showLegend && (
             <div className="bg-[#1C2128] border border-gray-700 rounded-lg px-4 py-3 overflow-x-auto scrollbar-hide">
                <div className="flex items-center gap-4 whitespace-nowrap text-xs font-medium">
-                  {TASK_TYPES.map(type => (
+                  {availableTaskTypes.map(type => (
                      <div key={type} className="flex items-center gap-1.5">
                         <span className={`w-2.5 h-2.5 rounded-full ${getDotColor(type)}`}></span>
                         <span className="text-gray-300">{type}</span>

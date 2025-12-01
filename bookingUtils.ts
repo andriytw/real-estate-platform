@@ -176,3 +176,54 @@ export function updateBookingStatusFromTask(task: any): BookingStatus | null {
   return null;
 }
 
+/**
+ * Централізована функція для оновлення статусу бронювання
+ * Використовується для атомарного оновлення статусу з логуванням та синхронізацією
+ * @param bookingId - ID бронювання
+ * @param newStatus - Новий статус
+ * @param options - Додаткові опції (лог, синхронізація з DB тощо)
+ * @returns Функція для оновлення статусу (для використання в setState)
+ */
+export function updateBookingStatus(
+  bookingId: string | number,
+  newStatus: BookingStatus,
+  options?: { log?: boolean; syncToDB?: boolean }
+): (prev: any[]) => any[] {
+  // Логування (якщо потрібно)
+  if (options?.log !== false) {
+    console.log(`[Booking Status Update] Booking ${bookingId}: ${newStatus} at ${new Date().toISOString()}`);
+  }
+  
+  // Синхронізація з DB (якщо потрібно - тут можна додати API виклик)
+  if (options?.syncToDB) {
+    // TODO: Додати API виклик для синхронізації з DB
+    // await syncBookingStatusToDB(bookingId, newStatus);
+  }
+  
+  // Повертаємо функцію для оновлення стану
+  return (prev: any[]) => prev.map(item => 
+    item.id === bookingId || String(item.id) === String(bookingId)
+      ? { ...item, status: newStatus }
+      : item
+  );
+}
+
+/**
+ * Оновлює статус бронювання на 'paid' та створює Facility tasks
+ * @param bookingId - ID бронювання
+ * @param booking - Об'єкт бронювання
+ * @returns Об'єкт з функцією оновлення статусу та масивом tasks
+ */
+export function updateBookingStatusAndCreateTasks(
+  bookingId: string | number,
+  booking: any
+): { updateStatus: (prev: any[]) => any[], tasks: any[] } {
+  // Оновлюємо статус на 'paid'
+  const updateStatus = updateBookingStatus(bookingId, BookingStatus.PAID, { log: true });
+  
+  // Створюємо Facility tasks
+  const tasks = createFacilityTasksForBooking(booking);
+  
+  return { updateStatus, tasks };
+}
+
