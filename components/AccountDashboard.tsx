@@ -1164,9 +1164,15 @@ const AccountDashboard: React.FC = () => {
                 <div className="mb-4 p-4 border border-gray-700 rounded-lg bg-[#16181D] flex justify-between items-center">
                     <div>
                         <span className="text-xs text-gray-500 block">Актуальний Баланс</span>
-                        <span className={`text-2xl font-bold ${selectedProperty.balance && selectedProperty.balance < 0 ? 'text-red-500' : 'text-emerald-500'}`}>{selectedProperty.balance} €</span>
+                        <span className={`text-2xl font-bold ${(selectedProperty.tenant?.rent || selectedProperty.balance || 0) < 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                            {selectedProperty.tenant?.rent || selectedProperty.balance || 0} €
+                        </span>
                     </div>
-                    <span className="text-xs text-gray-400">Остання оплата: 01.09.2025</span>
+                    <span className="text-xs text-gray-400">
+                        Остання оплата: {selectedProperty.rentPayments && selectedProperty.rentPayments.length > 0 
+                            ? selectedProperty.rentPayments[0].date 
+                            : 'Немає оплат'}
+                    </span>
                 </div>
                 <div className="border border-gray-700 rounded-lg overflow-hidden bg-[#16181D]">
                     <table className="w-full text-sm text-left">
@@ -1179,8 +1185,30 @@ const AccountDashboard: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700/50">
-                            <tr className="hover:bg-[#1C1F24]"><td className="p-3 text-gray-300">01.09.2025</td><td className="p-3 text-white">Вересень 2025</td><td className="p-3 text-white font-mono">750 € / 750 €</td><td className="p-3 text-right"><span className="text-emerald-500 text-xs font-bold bg-emerald-500/10 px-2 py-0.5 rounded">PAID</span></td></tr>
-                            <tr className="hover:bg-[#1C1F24]"><td className="p-3 text-gray-300">01.08.2025</td><td className="p-3 text-white">Серпень 2025</td><td className="p-3 text-white font-mono">375 € / 750 €</td><td className="p-3 text-right"><span className="text-yellow-500 text-xs font-bold bg-yellow-500/10 px-2 py-0.5 rounded">PARTIAL</span></td></tr>
+                            {selectedProperty.rentPayments && selectedProperty.rentPayments.length > 0 ? (
+                                selectedProperty.rentPayments.map((payment, index) => (
+                                    <tr key={payment.id || index} className="hover:bg-[#1C1F24]">
+                                        <td className="p-3 text-gray-300">{payment.date}</td>
+                                        <td className="p-3 text-white">{payment.month}</td>
+                                        <td className="p-3 text-white font-mono">{payment.amount}</td>
+                                        <td className="p-3 text-right">
+                                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                                                payment.status === 'PAID' 
+                                                    ? 'text-emerald-500 bg-emerald-500/10' 
+                                                    : payment.status === 'PARTIAL' 
+                                                        ? 'text-yellow-500 bg-yellow-500/10' 
+                                                        : 'text-red-500 bg-red-500/10'
+                                            }`}>
+                                                {payment.status}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr className="hover:bg-[#1C1F24]">
+                                    <td colSpan={4} className="p-3 text-center text-gray-500">Немає оплат</td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
