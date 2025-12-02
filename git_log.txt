@@ -1,0 +1,3 @@
+﻿d8b4cd1 Integrate latest version from Google Studio
+c53b531 Fix: Add working filter logic and improve marketplace property mapping
+8834b6e Initial commit: Real estate management platform

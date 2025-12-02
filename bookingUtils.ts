@@ -200,10 +200,13 @@ export function updateBookingStatus(
     // await syncBookingStatusToDB(bookingId, newStatus);
   }
   
-  // Повертаємо функцію для оновлення стану
+  // Отримуємо новий колір на основі статусу
+  const newColor = getBookingStyle(newStatus);
+  
+  // Повертаємо функцію для оновлення стану (статус + колір)
   return (prev: any[]) => prev.map(item => 
     item.id === bookingId || String(item.id) === String(bookingId)
-      ? { ...item, status: newStatus }
+      ? { ...item, status: newStatus, color: newColor }
       : item
   );
 }

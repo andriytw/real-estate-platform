@@ -13,13 +13,13 @@ import BankingDashboard from './BankingDashboard';
 import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData } from '../types';
 import { ROOMS } from '../constants';
 import { MOCK_PROPERTIES } from '../constants';
-import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingStatusFromTask } from '../bookingUtils';
+import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 
 // --- Types ---
 type Department = 'properties' | 'facility' | 'accounting' | 'sales';
 type FacilityTab = 'overview' | 'calendar' | 'messages';
 type AccountingTab = 'dashboard' | 'invoices' | 'expenses' | 'calendar' | 'banking';
-type SalesTab = 'leads' | 'calendar' | 'offers' | 'reservations' | 'requests'; 
+type SalesTab = 'leads' | 'calendar' | 'offers' | 'reservations' | 'requests' | 'history'; 
 type PropertiesTab = 'list' | 'units';
 
 // --- TASK CATEGORIES ---
@@ -460,14 +460,14 @@ const AccountDashboard: React.FC = () => {
       // Додати Offer в масив offers
       setOffers(prev => [newOffer, ...prev]);
       
-      // Оновити статус резервації на offer_sent
+      // Оновити статус резервації на offer_sent та колір
       setReservations(prev => prev.map(r => 
           r.id === selectedReservation.id
-              ? { ...r, status: BookingStatus.OFFER_SENT }
+              ? { ...r, status: BookingStatus.OFFER_SENT, color: getBookingStyle(BookingStatus.OFFER_SENT) }
               : r
       ));
       
-      closeManageModals();
+    closeManageModals();
       // Переключитись на вкладку Offers
       setSalesTab('offers');
   };
@@ -515,18 +515,20 @@ const AccountDashboard: React.FC = () => {
          setInvoices(prev => [invoice, ...prev]);
       }
       
-      // Видалити Offer з масиву offers після створення Invoice
+      // Оновити статус Offer на 'Invoiced' замість видалення (для збереження історії)
       if (invoice.offerIdSource) {
-          setOffers(prev => prev.filter(o => 
-              o.id !== invoice.offerIdSource && String(o.id) !== invoice.offerIdSource
+          setOffers(prev => prev.map(o => 
+              o.id === invoice.offerIdSource || String(o.id) === String(invoice.offerIdSource)
+                  ? { ...o, status: 'Invoiced' }
+                  : o
           ));
       }
       
-      // Оновити статус резервації на invoiced якщо є bookingId
+      // Оновити статус резервації на invoiced та колір якщо є bookingId
       if (invoice.bookingId) {
           setReservations(prev => prev.map(r => 
               r.id === invoice.bookingId || String(r.id) === String(invoice.bookingId)
-                  ? { ...r, status: BookingStatus.INVOICED }
+                  ? { ...r, status: BookingStatus.INVOICED, color: getBookingStyle(BookingStatus.INVOICED) }
                   : r
           ));
       }
@@ -551,8 +553,8 @@ const AccountDashboard: React.FC = () => {
                 }
                 
                 if (!linkedBooking) {
-                    const linkedOffer = offers.find(o => o.id === inv.offerIdSource || o.id === String(inv.offerIdSource));
-                    if (linkedOffer) {
+                const linkedOffer = offers.find(o => o.id === inv.offerIdSource || o.id === String(inv.offerIdSource));
+                if (linkedOffer) {
                         // Конвертувати offer в booking для створення тасок
                         const [start, end] = linkedOffer.dates.split(' to ');
                         linkedBooking = {
@@ -583,23 +585,40 @@ const AccountDashboard: React.FC = () => {
                 }
                 
                 if (linkedBooking) {
-                    // Оновити статус броні на paid
+                    // Оновити статус броні на paid та колір
                     setReservations(prev => prev.map(r => 
                         r.id === linkedBooking!.id
-                            ? { ...r, status: BookingStatus.PAID }
+                            ? { ...r, status: BookingStatus.PAID, color: getBookingStyle(BookingStatus.PAID) }
                             : r
                     ));
                     
-                    // Створити Facility tasks використовуючи централізовану функцію
-                    const tasks = createFacilityTasksForBooking(linkedBooking);
-                    // Конвертувати tasks в CalendarEvent з правильним статусом
-                    const calendarEvents: CalendarEvent[] = tasks.map(task => ({
-                        ...task,
-                        status: 'open' as TaskStatus,
-                        assignee: undefined,
-                        assignedWorkerId: undefined
-                    }));
-                    setAdminEvents(prevEvents => [...prevEvents, ...calendarEvents]);
+                    // Перевірити чи вже існують таски для цього бронювання
+                    const existingTasks = adminEvents.filter(e => 
+                        e.bookingId === linkedBooking!.id || 
+                        String(e.bookingId) === String(linkedBooking!.id)
+                    );
+                    const hasEinzugTask = existingTasks.some(e => e.type === 'Einzug');
+                    const hasAuszugTask = existingTasks.some(e => e.type === 'Auszug');
+                    
+                    // Створити Facility tasks тільки якщо вони ще не існують
+                    if (!hasEinzugTask || !hasAuszugTask) {
+                        const tasks = createFacilityTasksForBooking(linkedBooking);
+                        // Фільтрувати таски які вже існують
+                        const newTasks = tasks.filter(task => 
+                            (task.type === 'Einzug' && !hasEinzugTask) ||
+                            (task.type === 'Auszug' && !hasAuszugTask)
+                        );
+                        // Конвертувати tasks в CalendarEvent з правильним статусом
+                        const calendarEvents: CalendarEvent[] = newTasks.map(task => ({
+                            ...task,
+                            status: 'open' as TaskStatus,
+                            assignee: undefined,
+                            assignedWorkerId: undefined
+                        }));
+                        if (calendarEvents.length > 0) {
+                            setAdminEvents(prevEvents => [...prevEvents, ...calendarEvents]);
+                        }
+                    }
                     
                     // Оновити meter log в property
                     setProperties(prevProps => prevProps.map(prop => {
@@ -615,11 +634,11 @@ const AccountDashboard: React.FC = () => {
                     }));
                 }
             } else {
-                // Якщо статус змінюється на Unpaid, повернути статус броні на invoiced
+                // Якщо статус змінюється на Unpaid, повернути статус броні на invoiced та колір
                 if (inv.bookingId) {
                     setReservations(prev => prev.map(r => 
                         r.id === inv.bookingId || String(r.id) === String(inv.bookingId)
-                            ? { ...r, status: BookingStatus.INVOICED }
+                            ? { ...r, status: BookingStatus.INVOICED, color: getBookingStyle(BookingStatus.INVOICED) }
                             : r
                     ));
                 }
@@ -1151,8 +1170,62 @@ const AccountDashboard: React.FC = () => {
     }
 
     if (accountingTab === 'invoices') {
-        // ... Existing Invoices Render ...
-        return <div className="p-8 text-white">Invoices Content (Preserved)</div>;
+        return (
+            <div className="p-8 bg-[#0D1117] text-white">
+                <h2 className="text-2xl font-bold mb-6">Invoices List</h2>
+                <div className="bg-[#1C1F24] border border-gray-800 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                            <tr>
+                                <th className="p-4">Invoice #</th>
+                                <th className="p-4">Client</th>
+                                <th className="p-4">Date</th>
+                                <th className="p-4">Due Date</th>
+                                <th className="p-4">Amount</th>
+                                <th className="p-4">Status</th>
+                                <th className="p-4 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-800">
+                            {invoices.map(inv => (
+                                <tr key={inv.id} className="hover:bg-[#16181D]">
+                                    <td className="p-4 text-gray-400">#{inv.invoiceNumber}</td>
+                                    <td className="p-4 font-bold">{inv.clientName}</td>
+                                    <td className="p-4">{inv.date}</td>
+                                    <td className="p-4">{inv.dueDate}</td>
+                                    <td className="p-4 text-right font-mono">€{inv.totalGross.toFixed(2)}</td>
+                                    <td className="p-4">
+                                        <span 
+                                            onClick={() => toggleInvoiceStatus(inv.id)}
+                                            className={`px-2 py-1 rounded text-xs font-bold cursor-pointer transition-colors ${
+                                                inv.status === 'Paid' 
+                                                    ? 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/30' 
+                                                    : 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30'
+                                            }`}
+                                        >
+                                            {inv.status}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-center">
+                                        <button 
+                                            onClick={() => handleViewInvoice(inv)}
+                                            className="text-blue-400 hover:text-blue-300 text-xs font-bold"
+                                        >
+                                            View
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                            {invoices.length === 0 && (
+                                <tr>
+                                    <td colSpan={7} className="p-8 text-center text-gray-500">No invoices found.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
     }
 
     return (
@@ -1258,37 +1331,68 @@ const AccountDashboard: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-800">
-                            {offers.filter(offer => offer.status === 'Sent').map(offer => (
-                                <tr key={offer.id} className="hover:bg-[#16181D]">
-                                    <td className="p-4 text-gray-400">#{offer.id}</td>
-                                    <td className="p-4 font-bold">{offer.clientName}</td>
-                                    <td className="p-4">{ROOMS.find(r => r.id === offer.propertyId)?.name || offer.propertyId}</td>
-                                    <td className="p-4">{offer.dates}</td>
-                                    <td className="p-4">
-                                        <span className="px-2 py-1 rounded text-xs font-bold bg-blue-500/20 text-blue-500 border border-dashed border-blue-500">
-                                            {offer.status}
-                                        </span>
-                                    </td>
-                                    <td className="p-4 text-right font-mono">{offer.price}</td>
-                                    <td className="p-4 text-center">
-                                        <div className="flex gap-2 justify-center">
-                                            <button 
-                                                onClick={() => handleViewOffer(offer)}
-                                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors"
-                                            >
-                                                View/Edit
-                                            </button>
-                                            <button 
-                                                onClick={() => handleCreateInvoiceClick(offer)}
-                                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
-                                            >
-                                                Create Invoice
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                            {offers.filter(offer => offer.status === 'Sent').length === 0 && (
+                            {/* Show Sent, Draft, and Invoiced offers with visual distinction */}
+                            {offers.filter(offer => offer.status === 'Sent' || offer.status === 'Draft' || offer.status === 'Invoiced').map(offer => {
+                                const isDraft = offer.status === 'Draft';
+                                const isInvoiced = offer.status === 'Invoiced';
+                                
+                                // Determine status color styling
+                                const getStatusStyle = () => {
+                                    if (isDraft) return 'bg-gray-500/20 text-gray-400 border-gray-500';
+                                    if (isInvoiced) return 'bg-purple-500/20 text-purple-400 border-purple-500';
+                                    return 'bg-blue-500/20 text-blue-500 border-blue-500';
+                                };
+                                
+                                return (
+                                    <tr key={offer.id} className={`hover:bg-[#16181D] ${isDraft || isInvoiced ? 'opacity-70' : ''}`}>
+                                        <td className="p-4 text-gray-400">#{offer.id}</td>
+                                        <td className="p-4 font-bold">{offer.clientName}</td>
+                                        <td className="p-4">{ROOMS.find(r => r.id === offer.propertyId)?.name || offer.propertyId}</td>
+                                        <td className="p-4">{offer.dates}</td>
+                                        <td className="p-4">
+                                            <span className={`px-2 py-1 rounded text-xs font-bold border border-dashed ${getStatusStyle()}`}>
+                                                {offer.status}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-right font-mono">{offer.price}</td>
+                                        <td className="p-4 text-center">
+                                            <div className="flex gap-2 justify-center">
+                                                <button 
+                                                    onClick={() => handleViewOffer(offer)}
+                                                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors"
+                                                >
+                                                    View
+                                                </button>
+                                                {isDraft && (
+                                                    <button 
+                                                        onClick={() => {
+                                                            // Send draft offer
+                                                            setOffers(prev => prev.map(o => 
+                                                                o.id === offer.id ? { ...o, status: 'Sent' } : o
+                                                            ));
+                                                        }}
+                                                        className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-xs font-bold transition-colors"
+                                                    >
+                                                        Send Offer
+                                                    </button>
+                                                )}
+                                                {offer.status === 'Sent' && (
+                                                    <button 
+                                                        onClick={() => handleCreateInvoiceClick(offer)}
+                                                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
+                                                    >
+                                                        Create Invoice
+                                                    </button>
+                                                )}
+                                                {isInvoiced && (
+                                                    <span className="px-3 py-1.5 text-gray-500 text-xs">Invoice Created</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {offers.filter(offer => offer.status === 'Sent' || offer.status === 'Draft' || offer.status === 'Invoiced').length === 0 && (
                                 <tr>
                                     <td colSpan={7} className="p-8 text-center text-gray-500">No offers found.</td>
                                 </tr>
@@ -1366,6 +1470,70 @@ const AccountDashboard: React.FC = () => {
         );
     }
 
+    if (salesTab === 'history') {
+        // Filter completed/archived reservations
+        const completedReservations = reservations.filter(res => 
+            res.status === BookingStatus.COMPLETED || 
+            res.status === BookingStatus.CHECK_IN_DONE ||
+            res.status === 'completed' ||
+            res.status === 'archived'
+        );
+        
+        return (
+            <div className="p-8 bg-[#0D1117] text-white">
+                <h2 className="text-2xl font-bold mb-6">Booking History</h2>
+                <p className="text-gray-400 mb-6">Completed and archived bookings</p>
+                <div className="bg-[#1C1F24] border border-gray-800 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                            <tr>
+                                <th className="p-4">ID</th>
+                                <th className="p-4">Guest</th>
+                                <th className="p-4">Property</th>
+                                <th className="p-4">Dates</th>
+                                <th className="p-4">Status</th>
+                                <th className="p-4 text-right">Price</th>
+                                <th className="p-4 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-800">
+                            {completedReservations.map(res => (
+                                <tr key={res.id} className="hover:bg-[#16181D] opacity-70">
+                                    <td className="p-4 text-gray-400">#{res.id}</td>
+                                    <td className="p-4 font-bold">{res.guest || `${res.firstName || ''} ${res.lastName || ''}`.trim() || 'Unknown Guest'}</td>
+                                    <td className="p-4">{ROOMS.find(r => r.id === res.roomId)?.name || res.roomId}</td>
+                                    <td className="p-4">{res.start} - {res.end}</td>
+                                    <td className="p-4">
+                                        <span className="px-2 py-1 rounded text-xs font-bold bg-gray-500/20 text-gray-400 border border-gray-500">
+                                            {typeof res.status === 'string' ? res.status : 'Completed'}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-right font-mono">{res.price || '-'}</td>
+                                    <td className="p-4 text-center">
+                                        <button 
+                                            onClick={() => {
+                                                setSelectedReservation(res);
+                                                setIsManageModalOpen(true);
+                                            }}
+                                            className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded text-xs font-bold transition-colors"
+                                        >
+                                            View Details
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                            {completedReservations.length === 0 && (
+                                <tr>
+                                    <td colSpan={7} className="p-8 text-center text-gray-500">No completed bookings found.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    }
+
     if (salesTab === 'calendar') {
       return <SalesCalendar 
         onSaveOffer={handleSaveOffer} 
@@ -1386,6 +1554,7 @@ const AccountDashboard: React.FC = () => {
           startDate: selectedRequest.startDate,
           endDate: selectedRequest.endDate,
           message: selectedRequest.message,
+          propertyId: selectedRequest.propertyId,
         } : undefined}
       />;
     }
@@ -1460,6 +1629,7 @@ const AccountDashboard: React.FC = () => {
                 <button onClick={() => { setActiveDepartment('sales'); setSalesTab('offers'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Offers</button>
                 <button onClick={() => { setActiveDepartment('sales'); setSalesTab('reservations'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Reservations</button>
                 <button onClick={() => { setActiveDepartment('sales'); setSalesTab('requests'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Requests</button>
+                <button onClick={() => { setActiveDepartment('sales'); setSalesTab('history'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">History</button>
               </div>
           )}
         </div>

@@ -49,26 +49,26 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
         if (booking && 'roomId' in booking) {
             onCreateInvoice(booking as any);
         } else {
-            // Construct basic OfferData from booking to pass back
-            const offerData: OfferData = {
-                id: String(booking.id),
-                clientName: booking.guest,
-                propertyId: booking.roomId,
-                internalCompany: booking.internalCompany || 'Sotiso',
-                price: booking.price,
-                dates: `${booking.start} to ${booking.end}`,
-                status: 'Sent', 
-                address: booking.address,
-                email: booking.email,
-                phone: booking.phone,
-                guests: booking.guests,
-                guestList: booking.guestList,
-                unit: booking.unit,
-                checkInTime: booking.checkInTime,
-                checkOutTime: booking.checkOutTime,
-                comments: booking.comments,
-            };
-            onCreateInvoice(offerData);
+        // Construct basic OfferData from booking to pass back
+        const offerData: OfferData = {
+            id: String(booking.id),
+            clientName: booking.guest,
+            propertyId: booking.roomId,
+            internalCompany: booking.internalCompany || 'Sotiso',
+            price: booking.price,
+            dates: `${booking.start} to ${booking.end}`,
+            status: 'Sent', 
+            address: booking.address,
+            email: booking.email,
+            phone: booking.phone,
+            guests: booking.guests,
+            guestList: booking.guestList,
+            unit: booking.unit,
+            checkInTime: booking.checkInTime,
+            checkOutTime: booking.checkOutTime,
+            comments: booking.comments,
+        };
+        onCreateInvoice(offerData);
         }
     }
   };
@@ -175,7 +175,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
                 <div className="h-px bg-gray-800"></div>
                 
                 {/* Action Buttons based on Status */}
-                <div className="flex flex-wrap gap-4">
+                    <div className="flex flex-wrap gap-4">
                     {/* Send Offer Button - для статусів reserved та offer_prepared */}
                     {onSendOffer && booking && canSendOffer(booking.status) && (
                         <button 
@@ -209,14 +209,14 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
                     )}
                     
                     {/* Edit Offer Button - для offers */}
-                    {onEdit && (
-                        <button 
-                            onClick={onEdit}
-                            className="flex-1 bg-[#1C1F24] border border-gray-700 hover:bg-gray-800 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors"
-                        >
-                            <Edit3 className="w-4 h-4" /> Edit Offer
-                        </button>
-                    )}
+                        {onEdit && (
+                            <button 
+                                onClick={onEdit}
+                                className="flex-1 bg-[#1C1F24] border border-gray-700 hover:bg-gray-800 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                            >
+                                <Edit3 className="w-4 h-4" /> Edit Offer
+                            </button>
+                        )}
                     
                     {/* Download PDF Button - для offers */}
                     {onCreateInvoice && (
@@ -227,7 +227,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
                             <Download className="w-4 h-4" /> Download Offer PDF
                         </button>
                     )}
-                </div>
+                    </div>
 
                 {/* Convert to Offer Section */}
                 {onConvertToOffer && (

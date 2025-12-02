@@ -144,7 +144,49 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({ onSaveOffer, onSaveReserv
     const start = parts[0];
     const end = parts[1] || start;
 
-    // Check if this offer has an associated invoice
+    // FIRST: Check if there's a reservation with this ID and use its status directly
+    const linkedReservation = reservations.find(r => 
+        String(r.id) === String(offer.id) || r.id === Number(offer.id)
+    );
+    
+    if (linkedReservation && linkedReservation.status) {
+        // Use the status directly from reservations array - this is the source of truth
+        const bookingStatus = linkedReservation.status;
+        const statusText = String(bookingStatus).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const colorClass = getBookingStyle(bookingStatus);
+        
+        return {
+            id: Number(offer.id) || Date.now(),
+            roomId: offer.propertyId,
+            start,
+            end,
+            guest: offer.clientName + (statusText !== 'Offer Sent' && statusText !== 'Draft' ? ` (${statusText})` : ' (Offer)'),
+            color: colorClass, 
+            checkInTime: offer.checkInTime || '15:00',
+            checkOutTime: offer.checkOutTime || '11:00',
+            status: bookingStatus,
+            price: offer.price,
+            balance: '0.00 EUR',
+            guests: offer.guests || '-',
+            unit: offer.unit || '-',
+            comments: offer.comments || 'Converted from Offer',
+            paymentAccount: 'Pending',
+            company: 'N/A',
+            internalCompany: offer.internalCompany,
+            ratePlan: '-',
+            guarantee: '-',
+            cancellationPolicy: '-',
+            noShowPolicy: '-',
+            channel: 'Direct',
+            type: 'GUEST',
+            address: offer.address || '-',
+            phone: offer.phone || '-',
+            email: offer.email || '-',
+            guestList: offer.guestList || []
+        };
+    }
+
+    // FALLBACK: Check if this offer has an associated invoice
     const linkedInvoice = invoices.find(inv => inv.offerIdSource === offer.id || inv.offerIdSource === String(offer.id));
     const isPaid = linkedInvoice?.status === 'Paid';
 
@@ -359,6 +401,30 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({ onSaveOffer, onSaveReserv
   };
 
   const handleReserve = () => {
+    // Validation for required fields
+    const errors: string[] = [];
+    
+    if (!formData.roomId) {
+      errors.push('Room/Property is required');
+    }
+    if (!formData.startDate) {
+      errors.push('Start date is required');
+    }
+    if (!formData.endDate) {
+      errors.push('End date is required');
+    }
+    if (formData.clientType === 'Company' && !formData.companyName) {
+      errors.push('Company name is required');
+    }
+    if (formData.clientType !== 'Company' && !formData.firstName && !formData.lastName) {
+      errors.push('Guest name (first or last name) is required');
+    }
+    
+    if (errors.length > 0) {
+      alert('Please fix the following errors:\n\n' + errors.join('\n'));
+      return;
+    }
+    
     const newBooking: Booking = {
       id: Date.now(),
       roomId: formData.roomId,

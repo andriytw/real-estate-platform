@@ -26,8 +26,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true,
-    "strict": false,
-    "types": []
+    "strict": false
   },
   "include": [
     "**/*.ts",

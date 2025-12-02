@@ -65,12 +65,24 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
         const tax = priceVal - net;
 
         // Визначити bookingId - якщо це резервація, використати id напряму
+        // Покращена логіка для всіх випадків
         let bookingId: string | number | undefined;
-        if ('id' in offer && typeof offer.id === 'number') {
+        
+        // Перевірити чи це ReservationData (має roomId та start/end)
+        if ('roomId' in offer && 'start' in offer) {
+            // Це резервація - використати її id як bookingId
+            bookingId = (offer as any).id;
+        } else if ('id' in offer && typeof offer.id === 'number') {
+            // Це offer з числовим id
             bookingId = offer.id;
-        } else if ('id' in offer) {
-            bookingId = Number(offer.id) || undefined;
+        } else if ('id' in offer && offer.id) {
+            // Це offer з рядковим id - спробувати конвертувати
+            const numId = Number(offer.id);
+            bookingId = !isNaN(numId) ? numId : offer.id;
         }
+        
+        // Якщо bookingId все ще undefined, спробувати знайти за clientName/dates
+        // (fallback для старих даних)
 
         // Визначити dates - для резервації використати start/end, для offer - dates
         const dates = 'dates' in offer ? offer.dates : (`${(offer as any).start} to ${(offer as any).end}`);
@@ -311,7 +323,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
                     className="px-6 py-2 rounded-lg text-sm font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-lg transition-colors flex items-center gap-2"
                 >
                     <Save className="w-4 h-4" />
-                    Save Invoice
+                    Зберегти і відправити
                 </button>
             )}
         </div>
