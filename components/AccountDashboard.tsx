@@ -264,6 +264,36 @@ const AccountDashboard: React.FC = () => {
                   : req
           ));
           setSelectedRequest(null);
+          // Request already has a lead created, so skip lead creation
+      } else {
+          // Create lead from reservation if it doesn't exist
+          const isCompany = reservation.clientType === 'Company' || !!reservation.companyName;
+          const name = isCompany 
+              ? (reservation.companyName || reservation.company || reservation.guest)
+              : (reservation.guest || `${reservation.firstName || ''} ${reservation.lastName || ''}`.trim());
+          
+          if (name) {
+              const exists = leads.find(l => 
+                  l.name.toLowerCase() === name.toLowerCase() || 
+                  (l.email && reservation.email && l.email.toLowerCase() === reservation.email.toLowerCase())
+              );
+              
+              if (!exists) {
+                  const newLead: Lead = {
+                      id: `lead-${Date.now()}`,
+                      name: name,
+                      type: isCompany ? 'Company' : 'Private',
+                      contactPerson: isCompany ? (reservation.guest || `${reservation.firstName || ''} ${reservation.lastName || ''}`.trim()) : undefined,
+                      email: reservation.email || '',
+                      phone: reservation.phone || '',
+                      address: reservation.address || '',
+                      status: 'Active',
+                      createdAt: new Date().toISOString().split('T')[0],
+                      source: `reservation-${reservation.id}`
+                  };
+                  setLeads(prev => [...prev, newLead].sort((a, b) => a.name.localeCompare(b.name)));
+              }
+          }
       }
   };
 
@@ -308,17 +338,23 @@ const AccountDashboard: React.FC = () => {
   
   const handleAddLeadFromBooking = (bookingData: any) => {
     const isCompany = bookingData.clientType === 'Company';
-    const name = isCompany ? bookingData.companyName : `${bookingData.firstName} ${bookingData.lastName}`;
-    const exists = leads.find(l => l.name.toLowerCase() === name.toLowerCase());
+    const name = isCompany ? (bookingData.companyName || bookingData.company) : `${bookingData.firstName || ''} ${bookingData.lastName || ''}`.trim();
+    if (!name) return; // Skip if no name
+    
+    const exists = leads.find(l => 
+        l.name.toLowerCase() === name.toLowerCase() || 
+        (l.email && bookingData.email && l.email.toLowerCase() === bookingData.email.toLowerCase())
+    );
     if (exists) return;
+    
     const newLead: Lead = {
         id: `lead-${Date.now()}`,
         name: name,
         type: isCompany ? 'Company' : 'Private',
-        contactPerson: isCompany ? `${bookingData.firstName} ${bookingData.lastName}` : undefined,
-        email: bookingData.email,
-        phone: bookingData.phone,
-        address: bookingData.address,
+        contactPerson: isCompany ? `${bookingData.firstName || ''} ${bookingData.lastName || ''}`.trim() : undefined,
+        email: bookingData.email || '',
+        phone: bookingData.phone || '',
+        address: bookingData.address || '',
         status: 'Active',
         createdAt: new Date().toISOString().split('T')[0]
     };
