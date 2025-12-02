@@ -712,14 +712,14 @@ const AccountDashboard: React.FC = () => {
                               a.status === 'ACTIVE' ? { ...a, status: 'INACTIVE' as const } : a
                           );
                           
-                          // Додати оплату з інвойсу якщо оплачено
+                          // Додати оплату з інвойсу якщо оплачено (використовуємо rentAmount з бронювання)
                           const payments = [...(prop.rentPayments || [])];
                           if (linkedInvoice?.status === 'Paid') {
                               payments.unshift({
                                   id: `payment-${Date.now()}`,
                                   date: linkedInvoice.date,
                                   month: new Date(linkedInvoice.date).toLocaleDateString('uk-UA', { month: 'long', year: 'numeric' }),
-                                  amount: `${linkedInvoice.totalGross} €`,
+                                  amount: `${rentAmount} €`,
                                   status: 'PAID' as const
                               });
                           }
