@@ -106,7 +106,14 @@ const AccountDashboard: React.FC = () => {
   const [isInventoryEditing, setIsInventoryEditing] = useState(false);
 
   const [activities, setActivities] = useState<ActivityItem[]>(INITIAL_ACTIVITIES);
-  const [leads, setLeads] = useState<Lead[]>(INITIAL_LEADS);
+  const [leads, setLeads] = useState<Lead[]>(() => {
+    try {
+      const stored = localStorage.getItem('leads');
+      return stored ? JSON.parse(stored) : INITIAL_LEADS;
+    } catch {
+      return INITIAL_LEADS;
+    }
+  });
   const [requests, setRequests] = useState<RequestData[]>(() => {
     // Завантажити requests з localStorage при ініціалізації
     try {
@@ -145,6 +152,15 @@ const AccountDashboard: React.FC = () => {
   React.useEffect(() => {
     localStorage.setItem('requests', JSON.stringify(requests));
   }, [requests]);
+
+  // Синхронізувати leads з localStorage при змінах
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('leads', JSON.stringify(leads));
+    } catch (error) {
+      console.error('Failed to save leads to localStorage:', error);
+    }
+  }, [leads]);
 
   const [offers, setOffers] = useState<OfferData[]>([
       { 
@@ -272,19 +288,20 @@ const AccountDashboard: React.FC = () => {
               ? (reservation.companyName || reservation.company || reservation.guest)
               : (reservation.guest || `${reservation.firstName || ''} ${reservation.lastName || ''}`.trim());
           
-          if (name) {
+          if (name && name.trim() !== '') {
+              const email = reservation.email || '';
               const exists = leads.find(l => 
                   l.name.toLowerCase() === name.toLowerCase() || 
-                  (l.email && reservation.email && l.email.toLowerCase() === reservation.email.toLowerCase())
+                  (l.email && email && l.email.toLowerCase() === email.toLowerCase())
               );
               
               if (!exists) {
                   const newLead: Lead = {
                       id: `lead-${Date.now()}`,
-                      name: name,
+                      name: name.trim(),
                       type: isCompany ? 'Company' : 'Private',
                       contactPerson: isCompany ? (reservation.guest || `${reservation.firstName || ''} ${reservation.lastName || ''}`.trim()) : undefined,
-                      email: reservation.email || '',
+                      email: email,
                       phone: reservation.phone || '',
                       address: reservation.address || '',
                       status: 'Active',
@@ -337,26 +354,35 @@ const AccountDashboard: React.FC = () => {
   };
   
   const handleAddLeadFromBooking = (bookingData: any) => {
-    const isCompany = bookingData.clientType === 'Company';
-    const name = isCompany ? (bookingData.companyName || bookingData.company) : `${bookingData.firstName || ''} ${bookingData.lastName || ''}`.trim();
-    if (!name) return; // Skip if no name
+    // Handle both formData from SalesCalendar and Booking objects
+    const isCompany = bookingData.clientType === 'Company' || !!bookingData.companyName;
+    const name = isCompany 
+      ? (bookingData.companyName || bookingData.company || bookingData.guest)
+      : (bookingData.guest || `${bookingData.firstName || ''} ${bookingData.lastName || ''}`.trim());
     
+    if (!name || name.trim() === '') return; // Skip if no name
+    
+    const email = bookingData.email || '';
+    const phone = bookingData.phone || '';
+    
+    // Check for duplicates by name or email
     const exists = leads.find(l => 
-        l.name.toLowerCase() === name.toLowerCase() || 
-        (l.email && bookingData.email && l.email.toLowerCase() === bookingData.email.toLowerCase())
+      l.name.toLowerCase() === name.toLowerCase() || 
+      (l.email && email && l.email.toLowerCase() === email.toLowerCase())
     );
     if (exists) return;
     
     const newLead: Lead = {
-        id: `lead-${Date.now()}`,
-        name: name,
-        type: isCompany ? 'Company' : 'Private',
-        contactPerson: isCompany ? `${bookingData.firstName || ''} ${bookingData.lastName || ''}`.trim() : undefined,
-        email: bookingData.email || '',
-        phone: bookingData.phone || '',
-        address: bookingData.address || '',
-        status: 'Active',
-        createdAt: new Date().toISOString().split('T')[0]
+      id: `lead-${Date.now()}`,
+      name: name.trim(),
+      type: isCompany ? 'Company' : 'Private',
+      contactPerson: isCompany ? (bookingData.guest || `${bookingData.firstName || ''} ${bookingData.lastName || ''}`.trim()) : undefined,
+      email: email,
+      phone: phone,
+      address: bookingData.address || '',
+      status: 'Active',
+      createdAt: new Date().toISOString().split('T')[0],
+      source: bookingData.source || `booking-${bookingData.id || Date.now()}`
     };
     setLeads(prev => [...prev, newLead].sort((a, b) => a.name.localeCompare(b.name)));
   };
@@ -1397,6 +1423,63 @@ const AccountDashboard: React.FC = () => {
   };
 
   const renderSalesContent = () => {
+    if (salesTab === 'leads') {
+        return (
+            <div className="p-8 bg-[#0D1117] text-white">
+                <h2 className="text-2xl font-bold mb-6">Leads List</h2>
+                <div className="bg-[#1C1F24] border border-gray-800 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                            <tr>
+                                <th className="p-4">ID</th>
+                                <th className="p-4">Name</th>
+                                <th className="p-4">Type</th>
+                                <th className="p-4">Email</th>
+                                <th className="p-4">Phone</th>
+                                <th className="p-4">Address</th>
+                                <th className="p-4">Status</th>
+                                <th className="p-4">Created</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-800">
+                            {leads.map(lead => (
+                                <tr key={lead.id} className="hover:bg-[#16181D]">
+                                    <td className="p-4 text-gray-400">#{lead.id}</td>
+                                    <td className="p-4 font-bold">{lead.name}</td>
+                                    <td className="p-4">
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                            lead.type === 'Company' ? 'bg-blue-500/20 text-blue-500' : 'bg-purple-500/20 text-purple-500'
+                                        }`}>
+                                            {lead.type}
+                                        </span>
+                                    </td>
+                                    <td className="p-4">{lead.email || '-'}</td>
+                                    <td className="p-4">{lead.phone || '-'}</td>
+                                    <td className="p-4">{lead.address || '-'}</td>
+                                    <td className="p-4">
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                            lead.status === 'Active' ? 'bg-emerald-500/20 text-emerald-500' :
+                                            lead.status === 'Potential' ? 'bg-yellow-500/20 text-yellow-500' :
+                                            'bg-gray-500/20 text-gray-500'
+                                        }`}>
+                                            {lead.status}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-gray-400">{lead.createdAt}</td>
+                                </tr>
+                            ))}
+                            {leads.length === 0 && (
+                                <tr>
+                                    <td colSpan={8} className="p-8 text-center text-gray-500">No leads found.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    }
+
     if (salesTab === 'reservations') {
         return (
             <div className="p-8 bg-[#0D1117] text-white">
