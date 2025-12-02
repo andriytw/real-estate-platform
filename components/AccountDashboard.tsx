@@ -666,6 +666,78 @@ const AccountDashboard: React.FC = () => {
                       : r
               ));
           }
+          
+          // При верифікації Einzug - оновити Property з даними орендаря
+          if (updatedEvent.type === 'Einzug' && updatedEvent.propertyId) {
+              const linkedBooking = reservations.find(r => 
+                  r.id === updatedEvent.bookingId || String(r.id) === String(updatedEvent.bookingId)
+              );
+              const linkedInvoice = invoices.find(inv => 
+                  inv.bookingId === updatedEvent.bookingId || String(inv.bookingId) === String(updatedEvent.bookingId)
+              );
+              
+              if (linkedBooking) {
+                  setProperties(prev => prev.map(prop => {
+                      if (prop.id === updatedEvent.propertyId) {
+                          // Створити нового орендаря з даних бронювання
+                          const guestName = linkedBooking.guest || `${linkedBooking.firstName || ''} ${linkedBooking.lastName || ''}`.trim() || 'Unknown';
+                          const rentAmount = parseFloat(String(linkedBooking.price).replace(/[^0-9.]/g, '')) || 0;
+                          
+                          const newTenant = {
+                              name: guestName,
+                              phone: linkedBooking.phone || '-',
+                              email: linkedBooking.email || '-',
+                              rent: rentAmount,
+                              deposit: 0,
+                              startDate: linkedBooking.start,
+                              km: rentAmount,
+                              bk: 0,
+                              hk: 0
+                          };
+                          
+                          // Створити новий договір оренди
+                          const newAgreement: RentalAgreement = {
+                              id: `agreement-${Date.now()}`,
+                              tenantName: guestName,
+                              startDate: linkedBooking.start,
+                              endDate: linkedBooking.end,
+                              km: rentAmount,
+                              bk: 0,
+                              hk: 0,
+                              status: 'ACTIVE'
+                          };
+                          
+                          // Оновити попередні активні договори на INACTIVE
+                          const updatedHistory = (prop.rentalHistory || []).map(a => 
+                              a.status === 'ACTIVE' ? { ...a, status: 'INACTIVE' as const } : a
+                          );
+                          
+                          // Додати оплату з інвойсу якщо оплачено
+                          const payments = [...(prop.rentPayments || [])];
+                          if (linkedInvoice?.status === 'Paid') {
+                              payments.unshift({
+                                  id: `payment-${Date.now()}`,
+                                  date: linkedInvoice.date,
+                                  month: new Date(linkedInvoice.date).toLocaleDateString('uk-UA', { month: 'long', year: 'numeric' }),
+                                  amount: `${linkedInvoice.totalGross} €`,
+                                  status: 'PAID' as const
+                              });
+                          }
+                          
+                          return {
+                              ...prop,
+                              status: 'Rented' as const,
+                              term: `${linkedBooking.start} - ${linkedBooking.end}`,
+                              termStatus: 'green' as const,
+                              tenant: newTenant,
+                              rentalHistory: [newAgreement, ...updatedHistory],
+                              rentPayments: payments
+                          };
+                      }
+                      return prop;
+                  }));
+              }
+          }
       }
       
       // Update Meter Log in Property when Task is Archived
