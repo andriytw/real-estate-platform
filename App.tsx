@@ -8,12 +8,13 @@ import BookingForm from './components/BookingForm';
 import PartnerModal from './components/PartnerModal';
 import Marketplace from './components/Marketplace';
 import AccountDashboard from './components/AccountDashboard';
+import TestDB from './components/TestDB';
 import { MOCK_PROPERTIES } from './constants';
 import { Property, FilterState, RequestData } from './types';
 
 const App: React.FC = () => {
   const [selectedProperty, setSelectedProperty] = useState<Property>(MOCK_PROPERTIES[0]);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'booking' | 'market' | 'account'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'booking' | 'market' | 'account' | 'test-db'>('test-db');
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
   const [prefilledRequestData, setPrefilledRequestData] = useState<Partial<RequestData> | undefined>(undefined);
   const [filters, setFilters] = useState<FilterState>({
@@ -182,6 +183,8 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (currentView) {
+      case 'test-db':
+        return <TestDB />;
       case 'account':
         return <AccountDashboard />;
       case 'market':
@@ -269,7 +272,7 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-[#111315] overflow-hidden font-sans text-white">
       <Navbar 
-        showBackButton={currentView === 'booking' || currentView === 'account'} 
+        showBackButton={currentView === 'booking' || currentView === 'account' || currentView === 'test-db'} 
         onBack={() => setCurrentView('dashboard')}
         onBecomePartner={() => setIsPartnerModalOpen(true)}
         onNavigate={(view) => setCurrentView(view)}
