@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import FilterBar from './components/FilterBar';
 import PropertyCard from './components/PropertyCard';
@@ -10,11 +10,15 @@ import Marketplace from './components/Marketplace';
 import AccountDashboard from './components/AccountDashboard';
 import TestDB from './components/TestDB';
 import { MOCK_PROPERTIES } from './constants';
+import { propertiesService } from './services/supabaseService';
 import { Property, FilterState, RequestData } from './types';
 
 const App: React.FC = () => {
-  const [selectedProperty, setSelectedProperty] = useState<Property>(MOCK_PROPERTIES[0]);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'booking' | 'market' | 'account' | 'test-db'>('test-db');
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
+  const [currentView, setCurrentView] = useState<'dashboard' | 'booking' | 'market' | 'account' | 'test-db'>('dashboard');
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
   const [prefilledRequestData, setPrefilledRequestData] = useState<Partial<RequestData> | undefined>(undefined);
   const [filters, setFilters] = useState<FilterState>({
@@ -26,6 +30,46 @@ const App: React.FC = () => {
     pets: 'Any',
     status: 'Any'
   });
+
+  // Load properties from Supabase
+  useEffect(() => {
+    const loadProperties = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await propertiesService.getAll();
+        setProperties(data);
+        
+        // Set default selected property
+        if (data.length > 0 && !selectedProperty) {
+          setSelectedProperty(data[0]);
+        } else if (data.length === 0) {
+          // Fallback to mock data if Supabase is empty
+          setProperties(MOCK_PROPERTIES);
+          setSelectedProperty(MOCK_PROPERTIES[0]);
+        }
+      } catch (err: any) {
+        console.error('Error loading properties:', err);
+        setError(err.message || 'Failed to load properties');
+        // Fallback to mock data on error
+        setProperties(MOCK_PROPERTIES);
+        if (MOCK_PROPERTIES.length > 0) {
+          setSelectedProperty(MOCK_PROPERTIES[0]);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProperties();
+  }, []);
+
+  // Update selected property when properties change
+  useEffect(() => {
+    if (properties.length > 0 && !selectedProperty) {
+      setSelectedProperty(properties[0]);
+    }
+  }, [properties, selectedProperty]);
   
   const handleMarketListingClick = (listing: any) => {
     // Parse location to extract city and district
@@ -108,7 +152,8 @@ const App: React.FC = () => {
 
   // Filter properties based on filter state
   const filteredProperties = useMemo(() => {
-    return MOCK_PROPERTIES.filter(property => {
+    const propsToFilter = properties.length > 0 ? properties : MOCK_PROPERTIES;
+    return propsToFilter.filter(property => {
       // City filter
       if (filters.city !== 'Any' && property.city !== filters.city) {
         return false;
@@ -173,13 +218,16 @@ const App: React.FC = () => {
 
   // Update selected property when filters change if current selection is filtered out
   React.useEffect(() => {
+    if (!selectedProperty) return;
     if (filteredProperties.length > 0 && !filteredProperties.find(p => p.id === selectedProperty.id)) {
       setSelectedProperty(filteredProperties[0]);
-    } else if (filteredProperties.length === 0 && MOCK_PROPERTIES.length > 0) {
-      // If no properties match, keep the first one from all properties
-      setSelectedProperty(MOCK_PROPERTIES[0]);
+    } else if (filteredProperties.length === 0) {
+      const allProperties = properties.length > 0 ? properties : MOCK_PROPERTIES;
+      if (allProperties.length > 0) {
+        setSelectedProperty(allProperties[0]);
+      }
     }
-  }, [filteredProperties, selectedProperty.id]);
+  }, [filteredProperties, selectedProperty?.id, properties]);
 
   const renderContent = () => {
     switch (currentView) {
@@ -203,7 +251,7 @@ const App: React.FC = () => {
             <div className="w-full lg:w-1/2 overflow-y-auto bg-[#111315]">
               <BookingForm 
                 prefilledData={prefilledRequestData}
-                propertyId={selectedProperty.id}
+                propertyId={selectedProperty?.id || ''}
                 onAddRequest={(request) => {
                   // Зберегти request в localStorage для синхронізації з AccountDashboard
                   const existingRequests = JSON.parse(localStorage.getItem('requests') || '[]');
@@ -227,12 +275,17 @@ const App: React.FC = () => {
             <div className="flex flex-1 overflow-hidden">
               {/* Left Sidebar - Property List */}
               <div className="w-full lg:w-[420px] flex-shrink-0 border-r border-gray-800 overflow-y-auto p-4 space-y-4 bg-[#111315]">
-                {filteredProperties.length > 0 ? (
+                {loading ? (
+                  <div className="text-center text-gray-400 py-8">
+                    <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                    <p>Loading...</p>
+                  </div>
+                ) : filteredProperties.length > 0 ? (
                   filteredProperties.map((property) => (
                     <PropertyCard 
                       key={property.id} 
                       property={property} 
-                      isSelected={selectedProperty.id === property.id}
+                      isSelected={selectedProperty?.id === property.id}
                       onClick={() => setSelectedProperty(property)}
                     />
                   ))
@@ -258,10 +311,30 @@ const App: React.FC = () => {
               </div>
               {/* Right Main Content - Property Details */}
               <div className="flex-1 overflow-y-auto bg-[#0D0F11] p-6 lg:p-8">
-                <PropertyDetails 
-                  property={selectedProperty} 
-                  onBookViewing={() => setCurrentView('booking')}
-                />
+                {loading ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center">
+                      <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                      <p className="text-gray-400">Loading properties...</p>
+                    </div>
+                  </div>
+                ) : error ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center">
+                      <p className="text-red-400 mb-2">Error: {error}</p>
+                      <p className="text-gray-400 text-sm">Using mock data as fallback</p>
+                    </div>
+                  </div>
+                ) : selectedProperty ? (
+                  <PropertyDetails 
+                    property={selectedProperty} 
+                    onBookViewing={() => setCurrentView('booking')}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full">
+                    <p className="text-gray-400">No property selected</p>
+                  </div>
+                )}
               </div>
             </div>
           </>
