@@ -8,7 +8,43 @@
 
 ## 🚀 Швидкий старт
 
-### Локальний запуск
+### Клонування на MacBook (рекомендовано)
+
+**Вимоги:** Node.js 18+ та npm
+
+1. Клонуйте репозиторій:
+   ```bash
+   git clone https://github.com/andriytw/real-estate-platform.git
+   cd real-estate-platform
+   ```
+
+2. Створіть файл `.env.local`:
+   ```bash
+   touch .env.local
+   ```
+   
+   Додайте вміст:
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL=https://qcpuzfhawcondygspiok.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_cpQrhzVqZRCCeULDWhVJJw_ZIhcLx0Y
+   GEMINI_API_KEY=your_gemini_api_key_here
+   ```
+
+3. Встановіть залежності:
+   ```bash
+   npm install
+   ```
+
+4. Запустіть проект:
+   ```bash
+   npm run dev
+   ```
+
+5. Відкрийте браузер на `http://localhost:5173`
+
+📖 **Детальні інструкції:** Дивіться `CLONE_ON_MACBOOK.md`
+
+### Локальний запуск (загальний)
 
 **Вимоги:** Node.js 18+ та npm
 
@@ -17,8 +53,10 @@
    npm install
    ```
 
-2. (Опціонально) Створіть файл `.env.local` та додайте ваш Gemini API ключ:
-   ```
+2. Створіть файл `.env.local` та додайте ваші ключі:
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL=https://qcpuzfhawcondygspiok.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_cpQrhzVqZRCCeULDWhVJJw_ZIhcLx0Y
    GEMINI_API_KEY=your_gemini_api_key_here
    ```
 
@@ -27,7 +65,7 @@
    npm run dev
    ```
 
-4. Відкрийте браузер на `http://localhost:3000`
+4. Відкрийте браузер на `http://localhost:5173`
 
 ## 📦 Деплой на Vercel
 
@@ -112,6 +150,7 @@ GEMINI_API_KEY=your_gemini_api_key_here
 - **Tailwind CSS** - стилізація (через CDN)
 - **Lucide React** - іконки
 - **Three.js** - 3D візуалізація
+- **Supabase** - база даних та backend (через `@supabase/supabase-js` та `@supabase/ssr`)
 
 ## 📝 Примітки
 
