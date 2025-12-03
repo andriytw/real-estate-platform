@@ -107,6 +107,7 @@ export interface BuildingSpecs {
 export interface MeterLogEntry {
   date: string;
   type: 'Initial' | 'Check-In' | 'Check-Out' | 'Interim';
+  bookingId?: string | number; // Link to booking for customer name lookup
   readings: {
     electricity: string;
     water: string;

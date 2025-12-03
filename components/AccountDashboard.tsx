@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check } from 'lucide-react';
+import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame } from 'lucide-react';
 import AdminCalendar from './AdminCalendar';
 import AdminMessages from './AdminMessages';
 import SalesCalendar from './SalesCalendar';
@@ -686,8 +686,8 @@ const AccountDashboard: React.FC = () => {
                     setProperties(prevProps => prevProps.map(prop => {
                         if (prop.id === linkedBooking!.roomId) {
                             const newLogs: MeterLogEntry[] = [
-                                { date: linkedBooking!.start, type: 'Check-In', readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } },
-                                { date: linkedBooking!.end, type: 'Check-Out', readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } }
+                                { date: linkedBooking!.start, type: 'Check-In', bookingId: linkedBooking!.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } },
+                                { date: linkedBooking!.end, type: 'Check-Out', bookingId: linkedBooking!.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } }
                             ];
                             const updatedLog = [...(prop.meterLog || []), ...newLogs];
                             return { ...prop, meterLog: updatedLog };
@@ -807,7 +807,7 @@ const AccountDashboard: React.FC = () => {
           setProperties(prevProps => prevProps.map(prop => {
               if (prop.id === updatedEvent.propertyId) {
                   const updatedLog = (prop.meterLog || []).map(entry => {
-                      if (entry.date === updatedEvent.date && (
+                      if (entry.date === updatedEvent.date && entry.bookingId === updatedEvent.bookingId && (
                           (updatedEvent.type === 'Einzug' && entry.type === 'Check-In') ||
                           (updatedEvent.type === 'Auszug' && entry.type === 'Check-Out') ||
                           (updatedEvent.type === 'Zählerstand' && entry.type === 'Interim')
@@ -896,6 +896,79 @@ const AccountDashboard: React.FC = () => {
 
   const handleAccountingEventUpdate = (updatedEvent: CalendarEvent) => {
       setAccountingEvents(prev => prev.map(ev => ev.id === updatedEvent.id ? updatedEvent : ev));
+  };
+
+  // Helper function to process and group meter readings
+  const processMeterReadings = (meterLog: MeterLogEntry[] = [], reservations: ReservationData[] = []) => {
+    // Separate grouped entries from standalone entries
+    const groupedEntries: Array<{
+      customerName: string;
+      period: string;
+      checkInDate: string;
+      checkOutDate: string;
+      checkInReadings: { electricity: string; water: string; gas: string };
+      checkOutReadings: { electricity: string; water: string; gas: string };
+      usedAmount: { electricity: string; water: string; gas: string };
+      status: 'complete' | 'pending';
+      bookingId?: string | number;
+    }> = [];
+    
+    const standaloneEntries: MeterLogEntry[] = [];
+    
+    // Group Check-In and Check-Out by bookingId
+    const checkIns = meterLog.filter(e => e.type === 'Check-In' && e.bookingId);
+    const checkOuts = meterLog.filter(e => e.type === 'Check-Out' && e.bookingId);
+    
+    checkIns.forEach(checkIn => {
+      const checkOut = checkOuts.find(co => co.bookingId === checkIn.bookingId);
+      const booking = reservations.find(r => r.id === checkIn.bookingId || String(r.id) === String(checkIn.bookingId));
+      
+      const customerName = booking?.guest || 'Unknown Customer';
+      const period = checkOut 
+        ? `${checkIn.date} - ${checkOut.date}`
+        : `${checkIn.date} - Ongoing`;
+      
+      // Calculate usage (simple difference)
+      const calculateUsage = (checkInVal: string, checkOutVal: string): string => {
+        if (!checkOut || checkInVal === 'Pending' || checkOutVal === 'Pending' || !checkInVal || !checkOutVal) {
+          return '-';
+        }
+        const inVal = parseFloat(checkInVal);
+        const outVal = parseFloat(checkOutVal);
+        if (isNaN(inVal) || isNaN(outVal)) return '-';
+        return (outVal - inVal).toFixed(2);
+      };
+      
+      groupedEntries.push({
+        customerName,
+        period,
+        checkInDate: checkIn.date,
+        checkOutDate: checkOut?.date || '',
+        checkInReadings: checkIn.readings,
+        checkOutReadings: checkOut?.readings || { electricity: 'Pending', water: 'Pending', gas: 'Pending' },
+        usedAmount: {
+          electricity: calculateUsage(checkIn.readings.electricity, checkOut?.readings.electricity || ''),
+          water: calculateUsage(checkIn.readings.water, checkOut?.readings.water || ''),
+          gas: calculateUsage(checkIn.readings.gas, checkOut?.readings.gas || '')
+        },
+        status: checkOut && 
+          checkIn.readings.electricity !== 'Pending' && checkIn.readings.water !== 'Pending' && checkIn.readings.gas !== 'Pending' &&
+          checkOut.readings.electricity !== 'Pending' && checkOut.readings.water !== 'Pending' && checkOut.readings.gas !== 'Pending'
+          ? 'complete' : 'pending',
+        bookingId: checkIn.bookingId
+      });
+    });
+    
+    // Add standalone entries (Initial, Interim, or Check-Out without matching Check-In)
+    meterLog.forEach(entry => {
+      if (entry.type === 'Initial' || entry.type === 'Interim') {
+        standaloneEntries.push(entry);
+      } else if (entry.type === 'Check-Out' && !checkIns.find(ci => ci.bookingId === entry.bookingId)) {
+        standaloneEntries.push(entry);
+      }
+    });
+    
+    return { groupedEntries, standaloneEntries };
   };
 
   const renderPropertiesContent = () => {
@@ -1078,30 +1151,120 @@ const AccountDashboard: React.FC = () => {
                     <table className="w-full text-sm text-left">
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
                             <tr>
-                                <th className="p-3 font-bold text-xs uppercase">Дата</th>
-                                <th className="p-3 font-bold text-xs uppercase">Подія</th>
-                                <th className="p-3 font-bold text-xs uppercase">Електроенергія</th>
-                                <th className="p-3 font-bold text-xs uppercase">Вода</th>
-                                <th className="p-3 font-bold text-xs uppercase">Газ</th>
+                                <th className="p-3 font-bold text-xs uppercase">Клієнт</th>
+                                <th className="p-3 font-bold text-xs uppercase">Період</th>
+                                <th className="p-3 font-bold text-xs uppercase">Check-In</th>
+                                <th className="p-3 font-bold text-xs uppercase">Check-Out</th>
+                                <th className="p-3 font-bold text-xs uppercase">Використано</th>
+                                <th className="p-3 font-bold text-xs uppercase">Статус</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                            {selectedProperty.meterLog?.map((log, idx) => (
-                                <tr key={idx} className="hover:bg-[#1C1F24]">
-                                    <td className="p-3 text-gray-400">{log.date}</td>
-                                    <td className="p-3">
-                                        <span className={`px-2 py-0.5 rounded text-[10px] border ${log.type === 'Initial' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : log.type === 'Check-In' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 'bg-orange-500/10 text-orange-400 border-orange-500/20'}`}>
-                                            {log.type}
-                                        </span>
-                                    </td>
-                                    <td className="p-3 text-white font-mono">{log.readings.electricity || '-'}</td>
-                                    <td className="p-3 text-white font-mono">{log.readings.water || '-'}</td>
-                                    <td className="p-3 text-white font-mono">{log.readings.gas || '-'}</td>
-                                </tr>
-                            ))}
-                            {(!selectedProperty.meterLog || selectedProperty.meterLog.length === 0) && (
-                                <tr><td colSpan={5} className="p-4 text-center text-gray-500 text-xs">Історія показників пуста.</td></tr>
-                            )}
+                            {(() => {
+                                const { groupedEntries, standaloneEntries } = processMeterReadings(selectedProperty.meterLog, reservations);
+                                return (
+                                    <>
+                                        {/* Grouped Rental Periods */}
+                                        {groupedEntries.map((entry, idx) => (
+                                            <tr key={`grouped-${idx}`} className="hover:bg-[#1C1F24]">
+                                                <td className="p-3 font-bold text-white">{entry.customerName}</td>
+                                                <td className="p-3 text-gray-400">{entry.period}</td>
+                                                <td className="p-3">
+                                                    <div className="space-y-1">
+                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
+                                                            <Zap className="w-3 h-3 text-yellow-500" /> {entry.checkInReadings.electricity || '-'}
+                                                        </div>
+                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
+                                                            <Droplet className="w-3 h-3 text-blue-500" /> {entry.checkInReadings.water || '-'}
+                                                        </div>
+                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
+                                                            <Flame className="w-3 h-3 text-orange-500" /> {entry.checkInReadings.gas || '-'}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="p-3">
+                                                    <div className="space-y-1">
+                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
+                                                            <Zap className="w-3 h-3 text-yellow-500" /> {entry.checkOutReadings.electricity || '-'}
+                                                        </div>
+                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
+                                                            <Droplet className="w-3 h-3 text-blue-500" /> {entry.checkOutReadings.water || '-'}
+                                                        </div>
+                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
+                                                            <Flame className="w-3 h-3 text-orange-500" /> {entry.checkOutReadings.gas || '-'}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="p-3">
+                                                    <div className="space-y-1">
+                                                        <div className="text-emerald-400 font-mono text-xs font-bold flex items-center gap-1">
+                                                            <Zap className="w-3 h-3 text-yellow-500" /> {entry.usedAmount.electricity}
+                                                        </div>
+                                                        <div className="text-emerald-400 font-mono text-xs font-bold flex items-center gap-1">
+                                                            <Droplet className="w-3 h-3 text-blue-500" /> {entry.usedAmount.water}
+                                                        </div>
+                                                        <div className="text-emerald-400 font-mono text-xs font-bold flex items-center gap-1">
+                                                            <Flame className="w-3 h-3 text-orange-500" /> {entry.usedAmount.gas}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="p-3">
+                                                    <span className={`px-2 py-1 rounded text-[10px] font-bold ${
+                                                        entry.status === 'complete' 
+                                                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                                            : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                                                    }`}>
+                                                        {entry.status === 'complete' ? 'Завершено' : 'Очікується'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        
+                                        {/* Standalone Entries (Initial, Interim) */}
+                                        {standaloneEntries.map((entry, idx) => (
+                                            <tr key={`standalone-${idx}`} className="hover:bg-[#1C1F24]">
+                                                <td className="p-3 text-gray-500">-</td>
+                                                <td className="p-3 text-gray-400">{entry.date}</td>
+                                                <td className="p-3" colSpan={2}>
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] border ${
+                                                        entry.type === 'Initial' 
+                                                            ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' 
+                                                            : 'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                                                    }`}>
+                                                        {entry.type}
+                                                    </span>
+                                                </td>
+                                                <td className="p-3">
+                                                    <div className="space-y-1">
+                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
+                                                            <Zap className="w-3 h-3 text-yellow-500" /> {entry.readings.electricity || '-'}
+                                                        </div>
+                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
+                                                            <Droplet className="w-3 h-3 text-blue-500" /> {entry.readings.water || '-'}
+                                                        </div>
+                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
+                                                            <Flame className="w-3 h-3 text-orange-500" /> {entry.readings.gas || '-'}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="p-3">
+                                                    <span className="px-2 py-1 rounded text-[10px] font-bold bg-gray-500/20 text-gray-400 border border-gray-500/30">
+                                                        {entry.readings.electricity === 'Pending' ? 'Очікується' : 'Завершено'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        
+                                        {groupedEntries.length === 0 && standaloneEntries.length === 0 && (
+                                            <tr>
+                                                <td colSpan={6} className="p-4 text-center text-gray-500 text-xs">
+                                                    Історія показників пуста.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </>
+                                );
+                            })()}
                         </tbody>
                     </table>
                 </div>
