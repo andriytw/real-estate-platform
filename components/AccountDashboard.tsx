@@ -802,16 +802,40 @@ const AccountDashboard: React.FC = () => {
           }
       }
       
-      // Update Meter Log in Property when Task is Archived
-      if (updatedEvent.meterReadings && updatedEvent.status === 'archived' && (updatedEvent.type === 'Einzug' || updatedEvent.type === 'Auszug' || updatedEvent.type === 'Zählerstand')) {
+      // Update Meter Log in Property when Task is Verified or Archived (or when meter readings have actual values)
+      const hasMeterReadings = updatedEvent.meterReadings && (
+          updatedEvent.meterReadings.electricity || 
+          updatedEvent.meterReadings.water || 
+          updatedEvent.meterReadings.gas
+      );
+      const shouldUpdateMeterLog = hasMeterReadings && 
+          (updatedEvent.type === 'Einzug' || updatedEvent.type === 'Auszug' || updatedEvent.type === 'Zählerstand') &&
+          (updatedEvent.status === 'archived' || updatedEvent.status === 'verified' || 
+           (updatedEvent.meterReadings.electricity && updatedEvent.meterReadings.electricity !== 'Pending' && updatedEvent.meterReadings.electricity.trim() !== '') ||
+           (updatedEvent.meterReadings.water && updatedEvent.meterReadings.water !== 'Pending' && updatedEvent.meterReadings.water.trim() !== '') ||
+           (updatedEvent.meterReadings.gas && updatedEvent.meterReadings.gas !== 'Pending' && updatedEvent.meterReadings.gas.trim() !== ''));
+      
+      if (shouldUpdateMeterLog) {
           setProperties(prevProps => prevProps.map(prop => {
               if (prop.id === updatedEvent.propertyId) {
-                  const updatedLog = (prop.meterLog || []).map(entry => {
-                      if (entry.date === updatedEvent.date && entry.bookingId === updatedEvent.bookingId && (
-                          (updatedEvent.type === 'Einzug' && entry.type === 'Check-In') ||
-                          (updatedEvent.type === 'Auszug' && entry.type === 'Check-Out') ||
-                          (updatedEvent.type === 'Zählerstand' && entry.type === 'Interim')
-                      )) {
+                  const meterLogType = updatedEvent.type === 'Einzug' ? 'Check-In' : 
+                                      updatedEvent.type === 'Auszug' ? 'Check-Out' : 
+                                      'Interim';
+                  
+                  let updatedLog = [...(prop.meterLog || [])];
+                  let found = false;
+                  
+                  // Try to find and update existing entry
+                  updatedLog = updatedLog.map(entry => {
+                      // Match by date and bookingId (if available), or just by date and type if bookingId is missing
+                      const dateMatches = entry.date === updatedEvent.date;
+                      const bookingIdMatches = !entry.bookingId || !updatedEvent.bookingId || 
+                                              entry.bookingId === updatedEvent.bookingId || 
+                                              String(entry.bookingId) === String(updatedEvent.bookingId);
+                      const typeMatches = entry.type === meterLogType;
+                      
+                      if (dateMatches && bookingIdMatches && typeMatches) {
+                          found = true;
                           return { 
                               ...entry, 
                               readings: { 
@@ -823,6 +847,22 @@ const AccountDashboard: React.FC = () => {
                       }
                       return entry;
                   });
+                  
+                  // If no matching entry found, create a new one
+                  if (!found && updatedEvent.date) {
+                      const newEntry: MeterLogEntry = {
+                          date: updatedEvent.date,
+                          type: meterLogType,
+                          bookingId: updatedEvent.bookingId,
+                          readings: {
+                              electricity: updatedEvent.meterReadings?.electricity || 'Pending',
+                              water: updatedEvent.meterReadings?.water || 'Pending',
+                              gas: updatedEvent.meterReadings?.gas || 'Pending'
+                          }
+                      };
+                      updatedLog.push(newEntry);
+                  }
+                  
                   return { ...prop, meterLog: updatedLog };
               }
               return prop;
