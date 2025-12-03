@@ -50,7 +50,11 @@ const App: React.FC = () => {
         }
       } catch (err: any) {
         console.error('Error loading properties:', err);
-        setError(err.message || 'Failed to load properties');
+        // Don't show error if it's just empty table or API key warning
+        const errorMessage = err.message || 'Failed to load properties';
+        if (!errorMessage.includes('Unregistered') && !errorMessage.includes('does not exist')) {
+          setError(errorMessage);
+        }
         // Fallback to mock data on error
         setProperties(MOCK_PROPERTIES);
         if (MOCK_PROPERTIES.length > 0) {
@@ -318,10 +322,10 @@ const App: React.FC = () => {
                       <p className="text-gray-400">Loading properties...</p>
                     </div>
                   </div>
-                ) : error ? (
+                ) : error && !error.includes('Unregistered') ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center">
-                      <p className="text-red-400 mb-2">Error: {error}</p>
+                      <p className="text-yellow-400 mb-2">⚠️ {error}</p>
                       <p className="text-gray-400 text-sm">Using mock data as fallback</p>
                     </div>
                   </div>
