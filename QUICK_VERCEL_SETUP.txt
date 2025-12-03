@@ -1,0 +1,28 @@
+═══════════════════════════════════════════════════════════════
+  ШВИДКЕ НАЛАШТУВАННЯ VERCEL (2 ХВИЛИНИ)
+═══════════════════════════════════════════════════════════════
+
+1. Відкрийте: https://vercel.com/dashboard
+2. Виберіть проект: real-estate-platform
+3. Settings → Environment Variables
+4. Додайте 2 змінні:
+
+   ┌─────────────────────────────────────────────────────┐
+   │ ЗМІННА 1:                                           │
+   │ Key: NEXT_PUBLIC_SUPABASE_URL                       │
+   │ Value: https://qcpuzfhawcondygspiok.supabase.co    │
+   │ ☑️ Production ☑️ Preview ☑️ Development            │
+   └─────────────────────────────────────────────────────┘
+
+   ┌─────────────────────────────────────────────────────┐
+   │ ЗМІННА 2:                                           │
+   │ Key: NEXT_PUBLIC_SUPABASE_ANON_KEY                 │
+   │ Value: sb_publishable_cpQrhzVqZRCCeULDWhVJJw_ZIhcLx0Y│
+   │ ☑️ Production ☑️ Preview ☑️ Development            │
+   └─────────────────────────────────────────────────────┘
+
+5. Натисніть Save для кожної
+6. Готово! ✅
+
+═══════════════════════════════════════════════════════════════
+
