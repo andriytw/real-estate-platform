@@ -1,6 +1,7 @@
 
 import React from 'react';
-import { Building2, Home, Globe, Sun, ChevronLeft, ShoppingBag } from 'lucide-react';
+import { Building2, Home, Globe, Sun, ChevronLeft, ShoppingBag, LogOut } from 'lucide-react';
+import { useWorker } from '../contexts/WorkerContext';
 
 interface NavbarProps {
   showBackButton?: boolean;
@@ -11,6 +12,17 @@ interface NavbarProps {
 }
 
 const Navbar: React.FC<NavbarProps> = ({ showBackButton, onBack, onBecomePartner, onNavigate, currentView }) => {
+  const { worker, logout } = useWorker();
+  
+  const handleLogout = async () => {
+    try {
+      await logout();
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+  
   return (
     <nav className="h-16 bg-[#111315] border-b border-gray-800 flex items-center justify-between px-6 sticky top-0 z-50">
       {/* Left Section */}
@@ -63,6 +75,17 @@ const Navbar: React.FC<NavbarProps> = ({ showBackButton, onBack, onBecomePartner
           <Home className="w-4 h-4" />
           <span className="hidden lg:inline">Home</span>
         </button>
+        
+        {worker && (
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 text-gray-400 hover:text-red-400 transition-colors text-xs px-2 py-1 rounded hover:bg-red-500/10"
+            title="Вийти"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden lg:inline text-xs">Вийти</span>
+          </button>
+        )}
         
         <div className="h-4 w-[1px] bg-gray-700"></div>
         
