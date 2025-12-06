@@ -2,10 +2,30 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, MapPin, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 import { CalendarEvent, TaskWorkflow } from '../types';
-import { calendarEventsService, taskWorkflowsService } from '../services/supabaseService';
+import { calendarEventsService } from '../services/supabaseService';
 import { getTaskColor, getTaskBadgeColor } from '../utils/taskColors';
 import TaskWorkflowView from './TaskWorkflowView';
 import TaskChatModal from './TaskChatModal';
+
+// Temporary placeholder for taskWorkflowsService until it's implemented
+const taskWorkflowsService = {
+  getByEventId: async (eventId: string): Promise<TaskWorkflow | null> => {
+    // TODO: Implement in supabaseService.ts
+    return null;
+  },
+  getByWorkerId: async (workerId: string): Promise<TaskWorkflow[]> => {
+    // TODO: Implement in supabaseService.ts
+    return [];
+  },
+  create: async (workflow: Omit<TaskWorkflow, 'id'>): Promise<TaskWorkflow> => {
+    // TODO: Implement in supabaseService.ts
+    throw new Error('Not implemented');
+  },
+  update: async (id: string, updates: Partial<TaskWorkflow>): Promise<TaskWorkflow> => {
+    // TODO: Implement in supabaseService.ts
+    throw new Error('Not implemented');
+  }
+};
 
 export default function WorkerMobileApp() {
   const { worker, isWorker } = useWorker();

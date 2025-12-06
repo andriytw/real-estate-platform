@@ -1,9 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Calendar, MapPin, CheckCircle2, Upload, Camera } from 'lucide-react';
 import { CalendarEvent, TaskWorkflow } from '../types';
-import { taskWorkflowsService, calendarEventsService } from '../services/supabaseService';
+import { calendarEventsService } from '../services/supabaseService';
 import { getTaskColor } from '../utils/taskColors';
 import TaskChatModal from './TaskChatModal';
+
+// Temporary placeholder for taskWorkflowsService until it's implemented
+const taskWorkflowsService = {
+  getByEventId: async (eventId: string): Promise<TaskWorkflow | null> => {
+    // TODO: Implement in supabaseService.ts
+    return null;
+  },
+  update: async (id: string, updates: Partial<TaskWorkflow>): Promise<TaskWorkflow> => {
+    // TODO: Implement in supabaseService.ts
+    throw new Error('Not implemented');
+  }
+};
 
 interface TaskWorkflowViewProps {
   event: CalendarEvent;
