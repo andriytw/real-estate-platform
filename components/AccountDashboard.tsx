@@ -2081,17 +2081,20 @@ const AccountDashboard: React.FC = () => {
         </div>
         
         {/* User Info & Logout */}
-        <div className="mt-auto border-t border-gray-800 p-4">
-          {worker && (
-            <div className="mb-3 px-2">
-              <div className="flex items-center gap-2 mb-1">
-                <User className="w-4 h-4 text-gray-400" />
-                <span className="text-sm font-medium text-white">{worker.name}</span>
+        <div className="mt-auto border-t border-gray-800 p-3">
+          <div className="mb-2 px-2">
+            <div className="text-xs text-gray-500 uppercase tracking-wide mb-2">Користувач</div>
+            {worker && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <User className="w-3.5 h-3.5 text-gray-400" />
+                  <span className="text-xs font-medium text-white truncate">{worker.name}</span>
+                </div>
+                <div className="text-xs text-gray-500 ml-5 truncate">{worker.email}</div>
+                <div className="text-xs text-gray-500 ml-5 capitalize">{worker.role.replace('_', ' ')} • {worker.department}</div>
               </div>
-              <div className="text-xs text-gray-500 ml-6">{worker.email}</div>
-              <div className="text-xs text-gray-500 ml-6 capitalize">{worker.role.replace('_', ' ')} • {worker.department}</div>
-            </div>
-          )}
+            )}
+          </div>
           <button
             onClick={async () => {
               try {
@@ -2101,9 +2104,9 @@ const AccountDashboard: React.FC = () => {
                 console.error('Logout error:', error);
               }
             }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-md transition-colors"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-3.5 h-3.5" />
             <span>Вийти</span>
           </button>
         </div>
