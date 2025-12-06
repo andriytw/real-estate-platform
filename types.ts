@@ -296,7 +296,17 @@ export interface Lead {
   address: string;
   status: 'Active' | 'Past' | 'Potential';
   createdAt: string;
-  source?: string; // requestId якщо створено з Request
+  source?: string; // 'chat' | 'form' | 'request' | 'reservation' | 'manual'
+  clientId?: string; // Зв'язок з Client
+  propertyId?: string; // Зв'язок з Property
+  lastContactAt?: string; // Останній контакт
+  notes?: string; // Нотатки менеджера
+  preferredDates?: Array<{ // Бажані дати
+    start: string;
+    end: string;
+    peopleCount: number;
+  }>;
+  interactionCount?: number; // Скільки разів звертався
 }
 
 export interface RequestData {
@@ -351,4 +361,48 @@ export interface CalendarEvent {
     water: string;
     gas: string;
   }; 
+}
+
+// ==================== Smart Chat Types ====================
+
+export interface Client {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  companyName?: string;
+  companyAddress?: string;
+  clientType: 'Private' | 'Company';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ChatRoom {
+  id: string;
+  requestId: string;
+  propertyId?: string;
+  clientId: string;
+  status: 'active' | 'archived' | 'closed';
+  lastMessageAt?: string;
+  unreadCountManager: number;
+  unreadCountClient: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Message {
+  id: string;
+  chatRoomId: string;
+  senderType: 'client' | 'manager' | 'system';
+  senderId?: string; // client_id або manager_id
+  text: string;
+  attachments?: Array<{
+    type: 'image' | 'file';
+    url: string;
+    name: string;
+  }>;
+  isRead: boolean;
+  readAt?: string;
+  createdAt?: string;
 }

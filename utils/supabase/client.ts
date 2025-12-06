@@ -1,19 +1,46 @@
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+
+// Singleton instance to prevent multiple GoTrueClient instances
+let supabaseInstance: ReturnType<typeof createSupabaseClient> | null = null;
 
 export function createClient() {
-  // Support both Vite (import.meta.env) and Next.js (process.env) environments
-  const supabaseUrl = import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_URL || 
-                      import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
-                      (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_URL : '');
+  // Return existing instance if already created
+  if (supabaseInstance) {
+    return supabaseInstance;
+  }
   
-  const supabaseKey = import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY || 
-                     import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-                     (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : '');
+  // Vite exposes env vars with VITE_ prefix
+  const supabaseUrl = 
+    import.meta.env.VITE_SUPABASE_URL ||
+    import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_URL ||
+    import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
+    '';
+  
+  const supabaseKey = 
+    import.meta.env.VITE_SUPABASE_ANON_KEY ||
+    import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    '';
 
   if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Missing Supabase environment variables. Please check your .env.local file.');
+    const errorMsg = `Missing Supabase environment variables. 
+      URL: ${supabaseUrl ? '✓' : '✗'} 
+      Key: ${supabaseKey ? '✓' : '✗'}
+      Please check your .env.local file and ensure variables are prefixed with VITE_ or NEXT_PUBLIC_.`;
+    console.error(errorMsg);
+    throw new Error(errorMsg);
   }
 
-  return createBrowserClient(supabaseUrl, supabaseKey)
+  // Use @supabase/supabase-js directly for Vite
+  supabaseInstance = createSupabaseClient(supabaseUrl, supabaseKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storageKey: 'sb-auth-token'
+    }
+  });
+  
+  return supabaseInstance;
 }
 

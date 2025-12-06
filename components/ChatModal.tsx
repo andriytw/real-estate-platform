@@ -1,11 +1,36 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, Paperclip, MoreVertical, Check, CheckCheck, Bot, User } from 'lucide-react';
+import { requestsService } from '../services/supabaseService';
+import { Client, ChatRoom, Message as SupabaseMessage } from '../types';
+
+// TODO: Implement these services in supabaseService.ts
+// Temporary placeholders to prevent import errors
+const chatRoomsService = {
+  getAll: async () => [] as ChatRoom[],
+  getById: async (id: string) => null as ChatRoom | null,
+  create: async (data: any) => ({} as ChatRoom),
+};
+
+const messagesService = {
+  getByRoomId: async (roomId: string) => [] as SupabaseMessage[],
+  create: async (data: any) => ({} as SupabaseMessage),
+};
+
+const clientsService = {
+  getById: async (id: string) => null as Client | null,
+  create: async (data: any) => ({} as Client),
+};
+
+const leadsServiceEnhanced = {
+  createOrUpdate: async (data: any) => ({} as any),
+};
 
 interface ChatModalProps {
   isOpen: boolean;
   onClose: () => void;
   propertyTitle: string;
+  propertyId?: string; // Додаємо propertyId для збереження
 }
 
 interface Message {
@@ -26,6 +51,8 @@ interface UserDetails {
   peopleCount?: string;
   dateFrom?: string;
   dateTo?: string;
+  preferences?: string; // Побажання клієнта
+  initialMessage?: string; // Перше повідомлення клієнта
 }
 
 type ChatStage = 
@@ -38,9 +65,11 @@ type ChatStage =
   | 'ask_people'
   | 'ask_date_from'
   | 'ask_date_to'
+  | 'ask_preferences' // Новий етап
+  | 'summary' // Новий етап підтвердження
   | 'connected';
 
-const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, propertyTitle }) => {
+const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, propertyTitle, propertyId }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -67,17 +96,30 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, propertyTitle })
   // Initialize chat when opened
   useEffect(() => {
     if (isOpen && messages.length === 0) {
-      // Initial AI Message
+      // Initial AI Message - покращене формулювання
       const initialMsg: Message = {
         id: '1',
-        text: `Hello! I am the BIM/LAF digital assistant. Before I connect you with our rental manager, may I have your name?`,
+        text: `Привіт! Я допоможу вам знайти ідеальну квартиру. Як до вас звертатися?`,
         sender: 'system',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages([initialMsg]);
       setChatStage('ask_name');
+      setUserDetails({ name: '', email: '', phone: '' });
     }
   }, [isOpen]);
+
+  // Зберегти Lead при закритті чату (якщо є email + phone)
+  useEffect(() => {
+    return () => {
+      // Cleanup: зберегти Lead при unmount якщо є дані
+      if (!isOpen && userDetails.email && userDetails.phone) {
+        createOrUpdateLead(userDetails).catch(error => {
+          console.error('Error saving Lead on unmount:', error);
+        });
+      }
+    };
+  }, [isOpen, userDetails.email, userDetails.phone]);
 
   const addBotMessage = (text: string, sender: 'agent' | 'system' = 'system', delay = 1000) => {
     setIsTyping(true);
@@ -93,15 +135,182 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, propertyTitle })
     }, delay);
   };
 
-  const handleSend = () => {
+  // Helper functions
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const parseDate = (input: string): string | null => {
+    const today = new Date();
+    
+    if (input.toLowerCase().includes('якнайшвидше') || 
+        input.toLowerCase().includes('asap') ||
+        input.toLowerCase().includes('скоро')) {
+      return today.toISOString().split('T')[0];
+    }
+    
+    if (input.toLowerCase().includes('довгостроково') ||
+        input.toLowerCase().includes('long term')) {
+      return null;
+    }
+    
+    // Парсинг DD.MM.YYYY
+    const dateMatch = input.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+    if (dateMatch) {
+      const [, day, month, year] = dateMatch;
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    }
+    
+    return null;
+  };
+
+  const parsePeopleCount = (input: string): number => {
+    const numbers = input.match(/\d+/g);
+    if (numbers) {
+      return numbers.reduce((sum, num) => sum + parseInt(num), 0);
+    }
+    return 1;
+  };
+
+  const generateSummary = (details: UserDetails): string => {
+    let summary = `📋 Ось що я зібрав:\n\n`;
+    
+    summary += `👤 **Контактна інформація:**\n`;
+    summary += `   • Ім'я: ${details.name}\n`;
+    summary += `   • Email: ${details.email}\n`;
+    summary += `   • Телефон: ${details.phone}\n`;
+    
+    if (details.clientType === 'company' && details.companyName) {
+      summary += `\n🏢 **Компанія:**\n`;
+      summary += `   • Назва: ${details.companyName}\n`;
+      if (details.companyAddress) {
+        summary += `   • Адреса: ${details.companyAddress}\n`;
+      }
+    }
+    
+    summary += `\n📅 **Дати оренди:**\n`;
+    summary += `   • З: ${details.dateFrom}\n`;
+    summary += `   • До: ${details.dateTo}\n`;
+    
+    summary += `\n👥 **Кількість людей:** ${details.peopleCount}\n`;
+    
+    if (details.preferences && 
+        !details.preferences.toLowerCase().includes('немає') && 
+        !details.preferences.toLowerCase().includes('ok') &&
+        !details.preferences.toLowerCase().includes('все ок')) {
+      summary += `\n💭 **Ваші побажання:**\n`;
+      summary += `   ${details.preferences}\n`;
+    }
+    
+    return summary;
+  };
+
+  // Створення/оновлення Lead при зборі email + phone
+  const createOrUpdateLead = async (details: Partial<UserDetails> & { email: string; phone: string }) => {
+    try {
+      const leadData = {
+        name: details.name || `${details.email}`,
+        email: details.email,
+        phone: details.phone,
+        type: (details.clientType === 'company' ? 'Company' : 'Private') as 'Company' | 'Private',
+        contactPerson: details.clientType === 'company' ? details.name : undefined,
+        address: details.companyAddress || '',
+        source: 'chat' as const,
+        propertyId: propertyId,
+        preferredDates: details.dateFrom && details.dateTo ? [{
+          start: parseDate(details.dateFrom) || details.dateFrom,
+          end: parseDate(details.dateTo) || details.dateTo,
+          peopleCount: parsePeopleCount(details.peopleCount || '1')
+        }] : []
+      };
+      
+      return await leadsServiceEnhanced.createOrUpdate(leadData);
+    } catch (error) {
+      console.error('Error creating/updating Lead:', error);
+      // Fallback: зберегти в localStorage
+      const backupLead = {
+        name: details.name,
+        email: details.email,
+        phone: details.phone,
+        timestamp: new Date().toISOString()
+      };
+      localStorage.setItem('pending_lead', JSON.stringify(backupLead));
+      return null;
+    }
+  };
+
+  // Фіналізація заявки - створення Request, ChatRoom, Message
+  const finalizeRequest = async (details: UserDetails) => {
+    try {
+      // 1. Створити/Оновити Lead
+      const lead = await createOrUpdateLead(details);
+      
+      // 2. Створити/Знайти Client
+      let client = await clientsService.getByEmailOrPhone(details.email, details.phone);
+      if (!client) {
+        client = await clientsService.create({
+          firstName: details.name.split(' ')[0],
+          lastName: details.name.split(' ').slice(1).join(' ') || '',
+          email: details.email,
+          phone: details.phone,
+          companyName: details.companyName,
+          companyAddress: details.companyAddress,
+          clientType: details.clientType === 'company' ? 'Company' : 'Private'
+        });
+      }
+      
+      // 3. Створити Request
+      const request = await requestsService.create({
+        firstName: details.name.split(' ')[0],
+        lastName: details.name.split(' ').slice(1).join(' ') || '',
+        email: details.email,
+        phone: details.phone,
+        companyName: details.companyName,
+        peopleCount: parsePeopleCount(details.peopleCount || '1'),
+        startDate: parseDate(details.dateFrom || '') || new Date().toISOString().split('T')[0],
+        endDate: parseDate(details.dateTo || '') || new Date().toISOString().split('T')[0],
+        message: details.preferences || '', // Побажання зберігаються тут
+        propertyId: propertyId,
+        status: 'pending'
+      });
+      
+      // 4. Створити ChatRoom
+      const chatRoom = await chatRoomsService.create({
+        requestId: request.id,
+        propertyId: propertyId,
+        clientId: client.id,
+        status: 'active'
+      });
+      
+      // 5. Зберегти перше повідомлення клієнта (якщо було)
+      if (details.initialMessage) {
+        await messagesService.create({
+          chatRoomId: chatRoom.id,
+          senderType: 'client',
+          senderId: client.id,
+          text: details.initialMessage,
+          isRead: false
+        });
+      }
+      
+      return { request, chatRoom, client, lead };
+    } catch (error) {
+      console.error('Error finalizing request:', error);
+      throw error;
+    }
+  };
+
+  const handleSend = async () => {
     if (!inputValue.trim()) return;
 
     const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const userInput = inputValue.trim();
     
     // Add User Message
     const userMsg: Message = {
       id: Date.now().toString(),
-      text: inputValue,
+      text: userInput,
       sender: 'user',
       time: currentTime,
       isRead: false
@@ -114,66 +323,178 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, propertyTitle })
     if (chatStage === 'ask_name') {
       setUserDetails(prev => ({ ...prev, name: inputValue }));
       setChatStage('ask_email');
-      addBotMessage(`Nice to meet you, ${inputValue}. Please provide your email address.`);
+      addBotMessage(`Чудово, ${inputValue}! На яку електронну пошту надіслати деталі?`);
     } 
     else if (chatStage === 'ask_email') {
+      // Валідація email
+      if (!validateEmail(inputValue)) {
+        addBotMessage(`Схоже, це не валідна електронна пошта. Спробуйте ще раз, будь ласка.`);
+        return;
+      }
       setUserDetails(prev => ({ ...prev, email: inputValue }));
       setChatStage('ask_phone');
-      addBotMessage(`Thank you. What is your phone number?`);
+      addBotMessage(`Дякую! Який у вас номер телефону? Ми можемо подзвонити для уточнення деталей.`);
     } 
     else if (chatStage === 'ask_phone') {
-      setUserDetails(prev => ({ ...prev, phone: inputValue }));
+      const updated = { ...userDetails, phone: userInput };
+      setUserDetails(updated);
+      
+      // Створити/оновлювати Lead після збору email + phone
+      if (updated.email && updated.phone) {
+        try {
+          await createOrUpdateLead(updated);
+        } catch (error) {
+          console.error('Error creating/updating Lead:', error);
+          // Продовжуємо навіть якщо Lead не створився
+        }
+      }
+      
       setChatStage('ask_client_type');
-      addBotMessage(`Are you looking for accommodation as a private person or as a company? (Please type 'Private' or 'Company')`);
+      addBotMessage(`Ви шукаєте квартиру для себе чи для компанії?`);
     }
     else if (chatStage === 'ask_client_type') {
       const lowerInput = inputValue.toLowerCase();
-      const isCompany = lowerInput.includes('company') || lowerInput.includes('firm') || lowerInput.includes('business') || lowerInput.includes('фірма');
+      const isCompany = lowerInput.includes('company') || lowerInput.includes('firm') || 
+                       lowerInput.includes('business') || lowerInput.includes('фірма') ||
+                       lowerInput.includes('компанія');
       
       if (isCompany) {
         setUserDetails(prev => ({ ...prev, clientType: 'company' }));
         setChatStage('ask_company_name');
-        addBotMessage(`Understood. What is the name of your company?`);
+        addBotMessage(`Зрозуміло. Яка назва вашої компанії?`);
       } else {
         setUserDetails(prev => ({ ...prev, clientType: 'private' }));
         setChatStage('ask_people');
-        addBotMessage(`Got it. How many people will be staying?`);
+        addBotMessage(`Зрозуміло. Скільки людей планує проживати?`);
       }
     }
     else if (chatStage === 'ask_company_name') {
       setUserDetails(prev => ({ ...prev, companyName: inputValue }));
       setChatStage('ask_company_address');
-      addBotMessage(`And what is the company address?`);
+      addBotMessage(`Яка адреса компанії?`);
     }
     else if (chatStage === 'ask_company_address') {
       setUserDetails(prev => ({ ...prev, companyAddress: inputValue }));
       setChatStage('ask_people');
-      addBotMessage(`Thank you. How many people will be staying?`);
+      addBotMessage(`Дякую. Скільки людей планує проживати?`);
     }
     else if (chatStage === 'ask_people') {
       setUserDetails(prev => ({ ...prev, peopleCount: inputValue }));
       setChatStage('ask_date_from');
-      addBotMessage(`From which date do you need the accommodation? (e.g., DD.MM.YYYY)`);
+      addBotMessage(`З якої дати вам потрібна квартира? (наприклад: ДД.ММ.РРРР або "якнайшвидше")`);
     }
     else if (chatStage === 'ask_date_from') {
       setUserDetails(prev => ({ ...prev, dateFrom: inputValue }));
       setChatStage('ask_date_to');
-      addBotMessage(`And until which date?`);
+      addBotMessage(`До якої дати плануєте орендувати? (наприклад: ДД.ММ.РРРР або "довгостроково")`);
     }
     else if (chatStage === 'ask_date_to') {
-      const finalDetails = { ...userDetails, dateTo: inputValue };
-      setUserDetails(finalDetails);
-      setChatStage('connected');
+      setUserDetails(prev => ({ ...prev, dateTo: inputValue }));
+      setChatStage('ask_preferences');
+      addBotMessage(
+        `Чудово! Я зібрав основну інформацію. ` +
+        `Чи є у вас якісь особливі побажання або вимоги до квартири? ` +
+        `Наприклад: паркінг, балкон, ліфт, домашні тварини, тощо. ` +
+        `Якщо нічого особливого - просто напишіть "немає" або "все ок".`
+      );
+    }
+    else if (chatStage === 'ask_preferences') {
+      const preferences = inputValue.trim();
+      const skipKeywords = ['немає', 'все ок', 'нічого', 'нема', 'ok', 'nothing', 'no', 'все добре'];
+      const shouldSkip = skipKeywords.some(keyword => 
+        preferences.toLowerCase().includes(keyword.toLowerCase())
+      );
       
-      // Simulate saving to database
-      console.log("SAVING COMPLETE LEAD TO DATABASE:", finalDetails);
-
-      addBotMessage(`Perfect. I've collected all the details. Connecting you to Julia now...`, 'system', 1000);
+      const updatedDetails = {
+        ...userDetails,
+        preferences: shouldSkip ? 'Немає особливих побажань' : preferences
+      };
+      setUserDetails(updatedDetails);
       
-      // Julia joins
+      // Оновити Lead з усіма даними (дати, люди, побажання)
+      if (updatedDetails.email && updatedDetails.phone) {
+        try {
+          await createOrUpdateLead(updatedDetails);
+        } catch (error) {
+          console.error('Error updating Lead with full data:', error);
+        }
+      }
+      
+      setChatStage('summary');
+      
+      // Показуємо summary
+      const summary = generateSummary(updatedDetails);
+      addBotMessage(summary, 'system', 1000);
+      
+      // Питаємо підтвердження
       setTimeout(() => {
-         addBotMessage(`Hi ${finalDetails.name}! Julia here. I see you're interested in ${propertyTitle} for ${finalDetails.peopleCount} people. How can I help you further?`, 'agent', 500);
-      }, 3000);
+        addBotMessage(
+          `Все правильно? Якщо так, я зараз підключу вас до нашого менеджера, ` +
+          `який підготує для вас персональну пропозицію! 🏠`,
+          'system',
+          500
+        );
+      }, 2000);
+    }
+    else if (chatStage === 'summary') {
+      const lowerInput = inputValue.toLowerCase().trim();
+      
+      // Перевірка підтвердження
+      const confirmKeywords = ['так', 'yes', 'ok', 'правильно', 'все ок', 'підтверджую', 'згоден', 'підтвердити'];
+      const cancelKeywords = ['ні', 'no', 'виправити', 'змінити', 'edit', 'change', 'виправ'];
+      
+      const isConfirmed = confirmKeywords.some(keyword => lowerInput.includes(keyword));
+      const isCancelled = cancelKeywords.some(keyword => lowerInput.includes(keyword));
+      
+      if (isConfirmed) {
+        // Створюємо Lead, Request, ChatRoom
+        finalizeRequest(userDetails)
+          .then(({ request, chatRoom, client }) => {
+            setChatStage('connected');
+            addBotMessage(
+              `Чудово! Заявка створена. Зараз підключаю вас до менеджера...`,
+              'system',
+              1000
+            );
+            
+            // Підключення менеджера
+            setTimeout(() => {
+              addBotMessage(
+                `Привіт, ${userDetails.name}! 👋\n\n` +
+                `Я бачу вашу заявку на квартиру "${propertyTitle}". ` +
+                `Дякую за детальну інформацію! Я підготую для вас персональну пропозицію. ` +
+                `Чи є якісь додаткові питання?`,
+                'agent',
+                500
+              );
+            }, 3000);
+          })
+          .catch((error) => {
+            console.error('Error finalizing request:', error);
+            addBotMessage(
+              `Вибачте, сталася помилка при створенні заявки. Спробуйте ще раз або зв'яжіться з нами безпосередньо.`,
+              'system',
+              1000
+            );
+          });
+      } else if (isCancelled) {
+        // Пропонуємо виправити
+        addBotMessage(
+          `Зрозуміло! Що саме потрібно виправити? ` +
+          `Напишіть номер питання або що саме змінити.`,
+          'system',
+          1000
+        );
+        // Можна додати логіку редагування
+      } else {
+        // Не зрозуміло, уточнюємо
+        addBotMessage(
+          `Якщо все правильно - напишіть "так" або "підтверджую". ` +
+          `Якщо потрібно щось змінити - напишіть "виправити".`,
+          'system',
+          1000
+        );
+      }
     } 
     else {
       // Standard Chat Logic (Agent replies)
@@ -232,16 +553,18 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, propertyTitle })
 
   const getInputConfig = () => {
     switch (chatStage) {
-      case 'ask_name': return { placeholder: 'Enter your name...', type: 'text' };
-      case 'ask_email': return { placeholder: 'Enter your email address...', type: 'email' };
-      case 'ask_phone': return { placeholder: 'Enter your phone number...', type: 'tel' };
-      case 'ask_client_type': return { placeholder: "Type 'Private' or 'Company'...", type: 'text' };
-      case 'ask_company_name': return { placeholder: 'Enter company name...', type: 'text' };
-      case 'ask_company_address': return { placeholder: 'Enter company address...', type: 'text' };
-      case 'ask_people': return { placeholder: 'e.g. 2 adults, 1 child', type: 'text' };
-      case 'ask_date_from': return { placeholder: 'DD.MM.YYYY', type: 'text' };
-      case 'ask_date_to': return { placeholder: 'DD.MM.YYYY', type: 'text' };
-      default: return { placeholder: 'Type a message...', type: 'text' };
+      case 'ask_name': return { placeholder: 'Наприклад: Іван', type: 'text' };
+      case 'ask_email': return { placeholder: 'ivan@example.com', type: 'email' };
+      case 'ask_phone': return { placeholder: '+380 50 123 4567', type: 'tel' };
+      case 'ask_client_type': return { placeholder: "Напишіть 'Приватна особа' або 'Компанія'", type: 'text' };
+      case 'ask_company_name': return { placeholder: 'Наприклад: TechCorp GmbH', type: 'text' };
+      case 'ask_company_address': return { placeholder: 'Адреса компанії', type: 'text' };
+      case 'ask_people': return { placeholder: 'Наприклад: 2 дорослих, 1 дитина', type: 'text' };
+      case 'ask_date_from': return { placeholder: 'ДД.ММ.РРРР або "якнайшвидше"', type: 'text' };
+      case 'ask_date_to': return { placeholder: 'ДД.ММ.РРРР або "довгостроково"', type: 'text' };
+      case 'ask_preferences': return { placeholder: 'Ваші побажання або "немає"', type: 'text' };
+      case 'summary': return { placeholder: 'Напишіть "так" або "виправити"', type: 'text' };
+      default: return { placeholder: 'Введіть повідомлення...', type: 'text' };
     }
   };
 

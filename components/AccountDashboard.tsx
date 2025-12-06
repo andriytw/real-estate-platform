@@ -4,6 +4,7 @@ import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieCh
 import AdminCalendar from './AdminCalendar';
 import AdminMessages from './AdminMessages';
 import SalesCalendar from './SalesCalendar';
+import SalesChat from './SalesChat';
 import BookingDetailsModal from './BookingDetailsModal';
 import InvoiceModal from './InvoiceModal';
 import OfferEditModal from './OfferEditModal';
@@ -19,7 +20,7 @@ import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingS
 type Department = 'properties' | 'facility' | 'accounting' | 'sales';
 type FacilityTab = 'overview' | 'calendar' | 'messages';
 type AccountingTab = 'dashboard' | 'invoices' | 'expenses' | 'calendar' | 'banking';
-type SalesTab = 'leads' | 'calendar' | 'offers' | 'reservations' | 'requests' | 'history'; 
+type SalesTab = 'leads' | 'calendar' | 'offers' | 'reservations' | 'requests' | 'history' | 'chat'; 
 type PropertiesTab = 'list' | 'units';
 
 // --- TASK CATEGORIES ---
@@ -1980,6 +1981,25 @@ const AccountDashboard: React.FC = () => {
         } : undefined}
       />;
     }
+
+    if (salesTab === 'chat') {
+      return (
+        <div className="h-full">
+          <SalesChat
+            onCreateOffer={(request) => {
+              // Перейти до створення Offer з Request
+              setSalesTab('offers');
+              // TODO: відкрити OfferEditModal з даними з Request
+            }}
+            onViewRequest={(request) => {
+              setSelectedRequest(request);
+              setIsRequestModalOpen(true);
+            }}
+          />
+        </div>
+      );
+    }
+
     return <div className="p-8 text-white">Sales Content (Preserved)</div>;
   };
 
@@ -2051,6 +2071,7 @@ const AccountDashboard: React.FC = () => {
                 <button onClick={() => { setActiveDepartment('sales'); setSalesTab('offers'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Offers</button>
                 <button onClick={() => { setActiveDepartment('sales'); setSalesTab('reservations'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Reservations</button>
                 <button onClick={() => { setActiveDepartment('sales'); setSalesTab('requests'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Requests</button>
+                <button onClick={() => { setActiveDepartment('sales'); setSalesTab('chat'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Chat</button>
                 <button onClick={() => { setActiveDepartment('sales'); setSalesTab('history'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">History</button>
               </div>
           )}

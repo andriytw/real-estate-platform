@@ -43,6 +43,28 @@
 </head>
   <body class="bg-[#111315] text-white antialiased">
     <div id="root"></div>
+    <script>
+      // Clear cache for Cursor browser if stuck
+      if (sessionStorage.getItem('cursor_cache_cleared') !== 'true') {
+        try {
+          // Clear Supabase-related cache
+          Object.keys(localStorage).forEach(key => {
+            if (key.includes('supabase') || key.includes('sb-') || key.includes('auth')) {
+              localStorage.removeItem(key);
+            }
+          });
+          Object.keys(sessionStorage).forEach(key => {
+            if (key.includes('supabase') || key.includes('sb-') || key.includes('auth')) {
+              sessionStorage.removeItem(key);
+            }
+          });
+          sessionStorage.setItem('cursor_cache_cleared', 'true');
+          console.log('✅ Cache cleared for Cursor browser');
+        } catch (e) {
+          console.warn('Could not clear cache:', e);
+        }
+      }
+    </script>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

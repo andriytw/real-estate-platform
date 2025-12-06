@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import FilterBar from './components/FilterBar';
@@ -9,16 +8,22 @@ import PartnerModal from './components/PartnerModal';
 import Marketplace from './components/Marketplace';
 import AccountDashboard from './components/AccountDashboard';
 import TestDB from './components/TestDB';
-import { MOCK_PROPERTIES } from './constants';
+import LoginPage from './components/LoginPage';
+import RegisterPage from './components/RegisterPage';
+import WorkerMobileApp from './components/WorkerMobileApp';
+import AdminTasksBoard from './components/AdminTasksBoard';
+import { WorkerProvider, useWorker } from './contexts/WorkerContext';
 import { propertiesService } from './services/supabaseService';
 import { Property, FilterState, RequestData } from './types';
 
-const App: React.FC = () => {
+// Internal AppContent component that uses Worker context
+const AppContent: React.FC = () => {
+  const { worker, loading: authLoading } = useWorker();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'booking' | 'market' | 'account' | 'test-db'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'booking' | 'market' | 'account' | 'test-db' | 'worker' | 'admin-tasks' | 'register'>('dashboard');
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
   const [prefilledRequestData, setPrefilledRequestData] = useState<Partial<RequestData> | undefined>(undefined);
   const [filters, setFilters] = useState<FilterState>({
@@ -30,42 +35,84 @@ const App: React.FC = () => {
     pets: 'Any',
     status: 'Any'
   });
+  const [authTimeoutReached, setAuthTimeoutReached] = useState(false);
+
+  // Timeout for auth loading
+  useEffect(() => {
+    if (authLoading && !authTimeoutReached) {
+      const timer = setTimeout(() => {
+        setAuthTimeoutReached(true);
+      }, 6000);
+      return () => clearTimeout(timer);
+    } else if (!authLoading) {
+      setAuthTimeoutReached(false);
+    }
+  }, [authLoading, authTimeoutReached]);
 
   // Load properties from Supabase
-  useEffect(() => {
-    const loadProperties = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await propertiesService.getAll();
-        setProperties(data);
-        
-        // Set default selected property
-        if (data.length > 0 && !selectedProperty) {
-          setSelectedProperty(data[0]);
-        } else if (data.length === 0) {
-          // Fallback to mock data if Supabase is empty
-          setProperties(MOCK_PROPERTIES);
-          setSelectedProperty(MOCK_PROPERTIES[0]);
-        }
-      } catch (err: any) {
-        console.error('Error loading properties:', err);
-        // Don't show error if it's just empty table or API key warning
-        const errorMessage = err.message || 'Failed to load properties';
-        if (!errorMessage.includes('Unregistered') && !errorMessage.includes('does not exist')) {
-          setError(errorMessage);
-        }
-        // Fallback to mock data on error
-        setProperties(MOCK_PROPERTIES);
-        if (MOCK_PROPERTIES.length > 0) {
-          setSelectedProperty(MOCK_PROPERTIES[0]);
-        }
-      } finally {
-        setLoading(false);
+  const loadProperties = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await propertiesService.getAll();
+      setProperties(data);
+      
+      if (data.length > 0 && !selectedProperty) {
+        setSelectedProperty(data[0]);
       }
-    };
+    } catch (err: any) {
+      console.error('Error loading properties:', err);
+      const errorMessage = err.message || 'Failed to load properties';
+      if (!errorMessage.includes('Unregistered') && !errorMessage.includes('does not exist')) {
+        setError(errorMessage);
+      }
+      setProperties([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  // Check URL path for routing
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path === '/worker') {
+      setCurrentView('worker');
+    } else if (path === '/admin/tasks') {
+      setCurrentView('admin-tasks');
+    } else if (path === '/register') {
+      setCurrentView('register');
+    }
+  }, []);
+
+  // Check authentication and redirect
+  useEffect(() => {
+    if (!authLoading) {
+      if (worker) {
+        const path = window.location.pathname;
+        if (path === '/worker' && worker.role !== 'worker') {
+          setCurrentView('dashboard');
+          window.history.pushState({}, '', '/dashboard');
+        } else if (path === '/admin/tasks' && worker.role !== 'super_manager') {
+          setCurrentView('dashboard');
+          window.history.pushState({}, '', '/dashboard');
+        }
+      }
+    }
+  }, [worker, authLoading]);
+
+  useEffect(() => {
     loadProperties();
+  }, []);
+
+  // Listen for propertiesUpdated event
+  useEffect(() => {
+    const handlePropertiesUpdated = () => {
+      loadProperties();
+    };
+    window.addEventListener('propertiesUpdated', handlePropertiesUpdated);
+    return () => {
+      window.removeEventListener('propertiesUpdated', handlePropertiesUpdated);
+    };
   }, []);
 
   // Update selected property when properties change
@@ -74,194 +121,183 @@ const App: React.FC = () => {
       setSelectedProperty(properties[0]);
     }
   }, [properties, selectedProperty]);
-  
-  const handleMarketListingClick = (listing: any) => {
-    // Parse location to extract city and district
-    const locationParts = listing.location?.split(',').map((p: string) => p.trim()) || [];
-    const city = locationParts[locationParts.length - 1] || 'Unknown';
-    const district = locationParts.length > 1 ? locationParts[0] : 'City Center';
+
+  const handleMarketListingClick = React.useCallback((listing: any) => {
+    const property = properties.find(p => p.id === listing.id);
     
-    // Estimate reasonable values based on area and rooms
-    const estimatedBaths = listing.rooms >= 3 ? 2 : 1;
-    const estimatedFloor = Math.floor(Math.random() * 5) + 1; // Random floor 1-5
-    const estimatedBuildingFloors = Math.max(estimatedFloor + 2, 4); // At least 2 floors above
-    
-    // Convert Market Listing to Property Interface
-    const mappedProperty: Property = {
-      id: `market-${listing.id}`,
-      title: listing.title,
-      address: listing.location || 'Address not specified',
-      zip: '', 
-      city: city,
-      district: district,
-      price: listing.price || 0,
-      pricePerSqm: listing.area > 0 ? Math.round(listing.price / listing.area) : 0,
-      rooms: listing.rooms || 1,
-      area: listing.area || 0,
-      image: listing.image || '',
-      images: listing.image ? [listing.image] : [],
-      status: 'Available',
-      
-      // Required complex fields with better estimates
-      details: {
-        area: `${listing.area || 0} m²`,
-        rooms: listing.rooms || 1,
-        floor: estimatedFloor,
-        year: new Date().getFullYear() - Math.floor(Math.random() * 30), // Random year within last 30 years
-        beds: listing.rooms || 1,
-        baths: estimatedBaths,
-        balconies: listing.area > 50 ? 1 : 0, // Estimate balcony for larger apartments
-        buildingFloors: estimatedBuildingFloors
-      },
-      building: {
-        type: 'Market Listing',
-        repairYear: new Date().getFullYear() - Math.floor(Math.random() * 10), // Recent repair
-        heating: 'Central',
-        energyClass: 'C',
-        parking: 'Street',
-        pets: 'Unknown',
-        elevator: estimatedBuildingFloors >= 4 ? 'Yes' : 'Unknown',
-        kitchen: 'Yes',
-        access: 'Unknown',
-        certificate: 'N/A',
-        energyDemand: 'N/A'
-      },
-      inventory: [],
+    if (property) {
+      setSelectedProperty(property);
+      setCurrentView('dashboard');
+    } else {
+      propertiesService.getById(listing.id).then(loadedProperty => {
+        if (loadedProperty) {
+          setSelectedProperty(loadedProperty);
+          setCurrentView('dashboard');
+          setProperties(prev => {
+            if (prev.find(p => p.id === loadedProperty.id)) {
+              return prev;
+            }
+            return [...prev, loadedProperty];
+          });
+        }
+      }).catch(err => {
+        console.error('Error loading property:', err);
+      });
+    }
+  }, [properties]);
 
-      // Backward compatibility fields
-      floor: estimatedFloor,
-      totalFloors: estimatedBuildingFloors,
-      bathrooms: estimatedBaths,
-      balcony: listing.area > 50,
-      builtYear: new Date().getFullYear() - Math.floor(Math.random() * 30),
-      netRent: listing.price || 0,
-      ancillaryCosts: 0,
-      heatingCosts: 0,
-      heatingIncluded: true,
-      deposit: '2 months',
-      buildingType: 'Market Listing',
-      heatingType: 'Central',
-      energyCertificate: 'N/A',
-      endEnergyDemand: 'N/A',
-      energyEfficiencyClass: 'C',
-      parking: 'Street',
-      description: listing.description 
-        ? `${listing.description}\n\n--\nPosted by: ${listing.postedBy || 'Community member'}\nContact: ${listing.contactEmail || 'N/A'} | ${listing.contactPhone || 'N/A'}`
-        : 'No description available'
-    };
-
-    setSelectedProperty(mappedProperty);
-    setCurrentView('dashboard');
-  };
-
-  // Filter properties based on filter state
+  // Filter properties
   const filteredProperties = useMemo(() => {
-    const propsToFilter = properties.length > 0 ? properties : MOCK_PROPERTIES;
-    return propsToFilter.filter(property => {
-      // City filter
-      if (filters.city !== 'Any' && property.city !== filters.city) {
-        return false;
-      }
-
-      // District filter
-      if (filters.district !== 'Any' && property.district !== filters.district) {
-        return false;
-      }
-
-      // Rooms filter (min rooms)
+    return properties.filter(property => {
+      if (filters.city !== 'Any' && property.city !== filters.city) return false;
+      if (filters.district !== 'Any' && property.district !== filters.district) return false;
       if (filters.rooms !== 'Any') {
         const minRooms = parseInt(filters.rooms.replace('+', ''));
-        if (property.rooms < minRooms) {
-          return false;
-        }
+        if (property.rooms < minRooms) return false;
       }
-
-      // Floor filter
       if (filters.floor !== 'Any') {
         const propertyFloor = property.details?.floor || property.floor || 0;
-        if (filters.floor === 'Ground' && propertyFloor !== 0) {
-          return false;
-        } else if (filters.floor === '4+' && propertyFloor < 4) {
-          return false;
-        } else if (filters.floor !== 'Ground' && filters.floor !== '4+') {
+        if (filters.floor === 'Ground' && propertyFloor !== 0) return false;
+        else if (filters.floor === '4+' && propertyFloor < 4) return false;
+        else if (filters.floor !== 'Ground' && filters.floor !== '4+') {
           const filterFloor = parseInt(filters.floor);
-          if (propertyFloor !== filterFloor) {
-            return false;
-          }
+          if (propertyFloor !== filterFloor) return false;
         }
       }
-
-      // Elevator filter
       if (filters.elevator !== 'Any') {
         const hasElevator = property.building?.elevator === 'Yes' || property.building?.elevator === 'Unknown';
-        if (filters.elevator === 'Yes' && !hasElevator) {
-          return false;
-        } else if (filters.elevator === 'No' && hasElevator && property.building?.elevator !== 'No') {
-          return false;
-        }
+        if (filters.elevator === 'Yes' && !hasElevator) return false;
+        else if (filters.elevator === 'No' && hasElevator && property.building?.elevator !== 'No') return false;
       }
-
-      // Pets filter
       if (filters.pets !== 'Any') {
         const allowsPets = property.building?.pets === 'Allowed' || property.building?.pets === 'Yes';
-        if (filters.pets === 'Allowed' && !allowsPets) {
-          return false;
-        } else if (filters.pets === 'Not Allowed' && allowsPets) {
-          return false;
-        }
+        if (filters.pets === 'Allowed' && !allowsPets) return false;
+        else if (filters.pets === 'Not Allowed' && allowsPets) return false;
       }
-
-      // Status filter
-      if (filters.status !== 'Any' && property.status !== filters.status) {
-        return false;
-      }
-
+      if (filters.status !== 'Any' && property.status !== filters.status) return false;
       return true;
     });
-  }, [filters]);
+  }, [filters, properties]);
 
-  // Update selected property when filters change if current selection is filtered out
   React.useEffect(() => {
     if (!selectedProperty) return;
     if (filteredProperties.length > 0 && !filteredProperties.find(p => p.id === selectedProperty.id)) {
       setSelectedProperty(filteredProperties[0]);
-    } else if (filteredProperties.length === 0) {
-      const allProperties = properties.length > 0 ? properties : MOCK_PROPERTIES;
-      if (allProperties.length > 0) {
-        setSelectedProperty(allProperties[0]);
-      }
+    } else if (filteredProperties.length === 0 && properties.length > 0) {
+      setSelectedProperty(properties[0]);
     }
   }, [filteredProperties, selectedProperty?.id, properties]);
 
+  // Listen for openRequestForm event
+  useEffect(() => {
+    const handleOpenRequestForm = (event: CustomEvent) => {
+      const { propertyId } = event.detail;
+      if (propertyId) {
+        const property = properties.find(p => p.id === propertyId);
+        if (property) {
+          setSelectedProperty(property);
+          setPrefilledRequestData(undefined);
+          setCurrentView('booking');
+        }
+      } else {
+        setCurrentView('booking');
+      }
+    };
+    window.addEventListener('openRequestForm', handleOpenRequestForm as EventListener);
+    return () => {
+      window.removeEventListener('openRequestForm', handleOpenRequestForm as EventListener);
+    };
+  }, [properties]);
+
   const renderContent = () => {
+    // Register page is public
+    if (currentView === 'register') {
+      return <RegisterPage />;
+    }
+
+    const protectedViews = ['account', 'worker', 'admin-tasks'];
+    
+    if (protectedViews.includes(currentView)) {
+      if (authLoading && !authTimeoutReached) {
+        return (
+          <div className="flex items-center justify-center h-screen">
+            <div className="text-center">
+              <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-gray-400">Loading...</p>
+            </div>
+          </div>
+        );
+      }
+      
+      if (authTimeoutReached || (authLoading && authTimeoutReached)) {
+        return <LoginPage onLoginSuccess={() => {
+          setAuthTimeoutReached(false);
+          const path = window.location.pathname;
+          if (path === '/worker') {
+            setCurrentView('worker');
+          } else if (path === '/admin/tasks') {
+            setCurrentView('admin-tasks');
+          } else {
+            setCurrentView('account');
+          }
+        }} />;
+      }
+      
+      if (!worker) {
+        return <LoginPage onLoginSuccess={() => {
+          const path = window.location.pathname;
+          if (path === '/worker') {
+            setCurrentView('worker');
+          } else if (path === '/admin/tasks') {
+            setCurrentView('admin-tasks');
+          } else {
+            setCurrentView('account');
+          }
+        }} />;
+      }
+      
+      if (worker) {
+        if (currentView === 'worker' && worker.role !== 'worker') {
+          setCurrentView('dashboard');
+          return null;
+        }
+        if (currentView === 'admin-tasks' && worker.role !== 'super_manager') {
+          setCurrentView('dashboard');
+          return null;
+        }
+      }
+    }
+
     switch (currentView) {
+      case 'worker':
+        return <WorkerMobileApp />;
+      case 'admin-tasks':
+        return <AdminTasksBoard />;
       case 'test-db':
         return <TestDB />;
       case 'account':
         return <AccountDashboard />;
       case 'market':
-        return <Marketplace onListingClick={handleMarketListingClick} />;
+        return <Marketplace onListingClick={handleMarketListingClick} properties={properties} />;
       case 'booking':
         return (
           <div className="flex flex-1 overflow-hidden">
-            {/* Left Column - Property Context (Reusing Details without actions) */}
             <div className="hidden lg:block w-1/2 overflow-y-auto border-r border-gray-800 bg-[#0D0F11] p-8">
-              <PropertyDetails 
-                property={selectedProperty} 
-                hideActions={true} 
-              />
+              {selectedProperty && (
+                <PropertyDetails 
+                  property={selectedProperty} 
+                  hideActions={true} 
+                />
+              )}
             </div>
-            {/* Right Column - Booking Form */}
             <div className="w-full lg:w-1/2 overflow-y-auto bg-[#111315]">
               <BookingForm 
                 prefilledData={prefilledRequestData}
                 propertyId={selectedProperty?.id || ''}
                 onAddRequest={(request) => {
-                  // Зберегти request в localStorage для синхронізації з AccountDashboard
                   const existingRequests = JSON.parse(localStorage.getItem('requests') || '[]');
                   existingRequests.push(request);
                   localStorage.setItem('requests', JSON.stringify(existingRequests));
-                  // Відправити event для оновлення AccountDashboard
                   window.dispatchEvent(new CustomEvent('requestAdded', { detail: request }));
                   alert('Request sent successfully! Our team will contact you soon.');
                   setCurrentView('dashboard');
@@ -277,7 +313,6 @@ const App: React.FC = () => {
           <>
             <FilterBar filters={filters} onFilterChange={setFilters} />
             <div className="flex flex-1 overflow-hidden">
-              {/* Left Sidebar - Property List */}
               <div className="w-full lg:w-[420px] flex-shrink-0 border-r border-gray-800 overflow-y-auto p-4 space-y-4 bg-[#111315]">
                 {loading ? (
                   <div className="text-center text-gray-400 py-8">
@@ -313,20 +348,12 @@ const App: React.FC = () => {
                   </div>
                 )}
               </div>
-              {/* Right Main Content - Property Details */}
               <div className="flex-1 overflow-y-auto bg-[#0D0F11] p-6 lg:p-8">
                 {loading ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center">
                       <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
                       <p className="text-gray-400">Loading properties...</p>
-                    </div>
-                  </div>
-                ) : error && !error.includes('Unregistered') ? (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="text-center">
-                      <p className="text-yellow-400 mb-2">⚠️ {error}</p>
-                      <p className="text-gray-400 text-sm">Using mock data as fallback</p>
                     </div>
                   </div>
                 ) : selectedProperty ? (
@@ -363,6 +390,15 @@ const App: React.FC = () => {
       
       {renderContent()}
     </div>
+  );
+};
+
+// Main App component with WorkerProvider
+const App: React.FC = () => {
+  return (
+    <WorkerProvider>
+      <AppContent />
+    </WorkerProvider>
   );
 };
 

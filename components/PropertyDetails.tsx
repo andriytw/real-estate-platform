@@ -91,6 +91,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({ property, hideActions
         isOpen={isChatModalOpen}
         onClose={() => setIsChatModalOpen(false)}
         propertyTitle={property.address}
+        propertyId={property.id}
       />
 
       {/* Hero Image Section */}

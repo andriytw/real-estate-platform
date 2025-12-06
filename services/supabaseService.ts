@@ -7,39 +7,13 @@ const supabase = createClient();
 export const propertiesService = {
   // Get all properties
   async getAll(): Promise<Property[]> {
-    try {
-      const { data, error } = await supabase
-        .from('properties')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      // If table doesn't exist or is empty, return empty array
-      if (error) {
-        // PGRST116 = relation does not exist
-        // PGRST202 = table not found
-        if (error.code === 'PGRST116' || error.code === '42P01' || error.message?.includes('does not exist')) {
-          console.warn('Properties table does not exist yet. Please run the SQL schema in Supabase.');
-          return [];
-        }
-        // If it's an API key error, log it but don't throw
-        if (error.message?.includes('Unregistered') || error.message?.includes('API key')) {
-          console.warn('Supabase API key issue:', error.message);
-          return [];
-        }
-        throw error;
-      }
-      
-      // If no data, return empty array
-      if (!data || data.length === 0) {
-        return [];
-      }
-      
-      return data.map(transformPropertyFromDB);
-    } catch (err: any) {
-      console.error('Error fetching properties from Supabase:', err);
-      // Return empty array instead of throwing to allow fallback to mock data
-      return [];
-    }
+    const { data, error } = await supabase
+      .from('properties')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    return data.map(transformPropertyFromDB);
   },
 
   // Get property by ID
