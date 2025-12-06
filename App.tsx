@@ -88,14 +88,28 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (!authLoading) {
       if (worker) {
+        console.log('✅ App: Worker loaded, checking permissions:', worker.name, worker.role);
         const path = window.location.pathname;
         if (path === '/worker' && worker.role !== 'worker') {
+          console.log('⚠️ App: Redirecting worker view - wrong role');
           setCurrentView('dashboard');
           window.history.pushState({}, '', '/dashboard');
         } else if (path === '/admin/tasks' && worker.role !== 'super_manager') {
+          console.log('⚠️ App: Redirecting admin-tasks view - wrong role');
           setCurrentView('dashboard');
           window.history.pushState({}, '', '/dashboard');
+        } else if (path === '/account' || path === '/worker' || path === '/admin/tasks') {
+          // Ensure we're on the right view after login
+          if (path === '/worker') {
+            setCurrentView('worker');
+          } else if (path === '/admin/tasks') {
+            setCurrentView('admin-tasks');
+          } else {
+            setCurrentView('account');
+          }
         }
+      } else {
+        console.log('⚠️ App: No worker, showing login if needed');
       }
     }
   }, [worker, authLoading]);
@@ -230,16 +244,11 @@ const AppContent: React.FC = () => {
       }
       
       if (authTimeoutReached || (authLoading && authTimeoutReached)) {
-        return <LoginPage onLoginSuccess={async () => {
+        return <LoginPage onLoginSuccess={() => {
           console.log('✅ Login success callback called (timeout)');
           setAuthTimeoutReached(false);
-          // Wait a bit for worker to load
-          let attempts = 0;
-          while (attempts < 10 && !worker) {
-            await new Promise(resolve => setTimeout(resolve, 200));
-            attempts++;
-          }
-          console.log('✅ After login - worker:', worker ? worker.name : 'null');
+          // The worker will be loaded by WorkerContext, 
+          // useEffect will handle the view change when worker is available
           const path = window.location.pathname;
           if (path === '/worker') {
             setCurrentView('worker');
@@ -252,15 +261,10 @@ const AppContent: React.FC = () => {
       }
       
       if (!worker) {
-        return <LoginPage onLoginSuccess={async () => {
+        return <LoginPage onLoginSuccess={() => {
           console.log('✅ Login success callback called');
-          // Wait a bit for worker to load
-          let attempts = 0;
-          while (attempts < 10 && !worker) {
-            await new Promise(resolve => setTimeout(resolve, 200));
-            attempts++;
-          }
-          console.log('✅ After login - worker:', worker ? worker.name : 'null');
+          // The worker will be loaded by WorkerContext, 
+          // useEffect will handle the view change when worker is available
           const path = window.location.pathname;
           if (path === '/worker') {
             setCurrentView('worker');
