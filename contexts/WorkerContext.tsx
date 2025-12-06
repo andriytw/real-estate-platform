@@ -48,23 +48,47 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
 
   const getCurrentWorker = async (): Promise<Worker | null> => {
     try {
+      console.log('🔍 Getting current user from Supabase Auth...');
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
-      if (authError || !user) {
+      if (authError) {
+        console.error('❌ Auth error:', authError);
+        return null;
+      }
+      
+      if (!user) {
+        console.warn('⚠️ No user found in auth session');
         return null;
       }
 
+      console.log('✅ User found:', user.id, user.email);
+
       // Get worker profile from profiles table
+      console.log('🔍 Fetching profile from profiles table...');
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
 
-      if (profileError || !profile) {
-        console.warn('No profile found for user:', user.id);
+      if (profileError) {
+        console.error('❌ Profile fetch error:', profileError);
+        console.error('Error details:', {
+          code: profileError.code,
+          message: profileError.message,
+          details: profileError.details,
+          hint: profileError.hint
+        });
         return null;
       }
+
+      if (!profile) {
+        console.warn('⚠️ No profile found for user:', user.id);
+        console.warn('💡 Profile needs to be created in Supabase for user:', user.id);
+        return null;
+      }
+
+      console.log('✅ Profile found:', profile.name, profile.role, profile.department);
 
       return {
         id: profile.id,
@@ -79,7 +103,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
         updatedAt: profile.updated_at,
       };
     } catch (error) {
-      console.error('Error getting current worker:', error);
+      console.error('❌ Error getting current worker:', error);
       return null;
     }
   };
@@ -165,18 +189,29 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   const login = async (email: string, password: string) => {
     setLoading(true);
     try {
+      console.log('🔐 Attempting login for:', email);
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Supabase auth error:', error);
+        throw error;
+      }
 
       if (data.user) {
+        console.log('✅ Auth successful, user ID:', data.user.id);
+        console.log('🔄 Refreshing worker profile...');
         await refreshWorker();
+        console.log('✅ Worker profile refreshed');
+      } else {
+        console.error('❌ No user data returned from auth');
+        throw new Error('No user data returned');
       }
     } catch (error: any) {
-      console.error('Login error:', error);
+      console.error('❌ Login error:', error);
       throw error;
     } finally {
       setLoading(false);

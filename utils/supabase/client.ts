@@ -26,10 +26,21 @@ export function createClient() {
     const errorMsg = `Missing Supabase environment variables. 
       URL: ${supabaseUrl ? '✓' : '✗'} 
       Key: ${supabaseKey ? '✓' : '✗'}
-      Please check your .env.local file and ensure variables are prefixed with VITE_ or NEXT_PUBLIC_.`;
-    console.error(errorMsg);
+      Please check your .env.local file and ensure variables are prefixed with VITE_ or NEXT_PUBLIC_.
+      For Vercel: Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Environment Variables.`;
+    console.error('❌', errorMsg);
+    console.error('Available env vars:', {
+      VITE_SUPABASE_URL: !!import.meta.env.VITE_SUPABASE_URL,
+      VITE_NEXT_PUBLIC_SUPABASE_URL: !!import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_URL,
+      NEXT_PUBLIC_SUPABASE_URL: !!import.meta.env.NEXT_PUBLIC_SUPABASE_URL,
+      VITE_SUPABASE_ANON_KEY: !!import.meta.env.VITE_SUPABASE_ANON_KEY,
+      VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY: !!import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: !!import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    });
     throw new Error(errorMsg);
   }
+  
+  console.log('✅ Supabase client initialized with URL:', supabaseUrl.substring(0, 30) + '...');
 
   // Use @supabase/supabase-js directly for Vite
   supabaseInstance = createSupabaseClient(supabaseUrl, supabaseKey, {
