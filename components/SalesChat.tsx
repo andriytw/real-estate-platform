@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, MessageSquare, User, Calendar, FileText, Plus, Send, CheckCircle2, Clock } from 'lucide-react';
 import { ChatRoom, Message, RequestData, Client } from '../types';
-import { requestsService } from '../services/supabaseService';
 
 // TODO: Implement these services in supabaseService.ts
 // Temporary placeholders to prevent import errors
