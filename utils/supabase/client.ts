@@ -28,8 +28,8 @@ export function createClient() {
       Key: ${supabaseKey ? '✓' : '✗'}
       Please check your .env.local file and ensure variables are prefixed with VITE_ or NEXT_PUBLIC_.
       For Vercel: Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Environment Variables.`;
-    console.error('❌', errorMsg);
-    console.error('Available env vars:', {
+    console.warn('⚠️', errorMsg);
+    console.warn('Available env vars:', {
       VITE_SUPABASE_URL: !!import.meta.env.VITE_SUPABASE_URL,
       VITE_NEXT_PUBLIC_SUPABASE_URL: !!import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_URL,
       NEXT_PUBLIC_SUPABASE_URL: !!import.meta.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -37,7 +37,16 @@ export function createClient() {
       VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY: !!import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY,
       NEXT_PUBLIC_SUPABASE_ANON_KEY: !!import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     });
-    throw new Error(errorMsg);
+    // Don't throw - create a dummy client to prevent app crash
+    // The app will show login errors instead
+    supabaseInstance = createSupabaseClient('https://placeholder.supabase.co', 'placeholder-key', {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      }
+    });
+    return supabaseInstance;
   }
   
   console.log('✅ Supabase client initialized with URL:', supabaseUrl.substring(0, 30) + '...');
