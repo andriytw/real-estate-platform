@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame } from 'lucide-react';
+import { useWorker } from '../contexts/WorkerContext';
 import AdminCalendar from './AdminCalendar';
 import AdminMessages from './AdminMessages';
 import SalesCalendar from './SalesCalendar';
@@ -87,6 +88,8 @@ const INITIAL_LEADS: Lead[] = [
 ];
 
 const AccountDashboard: React.FC = () => {
+  const { worker, logout } = useWorker();
+  
   // Navigation State
   const [activeDepartment, setActiveDepartment] = useState<Department>('properties');
   const [expandedSections, setExpandedSections] = useState<Record<Department, boolean>>({
@@ -2075,6 +2078,34 @@ const AccountDashboard: React.FC = () => {
                 <button onClick={() => { setActiveDepartment('sales'); setSalesTab('history'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">History</button>
               </div>
           )}
+        </div>
+        
+        {/* User Info & Logout */}
+        <div className="mt-auto border-t border-gray-800 p-4">
+          {worker && (
+            <div className="mb-3 px-2">
+              <div className="flex items-center gap-2 mb-1">
+                <User className="w-4 h-4 text-gray-400" />
+                <span className="text-sm font-medium text-white">{worker.name}</span>
+              </div>
+              <div className="text-xs text-gray-500 ml-6">{worker.email}</div>
+              <div className="text-xs text-gray-500 ml-6 capitalize">{worker.role.replace('_', ' ')} • {worker.department}</div>
+            </div>
+          )}
+          <button
+            onClick={async () => {
+              try {
+                await logout();
+                window.location.href = '/';
+              } catch (error) {
+                console.error('Logout error:', error);
+              }
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Вийти</span>
+          </button>
         </div>
       </div>
 
