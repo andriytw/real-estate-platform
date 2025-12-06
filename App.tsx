@@ -224,6 +224,8 @@ const AppContent: React.FC = () => {
   }, [properties]);
 
   const renderContent = () => {
+    console.log('🔄 renderContent called:', { currentView, worker: worker?.name, authLoading });
+    
     // Register page is public
     if (currentView === 'register') {
       return <RegisterPage />;
@@ -233,6 +235,7 @@ const AppContent: React.FC = () => {
     
     if (protectedViews.includes(currentView)) {
       if (authLoading && !authTimeoutReached) {
+        console.log('⏳ Showing loading screen...');
         return (
           <div className="flex items-center justify-center h-screen">
             <div className="text-center">
@@ -244,6 +247,7 @@ const AppContent: React.FC = () => {
       }
       
       if (authTimeoutReached || (authLoading && authTimeoutReached)) {
+        console.log('⏱️ Showing login (timeout)...');
         return <LoginPage onLoginSuccess={() => {
           console.log('✅ Login success callback called (timeout)');
           setAuthTimeoutReached(false);
@@ -261,6 +265,7 @@ const AppContent: React.FC = () => {
       }
       
       if (!worker) {
+        console.log('🔒 No worker, showing login...');
         return <LoginPage onLoginSuccess={() => {
           console.log('✅ Login success callback called');
           // The worker will be loaded by WorkerContext, 
@@ -277,29 +282,40 @@ const AppContent: React.FC = () => {
       }
       
       if (worker) {
+        console.log('✅ Worker exists, checking permissions...');
         if (currentView === 'worker' && worker.role !== 'worker') {
+          console.log('⚠️ Wrong role for worker view, redirecting to dashboard');
           setCurrentView('dashboard');
           return null;
         }
         if (currentView === 'admin-tasks' && worker.role !== 'super_manager') {
+          console.log('⚠️ Wrong role for admin-tasks view, redirecting to dashboard');
           setCurrentView('dashboard');
           return null;
         }
       }
     }
+    
+    console.log('📄 Rendering view:', currentView);
 
     switch (currentView) {
       case 'worker':
+        console.log('📱 Rendering WorkerMobileApp');
         return <WorkerMobileApp />;
       case 'admin-tasks':
+        console.log('📋 Rendering AdminTasksBoard');
         return <AdminTasksBoard />;
       case 'test-db':
+        console.log('🧪 Rendering TestDB');
         return <TestDB />;
       case 'account':
+        console.log('👤 Rendering AccountDashboard');
         return <AccountDashboard />;
       case 'market':
+        console.log('🏪 Rendering Marketplace');
         return <Marketplace onListingClick={handleMarketListingClick} properties={properties} />;
       case 'booking':
+        console.log('📅 Rendering BookingForm');
         return (
           <div className="flex flex-1 overflow-hidden">
             <div className="hidden lg:block w-1/2 overflow-y-auto border-r border-gray-800 bg-[#0D0F11] p-8">
