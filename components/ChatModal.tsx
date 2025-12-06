@@ -19,6 +19,7 @@ const messagesService = {
 
 const clientsService = {
   getById: async (id: string) => null as Client | null,
+  getByEmailOrPhone: async (email: string, phone: string) => null as Client | null,
   create: async (data: any) => ({} as Client),
 };
 
