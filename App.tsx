@@ -345,9 +345,10 @@ const AppContent: React.FC = () => {
         );
       case 'dashboard':
       default:
+        console.log('🏠 Rendering Dashboard, properties:', properties.length, 'filtered:', filteredProperties.length);
         return (
           <>
-            <FilterBar filters={filters} onFilterChange={setFilters} />
+            <FilterBar filters={filters} onFiltersChange={setFilters} />
             <div className="flex flex-1 overflow-hidden">
               <div className="w-full lg:w-[420px] flex-shrink-0 border-r border-gray-800 overflow-y-auto p-4 space-y-4 bg-[#111315]">
                 {loading ? (
