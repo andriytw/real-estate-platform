@@ -32,26 +32,44 @@
   <body class="bg-[#111315] text-white antialiased">
     <div id="root"></div>
     <script>
-      // Clear cache for Cursor browser if stuck
-      if (sessionStorage.getItem('cursor_cache_cleared') !== 'true') {
+      // Aggressive cache clearing for Cursor browser
+      (function() {
         try {
-          // Clear Supabase-related cache
+          // Clear all caches
+          if ('caches' in window) {
+            caches.keys().then(names => {
+              names.forEach(name => caches.delete(name));
+              console.log('✅ All caches cleared');
+            });
+          }
+          
+          // Clear localStorage (except important settings)
+          const keepKeys = [];
           Object.keys(localStorage).forEach(key => {
-            if (key.includes('supabase') || key.includes('sb-') || key.includes('auth')) {
+            if (!keepKeys.includes(key)) {
               localStorage.removeItem(key);
             }
           });
-          Object.keys(sessionStorage).forEach(key => {
-            if (key.includes('supabase') || key.includes('sb-') || key.includes('auth')) {
-              sessionStorage.removeItem(key);
-            }
-          });
-          sessionStorage.setItem('cursor_cache_cleared', 'true');
-          console.log('✅ Cache cleared for Cursor browser');
+          
+          // Clear sessionStorage
+          sessionStorage.clear();
+          
+          // Clear IndexedDB
+          if ('indexedDB' in window) {
+            indexedDB.databases().then(databases => {
+              databases.forEach(db => {
+                if (db.name) {
+                  indexedDB.deleteDatabase(db.name);
+                }
+              });
+            });
+          }
+          
+          console.log('✅ Aggressive cache clear completed for Cursor browser');
         } catch (e) {
           console.warn('Could not clear cache:', e);
         }
-      }
+      })();
     </script>
     <script type="module" src="/index.tsx"></script>
   </body>
