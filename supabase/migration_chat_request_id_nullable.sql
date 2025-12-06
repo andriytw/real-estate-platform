@@ -8,3 +8,4 @@ ALTER COLUMN request_id DROP NOT NULL;
 COMMENT ON COLUMN chat_rooms.request_id IS 'Optional reference to request. Can be NULL for direct chats.';
 
 
+
