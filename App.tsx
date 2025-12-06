@@ -230,8 +230,16 @@ const AppContent: React.FC = () => {
       }
       
       if (authTimeoutReached || (authLoading && authTimeoutReached)) {
-        return <LoginPage onLoginSuccess={() => {
+        return <LoginPage onLoginSuccess={async () => {
+          console.log('✅ Login success callback called (timeout)');
           setAuthTimeoutReached(false);
+          // Wait a bit for worker to load
+          let attempts = 0;
+          while (attempts < 10 && !worker) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+            attempts++;
+          }
+          console.log('✅ After login - worker:', worker ? worker.name : 'null');
           const path = window.location.pathname;
           if (path === '/worker') {
             setCurrentView('worker');
@@ -244,7 +252,15 @@ const AppContent: React.FC = () => {
       }
       
       if (!worker) {
-        return <LoginPage onLoginSuccess={() => {
+        return <LoginPage onLoginSuccess={async () => {
+          console.log('✅ Login success callback called');
+          // Wait a bit for worker to load
+          let attempts = 0;
+          while (attempts < 10 && !worker) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+            attempts++;
+          }
+          console.log('✅ After login - worker:', worker ? worker.name : 'null');
           const path = window.location.pathname;
           if (path === '/worker') {
             setCurrentView('worker');

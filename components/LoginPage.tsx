@@ -22,12 +22,17 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     }
 
     try {
+      console.log('🔐 LoginPage: Starting login...');
       await login(email, password);
+      console.log('✅ LoginPage: Login successful, calling onLoginSuccess');
+      // Wait a bit to ensure worker is loaded
+      await new Promise(resolve => setTimeout(resolve, 500));
       if (onLoginSuccess) {
-        onLoginSuccess();
+        console.log('✅ LoginPage: Calling onLoginSuccess callback');
+        await onLoginSuccess();
       }
     } catch (err: any) {
-      console.error('Login error:', err);
+      console.error('❌ LoginPage: Login error:', err);
       setError(err.message || 'Помилка входу. Перевірте email та пароль.');
     }
   };

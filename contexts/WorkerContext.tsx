@@ -110,14 +110,22 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
 
   const refreshWorker = async () => {
     try {
+      console.log('🔄 refreshWorker called');
       setLoading(true);
       const currentWorker = await getCurrentWorker();
+      console.log('🔄 refreshWorker - got worker:', currentWorker ? currentWorker.name : 'null');
       setWorker(currentWorker);
+      if (currentWorker) {
+        console.log('✅ Worker set in state:', currentWorker.name, currentWorker.role);
+      } else {
+        console.warn('⚠️ No worker to set in state');
+      }
     } catch (error) {
-      console.error('Error refreshing worker:', error);
+      console.error('❌ Error refreshing worker:', error);
       setWorker(null);
     } finally {
       setLoading(false);
+      console.log('🔄 refreshWorker finished, loading set to false');
     }
   };
 
@@ -198,23 +206,40 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
 
       if (error) {
         console.error('❌ Supabase auth error:', error);
+        console.error('Error code:', error.status);
+        console.error('Error message:', error.message);
         throw error;
       }
 
       if (data.user) {
         console.log('✅ Auth successful, user ID:', data.user.id);
+        console.log('✅ Session:', data.session ? 'exists' : 'missing');
+        
+        // Wait a bit for session to be stored
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         console.log('🔄 Refreshing worker profile...');
         await refreshWorker();
-        console.log('✅ Worker profile refreshed');
+        
+        // Double-check worker was loaded
+        const currentWorker = await getCurrentWorker();
+        if (currentWorker) {
+          console.log('✅ Worker profile loaded:', currentWorker.name, currentWorker.role);
+          setWorker(currentWorker);
+        } else {
+          console.error('❌ Worker profile not loaded after refresh');
+        }
       } else {
         console.error('❌ No user data returned from auth');
         throw new Error('No user data returned');
       }
     } catch (error: any) {
       console.error('❌ Login error:', error);
+      setLoading(false);
       throw error;
     } finally {
-      setLoading(false);
+      // Don't set loading to false immediately - let refreshWorker handle it
+      setTimeout(() => setLoading(false), 500);
     }
   };
 
