@@ -15,7 +15,7 @@ SELECT
   'Профіль в profiles:' as info,
   p.id,
   p.name,
-  p.email,
+  u.email as email,
   p.department,
   p.role,
   p.is_active,
