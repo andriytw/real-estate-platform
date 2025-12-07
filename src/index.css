@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Custom styles - Tailwind is loaded via CDN in index.html */
 
 /* Base styles */
 * {
@@ -68,4 +66,3 @@ body {
 .animate-slideUp {
   animation: slideUp 0.3s ease-out forwards;
 }
-
