@@ -119,7 +119,24 @@ const AppContent: React.FC = () => {
           return;
         }
         
+        // IMPORTANT: If already on property-details view, don't redirect
+        if (currentView === 'property-details' && selectedProperty) {
+          console.log('🔄 App: Already on PropertyDetails, staying here');
+          return;
+        }
+        
         const path = window.location.pathname;
+        
+        // Handle property details route - stay on it if already there
+        if (path.startsWith('/property/')) {
+          const propertyId = path.split('/property/')[1];
+          // If we have selectedProperty matching this ID, stay on property-details
+          if (selectedProperty && selectedProperty.id === propertyId) {
+            console.log('🔄 App: On property route with matching property, staying on PropertyDetails');
+            setCurrentView('property-details');
+            return;
+          }
+        }
         
         // Handle specific routes first
         if (path === '/worker' && worker.role === 'worker') {
@@ -154,6 +171,9 @@ const AppContent: React.FC = () => {
             setCurrentView('market');
           }
           return;
+        } else if (path.startsWith('/property/')) {
+          // Property route - don't redirect, let property-details view handle it
+          return;
         } else {
           // Default: All users go to account (Properties category) after login
           setCurrentView('account');
@@ -173,7 +193,7 @@ const AppContent: React.FC = () => {
         // Don't change currentView here to allow renderContent to intercept
       }
     }
-  }, [worker, authLoading, pendingPropertyView]);
+  }, [worker, authLoading, pendingPropertyView, currentView, selectedProperty]);
 
   useEffect(() => {
     loadProperties();
@@ -198,16 +218,24 @@ const AppContent: React.FC = () => {
   }, [properties, selectedProperty]);
 
   // Handle post-login redirect to PropertyDetails (HIGHEST PRIORITY)
+  // This must run BEFORE the main auth redirect useEffect
+  // Using setTimeout to ensure this runs after state updates
   useEffect(() => {
     if (worker && pendingPropertyView) {
       // After successful login, show PropertyDetails immediately
       console.log('🔄 Post-login: Showing PropertyDetails for pending property:', pendingPropertyView.title);
       const property = pendingPropertyView;
-      setSelectedProperty(property);
-      setCurrentView('property-details');
-      window.history.pushState({}, '', `/property/${property.id}`);
-      // Clear pending property after setting it
-      setPendingPropertyView(null);
+      
+      // Use setTimeout to ensure this runs after other state updates
+      setTimeout(() => {
+        // Clear pending property FIRST to prevent conflicts
+        setPendingPropertyView(null);
+        // Then set property and view
+        setSelectedProperty(property);
+        setCurrentView('property-details');
+        window.history.pushState({}, '', `/property/${property.id}`);
+        console.log('✅ Post-login: PropertyDetails view set, property:', property.id);
+      }, 0);
     }
   }, [worker, pendingPropertyView]);
 
