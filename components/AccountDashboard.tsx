@@ -12,6 +12,7 @@ import OfferEditModal from './OfferEditModal';
 import PropertyAddModal from './PropertyAddModal';
 import RequestModal from './RequestModal';
 import BankingDashboard from './BankingDashboard';
+import { propertiesService } from '../services/supabaseService';
 import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData } from '../types';
 import { ROOMS } from '../constants';
 import { MOCK_PROPERTIES } from '../constants';
@@ -104,8 +105,33 @@ const AccountDashboard: React.FC = () => {
   const [accountingTab, setAccountingTab] = useState<AccountingTab>('dashboard');
   const [salesTab, setSalesTab] = useState<SalesTab>('leads');
 
-  const [properties, setProperties] = useState<Property[]>(MOCK_PROPERTIES);
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string>(MOCK_PROPERTIES[0].id);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
+  const [isLoadingProperties, setIsLoadingProperties] = useState(true);
+
+  // Load properties from Supabase
+  useEffect(() => {
+    const loadProperties = async () => {
+      try {
+        setIsLoadingProperties(true);
+        const data = await propertiesService.getAll();
+        setProperties(data);
+        if (data.length > 0 && !selectedPropertyId) {
+          setSelectedPropertyId(data[0].id);
+        }
+      } catch (error) {
+        console.error('Error loading properties in Dashboard:', error);
+        // Fallback to mock data if error
+        setProperties(MOCK_PROPERTIES);
+        if (!selectedPropertyId) {
+          setSelectedPropertyId(MOCK_PROPERTIES[0].id);
+        }
+      } finally {
+        setIsLoadingProperties(false);
+      }
+    };
+    loadProperties();
+  }, []);
   const [isPropertyAddModalOpen, setIsPropertyAddModalOpen] = useState(false);
   const [isInventoryEditing, setIsInventoryEditing] = useState(false);
 
