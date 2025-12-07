@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import './index.css'; // Relative to src/index.tsx
-import App from '../App'; // App is in root
+// REMOVED: import './index.css'; -- We use CDN now to avoid build issues
+import App from '../App';
 
 console.log('🚀 Starting app...');
 
@@ -11,25 +11,10 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
-console.log('✅ Root element found');
-
 try {
   const root = ReactDOM.createRoot(rootElement);
-  console.log('✅ React root created');
-  
-  root.render(
-    <App />
-  );
-  
+  root.render(<App />);
   console.log('✅ App rendered');
 } catch (error) {
   console.error('❌ Error rendering app:', error);
-  rootElement.innerHTML = `
-    <div style="padding: 20px; color: white; background: #1f2937;">
-      <h1 style="color: red;">Error loading app</h1>
-      <p>${error instanceof Error ? error.message : 'Unknown error'}</p>
-      <p>Check console for details</p>
-    </div>
-  `;
 }
-
