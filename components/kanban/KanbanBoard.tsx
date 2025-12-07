@@ -52,11 +52,11 @@ const KanbanBoard: React.FC = () => {
     }
   };
 
-  // Generate Columns based on Workers and Roles
+  // Generate Columns - ТІЛЬКИ Inbox + колонки з customColumns (створені вручну Super Admin)
   const columns = useMemo(() => {
     const cols: IKanbanColumn[] = [];
 
-    // 1. Super Admin / Inbox Column
+    // 1. Super Admin / Inbox Column (завжди видима)
     const adminWorker = workers.find(w => w.role === 'super_manager');
     const adminTasks = tasks.filter(t => 
       !t.workerId || (adminWorker && t.workerId === adminWorker.id)
@@ -66,44 +66,31 @@ const KanbanBoard: React.FC = () => {
       id: 'admin-inbox',
       title: adminWorker ? `Inbox (${adminWorker.name})` : 'Backlog / Inbox',
       type: 'backlog',
-      workerId: adminWorker?.id, // If assigned to admin, it goes here
+      workerId: adminWorker?.id,
       tasks: adminTasks
     });
 
-    // Filter workers based on department tab
-    const relevantWorkers = workers.filter(w => {
-      if (departmentFilter === 'all') return true;
-      return w.department === departmentFilter;
-    });
+    // 2. Створені вручну колонки (тільки з customColumns)
+    // Знайти workers/managers по IDs з customColumns
+    customColumns.forEach(workerId => {
+      const worker = workers.find(w => w.id === workerId);
+      if (!worker) return; // Якщо worker не знайдено, пропустити
 
-    // 2. Manager Columns (only those in customColumns or all if customColumns is empty)
-    const managers = relevantWorkers.filter(w => w.role === 'manager');
-    managers.forEach(m => {
-      // Show column if it's in customColumns or if customColumns is empty (show all)
-      if (customColumns.length === 0 || customColumns.includes(m.id)) {
-        cols.push({
-          id: m.id,
-          title: m.name,
-          type: 'manager',
-          workerId: m.id,
-          tasks: tasks.filter(t => t.workerId === m.id)
-        });
+      // Фільтр по департаменту
+      if (departmentFilter !== 'all' && worker.department !== departmentFilter) {
+        return; // Пропустити, якщо не відповідає фільтру
       }
-    });
 
-    // 3. Worker Columns (only those in customColumns or all if customColumns is empty)
-    const simpleWorkers = relevantWorkers.filter(w => w.role === 'worker');
-    simpleWorkers.forEach(w => {
-      // Show column if it's in customColumns or if customColumns is empty (show all)
-      if (customColumns.length === 0 || customColumns.includes(w.id)) {
-        cols.push({
-          id: w.id,
-          title: w.name,
-          type: 'worker',
-          workerId: w.id,
-          tasks: tasks.filter(t => t.workerId === w.id)
-        });
-      }
+      // Визначити тип колонки
+      const columnType = worker.role === 'manager' ? 'manager' : 'worker';
+      
+      cols.push({
+        id: worker.id,
+        title: worker.name,
+        type: columnType,
+        workerId: worker.id,
+        tasks: tasks.filter(t => t.workerId === worker.id)
+      });
     });
 
     return cols;
@@ -316,7 +303,7 @@ const KanbanBoard: React.FC = () => {
         onClose={() => setIsColumnCreateModalOpen(false)}
         onColumnCreated={handleColumnCreated}
         workers={workers}
-        existingColumnIds={customColumns.length > 0 ? customColumns : columns.map(c => c.workerId).filter(Boolean) as string[]}
+        existingColumnIds={customColumns}
       />
     </div>
   );

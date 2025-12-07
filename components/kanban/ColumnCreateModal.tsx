@@ -32,7 +32,8 @@ const ColumnCreateModal: React.FC<ColumnCreateModalProps> = ({
     }
   });
 
-  // Працівники, які ще не мають колонки
+  // Показуємо всіх працівників (колонки не створюються автоматично)
+  // Але фільтруємо тих, хто вже має колонку
   const availableWorkers = filteredWorkers.filter(w => !existingColumnIds.includes(w.id));
 
   const handleSubmit = (e: React.FormEvent) => {
