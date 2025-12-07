@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Copy, RefreshCw, Mail, MessageSquare, Send, FileText, Phone, AlertCircle, Building2, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, RefreshCw, Mail, MessageSquare, Send, FileText, Phone, AlertCircle, Building2, Users, CheckCircle2 } from 'lucide-react';
 import { RequestData } from '../types';
+import { requestsService } from '../services/supabaseService';
 
 interface BookingFormProps {
   onAddRequest?: (request: RequestData) => void;
   prefilledData?: Partial<RequestData>; // Для префілу з Request
   propertyId?: string;
+  property?: { id: string }; // Property object (for compatibility)
+  onSuccess?: () => void; // Callback after successful submission
 }
 
 interface FormErrors {
@@ -20,7 +23,7 @@ interface FormErrors {
   message?: string;
 }
 
-const BookingForm: React.FC<BookingFormProps> = ({ onAddRequest, prefilledData, propertyId }) => {
+const BookingForm: React.FC<BookingFormProps> = ({ onAddRequest, prefilledData, propertyId, property, onSuccess }) => {
   const [selectedDay, setSelectedDay] = useState<number>(19);
   const [selectedTime, setSelectedTime] = useState<string>('19:00');
   const [currentMonth, setCurrentMonth] = useState(new Date(2025, 10, 1)); // November 2025
@@ -40,6 +43,8 @@ const BookingForm: React.FC<BookingFormProps> = ({ onAddRequest, prefilledData, 
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Префіл форми якщо є prefilledData
   useEffect(() => {
@@ -93,7 +98,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ onAddRequest, prefilledData, 
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validateForm()) {
@@ -101,9 +106,10 @@ const BookingForm: React.FC<BookingFormProps> = ({ onAddRequest, prefilledData, 
     }
 
     setIsSubmitting(true);
+    setSubmitError(null);
+    setSubmitSuccess(false);
 
-    const newRequest: RequestData = {
-      id: `req-${Date.now()}`,
+    const requestData: Omit<RequestData, 'id'> = {
       firstName: formData.firstName.trim(),
       lastName: formData.lastName.trim(),
       email: formData.email.trim(),
@@ -113,15 +119,23 @@ const BookingForm: React.FC<BookingFormProps> = ({ onAddRequest, prefilledData, 
       startDate: formData.startDate,
       endDate: formData.endDate,
       message: formData.message.trim() || undefined,
-      propertyId: propertyId,
+      propertyId: propertyId || property?.id,
       status: 'pending',
       createdAt: new Date().toISOString(),
     };
 
-    if (onAddRequest) {
-      onAddRequest(newRequest);
-      // Показати confirmation
-      alert('Request sent successfully! We will contact you soon.');
+    try {
+      // Save to Supabase
+      const savedRequest = await requestsService.create(requestData);
+      
+      // Call callback if provided
+      if (onAddRequest) {
+        onAddRequest(savedRequest);
+      }
+
+      // Show success message
+      setSubmitSuccess(true);
+      
       // Reset form
       setFormData({
         firstName: '',
@@ -134,9 +148,24 @@ const BookingForm: React.FC<BookingFormProps> = ({ onAddRequest, prefilledData, 
         endDate: '',
         message: '',
       });
-    }
 
-    setIsSubmitting(false);
+      // Call onSuccess callback if provided
+      if (onSuccess) {
+        setTimeout(() => {
+          onSuccess();
+        }, 2000); // Wait 2 seconds to show success message
+      }
+
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSubmitSuccess(false);
+      }, 3000);
+    } catch (error: any) {
+      console.error('Error saving request:', error);
+      setSubmitError(error.message || 'Failed to send request. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const formatDateForInput = (date: Date): string => {
@@ -187,6 +216,22 @@ const BookingForm: React.FC<BookingFormProps> = ({ onAddRequest, prefilledData, 
 
   return (
     <form onSubmit={handleSubmit} className="p-8 text-white font-sans max-w-2xl mx-auto">
+      {/* Success Message */}
+      {submitSuccess && (
+        <div className="mb-6 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-4 flex items-center gap-3">
+          <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+          <p className="text-emerald-400 text-sm">Request sent successfully! We will contact you soon.</p>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {submitError && (
+        <div className="mb-6 bg-red-500/10 border border-red-500/20 rounded-lg p-4 flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+          <p className="text-red-400 text-sm">{submitError}</p>
+        </div>
+      )}
+
       {/* Section A: Tenant Details */}
       <div className="mb-8">
         <h3 className="text-lg font-bold mb-4">A. Tenant Details</h3>

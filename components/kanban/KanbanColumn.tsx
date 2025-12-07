@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Draggable } from '@hello-pangea/dnd';
 import { CalendarEvent, Worker, KanbanColumn as IKanbanColumn } from '../../types';
 import KanbanTaskCard from './KanbanTaskCard';
 import { Plus, MoreHorizontal, User, Briefcase } from 'lucide-react';
@@ -85,12 +86,22 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ column, currentUser, onTask
             <span className="text-xs">No tasks</span>
           </div>
         ) : (
-          sortedTasks.map(task => (
-            <KanbanTaskCard 
-              key={task.id} 
-              task={task} 
-              onClick={() => console.log('Task clicked', task.id)} 
-            />
+          sortedTasks.map((task, index) => (
+            <Draggable key={task.id} draggableId={task.id} index={index}>
+              {(provided, snapshot) => (
+                <div
+                  ref={provided.innerRef}
+                  {...provided.draggableProps}
+                  {...provided.dragHandleProps}
+                  className={snapshot.isDragging ? 'opacity-50' : ''}
+                >
+                  <KanbanTaskCard 
+                    task={task} 
+                    onClick={() => console.log('Task clicked', task.id)} 
+                  />
+                </div>
+              )}
+            </Draggable>
           ))
         )}
       </div>

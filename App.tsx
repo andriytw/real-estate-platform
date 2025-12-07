@@ -24,7 +24,8 @@ const AppContent: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'booking' | 'market' | 'account' | 'test-db' | 'worker' | 'admin-tasks' | 'register' | 'tasks'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'booking' | 'market' | 'account' | 'test-db' | 'worker' | 'admin-tasks' | 'register' | 'tasks' | 'property-details'>('market');
+  const [pendingPropertyView, setPendingPropertyView] = useState<Property | null>(null);
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
   const [prefilledRequestData, setPrefilledRequestData] = useState<Partial<RequestData> | undefined>(undefined);
   const [filters, setFilters] = useState<FilterState>({
@@ -100,6 +101,8 @@ const AppContent: React.FC = () => {
       setCurrentView('register');
     } else if (path === '/tasks') {
       setCurrentView('tasks');
+    } else if (path === '/' || path === '/market') {
+      setCurrentView('market');
     }
   }, []);
 
@@ -190,29 +193,115 @@ const AppContent: React.FC = () => {
     }
   }, [properties, selectedProperty]);
 
+  // Handle post-login redirect to PropertyDetails
+  useEffect(() => {
+    if (worker && pendingPropertyView) {
+      // After successful login, show PropertyDetails
+      setSelectedProperty(pendingPropertyView);
+      setCurrentView('property-details');
+      setPendingPropertyView(null);
+    }
+  }, [worker, pendingPropertyView]);
+
   const handleMarketListingClick = React.useCallback((listing: any) => {
+    console.log('🔵 Marketplace click:', listing);
+    
+    const handlePropertyClick = (prop: Property) => {
+      console.log('🔵 Handling property click, worker:', worker);
+      // If not logged in, save property and show login
+      if (!worker) {
+        console.log('🔵 Not logged in, showing login');
+        setPendingPropertyView(prop);
+        setCurrentView('account'); // This will render LoginPage
+        window.history.pushState({}, '', '/account');
+        return;
+      }
+      // If logged in, show PropertyDetails
+      console.log('🔵 Logged in, showing property details');
+      setSelectedProperty(prop);
+      setCurrentView('property-details');
+      window.history.pushState({}, '', `/property/${prop.id}`);
+    };
+    
+    // First try to find in existing properties
     const property = properties.find(p => p.id === listing.id);
     
     if (property) {
-      setSelectedProperty(property);
-      setCurrentView('dashboard');
-    } else {
-      propertiesService.getById(listing.id).then(loadedProperty => {
-        if (loadedProperty) {
-          setSelectedProperty(loadedProperty);
-          setCurrentView('dashboard');
-          setProperties(prev => {
-            if (prev.find(p => p.id === loadedProperty.id)) {
-              return prev;
-            }
-            return [...prev, loadedProperty];
-          });
-        }
-      }).catch(err => {
-        console.error('Error loading property:', err);
-      });
+      handlePropertyClick(property);
+      return;
     }
-  }, [properties]);
+    
+    // Try to load from database
+    propertiesService.getById(listing.id).then(loadedProperty => {
+      if (loadedProperty) {
+        handlePropertyClick(loadedProperty);
+        setProperties(prev => {
+          if (prev.find(p => p.id === loadedProperty.id)) {
+            return prev;
+          }
+          return [...prev, loadedProperty];
+        });
+      } else {
+        // If not found in DB, create a temporary Property object from listing data
+        // This handles MOCK_MARKET_LISTINGS or listings that don't exist in DB yet
+        const tempProperty: Property = {
+          id: listing.id,
+          title: listing.title,
+          address: listing.location || listing.title,
+          city: listing.location?.split(',')[1]?.trim() || 'Berlin',
+          country: 'Germany',
+          price: listing.price,
+          rooms: listing.rooms || 1,
+          area: listing.area || 0,
+          image: listing.image || '',
+          images: listing.image ? [listing.image] : [],
+          status: 'Available',
+          fullAddress: listing.location || listing.title,
+          description: listing.description || '',
+          details: {},
+          building: {},
+          inventory: [],
+          meterReadings: [],
+          meterLog: [],
+          rentalHistory: [],
+          rentPayments: [],
+          futurePayments: [],
+          repairRequests: [],
+          events: []
+        };
+        handlePropertyClick(tempProperty);
+      }
+    }).catch(err => {
+      console.error('Error loading property:', err);
+      // Even if error, create temp property and proceed
+      const tempProperty: Property = {
+        id: listing.id,
+        title: listing.title,
+        address: listing.location || listing.title,
+        city: listing.location?.split(',')[1]?.trim() || 'Berlin',
+        country: 'Germany',
+        price: listing.price,
+        rooms: listing.rooms || 1,
+        area: listing.area || 0,
+        image: listing.image || '',
+        images: listing.image ? [listing.image] : [],
+        status: 'Available',
+        fullAddress: listing.location || listing.title,
+        description: listing.description || '',
+        details: {},
+        building: {},
+        inventory: [],
+        meterReadings: [],
+        meterLog: [],
+        rentalHistory: [],
+        rentPayments: [],
+        futurePayments: [],
+        repairRequests: [],
+        events: []
+      };
+      handlePropertyClick(tempProperty);
+    });
+  }, [properties, worker]);
 
   // Filter properties
   const filteredProperties = useMemo(() => {
@@ -251,15 +340,14 @@ const AppContent: React.FC = () => {
       }} />;
     }
 
-    // If not logged in and not on register, show login for protected/public pages
+    // If not logged in and not on register, show login for protected pages only
     if (!worker && !authLoading) {
-      // Allow public pages (register already handled above)
-      // For dashboard/market, show login if not authenticated
-      if (currentView === 'dashboard' || currentView === 'market') {
+      // Only dashboard requires login, Marketplace is public
+      if (currentView === 'dashboard') {
         return (
           <div className="animate-fadeIn">
             <LoginPage onLoginSuccess={() => {
-              // Role based redirect handled in useEffect
+              setCurrentView('dashboard');
             }} />
           </div>
         );
@@ -344,13 +432,57 @@ const AppContent: React.FC = () => {
       );
     }
 
-    // Market View
+    // Market View (Public)
     if (currentView === 'market') {
       return (
         <div className="animate-fadeIn">
           <Marketplace onItemClick={handleMarketListingClick} />
         </div>
       );
+    }
+
+    // PropertyDetails View (Authenticated Only)
+    if (currentView === 'property-details') {
+      if (!worker) {
+        // If not logged in, show login
+        return (
+          <div className="animate-fadeIn">
+            <LoginPage onLoginSuccess={() => {
+              // PropertyDetails will be shown via useEffect after login
+            }} />
+          </div>
+        );
+      }
+      
+      if (selectedProperty) {
+        return (
+          <div className="min-h-screen bg-[#0D0F11]">
+            <div className="container mx-auto px-4 py-8">
+              <button 
+                onClick={() => {
+                  setSelectedProperty(null);
+                  setCurrentView('market');
+                }}
+                className="mb-6 text-emerald-500 hover:text-emerald-400 font-medium flex items-center gap-2 transition-colors"
+              >
+                ← Back to Marketplace
+              </button>
+              <PropertyDetails 
+                property={selectedProperty} 
+                onBook={() => setCurrentView('booking')}
+                onClose={() => {
+                  setSelectedProperty(null);
+                  setCurrentView('market');
+                }}
+              />
+            </div>
+          </div>
+        );
+      } else {
+        // If no property selected, redirect to Marketplace
+        setCurrentView('market');
+        return null;
+      }
     }
 
     // Default: Dashboard (Properties List)
@@ -369,7 +501,7 @@ const AppContent: React.FC = () => {
 
         {/* Filters */}
         <div className="sticky top-20 z-40 mb-8 backdrop-blur-md bg-[#0D0F11]/80 p-2 rounded-2xl border border-gray-800/50 shadow-xl">
-          <FilterBar onFiltersChange={handleFilterChange} />
+          <FilterBar filters={filters} onFiltersChange={handleFilterChange} />
         </div>
 
         {/* Error Message */}
@@ -398,6 +530,7 @@ const AppContent: React.FC = () => {
               <PropertyCard 
                 key={property.id} 
                 property={property} 
+                isSelected={selectedProperty?.id === property.id}
                 onClick={() => {
                   setSelectedProperty(property);
                   // Show details modal or separate page? 
@@ -448,8 +581,14 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#0D0F11] text-gray-100 font-sans selection:bg-emerald-500/30">
       <Navbar 
-        showBackButton={currentView !== 'dashboard'}
-        onBack={() => setCurrentView('dashboard')}
+        showBackButton={currentView !== 'dashboard' && currentView !== 'market'}
+        onBack={() => {
+          if (currentView === 'property-details') {
+            setCurrentView('market');
+          } else {
+            setCurrentView('dashboard');
+          }
+        }}
         onBecomePartner={() => setIsPartnerModalOpen(true)}
         currentView={currentView}
         onNavigate={(view) => {

@@ -403,7 +403,7 @@ export interface TaskComment {
 export interface KanbanColumn {
   id: string;
   title: string;
-  type: 'backlog' | 'worker' | 'manager' | 'admin';
+  type: 'backlog' | 'worker' | 'manager';
   workerId?: string; // If it's a person's column
   tasks: CalendarEvent[];
 }

@@ -4,11 +4,12 @@ import { Property } from '../types';
 
 interface PropertyCardProps {
   property: Property;
-  isSelected: boolean;
+  isSelected?: boolean;
   onClick: () => void;
+  onBook?: () => void;
 }
 
-const PropertyCard: React.FC<PropertyCardProps> = ({ property, isSelected, onClick }) => {
+const PropertyCard: React.FC<PropertyCardProps> = ({ property, isSelected = false, onClick, onBook }) => {
   const [imageError, setImageError] = useState(false);
 
   // Effect to reset error state if property changes, giving a chance to reload correct image
@@ -75,6 +76,17 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ property, isSelected, onCli
                <div className="text-sm font-bold text-white">€{property.price}<span className="text-xs text-gray-500 font-normal">/mo</span></div>
             </div>
          </div>
+         {onBook && (
+           <button
+             onClick={(e) => {
+               e.stopPropagation();
+               onBook();
+             }}
+             className="mt-3 w-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium py-2 px-4 rounded-lg transition-colors"
+           >
+             Book Viewing
+           </button>
+         )}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Building2, Home, Globe, Sun, ChevronLeft, ShoppingBag, LogOut, Layout, CheckSquare } from 'lucide-react';
+import { Building2, Home, Globe, Sun, ChevronLeft, ShoppingBag, LogOut } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 
 interface NavbarProps {
@@ -53,15 +53,6 @@ const Navbar: React.FC<NavbarProps> = ({ showBackButton, onBack, onBecomePartner
             >
               Home
             </button>
-            {isManagerOrAdmin && (
-              <button 
-                onClick={() => onNavigate?.('tasks')}
-                className={`flex items-center gap-2 ${currentView === 'tasks' ? 'text-blue-400 font-bold' : 'hover:text-blue-400'} transition-colors`}
-              >
-                <Layout className="w-4 h-4" />
-                Tasks
-              </button>
-            )}
             <button 
               onClick={() => onNavigate?.('market')}
               className={`flex items-center gap-2 ${currentView === 'market' ? 'text-emerald-500 font-bold' : 'hover:text-emerald-400'} transition-colors`}

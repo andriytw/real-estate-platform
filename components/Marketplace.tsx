@@ -174,7 +174,15 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick }) => {
 
                  <div className="flex items-center justify-between pt-3 border-t border-gray-800">
                     <span className="text-xs text-gray-500">Posted by <span className="text-gray-300">{item.postedBy}</span></span>
-                    <button className="text-xs font-bold text-emerald-500 hover:text-emerald-400">Details</button>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onListingClick(item);
+                      }}
+                      className="text-xs font-bold text-emerald-500 hover:text-emerald-400"
+                    >
+                      Details
+                    </button>
                  </div>
               </div>
 

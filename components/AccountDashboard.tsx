@@ -12,6 +12,7 @@ import OfferEditModal from './OfferEditModal';
 import PropertyAddModal from './PropertyAddModal';
 import RequestModal from './RequestModal';
 import BankingDashboard from './BankingDashboard';
+import KanbanBoard from './kanban/KanbanBoard';
 import { propertiesService } from '../services/supabaseService';
 import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData } from '../types';
 import { ROOMS } from '../constants';
@@ -19,7 +20,7 @@ import { MOCK_PROPERTIES } from '../constants';
 import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 
 // --- Types ---
-type Department = 'properties' | 'facility' | 'accounting' | 'sales';
+type Department = 'properties' | 'facility' | 'accounting' | 'sales' | 'tasks';
 type FacilityTab = 'overview' | 'calendar' | 'messages';
 type AccountingTab = 'dashboard' | 'invoices' | 'expenses' | 'calendar' | 'banking';
 type SalesTab = 'leads' | 'calendar' | 'offers' | 'reservations' | 'requests' | 'history' | 'chat'; 
@@ -97,7 +98,8 @@ const AccountDashboard: React.FC = () => {
     properties: true,
     facility: true,
     accounting: true,
-    sales: true
+    sales: true,
+    tasks: true
   });
   
   const [propertiesTab, setPropertiesTab] = useState<PropertiesTab>('list');
@@ -1655,6 +1657,14 @@ const AccountDashboard: React.FC = () => {
     return <div className="p-8 text-white">Facility Overview (Preserved)</div>;
   };
 
+  const renderTasksContent = () => {
+    return (
+      <div className="h-full w-full">
+        <KanbanBoard />
+      </div>
+    );
+  };
+
   const renderSalesContent = () => {
     if (salesTab === 'leads') {
         return (
@@ -2104,6 +2114,11 @@ const AccountDashboard: React.FC = () => {
                 <button onClick={() => { setActiveDepartment('sales'); setSalesTab('history'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">History</button>
               </div>
           )}
+
+          {/* Tasks / Kanban Board */}
+          <button onClick={() => { toggleSection('tasks'); setActiveDepartment('tasks'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
+              <span className="flex items-center gap-3"><CheckCircle2 className="w-4 h-4" /> Tasks</span><ChevronDown className="w-3 h-3" />
+          </button>
         </div>
         
         {/* User Info & Logout */}
@@ -2143,6 +2158,7 @@ const AccountDashboard: React.FC = () => {
         {activeDepartment === 'facility' && renderFacilityContent()}
         {activeDepartment === 'accounting' && renderAccountingContent()}
         {activeDepartment === 'sales' && renderSalesContent()}
+        {activeDepartment === 'tasks' && renderTasksContent()}
       </div>
 
       {/* Modals */}
