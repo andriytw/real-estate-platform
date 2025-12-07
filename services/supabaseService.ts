@@ -154,10 +154,15 @@ export const tasksService = {
 // ==================== PROPERTIES ====================
 export const propertiesService = {
   // Get all properties
-  async getAll(): Promise<Property[]> {
+  async getAll(lightweight = false): Promise<Property[]> {
+    // For Marketplace/public views, only load essential fields for faster loading
+    const selectFields = lightweight 
+      ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip'
+      : '*';
+    
     const { data, error } = await supabase
       .from('properties')
-      .select('*')
+      .select(selectFields)
       .order('created_at', { ascending: false });
     
     if (error) throw error;
@@ -474,40 +479,41 @@ function transformPropertyFromDB(db: any): Property {
     image: db.image || '',
     images: db.images || [],
     status: db.status || 'Available',
-    fullAddress: db.full_address,
+    fullAddress: db.full_address || db.fullAddress,
     meta: db.meta,
     term: db.term,
-    termStatus: db.term_status,
+    termStatus: db.term_status || db.termStatus,
     balance: db.balance != null ? parseFloat(db.balance) : 0,
     description: db.description,
+    // For lightweight queries, these may be undefined - provide defaults
     details: db.details || {},
     building: db.building || {},
     inventory: db.inventory || [],
-    meterReadings: db.meter_readings || [],
-    meterLog: db.meter_log || [],
+    meterReadings: db.meter_readings || db.meterReadings || [],
+    meterLog: db.meter_log || db.meterLog || [],
     tenant: db.tenant,
-    rentalHistory: db.rental_history || [],
-    rentPayments: db.rent_payments || [],
-    ownerExpense: db.owner_expense,
-    futurePayments: db.future_payments || [],
-    repairRequests: db.repair_requests || [],
+    rentalHistory: db.rental_history || db.rentalHistory || [],
+    rentPayments: db.rent_payments || db.rentPayments || [],
+    ownerExpense: db.owner_expense || db.ownerExpense,
+    futurePayments: db.future_payments || db.futurePayments || [],
+    repairRequests: db.repair_requests || db.repairRequests || [],
     events: db.events || [],
     floor: db.floor,
-    totalFloors: db.total_floors,
+    totalFloors: db.total_floors || db.totalFloors,
     bathrooms: db.bathrooms,
     balcony: db.balcony || false,
-    builtYear: db.built_year,
-    renovationYear: db.renovation_year,
-    netRent: db.net_rent != null ? parseFloat(db.net_rent) : undefined,
-    ancillaryCosts: db.ancillary_costs != null ? parseFloat(db.ancillary_costs) : undefined,
-    heatingCosts: db.heating_costs != null ? parseFloat(db.heating_costs) : undefined,
-    heatingIncluded: db.heating_included || false,
+    builtYear: db.built_year || db.builtYear,
+    renovationYear: db.renovation_year || db.renovationYear,
+    netRent: db.net_rent != null ? parseFloat(db.net_rent) : (db.netRent != null ? parseFloat(db.netRent) : undefined),
+    ancillaryCosts: db.ancillary_costs != null ? parseFloat(db.ancillary_costs) : (db.ancillaryCosts != null ? parseFloat(db.ancillaryCosts) : undefined),
+    heatingCosts: db.heating_costs != null ? parseFloat(db.heating_costs) : (db.heatingCosts != null ? parseFloat(db.heatingCosts) : undefined),
+    heatingIncluded: db.heating_included || db.heatingIncluded || false,
     deposit: db.deposit,
-    buildingType: db.building_type,
-    heatingType: db.heating_type,
-    energyCertificate: db.energy_certificate,
-    endEnergyDemand: db.end_energy_demand,
-    energyEfficiencyClass: db.energy_efficiency_class,
+    buildingType: db.building_type || db.buildingType,
+    heatingType: db.heating_type || db.heatingType,
+    energyCertificate: db.energy_certificate || db.energyCertificate,
+    endEnergyDemand: db.end_energy_demand || db.endEnergyDemand,
+    energyEfficiencyClass: db.energy_efficiency_class || db.energyEfficiencyClass,
     parking: db.parking,
   };
 }

@@ -1,12 +1,13 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Search, MapPin, Euro, Home, Clock, Plus, ChevronDown, Filter } from 'lucide-react';
 import MarketPostModal from './MarketPostModal';
-import { propertiesService } from '../services/supabaseService';
 import { Property } from '../types';
 
 interface MarketplaceProps {
   onListingClick: (listing: any) => void;
+  properties?: Property[]; // Optional: if provided, use these instead of loading
+  loading?: boolean; // Optional: loading state from parent
 }
 
 const MarketFilterDropdown: React.FC<{ 
@@ -32,32 +33,17 @@ const MarketFilterDropdown: React.FC<{
   </div>
 );
 
-const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick }) => {
+const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: propsProperties, loading: propsLoading }) => {
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [loading, setLoading] = useState(true);
+  
+  // Use properties from props if provided, otherwise empty array
+  const properties = propsProperties || [];
+  const loading = propsLoading !== undefined ? propsLoading : false;
   
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [priceFilter, setPriceFilter] = useState('Any');
   const [roomFilter, setRoomFilter] = useState('Any');
-
-  // Load properties from Supabase
-  useEffect(() => {
-    const loadProperties = async () => {
-      try {
-        setLoading(true);
-        const data = await propertiesService.getAll();
-        setProperties(data);
-      } catch (error) {
-        console.error('Error loading properties for Marketplace:', error);
-        setProperties([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadProperties();
-  }, []);
 
   // Filtering Logic - convert Property to marketplace listing format
   const filteredListings = useMemo(() => {

@@ -72,7 +72,8 @@ const AppContent: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await propertiesService.getAll();
+      // Use lightweight mode for faster initial load (especially for Marketplace)
+      const data = await propertiesService.getAll(true);
       setProperties(data);
       
       if (data.length > 0 && !selectedProperty) {
@@ -120,56 +121,43 @@ const AppContent: React.FC = () => {
         
         const path = window.location.pathname;
         
-        // Super Admin / Manager should go to tasks board by default
-        if ((worker.role === 'super_manager' || worker.role === 'manager') && (path === '/' || path === '/dashboard' || path === '/account')) {
-          setCurrentView('tasks');
-          window.history.pushState({}, '', '/tasks');
-          return;
-        }
-        
-        if (path === '/worker' && worker.role !== 'worker') {
-          setCurrentView('dashboard');
-          window.history.pushState({}, '', '/dashboard');
-        } else if (path === '/tasks' && worker.role === 'worker') {
-           // Workers shouldn't see full board, redirect to mobile app
-           setCurrentView('worker');
-           window.history.pushState({}, '', '/worker');
-        } else if (path === '/worker' && worker.role === 'worker') {
+        // Handle specific routes first
+        if (path === '/worker' && worker.role === 'worker') {
           setCurrentView('worker');
+          return;
+        } else if (path === '/worker' && worker.role !== 'worker') {
+          // Non-worker trying to access worker view -> redirect to account
+          setCurrentView('account');
+          window.history.pushState({}, '', '/account');
+          return;
+        } else if (path === '/tasks' && worker.role === 'worker') {
+          // Workers shouldn't see full board, redirect to account
+          setCurrentView('account');
+          window.history.pushState({}, '', '/account');
+          return;
         } else if (path === '/tasks') {
+          // Allow access to tasks if explicitly on /tasks route
           setCurrentView('tasks');
+          return;
         } else if (path === '/account') {
-          // Account page - redirect based on role after login (only if no pending property)
-          if (worker.role === 'super_manager' || worker.role === 'manager') {
-            setCurrentView('tasks');
-            window.history.pushState({}, '', '/tasks');
-          } else if (worker.role === 'worker') {
-            setCurrentView('worker');
-            window.history.pushState({}, '', '/worker');
-          } else {
-            setCurrentView('dashboard');
-            window.history.pushState({}, '', '/dashboard');
-          }
+          // Already on account page - stay here (will show Properties by default)
+          setCurrentView('account');
+          return;
         } else if (path === '/dashboard') {
-          // Dashboard - Super Admin/Manager should go to tasks instead
-          if (worker.role === 'super_manager' || worker.role === 'manager') {
-            setCurrentView('tasks');
-            window.history.pushState({}, '', '/tasks');
-          } else {
-            setCurrentView('dashboard');
+          // Dashboard route -> redirect to account (Properties)
+          setCurrentView('account');
+          window.history.pushState({}, '', '/account');
+          return;
+        } else if (path === '/' || path === '/market') {
+          // Root or market - stay on market (public)
+          if (currentView !== 'market') {
+            setCurrentView('market');
           }
+          return;
         } else {
-          // Default: Super Admin/Manager -> tasks, Workers -> worker app, others -> dashboard
-          if (worker.role === 'super_manager' || worker.role === 'manager') {
-            setCurrentView('tasks');
-            window.history.pushState({}, '', '/tasks');
-          } else if (worker.role === 'worker') {
-            setCurrentView('worker');
-            window.history.pushState({}, '', '/worker');
-          } else {
-            setCurrentView('dashboard');
-            window.history.pushState({}, '', '/dashboard');
-          }
+          // Default: All users go to account (Properties category) after login
+          setCurrentView('account');
+          window.history.pushState({}, '', '/account');
         }
       } else {
         console.log('⚠️ App: No worker, showing login if needed');
@@ -224,27 +212,12 @@ const AppContent: React.FC = () => {
   }, [worker, pendingPropertyView]);
 
   // Handle redirect after login on account page (only if no pending property)
+  // Note: Now all users stay on account page (Properties category by default)
+  // This useEffect is kept for potential future customizations but doesn't redirect anymore
   useEffect(() => {
     if (worker && currentView === 'account' && !pendingPropertyView) {
-      console.log('🔄 Post-login: Redirecting from account page, worker role:', worker.role);
-      // Small delay to ensure pendingPropertyView useEffect runs first if needed
-      const timer = setTimeout(() => {
-        // Double-check pendingPropertyView wasn't set in the meantime
-        if (!pendingPropertyView) {
-          // Redirect based on role
-          if (worker.role === 'super_manager' || worker.role === 'manager') {
-            setCurrentView('tasks');
-            window.history.pushState({}, '', '/tasks');
-          } else if (worker.role === 'worker') {
-            setCurrentView('worker');
-            window.history.pushState({}, '', '/worker');
-          } else {
-            setCurrentView('dashboard');
-            window.history.pushState({}, '', '/dashboard');
-          }
-        }
-      }, 100);
-      return () => clearTimeout(timer);
+      console.log('🔄 Post-login: User logged in, staying on account page (Properties category)');
+      // All users stay on account page - AccountDashboard defaults to Properties category
     }
   }, [worker, currentView, pendingPropertyView]);
 
@@ -485,7 +458,11 @@ const AppContent: React.FC = () => {
     if (currentView === 'market') {
       return (
         <div className="animate-fadeIn">
-          <Marketplace onListingClick={handleMarketListingClick} />
+          <Marketplace 
+            onListingClick={handleMarketListingClick} 
+            properties={properties}
+            loading={loading}
+          />
         </div>
       );
     }
