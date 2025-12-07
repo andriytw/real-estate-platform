@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS task_workflows (
   verified_by uuid REFERENCES profiles(id),
   
   status text DEFAULT 'active' CHECK (status IN ('active', 'submitted', 'verified', 'rejected')),
-  created_at timestamptz DEFAULTnow(),
+  created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
 
