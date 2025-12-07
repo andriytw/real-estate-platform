@@ -1,14 +1,13 @@
-
 import React from 'react';
-import { Building2, Home, Globe, Sun, ChevronLeft, ShoppingBag, LogOut } from 'lucide-react';
+import { Building2, Home, Globe, Sun, ChevronLeft, ShoppingBag, LogOut, Layout, CheckSquare } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 
 interface NavbarProps {
   showBackButton?: boolean;
   onBack?: () => void;
   onBecomePartner?: () => void;
-  onNavigate?: (view: 'dashboard' | 'market' | 'account') => void;
-  currentView?: 'dashboard' | 'booking' | 'market' | 'account';
+  onNavigate?: (view: 'dashboard' | 'market' | 'account' | 'tasks') => void;
+  currentView?: 'dashboard' | 'booking' | 'market' | 'account' | 'test-db' | 'worker' | 'admin-tasks' | 'register' | 'tasks';
 }
 
 const Navbar: React.FC<NavbarProps> = ({ showBackButton, onBack, onBecomePartner, onNavigate, currentView }) => {
@@ -23,6 +22,8 @@ const Navbar: React.FC<NavbarProps> = ({ showBackButton, onBack, onBecomePartner
     }
   };
   
+  const isManagerOrAdmin = worker && (worker.role === 'manager' || worker.role === 'super_manager');
+
   return (
     <nav className="h-16 bg-[#111315] border-b border-gray-800 flex items-center justify-between px-6 sticky top-0 z-50">
       {/* Left Section */}
@@ -36,7 +37,7 @@ const Navbar: React.FC<NavbarProps> = ({ showBackButton, onBack, onBecomePartner
         </div>
 
         {/* Navigation or Back Button */}
-        {showBackButton && currentView !== 'market' && currentView !== 'account' ? (
+        {showBackButton && currentView !== 'market' && currentView !== 'account' && currentView !== 'tasks' ? (
           <button 
             onClick={onBack}
             className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm font-medium pl-4 border-l border-gray-700"
@@ -52,9 +53,15 @@ const Navbar: React.FC<NavbarProps> = ({ showBackButton, onBack, onBecomePartner
             >
               Home
             </button>
-            <a href="#" className="hover:text-emerald-400 transition-colors">Features</a>
-            <a href="#" className="hover:text-emerald-400 transition-colors">About</a>
-            <a href="#" className="hover:text-emerald-400 transition-colors">Contact</a>
+            {isManagerOrAdmin && (
+              <button 
+                onClick={() => onNavigate?.('tasks')}
+                className={`flex items-center gap-2 ${currentView === 'tasks' ? 'text-blue-400 font-bold' : 'hover:text-blue-400'} transition-colors`}
+              >
+                <Layout className="w-4 h-4" />
+                Tasks
+              </button>
+            )}
             <button 
               onClick={() => onNavigate?.('market')}
               className={`flex items-center gap-2 ${currentView === 'market' ? 'text-emerald-500 font-bold' : 'hover:text-emerald-400'} transition-colors`}
@@ -93,7 +100,7 @@ const Navbar: React.FC<NavbarProps> = ({ showBackButton, onBack, onBecomePartner
           <Globe className="w-3 h-3" />
           <span>EN</span>
         </button>
-
+        
         <button className="text-gray-400 hover:text-white transition-colors">
           <Sun className="w-5 h-5" />
         </button>

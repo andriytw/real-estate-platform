@@ -6,11 +6,14 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '');
     return {
       server: {
-        port: 3000,
-        host: '0.0.0.0',
+        port: 5173,
+        host: true, // Listen on all addresses
+        strictPort: false,
         hmr: {
-          clientPort: 3000,
+          clientPort: 5173,
         },
+        cors: true,
+        allowedHosts: ['all', 'localhost', '127.0.0.1'],
       },
       plugins: [react()],
       define: {
@@ -38,8 +41,8 @@ export default defineConfig(({ mode }) => {
         }
       },
       preview: {
-        port: 3000,
-        host: '0.0.0.0',
+        port: 5173,
+        host: true,
       }
     };
 });

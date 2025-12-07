@@ -340,6 +340,9 @@ export type TaskType =
 // open → assigned → done_by_worker → verified
 export type TaskStatus = 'open' | 'assigned' | 'done_by_worker' | 'verified' | 'pending' | 'review' | 'archived' | 'completed';
 
+
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+
 export interface CalendarEvent {
   id: string;
   title: string; 
@@ -360,8 +363,51 @@ export interface CalendarEvent {
     electricity: string;
     water: string;
     gas: string;
-  }; 
+  };
+  
+  // Kanban Fields
+  priority?: TaskPriority;
+  isIssue?: boolean;
+  managerId?: string;
+  workerId?: string; // Synced with assignedWorkerId, preferred source of truth
+  department?: 'facility' | 'accounting' | 'sales' | 'general';
+  images?: string[];
+  checklist?: Array<{text: string; checked: boolean}>;
+  locationText?: string;
 }
+
+export interface TaskWorkflow {
+  id: string;
+  taskId: string;
+  workerId: string;
+  startedAt?: string;
+  photosBefore?: string[];
+  checklistCompleted?: boolean[]; // Or detailed objects
+  photosAfter?: string[];
+  completedAt?: string;
+  verifiedAt?: string;
+  verifiedBy?: string;
+  status: 'active' | 'submitted' | 'verified' | 'rejected';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskComment {
+  id: string;
+  taskId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface KanbanColumn {
+  id: string;
+  title: string;
+  type: 'backlog' | 'worker' | 'manager' | 'admin';
+  workerId?: string; // If it's a person's column
+  tasks: CalendarEvent[];
+}
+
 
 // ==================== Smart Chat Types ====================
 

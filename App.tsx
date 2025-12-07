@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Navbar from './components/Navbar';
 import FilterBar from './components/FilterBar';
 import PropertyCard from './components/PropertyCard';
@@ -12,6 +12,7 @@ import LoginPage from './components/LoginPage';
 import RegisterPage from './components/RegisterPage';
 import WorkerMobileApp from './components/WorkerMobileApp';
 import AdminTasksBoard from './components/AdminTasksBoard';
+import KanbanBoard from './components/kanban/KanbanBoard';
 import { WorkerProvider, useWorker } from './contexts/WorkerContext';
 import { propertiesService } from './services/supabaseService';
 import { Property, FilterState, RequestData } from './types';
@@ -23,29 +24,45 @@ const AppContent: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'booking' | 'market' | 'account' | 'test-db' | 'worker' | 'admin-tasks' | 'register'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'booking' | 'market' | 'account' | 'test-db' | 'worker' | 'admin-tasks' | 'register' | 'tasks'>('dashboard');
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
   const [prefilledRequestData, setPrefilledRequestData] = useState<Partial<RequestData> | undefined>(undefined);
   const [filters, setFilters] = useState<FilterState>({
-    city: 'Any',
-    district: 'Any',
-    rooms: 'Any',
-    floor: 'Any',
-    elevator: 'Any',
-    pets: 'Any',
-    status: 'Any'
+    city: '',
+    district: '',
+    rooms: '',
+    floor: '',
+    elevator: '',
+    pets: '',
+    status: ''
   });
   const [authTimeoutReached, setAuthTimeoutReached] = useState(false);
 
-  // Timeout for auth loading
+  // Force show login if loading takes too long (fallback)
   useEffect(() => {
-    if (authLoading && !authTimeoutReached) {
-      const timer = setTimeout(() => {
+    const timer = setTimeout(() => {
+      if (authLoading) {
+        console.warn('⚠️ App: Auth loading timed out (6s), forcing login check');
         setAuthTimeoutReached(true);
-      }, 6000);
-      return () => clearTimeout(timer);
-    } else if (!authLoading) {
-      setAuthTimeoutReached(false);
+      }
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [authLoading]);
+
+  // Clear Supabase cache if loading fails aggressively
+  useEffect(() => {
+    if (authTimeoutReached && authLoading) {
+      console.log('🧹 Clearing Supabase cache due to timeout');
+      try {
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith('sb-')) localStorage.removeItem(key);
+        });
+        Object.keys(sessionStorage).forEach(key => {
+          if (key.startsWith('sb-')) sessionStorage.removeItem(key);
+        });
+      } catch (e) {
+        console.error('Error clearing cache', e);
+      }
     }
   }, [authLoading, authTimeoutReached]);
 
@@ -81,6 +98,8 @@ const AppContent: React.FC = () => {
       setCurrentView('admin-tasks');
     } else if (path === '/register') {
       setCurrentView('register');
+    } else if (path === '/tasks') {
+      setCurrentView('tasks');
     }
   }, []);
 
@@ -91,25 +110,29 @@ const AppContent: React.FC = () => {
         console.log('✅ App: Worker loaded, checking permissions:', worker.name, worker.role);
         const path = window.location.pathname;
         if (path === '/worker' && worker.role !== 'worker') {
-          console.log('⚠️ App: Redirecting worker view - wrong role');
           setCurrentView('dashboard');
           window.history.pushState({}, '', '/dashboard');
-        } else if (path === '/admin/tasks' && worker.role !== 'super_manager') {
-          console.log('⚠️ App: Redirecting admin-tasks view - wrong role');
+        } else if (path === '/tasks' && worker.role === 'worker') {
+           // Workers shouldn't see full board, redirect to mobile app
+           setCurrentView('worker');
+           window.history.pushState({}, '', '/worker');
+        } else if (path === '/worker' && worker.role === 'worker') {
+          setCurrentView('worker');
+        } else if (path === '/tasks') {
+          setCurrentView('tasks');
+        } else if (path === '/account' || path === '/dashboard') {
+          // Stay on current view
+        } else {
+          // Default
           setCurrentView('dashboard');
           window.history.pushState({}, '', '/dashboard');
-        } else if (path === '/account' || path === '/worker' || path === '/admin/tasks') {
-          // Ensure we're on the right view after login
-          if (path === '/worker') {
-            setCurrentView('worker');
-          } else if (path === '/admin/tasks') {
-            setCurrentView('admin-tasks');
-          } else {
-            setCurrentView('account');
-          }
         }
       } else {
         console.log('⚠️ App: No worker, showing login if needed');
+        const protectedPaths = ['/account', '/worker', '/admin/tasks', '/tasks'];
+        if (protectedPaths.includes(window.location.pathname)) {
+          setCurrentView('account'); // This will render LoginPage
+        }
       }
     }
   }, [worker, authLoading]);
@@ -163,274 +186,255 @@ const AppContent: React.FC = () => {
   // Filter properties
   const filteredProperties = useMemo(() => {
     return properties.filter(property => {
-      if (filters.city !== 'Any' && property.city !== filters.city) return false;
-      if (filters.district !== 'Any' && property.district !== filters.district) return false;
-      if (filters.rooms !== 'Any') {
-        const minRooms = parseInt(filters.rooms.replace('+', ''));
-        if (property.rooms < minRooms) return false;
-      }
-      if (filters.floor !== 'Any') {
-        const propertyFloor = property.details?.floor || property.floor || 0;
-        if (filters.floor === 'Ground' && propertyFloor !== 0) return false;
-        else if (filters.floor === '4+' && propertyFloor < 4) return false;
-        else if (filters.floor !== 'Ground' && filters.floor !== '4+') {
-          const filterFloor = parseInt(filters.floor);
-          if (propertyFloor !== filterFloor) return false;
-        }
-      }
-      if (filters.elevator !== 'Any') {
-        const hasElevator = property.building?.elevator === 'Yes' || property.building?.elevator === 'Unknown';
-        if (filters.elevator === 'Yes' && !hasElevator) return false;
-        else if (filters.elevator === 'No' && hasElevator && property.building?.elevator !== 'No') return false;
-      }
-      if (filters.pets !== 'Any') {
-        const allowsPets = property.building?.pets === 'Allowed' || property.building?.pets === 'Yes';
-        if (filters.pets === 'Allowed' && !allowsPets) return false;
-        else if (filters.pets === 'Not Allowed' && allowsPets) return false;
-      }
-      if (filters.status !== 'Any' && property.status !== filters.status) return false;
+      if (filters.city && property.city !== filters.city) return false;
+      if (filters.district && property.district !== filters.district) return false;
+      if (filters.rooms && property.rooms.toString() !== filters.rooms) return false;
+      if (filters.floor && property.floor?.toString() !== filters.floor) return false;
+      // if (filters.elevator && property.building.elevator !== filters.elevator) return false;
+      // if (filters.pets && property.building.pets !== filters.pets) return false;
+      if (filters.status && property.status !== filters.status) return false;
       return true;
     });
-  }, [filters, properties]);
+  }, [properties, filters]);
 
-  React.useEffect(() => {
-    if (!selectedProperty) return;
-    if (filteredProperties.length > 0 && !filteredProperties.find(p => p.id === selectedProperty.id)) {
-      setSelectedProperty(filteredProperties[0]);
-    } else if (filteredProperties.length === 0 && properties.length > 0) {
-      setSelectedProperty(properties[0]);
-    }
-  }, [filteredProperties, selectedProperty?.id, properties]);
-
-  // Listen for openRequestForm event
-  useEffect(() => {
-    const handleOpenRequestForm = (event: CustomEvent) => {
-      const { propertyId } = event.detail;
-      if (propertyId) {
-        const property = properties.find(p => p.id === propertyId);
-        if (property) {
-          setSelectedProperty(property);
-          setPrefilledRequestData(undefined);
-          setCurrentView('booking');
-        }
-      } else {
-        setCurrentView('booking');
-      }
-    };
-    window.addEventListener('openRequestForm', handleOpenRequestForm as EventListener);
-    return () => {
-      window.removeEventListener('openRequestForm', handleOpenRequestForm as EventListener);
-    };
-  }, [properties]);
+  const handleFilterChange = (newFilters: FilterState) => {
+    setFilters(newFilters);
+  };
 
   const renderContent = () => {
-    console.log('🔄 renderContent called:', { currentView, worker: worker?.name, authLoading });
+    console.log('Rendering content, currentView:', currentView, 'Auth loading:', authLoading);
     
-    // Register page is public
-    if (currentView === 'register') {
-      return <RegisterPage />;
+    if (authLoading) {
+      return (
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-white">Loading...</div>
+        </div>
+      );
     }
 
-    const protectedViews = ['account', 'worker', 'admin-tasks'];
-    
-    if (protectedViews.includes(currentView)) {
-      if (authLoading && !authTimeoutReached) {
-        console.log('⏳ Showing loading screen...');
+    // Register Page (Public)
+    if (currentView === 'register') {
+      return <RegisterPage onRegisterSuccess={() => {
+        setCurrentView('account');
+        window.history.pushState({}, '', '/account');
+      }} />;
+    }
+
+    // Account / Login View
+    if (currentView === 'account') {
+      if (worker) {
         return (
-          <div className="flex items-center justify-center h-screen">
-            <div className="text-center">
-              <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-gray-400">Loading...</p>
-            </div>
+          <div className="animate-fadeIn">
+            <AccountDashboard />
+          </div>
+        );
+      } else {
+        return (
+          <div className="animate-fadeIn">
+            <LoginPage onLoginSuccess={() => {
+              // Role based redirect
+              // We rely on useEffect to redirect, but trigger state update
+              // App will check role and set view
+            }} />
           </div>
         );
       }
-      
-      if (authTimeoutReached || (authLoading && authTimeoutReached)) {
-        console.log('⏱️ Showing login (timeout)...');
-        return <LoginPage onLoginSuccess={() => {
-          console.log('✅ Login success callback called (timeout)');
-          setAuthTimeoutReached(false);
-          // The worker will be loaded by WorkerContext, 
-          // useEffect will handle the view change when worker is available
-          const path = window.location.pathname;
-          if (path === '/worker') {
-            setCurrentView('worker');
-          } else if (path === '/admin/tasks') {
-            setCurrentView('admin-tasks');
-          } else {
-            setCurrentView('account');
-          }
-        }} />;
-      }
-      
-      if (!worker) {
-        console.log('🔒 No worker, showing login...');
-        return <LoginPage onLoginSuccess={() => {
-          console.log('✅ Login success callback called');
-          // The worker will be loaded by WorkerContext, 
-          // useEffect will handle the view change when worker is available
-          const path = window.location.pathname;
-          if (path === '/worker') {
-            setCurrentView('worker');
-          } else if (path === '/admin/tasks') {
-            setCurrentView('admin-tasks');
-          } else {
-            setCurrentView('account');
-          }
-        }} />;
-      }
-      
-      if (worker) {
-        console.log('✅ Worker exists, checking permissions...');
-        if (currentView === 'worker' && worker.role !== 'worker') {
-          console.log('⚠️ Wrong role for worker view, redirecting to dashboard');
-          setCurrentView('dashboard');
-          return null;
-        }
-        if (currentView === 'admin-tasks' && worker.role !== 'super_manager') {
-          console.log('⚠️ Wrong role for admin-tasks view, redirecting to dashboard');
-          setCurrentView('dashboard');
-          return null;
-        }
+    }
+
+    // Worker Mobile View
+    if (currentView === 'worker') {
+      if (worker && worker.role === 'worker') {
+        return <WorkerMobileApp />;
+      } else if (worker) {
+        // Manager trying to access worker view -> redirect to dashboard
+        return (
+          <div className="flex items-center justify-center min-h-screen text-white">
+            Redirecting to dashboard...
+          </div>
+        );
+      } else {
+        return <LoginPage onLoginSuccess={() => setCurrentView('worker')} />;
       }
     }
-    
-    console.log('📄 Rendering view:', currentView);
 
-    switch (currentView) {
-      case 'worker':
-        console.log('📱 Rendering WorkerMobileApp');
-        return <WorkerMobileApp />;
-      case 'admin-tasks':
-        console.log('📋 Rendering AdminTasksBoard');
-        return <AdminTasksBoard />;
-      case 'test-db':
-        console.log('🧪 Rendering TestDB');
-        return <TestDB />;
-      case 'account':
-        console.log('👤 Rendering AccountDashboard');
-        return <AccountDashboard />;
-      case 'market':
-        console.log('🏪 Rendering Marketplace');
-        return <Marketplace onListingClick={handleMarketListingClick} properties={properties} />;
-      case 'booking':
-        console.log('📅 Rendering BookingForm');
-        return (
-          <div className="flex flex-1 overflow-hidden">
-            <div className="hidden lg:block w-1/2 overflow-y-auto border-r border-gray-800 bg-[#0D0F11] p-8">
-              {selectedProperty && (
-                <PropertyDetails 
-                  property={selectedProperty} 
-                  hideActions={true} 
-                />
-              )}
-            </div>
-            <div className="w-full lg:w-1/2 overflow-y-auto bg-[#111315]">
-              <BookingForm 
-                prefilledData={prefilledRequestData}
-                propertyId={selectedProperty?.id || ''}
-                onAddRequest={(request) => {
-                  const existingRequests = JSON.parse(localStorage.getItem('requests') || '[]');
-                  existingRequests.push(request);
-                  localStorage.setItem('requests', JSON.stringify(existingRequests));
-                  window.dispatchEvent(new CustomEvent('requestAdded', { detail: request }));
-                  alert('Request sent successfully! Our team will contact you soon.');
-                  setCurrentView('dashboard');
-                  setPrefilledRequestData(undefined);
+    // Kanban Board View (Tasks)
+    if (currentView === 'tasks') {
+      if (worker) {
+        return <KanbanBoard />;
+      } else {
+        return <LoginPage onLoginSuccess={() => setCurrentView('tasks')} />;
+      }
+    }
+
+    // Admin Tasks Board (Legacy? Or remove if replaced)
+    if (currentView === 'admin-tasks') {
+      return <AdminTasksBoard />;
+    }
+
+    // Test DB View
+    if (currentView === 'test-db') {
+      return <TestDB />;
+    }
+
+    // Booking View
+    if (currentView === 'booking') {
+      return (
+        <div className="container mx-auto px-4 py-8 animate-fadeIn">
+          <button 
+            onClick={() => setCurrentView('dashboard')}
+            className="mb-6 text-emerald-500 hover:text-emerald-400 font-medium flex items-center gap-2 transition-colors"
+          >
+            ← Back to Dashboard
+          </button>
+          {selectedProperty ? (
+            <BookingForm 
+              property={selectedProperty} 
+              onSuccess={() => setCurrentView('dashboard')}
+            />
+          ) : (
+            <div className="text-center text-white py-12">Please select a property first</div>
+          )}
+        </div>
+      );
+    }
+
+    // Market View
+    if (currentView === 'market') {
+      return (
+        <div className="animate-fadeIn">
+          <Marketplace onItemClick={handleMarketListingClick} />
+        </div>
+      );
+    }
+
+    // Default: Dashboard (Properties List)
+    return (
+      <main className="container mx-auto px-4 py-8 animate-fadeIn">
+        {/* Hero Section */}
+        <div className="text-center mb-12">
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight">
+            Find Your Perfect <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-500">Home</span>
+          </h1>
+          <p className="text-gray-400 text-lg max-w-2xl mx-auto">
+            Discover a wide range of properties in your favorite cities. 
+            From cozy apartments to spacious houses, we have it all.
+          </p>
+        </div>
+
+        {/* Filters */}
+        <div className="sticky top-20 z-40 mb-8 backdrop-blur-md bg-[#0D0F11]/80 p-2 rounded-2xl border border-gray-800/50 shadow-xl">
+          <FilterBar onFiltersChange={handleFilterChange} />
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-8 text-center">
+            <p className="text-red-400 mb-2">{error}</p>
+            <button 
+              onClick={loadProperties}
+              className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg text-sm transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+
+        {/* Property Grid */}
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="bg-[#1C1F24] rounded-2xl h-[400px] animate-pulse border border-gray-800" />
+            ))}
+          </div>
+        ) : filteredProperties.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {filteredProperties.map((property) => (
+              <PropertyCard 
+                key={property.id} 
+                property={property} 
+                onClick={() => {
+                  setSelectedProperty(property);
+                  // Show details modal or separate page? 
+                  // For now let's assume it opens details below or we scroll to it
+                  // Ideally open a modal
                 }}
+                onBook={() => {
+                  setSelectedProperty(property);
+                  setCurrentView('booking');
+                }}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-gray-400 text-lg">No properties found matching your criteria.</p>
+            <button 
+              onClick={() => setFilters({ city: '', district: '', rooms: '', floor: '', elevator: '', pets: '', status: '' })}
+              className="mt-4 text-emerald-500 hover:text-emerald-400 font-medium"
+            >
+              Clear all filters
+            </button>
+          </div>
+        )}
+
+        {/* Property Details Modal (if selected and not booking) */}
+        {selectedProperty && currentView === 'dashboard' && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+            <div className="bg-[#1C1F24] w-full max-w-6xl rounded-2xl overflow-hidden shadow-2xl my-8 border border-gray-800 relative">
+              <button 
+                onClick={() => setSelectedProperty(null)}
+                className="absolute top-4 right-4 z-10 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors"
+              >
+                ✕
+              </button>
+              <PropertyDetails 
+                property={selectedProperty} 
+                onBook={() => setCurrentView('booking')}
+                onClose={() => setSelectedProperty(null)}
               />
             </div>
           </div>
-        );
-      case 'dashboard':
-      default:
-        console.log('🏠 Rendering Dashboard, properties:', properties.length, 'filtered:', filteredProperties.length);
-        return (
-          <>
-            <FilterBar filters={filters} onFiltersChange={setFilters} />
-            <div className="flex flex-1 overflow-hidden">
-              <div className="w-full lg:w-[420px] flex-shrink-0 border-r border-gray-800 overflow-y-auto p-4 space-y-4 bg-[#111315]">
-                {loading ? (
-                  <div className="text-center text-gray-400 py-8">
-                    <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                    <p>Loading...</p>
-                  </div>
-                ) : filteredProperties.length > 0 ? (
-                  filteredProperties.map((property) => (
-                    <PropertyCard 
-                      key={property.id} 
-                      property={property} 
-                      isSelected={selectedProperty?.id === property.id}
-                      onClick={() => setSelectedProperty(property)}
-                    />
-                  ))
-                ) : (
-                  <div className="text-center text-gray-400 py-8">
-                    <p>No properties match the selected filters</p>
-                    <button 
-                      onClick={() => setFilters({
-                        city: 'Any',
-                        district: 'Any',
-                        rooms: 'Any',
-                        floor: 'Any',
-                        elevator: 'Any',
-                        pets: 'Any',
-                        status: 'Any'
-                      })}
-                      className="mt-4 text-emerald-500 hover:text-emerald-400"
-                    >
-                      Reset filters
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="flex-1 overflow-y-auto bg-[#0D0F11] p-6 lg:p-8">
-                {loading ? (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="text-center">
-                      <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                      <p className="text-gray-400">Loading properties...</p>
-                    </div>
-                  </div>
-                ) : selectedProperty ? (
-                  <PropertyDetails 
-                    property={selectedProperty} 
-                    onBookViewing={() => setCurrentView('booking')}
-                  />
-                ) : (
-                  <div className="flex items-center justify-center h-full">
-                    <p className="text-gray-400">No property selected</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
-        );
-    }
+        )}
+      </main>
+    );
   };
-  
+
   return (
-    <div className="flex flex-col h-screen bg-[#111315] overflow-hidden font-sans text-white">
+    <div className="min-h-screen bg-[#0D0F11] text-gray-100 font-sans selection:bg-emerald-500/30">
       <Navbar 
-        showBackButton={currentView === 'booking' || currentView === 'account' || currentView === 'test-db'} 
+        showBackButton={currentView !== 'dashboard'}
         onBack={() => setCurrentView('dashboard')}
         onBecomePartner={() => setIsPartnerModalOpen(true)}
-        onNavigate={(view) => setCurrentView(view)}
         currentView={currentView}
-      />
-
-      <PartnerModal 
-        isOpen={isPartnerModalOpen}
-        onClose={() => setIsPartnerModalOpen(false)}
+        onNavigate={(view) => {
+          console.log('Navigating to:', view);
+          if (view === 'tasks') {
+             // Check permissions? Handled in render
+             setCurrentView('tasks');
+             window.history.pushState({}, '', '/tasks');
+          } else if (view === 'account') {
+             setCurrentView('account');
+             window.history.pushState({}, '', '/account');
+          } else if (view === 'dashboard') {
+             setCurrentView('dashboard');
+             window.history.pushState({}, '', '/dashboard');
+          } else if (view === 'market') {
+             setCurrentView('market');
+             window.history.pushState({}, '', '/market');
+          }
+        }}
       />
       
       {renderContent()}
+
+      <PartnerModal 
+        isOpen={isPartnerModalOpen} 
+        onClose={() => setIsPartnerModalOpen(false)} 
+      />
     </div>
   );
 };
 
-// Main App component with WorkerProvider
 const App: React.FC = () => {
   return (
     <WorkerProvider>

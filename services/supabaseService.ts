@@ -1,7 +1,155 @@
 import { createClient } from '../utils/supabase/client';
-import { Property, Booking, OfferData, InvoiceData, Lead, RequestData, CalendarEvent, Room, CompanyDetails } from '../types';
+import { Property, Booking, OfferData, InvoiceData, Lead, RequestData, CalendarEvent, Room, CompanyDetails, Worker, TaskWorkflow, TaskComment } from '../types';
 
 const supabase = createClient();
+
+// ==================== WORKERS ====================
+export const workersService = {
+  async getAll(): Promise<Worker[]> {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('name', { ascending: true });
+    
+    if (error) throw error;
+    return data.map(transformWorkerFromDB);
+  },
+
+  async getById(id: string): Promise<Worker | null> {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) return null;
+    return transformWorkerFromDB(data);
+  }
+};
+
+// ==================== TASKS (KANBAN & CALENDAR) ====================
+export const tasksService = {
+  async getAll(filters?: { 
+    department?: string; 
+    workerId?: string; 
+    managerId?: string;
+    isIssue?: boolean;
+  }): Promise<CalendarEvent[]> {
+    let query = supabase
+      .from('calendar_events')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (filters?.department) {
+      if (filters.department === 'facility') {
+        // Include general tasks or tasks specifically for facility
+        // For now simple filter
+        query = query.eq('department', 'facility');
+      } else if (filters.department === 'accounting') {
+        query = query.eq('department', 'accounting');
+      }
+    }
+
+    if (filters?.workerId) {
+      query = query.eq('worker_id', filters.workerId);
+    }
+
+    if (filters?.managerId) {
+      query = query.eq('manager_id', filters.managerId);
+    }
+
+    if (filters?.isIssue !== undefined) {
+      query = query.eq('is_issue', filters.isIssue);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data.map(transformCalendarEventFromDB);
+  },
+
+  async create(task: Omit<CalendarEvent, 'id'>): Promise<CalendarEvent> {
+    const dbData = transformCalendarEventToDB(task);
+    
+    // Default logic for "Quick Task" (if date is missing, set to today)
+    if (!dbData.date && !dbData.is_issue) { // Don't force date on backlog issues if we want them dateless?
+       // Actually prompt said: "if I don't assign date/time -> automatically create for today current hour"
+       const now = new Date();
+       dbData.date = now.toISOString().split('T')[0];
+       dbData.time = `${now.getHours().toString().padStart(2, '0')}:00`;
+       dbData.day = now.getDate();
+    }
+
+    const { data, error } = await supabase
+      .from('calendar_events')
+      .insert([dbData])
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return transformCalendarEventFromDB(data);
+  },
+
+  async update(id: string, updates: Partial<CalendarEvent>): Promise<CalendarEvent> {
+    const dbData = transformCalendarEventToDB(updates as CalendarEvent);
+    // Remove undefined fields to avoid overwriting with null if not intended
+    Object.keys(dbData).forEach(key => dbData[key] === undefined && delete dbData[key]);
+
+    const { data, error } = await supabase
+      .from('calendar_events')
+      .update(dbData)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return transformCalendarEventFromDB(data);
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('calendar_events')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
+  },
+
+  // For Issue Reporting
+  async reportIssue(issue: {
+    title: string;
+    description: string;
+    images: string[];
+    department: 'facility' | 'accounting';
+    reporterId: string; // Worker ID
+  }): Promise<CalendarEvent> {
+    // Find department manager (simplified: just assigned to "unassigned" in that department for now, 
+    // or specific logic to find manager. In our logic: Issue falls into Manager's column.
+    // We need to know WHICH manager. For now, let's leave manager_id null, 
+    // and Managers will filter by "department + manager_id is null" OR we assign to a default manager.
+    // Better: Leave manager_id NULL, but set is_issue = true. 
+    // Managers columns will fetch issues where department matches.
+    
+    const task: any = {
+      title: issue.title,
+      description: issue.description,
+      images: issue.images,
+      department: issue.department,
+      is_issue: true,
+      priority: 'high', // Issues are usually high priority
+      status: 'pending',
+      // No date/time -> Backlog/Inbox
+    };
+
+    const { data, error } = await supabase
+      .from('calendar_events')
+      .insert([task])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return transformCalendarEventFromDB(data);
+  }
+};
 
 // ==================== PROPERTIES ====================
 export const propertiesService = {
@@ -214,6 +362,15 @@ export const invoicesService = {
     
     if (error) throw error;
     return transformInvoiceFromDB(data);
+  },
+  
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('invoices')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
   }
 };
 
@@ -280,45 +437,26 @@ export const requestsService = {
   }
 };
 
-// ==================== CALENDAR EVENTS ====================
-export const calendarEventsService = {
-  async getAll(): Promise<CalendarEvent[]> {
-    const { data, error } = await supabase
-      .from('calendar_events')
-      .select('*')
-      .order('date', { ascending: true });
-    
-    if (error) throw error;
-    return data.map(transformCalendarEventFromDB);
-  },
-
-  async create(event: Omit<CalendarEvent, 'id'>): Promise<CalendarEvent> {
-    const dbData = transformCalendarEventToDB(event);
-    const { data, error } = await supabase
-      .from('calendar_events')
-      .insert([dbData])
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return transformCalendarEventFromDB(data);
-  },
-
-  async update(id: string, updates: Partial<CalendarEvent>): Promise<CalendarEvent> {
-    const dbData = transformCalendarEventToDB(updates as CalendarEvent);
-    const { data, error } = await supabase
-      .from('calendar_events')
-      .update(dbData)
-      .eq('id', id)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return transformCalendarEventFromDB(data);
-  }
-};
+// ==================== CALENDAR EVENTS (Legacy / Replaced by tasksService) ====================
+// Keep for backward compatibility or direct calendar usage
+export const calendarEventsService = tasksService;
 
 // ==================== TRANSFORMERS ====================
+
+function transformWorkerFromDB(db: any): Worker {
+  return {
+    id: db.id,
+    name: db.name || 'Unknown',
+    email: db.email || '',
+    phone: db.phone,
+    department: db.department || 'facility',
+    role: db.role || 'worker',
+    managerId: db.manager_id,
+    isActive: db.is_active !== false,
+    createdAt: db.created_at,
+    updatedAt: db.updated_at,
+  };
+}
 
 function transformPropertyFromDB(db: any): Property {
   return {
@@ -665,10 +803,19 @@ function transformCalendarEventFromDB(db: any): CalendarEvent {
     date: db.date,
     description: db.description,
     assignee: db.assignee,
-    assignedWorkerId: db.assigned_worker_id,
+    assignedWorkerId: db.worker_id, // Use worker_id preferred
     hasUnreadMessage: db.has_unread_message || false,
     status: db.status,
     meterReadings: db.meter_readings,
+    // Kanban fields
+    priority: db.priority || 'medium',
+    isIssue: db.is_issue || false,
+    managerId: db.manager_id,
+    workerId: db.worker_id,
+    department: db.department,
+    images: db.images || [],
+    checklist: db.checklist || [],
+    locationText: db.location_text,
   };
 }
 
@@ -685,10 +832,18 @@ function transformCalendarEventToDB(event: CalendarEvent): any {
     date: event.date,
     description: event.description,
     assignee: event.assignee,
-    assigned_worker_id: event.assignedWorkerId,
+    assigned_worker_id: event.workerId || event.assignedWorkerId, // legacy support
     has_unread_message: event.hasUnreadMessage,
     status: event.status,
     meter_readings: event.meterReadings,
+    // Kanban fields
+    priority: event.priority,
+    is_issue: event.isIssue,
+    manager_id: event.managerId,
+    worker_id: event.workerId || event.assignedWorkerId,
+    department: event.department,
+    images: event.images,
+    checklist: event.checklist,
+    location_text: event.locationText,
   };
 }
-
