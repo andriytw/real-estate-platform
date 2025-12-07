@@ -4,7 +4,7 @@ import { FilterState } from '../types';
 
 interface FilterBarProps {
   filters: FilterState;
-  onFilterChange: (filters: FilterState) => void;
+  onFiltersChange: (filters: FilterState) => void;
 }
 
 const FilterDropdown: React.FC<{ 
@@ -17,7 +17,7 @@ const FilterDropdown: React.FC<{
     <label className="text-xs text-gray-400 font-medium ml-1">{label}</label>
     <div className="relative">
       <select 
-        value={value}
+        value={value || 'Any'} // Fallback if value is undefined
         onChange={(e) => onChange(e.target.value)}
         className="w-full appearance-none bg-[#1C1F24] text-sm text-white border border-gray-700 hover:border-gray-600 rounded-lg py-2.5 px-3 pr-8 focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer"
       >
@@ -30,13 +30,16 @@ const FilterDropdown: React.FC<{
   </div>
 );
 
-const FilterBar: React.FC<FilterBarProps> = ({ filters, onFilterChange }) => {
+const FilterBar: React.FC<FilterBarProps> = ({ filters, onFiltersChange }) => {
+  // Guard against undefined filters
+  if (!filters) return null;
+
   const handleFilterChange = (field: keyof FilterState, value: string) => {
-    onFilterChange({ ...filters, [field]: value });
+    onFiltersChange({ ...filters, [field]: value });
   };
 
   const handleReset = () => {
-    onFilterChange({
+    onFiltersChange({
       city: 'Any',
       district: 'Any',
       rooms: 'Any',
@@ -101,7 +104,7 @@ const FilterBar: React.FC<FilterBarProps> = ({ filters, onFilterChange }) => {
             Reset
           </button>
           <button 
-            onClick={() => onFilterChange(filters)}
+            onClick={() => onFiltersChange(filters)}
             className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold py-2.5 px-4 rounded-lg transition-colors shadow-lg shadow-emerald-900/20"
           >
             Apply Filters
