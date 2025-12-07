@@ -208,6 +208,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
         console.error('❌ Supabase auth error:', error);
         console.error('Error code:', error.status);
         console.error('Error message:', error.message);
+        alert(`Login failed: ${error.message}`); // Show alert
         throw error;
       }
 
