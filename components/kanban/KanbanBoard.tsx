@@ -168,20 +168,19 @@ const KanbanBoard: React.FC = () => {
   };
 
   // Handle column creation
-  const handleColumnCreated = (workerId: string, type: 'manager' | 'worker') => {
+  const handleColumnCreated = React.useCallback((workerId: string, type: 'manager' | 'worker') => {
     console.log('🔄 Creating column for worker:', workerId, 'type:', type);
-    console.log('📋 Current customColumns:', customColumns);
     
-    if (!customColumns.includes(workerId)) {
-      setCustomColumns(prev => {
-        const updated = [...prev, workerId];
-        console.log('✅ Column added. New customColumns:', updated);
-        return updated;
-      });
-    } else {
-      console.warn('⚠️ Column already exists for worker:', workerId);
-    }
-  };
+    setCustomColumns(prev => {
+      if (prev.includes(workerId)) {
+        console.warn('⚠️ Column already exists for worker:', workerId);
+        return prev; // Don't modify if already exists
+      }
+      const updated = [...prev, workerId];
+      console.log('✅ Column added. New customColumns count:', updated.length);
+      return updated;
+    });
+  }, []); // Empty deps - function doesn't depend on any state
 
   // Handle column deletion (only if empty or all tasks completed)
   const handleColumnDeleted = (workerId: string) => {

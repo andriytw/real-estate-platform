@@ -36,6 +36,22 @@ const ColumnCreateModal: React.FC<ColumnCreateModalProps> = ({
   // Але фільтруємо тих, хто вже має колонку
   const availableWorkers = filteredWorkers.filter(w => !existingColumnIds.includes(w.id));
 
+  // Use useMemo to compute filtered workers to avoid React error #310
+  const filteredWorkers = useMemo(() => {
+    return workers.filter(w => {
+      if (selectedType === 'manager') {
+        return w.role === 'manager';
+      } else {
+        return w.role === 'worker';
+      }
+    });
+  }, [workers, selectedType]);
+
+  // Use useMemo to compute available workers
+  const availableWorkers = useMemo(() => {
+    return filteredWorkers.filter(w => !existingColumnIds.includes(w.id));
+  }, [filteredWorkers, existingColumnIds]);
+
   // Debug logging (only when modal opens)
   useEffect(() => {
     if (isOpen) {
@@ -45,7 +61,8 @@ const ColumnCreateModal: React.FC<ColumnCreateModalProps> = ({
       console.log('  - existingColumnIds length:', existingColumnIds.length);
       console.log('  - availableWorkers count:', availableWorkers.length);
     }
-  }, [isOpen, selectedType]); // Only depend on isOpen and selectedType, not on arrays
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, selectedType]); // Only log when modal opens or type changes
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
