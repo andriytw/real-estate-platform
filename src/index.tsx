@@ -1,7 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-// We rely on CDN for styles now to avoid build issues
-// import './index.css'; 
+import './index.css'; // Restore custom styles (animations, scrollbar, base styles)
 import App from '../App';
 
 console.log('🚀 Starting app entry point...');

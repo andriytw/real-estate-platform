@@ -129,10 +129,16 @@ const AppContent: React.FC = () => {
         }
       } else {
         console.log('⚠️ App: No worker, showing login if needed');
+        const path = window.location.pathname;
         const protectedPaths = ['/account', '/worker', '/admin/tasks', '/tasks'];
-        if (protectedPaths.includes(window.location.pathname)) {
+        
+        // Redirect to login for protected paths
+        if (protectedPaths.includes(path)) {
           setCurrentView('account'); // This will render LoginPage
-        }
+          window.history.pushState({}, '', '/account');
+        } 
+        // For dashboard/market, let renderContent handle showing login
+        // Don't change currentView here to allow renderContent to intercept
       }
     }
   }, [worker, authLoading]);
@@ -218,6 +224,21 @@ const AppContent: React.FC = () => {
         setCurrentView('account');
         window.history.pushState({}, '', '/account');
       }} />;
+    }
+
+    // If not logged in and not on register, show login for protected/public pages
+    if (!worker && !authLoading) {
+      // Allow public pages (register already handled above)
+      // For dashboard/market, show login if not authenticated
+      if (currentView === 'dashboard' || currentView === 'market') {
+        return (
+          <div className="animate-fadeIn">
+            <LoginPage onLoginSuccess={() => {
+              // Role based redirect handled in useEffect
+            }} />
+          </div>
+        );
+      }
     }
 
     // Account / Login View

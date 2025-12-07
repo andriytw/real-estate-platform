@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import KanbanBoard from './KanbanBoard';
+import KanbanBoard from './kanban/KanbanBoard';
 import { useWorker } from '../contexts/WorkerContext';
 
 type DepartmentTab = 'facility' | 'accounting' | 'sales';
@@ -57,7 +57,9 @@ export default function AdminTasksBoard() {
 
         {/* Kanban Board for Active Department */}
         <div className="bg-gray-800 rounded-lg p-6">
-          <KanbanBoard department={activeDepartment} />
+          <KanbanBoard />
+          {/* Note: New KanbanBoard has internal department filter, 
+              but AdminTasksBoard tabs are kept for UI consistency */}
         </div>
       </div>
     </div>
