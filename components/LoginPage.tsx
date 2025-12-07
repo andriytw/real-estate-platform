@@ -11,17 +11,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [debugInfo, setDebugInfo] = useState<string>('');
-
-  useEffect(() => {
-    // Check env vars on mount
-    const url = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    
-    if (!url || !key) {
-      setDebugInfo('⚠️ Missing Env Vars in Vercel! Check Settings.');
-    }
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,13 +22,10 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     }
 
     try {
-      console.log('🔐 LoginPage: Starting login...');
       await login(email, password);
-      console.log('✅ LoginPage: Login successful, calling onLoginSuccess');
       // Wait a bit to ensure worker is loaded
       await new Promise(resolve => setTimeout(resolve, 500));
       if (onLoginSuccess) {
-        console.log('✅ LoginPage: Calling onLoginSuccess callback');
         await onLoginSuccess();
       }
     } catch (err: any) {
@@ -123,12 +109,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 </>
               )}
             </button>
-
-            {debugInfo && (
-              <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded text-yellow-400 text-xs font-mono break-all">
-                {debugInfo}
-              </div>
-            )}
           </form>
         </div>
       </div>
