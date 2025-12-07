@@ -225,17 +225,8 @@ const AppContent: React.FC = () => {
     console.log('🔵 Marketplace click:', listing);
     
     const handlePropertyClick = (prop: Property) => {
-      console.log('🔵 Handling property click, worker:', worker);
-      // If not logged in, save property and show login
-      if (!worker) {
-        console.log('🔵 Not logged in, showing login');
-        setPendingPropertyView(prop);
-        setCurrentView('account'); // This will render LoginPage
-        window.history.pushState({}, '', '/account');
-        return;
-      }
-      // If logged in, show PropertyDetails
-      console.log('🔵 Logged in, showing property details');
+      console.log('🔵 Showing property details (public access)');
+      // Always show PropertyDetails - no login required for viewing
       setSelectedProperty(prop);
       setCurrentView('property-details');
       window.history.pushState({}, '', `/property/${prop.id}`);
@@ -475,19 +466,8 @@ const AppContent: React.FC = () => {
       );
     }
 
-    // PropertyDetails View (Authenticated Only)
+    // PropertyDetails View (PUBLIC - доступна для перегляду без логіну)
     if (currentView === 'property-details') {
-      if (!worker) {
-        // If not logged in, show login
-        return (
-          <div className="animate-fadeIn">
-            <LoginPage onLoginSuccess={() => {
-              // PropertyDetails will be shown via useEffect after login
-            }} />
-          </div>
-        );
-      }
-      
       if (selectedProperty) {
         return (
           <div className="min-h-screen bg-[#0D0F11]">
@@ -503,10 +483,17 @@ const AppContent: React.FC = () => {
               </button>
               <PropertyDetails 
                 property={selectedProperty} 
+                worker={worker}
                 onBook={() => setCurrentView('booking')}
                 onClose={() => {
                   setSelectedProperty(null);
                   setCurrentView('market');
+                }}
+                onRequireLogin={() => {
+                  // Save property and redirect to login
+                  setPendingPropertyView(selectedProperty);
+                  setCurrentView('account');
+                  window.history.pushState({}, '', '/account');
                 }}
               />
             </div>

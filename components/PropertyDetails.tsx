@@ -6,7 +6,7 @@ import {
   Bell, Accessibility, Check, X, MoveVertical,
   ChevronLeft, ChevronRight
 } from 'lucide-react';
-import { Property } from '../types';
+import { Property, Worker } from '../types';
 import TourModal from './TourModal';
 import FloorPlanModal from './FloorPlanModal';
 import GalleryModal from './GalleryModal';
@@ -17,6 +17,8 @@ interface PropertyDetailsProps {
   property: Property;
   hideActions?: boolean;
   onBookViewing?: () => void;
+  worker?: Worker | null; // For checking if user is logged in
+  onRequireLogin?: () => void; // Callback when login is required
 }
 
 const DetailRow: React.FC<{ label: string; value: string | number | boolean; highlight?: boolean }> = ({ label, value }) => (
@@ -28,13 +30,31 @@ const DetailRow: React.FC<{ label: string; value: string | number | boolean; hig
   </div>
 );
 
-const PropertyDetails: React.FC<PropertyDetailsProps> = ({ property, hideActions = false, onBookViewing }) => {
+const PropertyDetails: React.FC<PropertyDetailsProps> = ({ 
+  property, 
+  hideActions = false, 
+  onBookViewing,
+  worker,
+  onRequireLogin
+}) => {
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [isFloorPlanOpen, setIsFloorPlanOpen] = useState(false);
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  // Function to check login before performing action
+  const handleActionClick = (action: () => void) => {
+    if (!worker && onRequireLogin) {
+      // Not logged in - redirect to login
+      console.log('🔒 Action requires login, redirecting...');
+      onRequireLogin();
+    } else {
+      // Logged in - perform action
+      action();
+    }
+  };
 
   const handleNextImage = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -97,7 +117,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({ property, hideActions
       {/* Hero Image Section */}
       <div 
         className="relative h-[400px] w-full rounded-xl overflow-hidden group shrink-0 bg-[#1C1F24] mb-6 cursor-pointer"
-        onClick={() => setIsGalleryOpen(true)}
+        onClick={() => handleActionClick(() => setIsGalleryOpen(true))}
       >
         <img 
           src={currentImage} 
@@ -192,19 +212,19 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({ property, hideActions
       {/* Media Tabs Buttons */}
       <div className="flex gap-4 mb-6">
         <button 
-          onClick={() => setIsTourOpen(true)}
+          onClick={() => handleActionClick(() => setIsTourOpen(true))}
           className="flex-1 bg-emerald-500 text-white font-bold py-3 text-sm rounded-md hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-900/20"
         >
           3D Tour
         </button>
         <button 
-          onClick={() => setIsFloorPlanOpen(true)}
+          onClick={() => handleActionClick(() => setIsFloorPlanOpen(true))}
           className="flex-1 bg-transparent border border-[#2E323A] text-white font-medium py-3 text-sm rounded-md hover:bg-[#2A2E35] transition-colors"
         >
           Floor Plan
         </button>
         <button 
-          onClick={() => setIsGalleryOpen(true)}
+          onClick={() => handleActionClick(() => setIsGalleryOpen(true))}
           className="flex-1 bg-transparent border border-[#2E323A] text-white font-medium py-3 text-sm rounded-md hover:bg-[#2A2E35] transition-colors"
         >
           Gallery
@@ -262,22 +282,28 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({ property, hideActions
       {!hideActions && (
         <div className="mt-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pb-2">
           <button 
-            onClick={onBookViewing}
+            onClick={() => handleActionClick(() => onBookViewing?.())}
             className="bg-[#1C1F24] hover:bg-[#2A2E35] text-white border border-[#2E323A] font-semibold text-sm py-3 rounded-md transition-colors"
           >
             Book Viewing
           </button>
-          <button className="bg-[#1C1F24] hover:bg-[#2A2E35] text-white border border-[#2E323A] font-semibold text-sm py-3 rounded-md transition-colors">
+          <button 
+            onClick={() => handleActionClick(() => {
+              // TODO: Implement download functionality
+              console.log('Download MagicPlan Report');
+            })}
+            className="bg-[#1C1F24] hover:bg-[#2A2E35] text-white border border-[#2E323A] font-semibold text-sm py-3 rounded-md transition-colors"
+          >
             Download MagicPlan Report
           </button>
           <button 
-            onClick={() => setIsShareModalOpen(true)}
+            onClick={() => handleActionClick(() => setIsShareModalOpen(true))}
             className="bg-[#1C1F24] hover:bg-[#2A2E35] text-white border border-[#2E323A] font-semibold text-sm py-3 rounded-md transition-colors"
           >
             Share Apartment
           </button>
           <button 
-            onClick={() => setIsChatModalOpen(true)}
+            onClick={() => handleActionClick(() => setIsChatModalOpen(true))}
             className="bg-[#1C1F24] hover:bg-[#2A2E35] text-white border border-[#2E323A] font-semibold text-sm py-3 rounded-md transition-colors"
           >
             Chat
