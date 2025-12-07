@@ -118,22 +118,30 @@ const AccountDashboard: React.FC = () => {
         setIsLoadingProperties(true);
         const data = await propertiesService.getAll();
         setProperties(data);
-        if (data.length > 0 && !selectedPropertyId) {
-          setSelectedPropertyId(data[0].id);
-        }
+        // Use functional update to avoid dependency on selectedPropertyId
+        setSelectedPropertyId(prev => {
+          if (!prev && data.length > 0) {
+            return data[0].id;
+          }
+          return prev;
+        });
       } catch (error) {
         console.error('Error loading properties in Dashboard:', error);
         // Fallback to mock data if error
         setProperties(MOCK_PROPERTIES);
-        if (!selectedPropertyId) {
-          setSelectedPropertyId(MOCK_PROPERTIES[0].id);
-        }
+        setSelectedPropertyId(prev => {
+          if (!prev && MOCK_PROPERTIES.length > 0) {
+            return MOCK_PROPERTIES[0].id;
+          }
+          return prev;
+        });
       } finally {
         setIsLoadingProperties(false);
       }
     };
     loadProperties();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - only run once on mount
   const [isPropertyAddModalOpen, setIsPropertyAddModalOpen] = useState(false);
   const [isInventoryEditing, setIsInventoryEditing] = useState(false);
 
@@ -181,18 +189,22 @@ const AccountDashboard: React.FC = () => {
   }, []);
   
   // Синхронізувати requests з localStorage при змінах
+  // Use length instead of array to avoid React error #310
   React.useEffect(() => {
     localStorage.setItem('requests', JSON.stringify(requests));
-  }, [requests]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requests.length]); // Only depend on length, not the array itself
 
   // Синхронізувати leads з localStorage при змінах
+  // Use length instead of array to avoid React error #310
   React.useEffect(() => {
     try {
       localStorage.setItem('leads', JSON.stringify(leads));
     } catch (error) {
       console.error('Failed to save leads to localStorage:', error);
     }
-  }, [leads]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads.length]); // Only depend on length, not the array itself
 
   const [offers, setOffers] = useState<OfferData[]>([
       { 
