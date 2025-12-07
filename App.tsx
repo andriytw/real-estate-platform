@@ -193,7 +193,9 @@ const AppContent: React.FC = () => {
         // Don't change currentView here to allow renderContent to intercept
       }
     }
-  }, [worker, authLoading, pendingPropertyView, currentView, selectedProperty]);
+    // Use only primitive values in dependencies to avoid React error #310
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [worker?.id, authLoading, pendingPropertyView?.id, currentView, selectedProperty?.id]);
 
   useEffect(() => {
     loadProperties();
@@ -215,7 +217,9 @@ const AppContent: React.FC = () => {
     if (properties.length > 0 && !selectedProperty) {
       setSelectedProperty(properties[0]);
     }
-  }, [properties, selectedProperty]);
+    // Use only primitive values in dependencies to avoid React error #310
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [properties.length, selectedProperty?.id]);
 
   // Handle post-login redirect to PropertyDetails (HIGHEST PRIORITY)
   // This must run BEFORE the main auth redirect useEffect
@@ -243,11 +247,13 @@ const AppContent: React.FC = () => {
   // Note: Now all users stay on account page (Properties category by default)
   // This useEffect is kept for potential future customizations but doesn't redirect anymore
   useEffect(() => {
-    if (worker && currentView === 'account' && !pendingPropertyView) {
+    if (worker?.id && currentView === 'account' && !pendingPropertyView?.id) {
       console.log('🔄 Post-login: User logged in, staying on account page (Properties category)');
       // All users stay on account page - AccountDashboard defaults to Properties category
     }
-  }, [worker, currentView, pendingPropertyView]);
+    // Use only primitive values in dependencies to avoid React error #310
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [worker?.id, currentView, pendingPropertyView?.id]);
 
   const handleMarketListingClick = React.useCallback((listing: any) => {
     console.log('🔵 Marketplace click:', listing);
