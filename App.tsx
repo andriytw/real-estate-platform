@@ -109,6 +109,14 @@ const AppContent: React.FC = () => {
       if (worker) {
         console.log('✅ App: Worker loaded, checking permissions:', worker.name, worker.role);
         const path = window.location.pathname;
+        
+        // Super Admin / Manager should go to tasks board by default
+        if ((worker.role === 'super_manager' || worker.role === 'manager') && (path === '/' || path === '/dashboard' || path === '/account')) {
+          setCurrentView('tasks');
+          window.history.pushState({}, '', '/tasks');
+          return;
+        }
+        
         if (path === '/worker' && worker.role !== 'worker') {
           setCurrentView('dashboard');
           window.history.pushState({}, '', '/dashboard');
@@ -120,12 +128,29 @@ const AppContent: React.FC = () => {
           setCurrentView('worker');
         } else if (path === '/tasks') {
           setCurrentView('tasks');
-        } else if (path === '/account' || path === '/dashboard') {
-          // Stay on current view
+        } else if (path === '/account') {
+          // Account page - stay here
+          setCurrentView('account');
+        } else if (path === '/dashboard') {
+          // Dashboard - Super Admin/Manager should go to tasks instead
+          if (worker.role === 'super_manager' || worker.role === 'manager') {
+            setCurrentView('tasks');
+            window.history.pushState({}, '', '/tasks');
+          } else {
+            setCurrentView('dashboard');
+          }
         } else {
-          // Default
-          setCurrentView('dashboard');
-          window.history.pushState({}, '', '/dashboard');
+          // Default: Super Admin/Manager -> tasks, Workers -> worker app, others -> dashboard
+          if (worker.role === 'super_manager' || worker.role === 'manager') {
+            setCurrentView('tasks');
+            window.history.pushState({}, '', '/tasks');
+          } else if (worker.role === 'worker') {
+            setCurrentView('worker');
+            window.history.pushState({}, '', '/worker');
+          } else {
+            setCurrentView('dashboard');
+            window.history.pushState({}, '', '/dashboard');
+          }
         }
       } else {
         console.log('⚠️ App: No worker, showing login if needed');
