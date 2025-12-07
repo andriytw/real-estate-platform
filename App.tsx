@@ -358,14 +358,22 @@ const AppContent: React.FC = () => {
       }} />;
     }
 
-    // If not logged in and not on register, show login for protected pages only
-    if (!worker && !authLoading) {
-      // Only dashboard requires login, Marketplace is public
-      if (currentView === 'dashboard') {
+    // Dashboard View - For logged in users, show AccountDashboard
+    if (currentView === 'dashboard') {
+      if (worker) {
+        // Logged in: show AccountDashboard (same as account view)
+        return (
+          <div className="animate-fadeIn">
+            <AccountDashboard />
+          </div>
+        );
+      } else if (!authLoading) {
+        // Not logged in: show login
         return (
           <div className="animate-fadeIn">
             <LoginPage onLoginSuccess={() => {
-              setCurrentView('dashboard');
+              setCurrentView('account'); // Redirect to account after login
+              window.history.pushState({}, '', '/account');
             }} />
           </div>
         );
@@ -511,97 +519,11 @@ const AppContent: React.FC = () => {
       }
     }
 
-    // Default: Dashboard (Properties List)
-    return (
-      <main className="container mx-auto px-4 py-8 animate-fadeIn">
-        {/* Hero Section */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight">
-            Find Your Perfect <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-500">Home</span>
-          </h1>
-          <p className="text-gray-400 text-lg max-w-2xl mx-auto">
-            Discover a wide range of properties in your favorite cities. 
-            From cozy apartments to spacious houses, we have it all.
-          </p>
-        </div>
-
-        {/* Filters */}
-        <div className="sticky top-20 z-40 mb-8 backdrop-blur-md bg-[#0D0F11]/80 p-2 rounded-2xl border border-gray-800/50 shadow-xl">
-          <FilterBar filters={filters} onFiltersChange={handleFilterChange} />
-        </div>
-
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-8 text-center">
-            <p className="text-red-400 mb-2">{error}</p>
-            <button 
-              onClick={loadProperties}
-              className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg text-sm transition-colors"
-            >
-              Try Again
-            </button>
-          </div>
-        )}
-
-        {/* Property Grid */}
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="bg-[#1C1F24] rounded-2xl h-[400px] animate-pulse border border-gray-800" />
-            ))}
-          </div>
-        ) : filteredProperties.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredProperties.map((property) => (
-              <PropertyCard 
-                key={property.id} 
-                property={property} 
-                isSelected={selectedProperty?.id === property.id}
-                onClick={() => {
-                  setSelectedProperty(property);
-                  // Show details modal or separate page? 
-                  // For now let's assume it opens details below or we scroll to it
-                  // Ideally open a modal
-                }}
-                onBook={() => {
-                  setSelectedProperty(property);
-                  setCurrentView('booking');
-                }}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-12">
-            <p className="text-gray-400 text-lg">No properties found matching your criteria.</p>
-            <button 
-              onClick={() => setFilters({ city: '', district: '', rooms: '', floor: '', elevator: '', pets: '', status: '' })}
-              className="mt-4 text-emerald-500 hover:text-emerald-400 font-medium"
-            >
-              Clear all filters
-            </button>
-          </div>
-        )}
-
-        {/* Property Details Modal (if selected and not booking) */}
-        {selectedProperty && currentView === 'dashboard' && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
-            <div className="bg-[#1C1F24] w-full max-w-6xl rounded-2xl overflow-hidden shadow-2xl my-8 border border-gray-800 relative">
-              <button 
-                onClick={() => setSelectedProperty(null)}
-                className="absolute top-4 right-4 z-10 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors"
-              >
-                ✕
-              </button>
-              <PropertyDetails 
-                property={selectedProperty} 
-                onBook={() => setCurrentView('booking')}
-                onClose={() => setSelectedProperty(null)}
-              />
-            </div>
-          </div>
-        )}
-      </main>
-    );
+    // Fallback: If no view matches, redirect to market (public landing page)
+    console.warn('⚠️ No view handler for currentView:', currentView);
+    setCurrentView('market');
+    window.history.pushState({}, '', '/market');
+    return null;
   };
 
   return (
