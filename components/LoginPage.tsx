@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LogIn, Mail, Lock, AlertCircle } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 
