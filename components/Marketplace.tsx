@@ -1,8 +1,9 @@
 
-import React, { useState, useMemo } from 'react';
-import { MOCK_MARKET_LISTINGS } from '../constants';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Search, MapPin, Euro, Home, Clock, Plus, ChevronDown, Filter } from 'lucide-react';
 import MarketPostModal from './MarketPostModal';
+import { propertiesService } from '../services/supabaseService';
+import { Property } from '../types';
 
 interface MarketplaceProps {
   onListingClick: (listing: any) => void;
@@ -33,35 +34,68 @@ const MarketFilterDropdown: React.FC<{
 
 const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick }) => {
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(true);
   
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [priceFilter, setPriceFilter] = useState('Any');
   const [roomFilter, setRoomFilter] = useState('Any');
 
-  // Filtering Logic
+  // Load properties from Supabase
+  useEffect(() => {
+    const loadProperties = async () => {
+      try {
+        setLoading(true);
+        const data = await propertiesService.getAll();
+        setProperties(data);
+      } catch (error) {
+        console.error('Error loading properties for Marketplace:', error);
+        setProperties([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadProperties();
+  }, []);
+
+  // Filtering Logic - convert Property to marketplace listing format
   const filteredListings = useMemo(() => {
-    return MOCK_MARKET_LISTINGS.filter(item => {
-      // Search Text
-      const matchesSearch = 
-        item.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        item.location.toLowerCase().includes(searchQuery.toLowerCase());
+    return properties
+      .filter(property => {
+        // Search Text
+        const matchesSearch = 
+          property.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+          property.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (property.city && property.city.toLowerCase().includes(searchQuery.toLowerCase()));
 
-      // Price Filter (Max Price)
-      let matchesPrice = true;
-      if (priceFilter !== 'Any') {
-        matchesPrice = item.price <= parseInt(priceFilter);
-      }
+        // Price Filter (Max Price)
+        let matchesPrice = true;
+        if (priceFilter !== 'Any' && property.price) {
+          matchesPrice = property.price <= parseInt(priceFilter);
+        }
 
-      // Room Filter (Min Rooms)
-      let matchesRooms = true;
-      if (roomFilter !== 'Any') {
-        matchesRooms = item.rooms >= parseFloat(roomFilter);
-      }
+        // Room Filter (Min Rooms)
+        let matchesRooms = true;
+        if (roomFilter !== 'Any') {
+          matchesRooms = property.rooms >= parseFloat(roomFilter);
+        }
 
-      return matchesSearch && matchesPrice && matchesRooms;
-    });
-  }, [searchQuery, priceFilter, roomFilter]);
+        return matchesSearch && matchesPrice && matchesRooms;
+      })
+      .map(property => ({
+        id: property.id,
+        title: property.title,
+        location: property.fullAddress || `${property.address}, ${property.city}`,
+        price: property.price || 0,
+        rooms: property.rooms || 0,
+        area: property.area || 0,
+        image: property.image || property.images?.[0] || '',
+        postedBy: 'Property Owner',
+        timeAgo: 'Recently',
+        description: property.description || ''
+      }));
+  }, [properties, searchQuery, priceFilter, roomFilter]);
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#111315] p-6 lg:p-8 font-sans">
@@ -135,7 +169,12 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick }) => {
 
       {/* Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {filteredListings.length > 0 ? (
+        {loading ? (
+          <div className="col-span-full flex flex-col items-center justify-center py-20 text-gray-500">
+            <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p className="text-lg font-medium">Loading properties...</p>
+          </div>
+        ) : filteredListings.length > 0 ? (
           filteredListings.map((item) => (
             <div 
               key={item.id} 

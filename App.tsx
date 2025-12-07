@@ -111,6 +111,13 @@ const AppContent: React.FC = () => {
     if (!authLoading) {
       if (worker) {
         console.log('✅ App: Worker loaded, checking permissions:', worker.name, worker.role);
+        
+        // IMPORTANT: If there's a pending property view, don't redirect - let the pendingPropertyView useEffect handle it
+        if (pendingPropertyView) {
+          console.log('🔄 App: Pending property view exists, skipping role-based redirect');
+          return;
+        }
+        
         const path = window.location.pathname;
         
         // Super Admin / Manager should go to tasks board by default
@@ -132,8 +139,17 @@ const AppContent: React.FC = () => {
         } else if (path === '/tasks') {
           setCurrentView('tasks');
         } else if (path === '/account') {
-          // Account page - stay here
-          setCurrentView('account');
+          // Account page - redirect based on role after login (only if no pending property)
+          if (worker.role === 'super_manager' || worker.role === 'manager') {
+            setCurrentView('tasks');
+            window.history.pushState({}, '', '/tasks');
+          } else if (worker.role === 'worker') {
+            setCurrentView('worker');
+            window.history.pushState({}, '', '/worker');
+          } else {
+            setCurrentView('dashboard');
+            window.history.pushState({}, '', '/dashboard');
+          }
         } else if (path === '/dashboard') {
           // Dashboard - Super Admin/Manager should go to tasks instead
           if (worker.role === 'super_manager' || worker.role === 'manager') {
@@ -169,7 +185,7 @@ const AppContent: React.FC = () => {
         // Don't change currentView here to allow renderContent to intercept
       }
     }
-  }, [worker, authLoading]);
+  }, [worker, authLoading, pendingPropertyView]);
 
   useEffect(() => {
     loadProperties();
@@ -193,15 +209,44 @@ const AppContent: React.FC = () => {
     }
   }, [properties, selectedProperty]);
 
-  // Handle post-login redirect to PropertyDetails
+  // Handle post-login redirect to PropertyDetails (HIGHEST PRIORITY)
   useEffect(() => {
     if (worker && pendingPropertyView) {
-      // After successful login, show PropertyDetails
-      setSelectedProperty(pendingPropertyView);
+      // After successful login, show PropertyDetails immediately
+      console.log('🔄 Post-login: Showing PropertyDetails for pending property:', pendingPropertyView.title);
+      const property = pendingPropertyView;
+      setSelectedProperty(property);
       setCurrentView('property-details');
+      window.history.pushState({}, '', `/property/${property.id}`);
+      // Clear pending property after setting it
       setPendingPropertyView(null);
     }
   }, [worker, pendingPropertyView]);
+
+  // Handle redirect after login on account page (only if no pending property)
+  useEffect(() => {
+    if (worker && currentView === 'account' && !pendingPropertyView) {
+      console.log('🔄 Post-login: Redirecting from account page, worker role:', worker.role);
+      // Small delay to ensure pendingPropertyView useEffect runs first if needed
+      const timer = setTimeout(() => {
+        // Double-check pendingPropertyView wasn't set in the meantime
+        if (!pendingPropertyView) {
+          // Redirect based on role
+          if (worker.role === 'super_manager' || worker.role === 'manager') {
+            setCurrentView('tasks');
+            window.history.pushState({}, '', '/tasks');
+          } else if (worker.role === 'worker') {
+            setCurrentView('worker');
+            window.history.pushState({}, '', '/worker');
+          } else {
+            setCurrentView('dashboard');
+            window.history.pushState({}, '', '/dashboard');
+          }
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [worker, currentView, pendingPropertyView]);
 
   const handleMarketListingClick = React.useCallback((listing: any) => {
     console.log('🔵 Marketplace click:', listing);
@@ -365,10 +410,14 @@ const AppContent: React.FC = () => {
       } else {
         return (
           <div className="animate-fadeIn">
-            <LoginPage onLoginSuccess={() => {
-              // Role based redirect
-              // We rely on useEffect to redirect, but trigger state update
-              // App will check role and set view
+            <LoginPage onLoginSuccess={async () => {
+              // Wait for worker to be loaded and state to update
+              console.log('🔄 Login success callback called');
+              // Give time for worker state to update
+              await new Promise(resolve => setTimeout(resolve, 500));
+              // Force re-check by reading current worker from context
+              // The useEffect will handle the redirect based on role
+              console.log('🔄 Waiting for useEffect to handle redirect...');
             }} />
           </div>
         );

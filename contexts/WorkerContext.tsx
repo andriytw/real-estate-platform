@@ -214,9 +214,10 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
         console.log('✅ Session:', data.session ? 'exists' : 'missing');
         
         // Wait a bit for session to be stored
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
         
         console.log('🔄 Refreshing worker profile...');
+        // refreshWorker will set loading to false when done
         await refreshWorker();
         
         // Double-check worker was loaded
@@ -224,20 +225,22 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
         if (currentWorker) {
           console.log('✅ Worker profile loaded:', currentWorker.name, currentWorker.role);
           setWorker(currentWorker);
+          setLoading(false); // Ensure loading is false after successful login
         } else {
           console.error('❌ Worker profile not loaded after refresh');
+          console.error('💡 This usually means the user profile does not exist in the profiles table');
+          setLoading(false);
+          throw new Error('Worker profile not found. Please contact administrator.');
         }
       } else {
         console.error('❌ No user data returned from auth');
+        setLoading(false);
         throw new Error('No user data returned');
       }
     } catch (error: any) {
       console.error('❌ Login error:', error);
       setLoading(false);
       throw error;
-    } finally {
-      // Don't set loading to false immediately - let refreshWorker handle it
-      setTimeout(() => setLoading(false), 500);
     }
   };
 
