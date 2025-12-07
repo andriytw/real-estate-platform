@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, User, Briefcase, AlertCircle } from 'lucide-react';
 import { Worker } from '../../types';
 
@@ -35,6 +35,18 @@ const ColumnCreateModal: React.FC<ColumnCreateModalProps> = ({
   // Показуємо всіх працівників (колонки не створюються автоматично)
   // Але фільтруємо тих, хто вже має колонку
   const availableWorkers = filteredWorkers.filter(w => !existingColumnIds.includes(w.id));
+
+  // Debug logging
+  useEffect(() => {
+    console.log('🔍 ColumnCreateModal Debug:');
+    console.log('  - selectedType:', selectedType);
+    console.log('  - filteredWorkers count:', filteredWorkers.length);
+    console.log('  - existingColumnIds:', existingColumnIds);
+    console.log('  - existingColumnIds length:', existingColumnIds.length);
+    console.log('  - availableWorkers count:', availableWorkers.length);
+    console.log('  - filteredWorkers IDs:', filteredWorkers.map(w => w.id));
+    console.log('  - existingColumnIds:', existingColumnIds);
+  }, [selectedType, filteredWorkers, existingColumnIds, availableWorkers]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,9 +139,17 @@ const ColumnCreateModal: React.FC<ColumnCreateModalProps> = ({
               <label className="block text-xs font-medium text-gray-400 mb-2">
                 Виберіть {selectedType === 'manager' ? 'менеджера' : 'працівника'}
               </label>
-              {availableWorkers.length === 0 ? (
+              {filteredWorkers.length === 0 ? (
+                <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-400 text-sm">
+                  Немає {selectedType === 'manager' ? 'менеджерів' : 'працівників'} в системі
+                </div>
+              ) : availableWorkers.length === 0 ? (
                 <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-400 text-sm">
                   Всі {selectedType === 'manager' ? 'менеджери' : 'працівники'} вже мають колонки на дошці
+                  <br />
+                  <span className="text-xs text-yellow-500/70 mt-1 block">
+                    (Створено: {existingColumnIds.length} колонок)
+                  </span>
                 </div>
               ) : (
                 <select

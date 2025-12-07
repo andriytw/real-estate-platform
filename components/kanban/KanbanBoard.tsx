@@ -22,7 +22,19 @@ const KanbanBoard: React.FC = () => {
   const [customColumns, setCustomColumns] = useState<string[]>(() => {
     // Load from localStorage on initialization
     const saved = localStorage.getItem('kanban_custom_columns');
-    return saved ? JSON.parse(saved) : [];
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Validate that it's an array
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      } catch (e) {
+        console.error('Error parsing customColumns from localStorage:', e);
+      }
+    }
+    // If no valid data, start with empty array
+    return [];
   });
   const [isColumnCreateModalOpen, setIsColumnCreateModalOpen] = useState(false);
 
@@ -157,8 +169,17 @@ const KanbanBoard: React.FC = () => {
 
   // Handle column creation
   const handleColumnCreated = (workerId: string, type: 'manager' | 'worker') => {
+    console.log('🔄 Creating column for worker:', workerId, 'type:', type);
+    console.log('📋 Current customColumns:', customColumns);
+    
     if (!customColumns.includes(workerId)) {
-      setCustomColumns(prev => [...prev, workerId]);
+      setCustomColumns(prev => {
+        const updated = [...prev, workerId];
+        console.log('✅ Column added. New customColumns:', updated);
+        return updated;
+      });
+    } else {
+      console.warn('⚠️ Column already exists for worker:', workerId);
     }
   };
 
@@ -248,6 +269,22 @@ const KanbanBoard: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Clear localStorage button (for debugging) - only for Super Admin */}
+          {currentUser?.role === 'super_manager' && customColumns.length > 0 && (
+            <button
+              onClick={() => {
+                if (window.confirm('Очистити всі створені колонки? Це видалить всі колонки з дошки.')) {
+                  localStorage.removeItem('kanban_custom_columns');
+                  setCustomColumns([]);
+                  console.log('🗑️ Cleared customColumns from localStorage');
+                }
+              }}
+              className="px-3 py-1 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-md transition-colors"
+              title="Очистити всі колонки"
+            >
+              Очистити колонки
+            </button>
+          )}
            {/* View Toggles could go here (Board/List) */}
         </div>
       </div>
