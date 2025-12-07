@@ -1,17 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Draggable } from '@hello-pangea/dnd';
-import { CalendarEvent, Worker, KanbanColumn as IKanbanColumn } from '../../types';
+import { CalendarEvent, Worker, KanbanColumn as IKanbanColumn, TaskStatus } from '../../types';
 import KanbanTaskCard from './KanbanTaskCard';
-import { Plus, MoreHorizontal, User, Briefcase } from 'lucide-react';
+import { Plus, MoreHorizontal, User, Briefcase, Trash2 } from 'lucide-react';
 import TaskCreateModal from './TaskCreateModal';
 
 interface KanbanColumnProps {
   column: IKanbanColumn;
   currentUser: Worker | null;
   onTaskCreated: (task: CalendarEvent) => void;
+  onColumnDeleted?: (workerId: string) => void;
+  canDelete?: boolean;
 }
 
-const KanbanColumn: React.FC<KanbanColumnProps> = ({ column, currentUser, onTaskCreated }) => {
+const KanbanColumn: React.FC<KanbanColumnProps> = ({ 
+  column, 
+  currentUser, 
+  onTaskCreated,
+  onColumnDeleted,
+  canDelete = false
+}) => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   // Sort tasks: Urgent first, then by time/date
@@ -28,6 +36,28 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ column, currentUser, onTask
   const isSuperAdmin = currentUser?.role === 'super_manager';
   // Allow creating tasks if: It's my column OR I am manager/admin
   const canCreateTask = isPersonalColumn || isSuperAdmin || currentUser?.role === 'manager';
+
+  // Check if column can be deleted (empty or all tasks completed)
+  const canDeleteColumn = useMemo(() => {
+    if (!canDelete || !onColumnDeleted || !column.workerId) return false;
+    
+    // If column is empty - can delete
+    if (column.tasks.length === 0) return true;
+    
+    // Check if all tasks are completed
+    const completedStatuses: TaskStatus[] = ['completed', 'verified', 'archived'];
+    const allTasksCompleted = column.tasks.every(task => 
+      completedStatuses.includes(task.status)
+    );
+    
+    return allTasksCompleted;
+  }, [canDelete, column.tasks, column.workerId, onColumnDeleted]);
+
+  // Count incomplete tasks for tooltip
+  const incompleteTasksCount = useMemo(() => {
+    const completedStatuses: TaskStatus[] = ['completed', 'verified', 'archived'];
+    return column.tasks.filter(task => !completedStatuses.includes(task.status)).length;
+  }, [column.tasks]);
 
   return (
     <div className="flex-shrink-0 w-80 flex flex-col h-full bg-[#111315] border-r border-gray-800/50">
@@ -73,6 +103,30 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ column, currentUser, onTask
               <Plus className="w-4 h-4" />
             </button>
           )}
+          
+          {/* Delete Column Button */}
+          {canDelete && onColumnDeleted && column.workerId && (
+            <>
+              {canDeleteColumn ? (
+                <button
+                  onClick={() => onColumnDeleted(column.workerId!)}
+                  className="p-1.5 rounded hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors"
+                  title="Видалити колонку"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  disabled
+                  className="p-1.5 rounded text-gray-600 cursor-not-allowed opacity-50"
+                  title={`Неможливо видалити: є ${incompleteTasksCount} невиконаних завдань`}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </>
+          )}
+          
           <button className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
             <MoreHorizontal className="w-4 h-4" />
           </button>

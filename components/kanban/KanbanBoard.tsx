@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { tasksService, workersService } from '../../services/supabaseService';
-import { CalendarEvent, Worker, KanbanColumn as IKanbanColumn } from '../../types';
+import { CalendarEvent, Worker, KanbanColumn as IKanbanColumn, TaskStatus } from '../../types';
 import KanbanColumn from './KanbanColumn';
+import ColumnCreateModal from './ColumnCreateModal';
 import { useWorker } from '../../contexts/WorkerContext';
-import { Filter } from 'lucide-react';
+import { Filter, Plus } from 'lucide-react';
 
 type DepartmentFilter = 'all' | 'facility' | 'accounting';
 
@@ -16,11 +17,24 @@ const KanbanBoard: React.FC = () => {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
   const [departmentFilter, setDepartmentFilter] = useState<DepartmentFilter>('all');
+  
+  // State for custom columns (stored in localStorage)
+  const [customColumns, setCustomColumns] = useState<string[]>(() => {
+    // Load from localStorage on initialization
+    const saved = localStorage.getItem('kanban_custom_columns');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [isColumnCreateModalOpen, setIsColumnCreateModalOpen] = useState(false);
 
   // Load Data
   useEffect(() => {
     loadBoardData();
   }, [departmentFilter]); // Reload when filter changes (optional, could filter locally)
+
+  // Save custom columns to localStorage
+  useEffect(() => {
+    localStorage.setItem('kanban_custom_columns', JSON.stringify(customColumns));
+  }, [customColumns]);
 
   const loadBoardData = async () => {
     try {
@@ -62,32 +76,38 @@ const KanbanBoard: React.FC = () => {
       return w.department === departmentFilter;
     });
 
-    // 2. Manager Columns
+    // 2. Manager Columns (only those in customColumns or all if customColumns is empty)
     const managers = relevantWorkers.filter(w => w.role === 'manager');
     managers.forEach(m => {
-      cols.push({
-        id: m.id,
-        title: m.name,
-        type: 'manager',
-        workerId: m.id,
-        tasks: tasks.filter(t => t.workerId === m.id)
-      });
+      // Show column if it's in customColumns or if customColumns is empty (show all)
+      if (customColumns.length === 0 || customColumns.includes(m.id)) {
+        cols.push({
+          id: m.id,
+          title: m.name,
+          type: 'manager',
+          workerId: m.id,
+          tasks: tasks.filter(t => t.workerId === m.id)
+        });
+      }
     });
 
-    // 3. Worker Columns
+    // 3. Worker Columns (only those in customColumns or all if customColumns is empty)
     const simpleWorkers = relevantWorkers.filter(w => w.role === 'worker');
     simpleWorkers.forEach(w => {
-      cols.push({
-        id: w.id,
-        title: w.name,
-        type: 'worker',
-        workerId: w.id,
-        tasks: tasks.filter(t => t.workerId === w.id)
-      });
+      // Show column if it's in customColumns or if customColumns is empty (show all)
+      if (customColumns.length === 0 || customColumns.includes(w.id)) {
+        cols.push({
+          id: w.id,
+          title: w.name,
+          type: 'worker',
+          workerId: w.id,
+          tasks: tasks.filter(t => t.workerId === w.id)
+        });
+      }
     });
 
     return cols;
-  }, [tasks, workers, departmentFilter]);
+  }, [tasks, workers, departmentFilter, customColumns]);
 
   // Handle Drag End
   const onDragEnd = async (result: DropResult) => {
@@ -146,6 +166,51 @@ const KanbanBoard: React.FC = () => {
 
   const handleTaskCreated = (newTask: CalendarEvent) => {
     setTasks(prev => [newTask, ...prev]);
+  };
+
+  // Handle column creation
+  const handleColumnCreated = (workerId: string, type: 'manager' | 'worker') => {
+    if (!customColumns.includes(workerId)) {
+      setCustomColumns(prev => [...prev, workerId]);
+    }
+  };
+
+  // Handle column deletion (only if empty or all tasks completed)
+  const handleColumnDeleted = (workerId: string) => {
+    // Find the column
+    const column = columns.find(c => c.workerId === workerId);
+    if (!column) return;
+
+    // Check if there are incomplete tasks
+    const completedStatuses: TaskStatus[] = ['completed', 'verified', 'archived'];
+    const incompleteTasks = column.tasks.filter(task => {
+      return !completedStatuses.includes(task.status);
+    });
+
+    if (incompleteTasks.length > 0) {
+      alert(`Неможливо видалити колонку: є ${incompleteTasks.length} невиконаних завдань. Спочатку завершіть або видаліть завдання.`);
+      return;
+    }
+
+    // If all tasks are completed or column is empty, can delete
+    if (window.confirm('Ви впевнені, що хочете видалити цю колонку? Всі виконані завдання будуть переміщені в Inbox.')) {
+      setCustomColumns(prev => prev.filter(id => id !== workerId));
+      
+      // Move all tasks from this column to Inbox (if any)
+      const tasksToMove = column.tasks;
+      tasksToMove.forEach(async (task) => {
+        try {
+          await tasksService.update(task.id, { workerId: undefined });
+        } catch (error) {
+          console.error('Error moving task to inbox:', error);
+        }
+      });
+      
+      // Update local state
+      setTasks(prev => prev.map(t => 
+        t.workerId === workerId ? { ...t, workerId: undefined } : t
+      ));
+    }
   };
 
   if (loading) {
@@ -216,15 +281,43 @@ const KanbanBoard: React.FC = () => {
                       column={column} 
                       currentUser={currentUser}
                       onTaskCreated={handleTaskCreated}
+                      onColumnDeleted={handleColumnDeleted}
+                      canDelete={currentUser?.role === 'super_manager' && column.id !== 'admin-inbox'}
                     />
                     {provided.placeholder}
                   </div>
                 )}
               </Droppable>
             ))}
+            
+            {/* Add Column Button (only for Super Admin) */}
+            {currentUser?.role === 'super_manager' && (
+              <div className="flex-shrink-0 w-80 flex flex-col h-full">
+                <button
+                  onClick={() => setIsColumnCreateModalOpen(true)}
+                  className="h-full flex flex-col items-center justify-center bg-[#111315] border-2 border-dashed border-gray-700 rounded-lg hover:border-emerald-500 hover:bg-[#1C1F24] transition-colors group"
+                >
+                  <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center mb-3 group-hover:bg-emerald-500/20 transition-colors">
+                    <Plus className="w-6 h-6 text-emerald-500" />
+                  </div>
+                  <span className="text-sm font-medium text-gray-400 group-hover:text-emerald-400 transition-colors">
+                    Додати колонку
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </DragDropContext>
+
+      {/* Column Create Modal */}
+      <ColumnCreateModal
+        isOpen={isColumnCreateModalOpen}
+        onClose={() => setIsColumnCreateModalOpen(false)}
+        onColumnCreated={handleColumnCreated}
+        workers={workers}
+        existingColumnIds={customColumns.length > 0 ? customColumns : columns.map(c => c.workerId).filter(Boolean) as string[]}
+      />
     </div>
   );
 };
