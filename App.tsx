@@ -436,7 +436,7 @@ const AppContent: React.FC = () => {
     if (currentView === 'market') {
       return (
         <div className="animate-fadeIn">
-          <Marketplace onItemClick={handleMarketListingClick} />
+          <Marketplace onListingClick={handleMarketListingClick} />
         </div>
       );
     }
