@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import './index.css'; // Import global styles
 import App from './App';
 
 console.log('🚀 Starting app...');
@@ -17,9 +18,10 @@ try {
   console.log('✅ React root created');
   
   root.render(
-    <React.StrictMode>
+    // Disabled StrictMode temporarily to avoid double-invocations in dev
+    // <React.StrictMode>
       <App />
-    </React.StrictMode>
+    // </React.StrictMode>
   );
   
   console.log('✅ App rendered');
