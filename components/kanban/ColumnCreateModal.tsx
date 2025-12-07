@@ -36,17 +36,16 @@ const ColumnCreateModal: React.FC<ColumnCreateModalProps> = ({
   // Але фільтруємо тих, хто вже має колонку
   const availableWorkers = filteredWorkers.filter(w => !existingColumnIds.includes(w.id));
 
-  // Debug logging
+  // Debug logging (only when modal opens)
   useEffect(() => {
-    console.log('🔍 ColumnCreateModal Debug:');
-    console.log('  - selectedType:', selectedType);
-    console.log('  - filteredWorkers count:', filteredWorkers.length);
-    console.log('  - existingColumnIds:', existingColumnIds);
-    console.log('  - existingColumnIds length:', existingColumnIds.length);
-    console.log('  - availableWorkers count:', availableWorkers.length);
-    console.log('  - filteredWorkers IDs:', filteredWorkers.map(w => w.id));
-    console.log('  - existingColumnIds:', existingColumnIds);
-  }, [selectedType, filteredWorkers, existingColumnIds, availableWorkers]);
+    if (isOpen) {
+      console.log('🔍 ColumnCreateModal Debug:');
+      console.log('  - selectedType:', selectedType);
+      console.log('  - filteredWorkers count:', filteredWorkers.length);
+      console.log('  - existingColumnIds length:', existingColumnIds.length);
+      console.log('  - availableWorkers count:', availableWorkers.length);
+    }
+  }, [isOpen, selectedType]); // Only depend on isOpen and selectedType, not on arrays
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
