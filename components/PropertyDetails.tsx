@@ -185,7 +185,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({ property, hideActions
 
         <div className="flex items-baseline gap-1 ml-auto">
             <span className="text-gray-500">€</span>
-            <span className="text-white font-bold text-lg">{property.price}/mo</span>
+            <span className="text-white font-bold text-lg">{property.price ? property.price.toLocaleString('de-DE') : '0'}/mo</span>
         </div>
       </div>
 
@@ -223,13 +223,13 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({ property, hideActions
         <div>
           <h3 className="text-base font-bold text-white mb-3">Costs</h3>
           <div className="divide-y divide-[#272A30]">
-            <DetailRow label="Net rent (Kaltmiete)" value={`€${property.netRent}`} />
-            <DetailRow label="Ancillary costs (Nebenkosten)" value={`€${property.ancillaryCosts}`} />
-            <DetailRow label="Heating costs (Heizkosten)" value={`€${property.heatingCosts}`} />
+            <DetailRow label="Net rent (Kaltmiete)" value={property.netRent != null ? `€${property.netRent.toLocaleString('de-DE')}` : 'N/A'} />
+            <DetailRow label="Ancillary costs (Nebenkosten)" value={property.ancillaryCosts != null ? `€${property.ancillaryCosts.toLocaleString('de-DE')}` : 'N/A'} />
+            <DetailRow label="Heating costs (Heizkosten)" value={property.heatingCosts != null ? `€${property.heatingCosts.toLocaleString('de-DE')}` : 'N/A'} />
             <DetailRow label="Heating incl. in ancillaries" value={property.heatingIncluded ? 'Yes' : 'No'} />
-            <DetailRow label="Total rent (Warmmiete)" value={`€${property.price}`} />
-            <DetailRow label="Deposit (Kaution)" value={property.deposit} />
-            <DetailRow label="Price per m²" value={`€${property.pricePerSqm} / m²`} />
+            <DetailRow label="Total rent (Warmmiete)" value={property.price ? `€${property.price.toLocaleString('de-DE')}` : 'N/A'} />
+            <DetailRow label="Deposit (Kaution)" value={property.deposit || 'N/A'} />
+            <DetailRow label="Price per m²" value={property.pricePerSqm ? `€${property.pricePerSqm.toLocaleString('de-DE')} / m²` : 'N/A'} />
           </div>
         </div>
 
