@@ -148,8 +148,19 @@ const KanbanBoard: React.FC = () => {
     setTasks(prev => [newTask, ...prev]);
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#0D0F11]">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">Завантаження дошки...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col h-full bg-[#0D0F11]">
+    <div className="flex flex-col min-h-screen bg-[#0D0F11]">
       {/* Toolbar */}
       <div className="h-14 border-b border-gray-800 flex items-center justify-between px-4 bg-[#111315]">
         <div className="flex items-center gap-4">
