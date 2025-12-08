@@ -16,23 +16,24 @@ END $$;
 -- 2. Переконатися, що RLS увімкнено
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
--- 3. Створити найпростіші політики (без рекурсії)
+-- 4. Створити найпростіші політики (без рекурсії)
 -- Користувач може читати свій власний профіль
-CREATE POLICY "Users can view own profile" ON profiles
+CREATE POLICY "Users can view own profile" ON public.profiles
   FOR SELECT 
   USING (auth.uid() = id);
 
 -- Користувач може оновлювати свій власний профіль
-CREATE POLICY "Users can update own profile" ON profiles
+CREATE POLICY "Users can update own profile" ON public.profiles
   FOR UPDATE 
   USING (auth.uid() = id);
 
 -- 4. Для менеджерів та супер менеджерів - використовуємо SECURITY DEFINER функцію
 -- Спочатку створити функцію для перевірки ролі (без рекурсії)
+-- Використовуємо повний шлях до таблиці через public.profiles
 CREATE OR REPLACE FUNCTION public.check_user_role(check_role TEXT)
 RETURNS BOOLEAN AS $$
   SELECT EXISTS (
-    SELECT 1 FROM profiles 
+    SELECT 1 FROM public.profiles 
     WHERE id = auth.uid() 
     AND role = check_role
   );
@@ -43,7 +44,7 @@ SET search_path = '';
 CREATE OR REPLACE FUNCTION public.is_manager_or_super()
 RETURNS BOOLEAN AS $$
   SELECT EXISTS (
-    SELECT 1 FROM profiles 
+    SELECT 1 FROM public.profiles 
     WHERE id = auth.uid() 
     AND role IN ('manager', 'super_manager')
   );
@@ -51,12 +52,12 @@ $$ LANGUAGE sql SECURITY DEFINER STABLE
 SET search_path = '';
 
 -- Менеджери та супер менеджери можуть читати всі профілі
-CREATE POLICY "Managers can view all profiles" ON profiles
+CREATE POLICY "Managers can view all profiles" ON public.profiles
   FOR SELECT 
   USING (public.is_manager_or_super());
 
 -- Супер менеджери можуть читати всі профілі (дублювання для надійності)
-CREATE POLICY "Super managers can view all profiles" ON profiles
+CREATE POLICY "Super managers can view all profiles" ON public.profiles
   FOR SELECT 
   USING (public.check_user_role('super_manager'));
 
@@ -73,7 +74,7 @@ ORDER BY policyname;
 -- SELECT auth.uid() as current_user_id;
 
 -- Перевірка, чи користувач може прочитати свій профіль:
--- SELECT * FROM profiles WHERE id = auth.uid();
+-- SELECT * FROM public.profiles WHERE id = auth.uid();
 
 -- Перевірка функцій:
 SELECT 
