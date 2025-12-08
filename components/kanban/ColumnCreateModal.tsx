@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, User, Briefcase, AlertCircle } from 'lucide-react';
 import { Worker } from '../../types';
 
@@ -22,19 +22,6 @@ const ColumnCreateModal: React.FC<ColumnCreateModalProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
-
-  // Фільтруємо працівників по типу
-  const filteredWorkers = workers.filter(w => {
-    if (selectedType === 'manager') {
-      return w.role === 'manager';
-    } else {
-      return w.role === 'worker';
-    }
-  });
-
-  // Показуємо всіх працівників (колонки не створюються автоматично)
-  // Але фільтруємо тих, хто вже має колонку
-  const availableWorkers = filteredWorkers.filter(w => !existingColumnIds.includes(w.id));
 
   // Use useMemo to compute filtered workers to avoid React error #310
   const filteredWorkers = useMemo(() => {
