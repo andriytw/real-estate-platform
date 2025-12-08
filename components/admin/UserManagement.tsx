@@ -94,17 +94,62 @@ const UserManagement: React.FC = () => {
     setEditedUser(null);
   };
 
+  const handleResendInvite = async (userId: string, email: string) => {
+    // Add to loading set
+    setResendingInvite(prev => new Set(prev).add(userId));
+    setMessage(null); // Clear previous message
+    
+    try {
+      await usersService.resendInvite(userId, email);
+      setMessage({ type: 'success', text: `Запрошення надіслано на ${email}!` });
+      // Auto-hide success message after 3 seconds
+      setTimeout(() => setMessage(null), 3000);
+    } catch (error: any) {
+      console.error('Error resending invitation:', error);
+      setMessage({ type: 'error', text: `Помилка: ${error.message || 'Невідома помилка'}` });
+      // Auto-hide error message after 5 seconds
+      setTimeout(() => setMessage(null), 5000);
+    } finally {
+      // Remove from loading set
+      setResendingInvite(prev => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
+    }
+  };
+
   const handleDeactivate = async (userId: string) => {
     if (!window.confirm('Ви впевнені, що хочете деактивувати цього користувача? Він не зможе ввійти в систему.')) {
       return;
     }
 
+    // Add to loading set
+    setDeactivatingUser(prev => new Set(prev).add(userId));
+    setMessage(null); // Clear previous message
+
     try {
       await usersService.deactivate(userId);
-      await loadUsers();
-    } catch (error) {
+      // Use setTimeout to make loadUsers non-blocking
+      setTimeout(async () => {
+        await loadUsers();
+      }, 0);
+      setMessage({ type: 'success', text: 'Користувача деактивовано' });
+      setTimeout(() => setMessage(null), 3000);
+    } catch (error: any) {
       console.error('Error deactivating user:', error);
-      alert('Помилка деактивації користувача');
+      setMessage({ 
+        type: 'error', 
+        text: `Помилка деактивації користувача: ${error.message || 'Невідома помилка'}` 
+      });
+      setTimeout(() => setMessage(null), 5000);
+    } finally {
+      // Remove from loading set
+      setDeactivatingUser(prev => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
     }
   };
 
