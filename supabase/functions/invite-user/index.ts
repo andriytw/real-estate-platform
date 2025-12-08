@@ -100,19 +100,102 @@ serve(async (req) => {
       }
     }
 
-    // Create or update profile
-    const profileData = {
-      id: targetUserId,
-      email: email,
-      name: firstName && lastName ? `${firstName} ${lastName}` : (firstName || lastName || email),
-      first_name: firstName || null,
-      last_name: lastName || null,
-      role: role || 'worker',
-      department: department || 'facility',
-      category_access: categoryAccess || ['properties', 'facility', 'accounting', 'sales', 'tasks'],
-      is_active: true,
+    // Create or update profile (only if userId was not provided or if we have user data)
+    // For resend, we might not have all user data, so only update if provided
+    if (firstName || lastName || role || department || categoryAccess) {
+      const profileData: any = {
+        id: targetUserId,
+        email: email,
+        is_active: true,
+      }
+      
+      if (firstName || lastName) {
+        profileData.name = firstName && lastName ? `${firstName} ${lastName}` : (firstName || lastName || email)
+        profileData.first_name = firstName || null
+        profileData.last_name = lastName || null
+      }
+      
+      if (role) profileData.role = role
+      if (department) profileData.department = department
+      if (categoryAccess) profileData.category_access = categoryAccess
+
+      const { data: profile, error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .upsert(profileData, { onConflict: 'id' })
+        .select()
+        .single()
+
+      if (profileError) {
+        console.error('Error creating/updating profile:', profileError)
+        // Don't fail if profile update fails - invitation was sent
+        console.warn('Profile update failed, but invitation was sent')
+      } else {
+        // Return updated profile
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            user: {
+              id: profile.id,
+              email: profile.email,
+              name: profile.name,
+              firstName: profile.first_name,
+              lastName: profile.last_name,
+              role: profile.role,
+              department: profile.department,
+              categoryAccess: profile.category_access
+            }
+          }),
+          { 
+            status: 200, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        )
+      }
     }
 
+    // If no profile update needed (resend only), fetch existing profile
+    const { data: existingProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', targetUserId)
+      .single()
+
+    if (existingProfile) {
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          user: {
+            id: existingProfile.id,
+            email: existingProfile.email,
+            name: existingProfile.name,
+            firstName: existingProfile.first_name,
+            lastName: existingProfile.last_name,
+            role: existingProfile.role,
+            department: existingProfile.department,
+            categoryAccess: existingProfile.category_access
+          }
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
+
+    // If no profile exists, return success anyway (invitation was sent)
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        user: {
+          id: targetUserId,
+          email: email
+        }
+      }),
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    )
 
   } catch (error) {
     console.error('Unexpected error:', error)
@@ -122,4 +205,3 @@ serve(async (req) => {
     )
   }
 })
-
