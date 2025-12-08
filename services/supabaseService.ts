@@ -42,10 +42,7 @@ export const usersService = {
     return workersService.getAll();
   },
 
-  // Create new user and send invite link
-  // Note: This requires a backend/Edge Function for admin operations
-  // For now, we'll create the profile and let admin handle auth setup manually
-  // Or use a generated password approach
+  // Create new user and send invite link via Edge Function
   async create(userData: {
     email: string;
     firstName: string;
@@ -54,98 +51,105 @@ export const usersService = {
     department: 'facility' | 'accounting' | 'sales' | 'general';
     categoryAccess?: CategoryAccess[];
   }): Promise<Worker> {
-    // Generate a temporary password (user will need to reset it)
-    const tempPassword = crypto.randomUUID().substring(0, 12) + 'A1!';
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 
+                       import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_URL || 
+                       (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_URL : '');
     
-    // 1. Try to create user in auth (this will work if email confirmation is disabled)
-    // Otherwise, we'll need to handle this via Edge Function
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: userData.email,
-      password: tempPassword,
-      options: {
-        data: {
-          first_name: userData.firstName,
-          last_name: userData.lastName,
-        },
-        emailRedirectTo: window.location.origin + '/account'
-      }
+    const functionsUrl = `${supabaseUrl}/functions/v1/invite-user`;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 
+                   import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+                   (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : '');
+
+    console.log('📧 Calling Edge Function to invite user:', userData.email);
+
+    const response = await fetch(functionsUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${anonKey}`,
+        'apikey': anonKey,
+      },
+      body: JSON.stringify({
+        email: userData.email,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        role: userData.role,
+        department: userData.department,
+        categoryAccess: userData.categoryAccess || ['properties', 'facility', 'accounting', 'sales', 'tasks'],
+        emailRedirectTo: `${window.location.origin}/login`
+      }),
     });
 
-    let userId: string;
-
-    if (authError) {
-      // If user already exists, check if profile exists
-      const { data: existingProfile } = await supabase
-        .from('profiles')
-        .select('id, email')
-        .eq('email', userData.email)
-        .single();
-
-      if (existingProfile) {
-        // Update existing profile
-        const profileData = {
-          first_name: userData.firstName,
-          last_name: userData.lastName,
-          name: `${userData.firstName} ${userData.lastName}`,
-          role: userData.role,
-          department: userData.department,
-          category_access: userData.categoryAccess || ['properties', 'facility', 'accounting', 'sales', 'tasks'],
-          is_active: true,
-        };
-
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .update(profileData)
-          .eq('id', existingProfile.id)
-          .select()
-          .single();
-
-        if (profileError) throw profileError;
-        return transformWorkerFromDB(profile);
-      }
-      
-      // User exists in auth but no profile - create profile
-      // We need to get user ID from auth, but we can't query by email on client
-      // For now, throw error and ask admin to use Edge Function or manual setup
-      throw new Error(`Користувач з email ${userData.email} вже існує. Будь ласка, використайте Edge Function для створення користувачів або створіть профіль вручну.`);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `Failed to create user: ${response.statusText}`);
     }
 
-    if (!authData?.user) {
-      throw new Error('Не вдалося створити користувача в auth');
-    }
-
-    userId = authData.user.id;
-
-    // 2. Create profile
-    const profileData = {
-      id: userId,
-      name: `${userData.firstName} ${userData.lastName}`,
-      first_name: userData.firstName,
-      last_name: userData.lastName,
-      email: userData.email,
-      role: userData.role,
-      department: userData.department,
-      category_access: userData.categoryAccess || ['properties', 'facility', 'accounting', 'sales', 'tasks'],
-      is_active: true,
-    };
-
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .insert([profileData])
-      .select()
-      .single();
-
-    if (profileError) {
-      // If profile insert fails, try to clean up auth user
-      console.error('Profile creation failed, auth user may need cleanup:', profileError);
-      throw profileError;
-    }
-
-    // Note: In production, send tempPassword via email or Edge Function
-    // For now, we'll just create the user and they can use password reset
-    console.log('⚠️ User created with temp password. In production, send this via email:', tempPassword);
+    const result = await response.json();
     
-    return transformWorkerFromDB(profile);
+    if (!result.success || !result.user) {
+      throw new Error('Failed to create user: Invalid response from server');
+    }
+
+    console.log('✅ User created and invitation sent:', result.user.email);
+    
+    // Transform to Worker format
+    return {
+      id: result.user.id,
+      name: result.user.name,
+      firstName: result.user.firstName,
+      lastName: result.user.lastName,
+      email: result.user.email,
+      phone: undefined,
+      department: result.user.department,
+      role: result.user.role,
+      managerId: undefined,
+      isActive: true,
+      categoryAccess: result.user.categoryAccess,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  },
+
+  // Resend invitation email for existing user
+  async resendInvite(userId: string, email: string): Promise<void> {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 
+                       import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_URL || 
+                       (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_URL : '');
+    
+    const functionsUrl = `${supabaseUrl}/functions/v1/invite-user`;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 
+                   import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+                   (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : '');
+
+    console.log('📧 Resending invitation to:', email);
+
+    const response = await fetch(functionsUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${anonKey}`,
+        'apikey': anonKey,
+      },
+      body: JSON.stringify({
+        userId: userId,
+        email: email,
+        emailRedirectTo: `${window.location.origin}/login`
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `Failed to resend invitation: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    
+    if (!result.success) {
+      throw new Error('Failed to resend invitation: Invalid response from server');
+    }
+
+    console.log('✅ Invitation resent to:', email);
   },
 
   // Update user (role, department, category access)

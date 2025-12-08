@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { usersService } from '../../services/supabaseService';
 import { Worker, CategoryAccess } from '../../types';
-import { Plus, Trash2, Save, X, User, Mail, Shield, Building2, CheckSquare, Square, Edit } from 'lucide-react';
+import { Plus, Trash2, Save, X, User, Mail, Shield, Building2, CheckSquare, Square, Edit, Send } from 'lucide-react';
 
 const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<Worker[]>([]);
