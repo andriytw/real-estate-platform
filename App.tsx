@@ -72,22 +72,35 @@ const AppContent: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
+      console.log('🔄 Loading properties from Supabase...');
       // Use lightweight mode for faster initial load (especially for Marketplace)
       const data = await propertiesService.getAll(true);
+      console.log('✅ Properties loaded:', data.length, 'items');
       setProperties(data);
       
       if (data.length > 0 && !selectedProperty) {
         setSelectedProperty(data[0]);
       }
     } catch (err: any) {
-      console.error('Error loading properties:', err);
+      console.error('❌ Error loading properties:', err);
       const errorMessage = err.message || 'Failed to load properties';
+      console.error('Error details:', {
+        message: errorMessage,
+        code: err.code,
+        details: err.details,
+        hint: err.hint
+      });
+      // Always set error, but don't show "Unregistered" errors to user
       if (!errorMessage.includes('Unregistered') && !errorMessage.includes('does not exist')) {
         setError(errorMessage);
+      } else {
+        // For unregistered errors, just log and set empty array
+        console.warn('⚠️ Supabase key issue - properties will be empty');
       }
       setProperties([]);
     } finally {
       setLoading(false);
+      console.log('🏁 Properties loading finished, loading state:', false);
     }
   };
 
@@ -495,6 +508,7 @@ const AppContent: React.FC = () => {
             onListingClick={handleMarketListingClick} 
             properties={properties}
             loading={loading}
+            error={error}
           />
         </div>
       );

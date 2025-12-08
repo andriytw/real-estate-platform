@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Search, MapPin, Euro, Home, Clock, Plus, ChevronDown, Filter } from 'lucide-react';
+import { Search, MapPin, Euro, Home, Clock, Plus, ChevronDown, Filter, AlertCircle } from 'lucide-react';
 import MarketPostModal from './MarketPostModal';
 import { Property } from '../types';
 
@@ -8,6 +8,7 @@ interface MarketplaceProps {
   onListingClick: (listing: any) => void;
   properties?: Property[]; // Optional: if provided, use these instead of loading
   loading?: boolean; // Optional: loading state from parent
+  error?: string | null; // Optional: error message from parent
 }
 
 const MarketFilterDropdown: React.FC<{ 
@@ -33,12 +34,13 @@ const MarketFilterDropdown: React.FC<{
   </div>
 );
 
-const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: propsProperties, loading: propsLoading }) => {
+const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: propsProperties, loading: propsLoading, error: propsError }) => {
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   
   // Use properties from props if provided, otherwise empty array
   const properties = propsProperties || [];
   const loading = propsLoading !== undefined ? propsLoading : false;
+  const error = propsError || null;
   
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -159,6 +161,18 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: p
           <div className="col-span-full flex flex-col items-center justify-center py-20 text-gray-500">
             <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4"></div>
             <p className="text-lg font-medium">Loading properties...</p>
+          </div>
+        ) : error ? (
+          <div className="col-span-full flex flex-col items-center justify-center py-20 text-red-400">
+            <AlertCircle className="w-12 h-12 mb-4 opacity-50" />
+            <p className="text-lg font-medium mb-2">Failed to load properties</p>
+            <p className="text-sm text-gray-500">{error}</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="mt-4 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors"
+            >
+              Retry
+            </button>
           </div>
         ) : filteredListings.length > 0 ? (
           filteredListings.map((item) => (
