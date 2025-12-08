@@ -49,10 +49,18 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   const getCurrentWorker = async (): Promise<Worker | null> => {
     try {
       console.log('🔍 Getting current user from Supabase Auth...');
+      const authStartTime = Date.now();
       const { data: { user }, error: authError } = await supabase.auth.getUser();
+      const authTime = Date.now() - authStartTime;
+      console.log(`⏱️ Auth getUser took ${authTime}ms`);
       
       if (authError) {
         console.error('❌ Auth error:', authError);
+        console.error('Auth error details:', {
+          code: authError.code,
+          message: authError.message,
+          status: authError.status
+        });
         return null;
       }
       
@@ -64,12 +72,15 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       console.log('✅ User found:', user.id, user.email);
 
       // Get worker profile from profiles table
-      console.log('🔍 Fetching profile from profiles table...');
+      console.log('🔍 Fetching profile from profiles table for user:', user.id);
+      const profileStartTime = Date.now();
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
+      const profileTime = Date.now() - profileStartTime;
+      console.log(`⏱️ Profile query took ${profileTime}ms`);
 
       if (profileError) {
         console.error('❌ Profile fetch error:', profileError);
@@ -79,6 +90,12 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
           details: profileError.details,
           hint: profileError.hint
         });
+        
+        // If profile doesn't exist, this is a common issue
+        if (profileError.code === 'PGRST116') {
+          console.error('💡 Profile does not exist in database. User needs to have a profile created.');
+          console.error('💡 Run: supabase/create_profile_for_user.sql or check RLS policies');
+        }
         return null;
       }
 
@@ -104,6 +121,9 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       };
     } catch (error) {
       console.error('❌ Error getting current worker:', error);
+      if (error instanceof Error) {
+        console.error('Error stack:', error.stack);
+      }
       return null;
     }
   };
@@ -112,7 +132,17 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     try {
       console.log('🔄 refreshWorker called');
       setLoading(true);
-      const currentWorker = await getCurrentWorker();
+      
+      // Add timeout for getCurrentWorker to prevent infinite loading
+      const workerPromise = getCurrentWorker();
+      const timeoutPromise = new Promise<null>((resolve) => 
+        setTimeout(() => {
+          console.warn('⚠️ refreshWorker: getCurrentWorker timeout (5s)');
+          resolve(null);
+        }, 5000)
+      );
+      
+      const currentWorker = await Promise.race([workerPromise, timeoutPromise]);
       console.log('🔄 refreshWorker - got worker:', currentWorker ? currentWorker.name : 'null');
       setWorker(currentWorker);
       if (currentWorker) {
