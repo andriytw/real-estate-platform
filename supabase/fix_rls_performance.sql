@@ -11,7 +11,21 @@
 -- 1. FIX FUNCTION SEARCH PATH MUTABLE
 -- ============================================================================
 
--- Fix user_role()
+-- Helper function to get current user ID using current_setting (кешується автоматично)
+-- Використовуємо current_setting замість auth.uid() для кращої продуктивності
+CREATE OR REPLACE FUNCTION public.auth_uid_cached()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+  SELECT COALESCE(
+    current_setting('request.jwt.claim.sub', true)::uuid,
+    auth.uid() -- Fallback to auth.uid() if current_setting fails
+  );
+$$;
+
+-- Fix user_role() - використовуємо кешовану функцію
 CREATE OR REPLACE FUNCTION public.user_role()
 RETURNS TEXT 
 LANGUAGE sql 
@@ -19,10 +33,10 @@ SECURITY DEFINER
 STABLE
 SET search_path = ''
 AS $$
-  SELECT role FROM public.profiles WHERE id = auth.uid();
+  SELECT role FROM public.profiles WHERE id = public.auth_uid_cached();
 $$;
 
--- Fix user_department()
+-- Fix user_department() - використовуємо кешовану функцію
 CREATE OR REPLACE FUNCTION public.user_department()
 RETURNS TEXT 
 LANGUAGE sql 
@@ -30,7 +44,7 @@ SECURITY DEFINER
 STABLE
 SET search_path = ''
 AS $$
-  SELECT department FROM public.profiles WHERE id = auth.uid();
+  SELECT department FROM public.profiles WHERE id = public.auth_uid_cached();
 $$;
 
 -- Fix handle_new_user()
@@ -101,10 +115,10 @@ DROP POLICY IF EXISTS "Super managers can view all profiles" ON profiles;
 DROP POLICY IF EXISTS "profiles_select_policy" ON profiles;
 DROP POLICY IF EXISTS "profiles_update_policy" ON profiles;
 
--- Об'єднана політика для SELECT
+-- Об'єднана політика для SELECT (використовуємо кешовану функцію)
 CREATE POLICY "profiles_select_policy" ON profiles
   FOR SELECT USING (
-    auth.uid() = id
+    public.auth_uid_cached() = id
     OR
     (
       public.user_role() IN ('manager', 'super_manager')
@@ -114,9 +128,9 @@ CREATE POLICY "profiles_select_policy" ON profiles
     (public.user_role() = 'super_manager')
   );
 
--- Політика для UPDATE
+-- Політика для UPDATE (використовуємо кешовану функцію)
 CREATE POLICY "profiles_update_policy" ON profiles
-  FOR UPDATE USING (auth.uid() = id);
+  FOR UPDATE USING (public.auth_uid_cached() = id);
 
 -- ============================================================================
 -- 2.2. TASK_WORKFLOWS TABLE (з перевіркою існування)
@@ -151,59 +165,39 @@ BEGIN
       AND table_name = 'task_workflows' 
       AND column_name = 'worker_id'
     ) THEN
-      -- Створюємо нові об'єднані політики (якщо є worker_id)
+      -- Створюємо нові об'єднані політики (якщо є worker_id) - використовуємо кешовану функцію
       CREATE POLICY "task_workflows_select_policy" ON task_workflows
         FOR SELECT USING (
-          auth.uid() = worker_id
+          public.auth_uid_cached() = worker_id
           OR
-          EXISTS (
-            SELECT 1 FROM public.profiles
-            WHERE id = auth.uid() 
-            AND role IN ('manager', 'super_manager')
-          )
+          public.user_role() IN ('manager', 'super_manager')
         );
       
       CREATE POLICY "task_workflows_update_policy" ON task_workflows
         FOR UPDATE USING (
-          auth.uid() = worker_id
+          public.auth_uid_cached() = worker_id
           OR
-          EXISTS (
-            SELECT 1 FROM public.profiles
-            WHERE id = auth.uid() 
-            AND role IN ('manager', 'super_manager')
-          )
+          public.user_role() IN ('manager', 'super_manager')
         );
       
       CREATE POLICY "task_workflows_insert_policy" ON task_workflows
-        FOR INSERT WITH CHECK (auth.uid() = worker_id);
+        FOR INSERT WITH CHECK (public.auth_uid_cached() = worker_id);
     ELSE
       -- Якщо немає worker_id, створюємо політики без прив'язки до worker_id
-      -- (тільки для менеджерів)
+      -- (тільки для менеджерів) - використовуємо функції замість EXISTS
       CREATE POLICY "task_workflows_select_policy" ON task_workflows
         FOR SELECT USING (
-          EXISTS (
-            SELECT 1 FROM public.profiles
-            WHERE id = auth.uid() 
-            AND role IN ('manager', 'super_manager')
-          )
+          public.user_role() IN ('manager', 'super_manager')
         );
       
       CREATE POLICY "task_workflows_update_policy" ON task_workflows
         FOR UPDATE USING (
-          EXISTS (
-            SELECT 1 FROM public.profiles
-            WHERE id = auth.uid() 
-            AND role IN ('manager', 'super_manager')
-          )
+          public.user_role() IN ('manager', 'super_manager')
         );
       
       CREATE POLICY "task_workflows_insert_policy" ON task_workflows
         FOR INSERT WITH CHECK (
-          EXISTS (
-            SELECT 1 FROM public.profiles
-            WHERE id = auth.uid() 
-            AND role IN ('manager', 'super_manager')
-          )
+          public.user_role() IN ('manager', 'super_manager')
         );
     END IF;
   ELSE
@@ -239,32 +233,20 @@ BEGIN
       EXECUTE format('DROP POLICY IF EXISTS %I ON user_invitations', pol.policyname);
     END LOOP;
     
-    -- Створюємо об'єднані політики
+    -- Створюємо об'єднані політики - використовуємо функції замість EXISTS
     CREATE POLICY "user_invitations_select_policy" ON user_invitations
       FOR SELECT USING (
-        EXISTS (
-          SELECT 1 FROM public.profiles
-          WHERE id = auth.uid() 
-          AND role IN ('manager', 'super_manager')
-        )
+        public.user_role() IN ('manager', 'super_manager')
       );
     
     CREATE POLICY "user_invitations_insert_policy" ON user_invitations
       FOR INSERT WITH CHECK (
-        EXISTS (
-          SELECT 1 FROM public.profiles
-          WHERE id = auth.uid() 
-          AND role IN ('manager', 'super_manager')
-        )
+        public.user_role() IN ('manager', 'super_manager')
       );
     
     CREATE POLICY "user_invitations_update_policy" ON user_invitations
       FOR UPDATE USING (
-        EXISTS (
-          SELECT 1 FROM public.profiles
-          WHERE id = auth.uid() 
-          AND role IN ('manager', 'super_manager')
-        )
+        public.user_role() IN ('manager', 'super_manager')
       );
   END IF;
 END $$;
@@ -295,7 +277,7 @@ BEGIN
         OR EXISTS (
           SELECT 1 FROM kanban_column_workers kcw
           WHERE kcw.column_id = kanban_columns.id
-          AND kcw.worker_id = auth.uid()
+          AND kcw.worker_id = public.auth_uid_cached()
         )
       );
     
@@ -338,7 +320,7 @@ BEGIN
           AND (
             kc.department = public.user_department()
             OR public.user_role() = 'super_manager'
-            OR kanban_column_workers.worker_id = auth.uid()
+            OR kanban_column_workers.worker_id = public.auth_uid_cached()
           )
         )
       );
@@ -377,14 +359,14 @@ BEGIN
     DROP POLICY IF EXISTS "task_chat_messages_select_policy" ON task_chat_messages;
     DROP POLICY IF EXISTS "task_chat_messages_insert_policy" ON task_chat_messages;
     
-    -- Оптимізована політика для SELECT
+    -- Оптимізована політика для SELECT (використовуємо кешовану функцію)
     CREATE POLICY "task_chat_messages_select_policy" ON task_chat_messages
       FOR SELECT USING (
         EXISTS (
           SELECT 1 FROM calendar_events ce
           WHERE ce.id = task_chat_messages.calendar_event_id
           AND (
-            ce.worker_id = auth.uid()
+            ce.worker_id = public.auth_uid_cached()
             OR (
               public.user_role() IN ('manager', 'super_manager')
               AND (
@@ -396,15 +378,15 @@ BEGIN
         )
       );
     
-    -- Оптимізована політика для INSERT
+    -- Оптимізована політика для INSERT (використовуємо кешовану функцію)
     CREATE POLICY "task_chat_messages_insert_policy" ON task_chat_messages
       FOR INSERT WITH CHECK (
-        sender_id = auth.uid()
+        sender_id = public.auth_uid_cached()
         AND EXISTS (
           SELECT 1 FROM calendar_events ce
           WHERE ce.id = task_chat_messages.calendar_event_id
           AND (
-            ce.worker_id = auth.uid()
+            ce.worker_id = public.auth_uid_cached()
             OR (
               public.user_role() IN ('manager', 'super_manager')
               AND (
