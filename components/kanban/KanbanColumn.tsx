@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Draggable } from '@hello-pangea/dnd';
 import { CalendarEvent, Worker, KanbanColumn as IKanbanColumn, TaskStatus, TaskType } from '../../types';
 import KanbanTaskCard from './KanbanTaskCard';
@@ -35,6 +35,17 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   const [selectedTaskTypes, setSelectedTaskTypes] = useState<TaskType[]>([]);
   const [sortBy, setSortBy] = useState<'date' | 'type'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Sync selectedWorkerId with column.workerId when it changes
+  useEffect(() => {
+    if (column.workerId && column.workerId !== selectedWorkerId) {
+      setSelectedWorkerId(column.workerId);
+      setIsAssigning(false);
+    } else if (!column.workerId) {
+      setSelectedWorkerId(null);
+      setIsAssigning(false);
+    }
+  }, [column.workerId]);
 
   // Get available task types from column tasks
   const availableTaskTypes = useMemo(() => {
@@ -250,18 +261,20 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
       {/* Filters and Sorting (only if worker is assigned) */}
       {column.workerId && (
         <>
-          <TaskTypeFilters
-            selectedTypes={selectedTaskTypes}
-            onToggleType={(type) => {
-              setSelectedTaskTypes(prev => 
-                prev.includes(type) 
-                  ? prev.filter(t => t !== type)
-                  : [...prev, type]
-              );
-            }}
-            onClearAll={() => setSelectedTaskTypes([])}
-            availableTypes={availableTaskTypes}
-          />
+          {availableTaskTypes.length > 0 && (
+            <TaskTypeFilters
+              selectedTypes={selectedTaskTypes}
+              onToggleType={(type) => {
+                setSelectedTaskTypes(prev => 
+                  prev.includes(type) 
+                    ? prev.filter(t => t !== type)
+                    : [...prev, type]
+                );
+              }}
+              onClearAll={() => setSelectedTaskTypes([])}
+              availableTypes={availableTaskTypes}
+            />
+          )}
           <ColumnSortButtons
             sortBy={sortBy}
             sortOrder={sortOrder}
