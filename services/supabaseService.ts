@@ -199,32 +199,52 @@ export const usersService = {
     // Don't update if no changes
     if (Object.keys(updateData).length === 0) {
       // Return existing user data
-      const { data: currentUser } = await supabase
+      const { data: currentUserData, error: currentUserError } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', id)
-        .single();
-      if (!currentUser) throw new Error('Користувача не знайдено');
-      return transformWorkerFromDB(currentUser);
+        .eq('id', id);
+      if (currentUserError) {
+        throw new Error(`Помилка отримання даних користувача: ${currentUserError.message}`);
+      }
+      if (!currentUserData || currentUserData.length === 0) {
+        throw new Error('Користувача не знайдено');
+      }
+      return transformWorkerFromDB(currentUserData[0]);
     }
 
-    const { data, error } = await supabase
+    // Update the user
+    const { error: updateError } = await supabase
       .from('profiles')
       .update(updateData)
-      .eq('id', id)
-      .select();
+      .eq('id', id);
 
-    if (error) {
-      console.error('Error updating user in database:', error);
-      throw new Error(`Помилка оновлення в базі даних: ${error.message || error.details || 'Невідома помилка'}`);
+    if (updateError) {
+      console.error('Error updating user in database:', updateError);
+      throw new Error(`Помилка оновлення в базі даних: ${updateError.message || updateError.details || 'Невідома помилка'}`);
+    }
+
+    // Fetch updated user data separately (to avoid RLS issues with SELECT after UPDATE)
+    const { data, error: fetchError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('Error fetching updated user data:', fetchError);
+      // If update succeeded but fetch failed, still consider it a success
+      // The user will see the changes after page reload
+      throw new Error(`Оновлення виконано, але не вдалося отримати оновлені дані. Будь ласка, оновіть сторінку. Помилка: ${fetchError.message}`);
     }
     
-    if (!data || data.length === 0) {
-      throw new Error('Оновлення виконано, але дані не повернуто. Можливо, користувача не знайдено або немає доступу.');
+    if (!data) {
+      // Update succeeded but no data returned - might be RLS issue
+      // Try to get user data with a different approach or just return success
+      console.warn('Update succeeded but no data returned - possible RLS issue');
+      throw new Error('Оновлення виконано, але не вдалося отримати оновлені дані через обмеження доступу. Будь ласка, оновіть сторінку вручну.');
     }
     
-    // Return first result (should be only one since we're updating by id)
-    return transformWorkerFromDB(data[0]);
+    return transformWorkerFromDB(data);
   },
 
   // Deactivate user (set is_active = false)
