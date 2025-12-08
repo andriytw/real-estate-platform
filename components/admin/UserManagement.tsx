@@ -34,10 +34,12 @@ const UserManagement: React.FC = () => {
   const loadUsers = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Loading users...');
       const allUsers = await usersService.getAll();
+      console.log('✅ Users loaded:', allUsers.map(u => ({ id: u.id, email: u.email, role: u.role })));
       setUsers(allUsers);
     } catch (error) {
-      console.error('Error loading users:', error);
+      console.error('❌ Error loading users:', error);
     } finally {
       setLoading(false);
     }
@@ -58,14 +60,19 @@ const UserManagement: React.FC = () => {
     if (!editedUser) return;
     
     try {
-      await usersService.update(userId, {
+      console.log('💾 Saving user update:', { userId, updates: editedUser });
+      const updatedUser = await usersService.update(userId, {
         role: editedUser.role,
         department: editedUser.department,
         categoryAccess: editedUser.categoryAccess,
         firstName: editedUser.firstName,
         lastName: editedUser.lastName
       });
-      await loadUsers(); // Reload to get updated data
+      console.log('✅ User updated successfully:', updatedUser);
+      
+      // Reload users list to get fresh data
+      await loadUsers();
+      console.log('✅ Users list reloaded');
       
       // Trigger workers list refresh in KanbanBoard
       window.dispatchEvent(new CustomEvent('workersUpdated'));
@@ -73,7 +80,7 @@ const UserManagement: React.FC = () => {
       setEditingUser(null);
       setEditedUser(null);
     } catch (error: any) {
-      console.error('Error updating user:', error);
+      console.error('❌ Error updating user:', error);
       const errorMessage = error?.message || error?.details || 'Невідома помилка';
       alert(`Помилка оновлення користувача: ${errorMessage}`);
     }
