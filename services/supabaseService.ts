@@ -224,18 +224,27 @@ export const usersService = {
     }
 
     // Fetch updated user data separately (to avoid RLS issues with SELECT after UPDATE)
-    const { data, error: fetchError } = await supabase
+    const { data: updatedData, error: fetchUpdatedError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', id)
       .maybeSingle();
 
-    if (fetchError) {
-      console.error('Error fetching updated user data:', fetchError);
+    if (fetchUpdatedError) {
+      console.error('Error fetching updated user data:', fetchUpdatedError);
       // If update succeeded but fetch failed, still consider it a success
       // The user will see the changes after page reload
-      throw new Error(`Оновлення виконано, але не вдалося отримати оновлені дані. Будь ласка, оновіть сторінку. Помилка: ${fetchError.message}`);
+      throw new Error(`Оновлення виконано, але не вдалося отримати оновлені дані. Будь ласка, оновіть сторінку. Помилка: ${fetchUpdatedError.message}`);
     }
+    
+    if (!updatedData) {
+      // Update succeeded but no data returned - might be RLS issue
+      // Try to get user data with a different approach or just return success
+      console.warn('Update succeeded but no data returned - possible RLS issue');
+      throw new Error('Оновлення виконано, але не вдалося отримати оновлені дані через обмеження доступу. Будь ласка, оновіть сторінку вручну.');
+    }
+    
+    return transformWorkerFromDB(updatedData);
     
     if (!data) {
       // Update succeeded but no data returned - might be RLS issue
