@@ -1,7 +1,7 @@
 import React from 'react';
 import { CalendarEvent } from '../../types';
 import { getTaskColor, getTaskBadgeColor } from '../../utils/taskColors';
-import { Clock, AlertTriangle, CheckCircle2, Circle, AlertCircle, Building2 } from 'lucide-react';
+import { Clock, AlertTriangle, CheckCircle2, Circle, AlertCircle, Building2, Calendar } from 'lucide-react';
 
 interface KanbanTaskCardProps {
   task: CalendarEvent;
@@ -30,7 +30,7 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
         ${task.priority === 'urgent' ? 'border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.1)]' : 'border-gray-800 hover:border-gray-700'}
       `}
     >
-      {/* Header: Priority & Time */}
+      {/* Header: Priority & Time/Date */}
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-center gap-2">
           {getPriorityIcon()}
@@ -38,12 +38,26 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
             {task.type}
           </span>
         </div>
-        {task.time && (
-          <div className="flex items-center gap-1 text-xs text-gray-500">
-            <Clock className="w-3 h-3" />
-            {task.time}
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Creation Date */}
+          {task.createdAt && (
+            <div className="flex items-center gap-1 text-xs text-gray-500">
+              <Calendar className="w-3 h-3" />
+              {new Date(task.createdAt).toLocaleDateString('uk-UA', { 
+                day: '2-digit', 
+                month: '2-digit',
+                year: 'numeric'
+              })}
+            </div>
+          )}
+          {/* Time */}
+          {task.time && (
+            <div className="flex items-center gap-1 text-xs text-gray-500">
+              <Clock className="w-3 h-3" />
+              {task.time}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Title */}
