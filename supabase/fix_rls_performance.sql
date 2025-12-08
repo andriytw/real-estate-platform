@@ -268,8 +268,11 @@ BEGIN
     DROP POLICY IF EXISTS "Managers can manage columns in their department" ON kanban_columns;
     DROP POLICY IF EXISTS "kanban_columns_select_policy" ON kanban_columns;
     DROP POLICY IF EXISTS "kanban_columns_manage_policy" ON kanban_columns;
+    DROP POLICY IF EXISTS "kanban_columns_insert_policy" ON kanban_columns;
+    DROP POLICY IF EXISTS "kanban_columns_update_policy" ON kanban_columns;
+    DROP POLICY IF EXISTS "kanban_columns_delete_policy" ON kanban_columns;
     
-    -- Оптимізована політика для SELECT (використовує функції замість auth.uid())
+    -- Об'єднана політика для SELECT (використовує функції замість auth.uid())
     CREATE POLICY "kanban_columns_select_policy" ON kanban_columns
       FOR SELECT USING (
         kanban_columns.department = public.user_department()
@@ -281,9 +284,27 @@ BEGIN
         )
       );
     
-    -- Оптимізована політика для ALL
-    CREATE POLICY "kanban_columns_manage_policy" ON kanban_columns
-      FOR ALL USING (
+    -- Окремі політики для INSERT, UPDATE, DELETE (не ALL, щоб уникнути конфлікту)
+    CREATE POLICY "kanban_columns_insert_policy" ON kanban_columns
+      FOR INSERT WITH CHECK (
+        public.user_role() IN ('manager', 'super_manager')
+        AND (
+          kanban_columns.department = public.user_department()
+          OR public.user_role() = 'super_manager'
+        )
+      );
+    
+    CREATE POLICY "kanban_columns_update_policy" ON kanban_columns
+      FOR UPDATE USING (
+        public.user_role() IN ('manager', 'super_manager')
+        AND (
+          kanban_columns.department = public.user_department()
+          OR public.user_role() = 'super_manager'
+        )
+      );
+    
+    CREATE POLICY "kanban_columns_delete_policy" ON kanban_columns
+      FOR DELETE USING (
         public.user_role() IN ('manager', 'super_manager')
         AND (
           kanban_columns.department = public.user_department()
@@ -310,8 +331,11 @@ BEGIN
     DROP POLICY IF EXISTS "Managers can manage column workers" ON kanban_column_workers;
     DROP POLICY IF EXISTS "kanban_column_workers_select_policy" ON kanban_column_workers;
     DROP POLICY IF EXISTS "kanban_column_workers_manage_policy" ON kanban_column_workers;
+    DROP POLICY IF EXISTS "kanban_column_workers_insert_policy" ON kanban_column_workers;
+    DROP POLICY IF EXISTS "kanban_column_workers_update_policy" ON kanban_column_workers;
+    DROP POLICY IF EXISTS "kanban_column_workers_delete_policy" ON kanban_column_workers;
     
-    -- Оптимізована політика для SELECT
+    -- Об'єднана політика для SELECT
     CREATE POLICY "kanban_column_workers_select_policy" ON kanban_column_workers
       FOR SELECT USING (
         EXISTS (
@@ -325,9 +349,35 @@ BEGIN
         )
       );
     
-    -- Оптимізована політика для ALL
-    CREATE POLICY "kanban_column_workers_manage_policy" ON kanban_column_workers
-      FOR ALL USING (
+    -- Окремі політики для INSERT, UPDATE, DELETE (не ALL, щоб уникнути конфлікту)
+    CREATE POLICY "kanban_column_workers_insert_policy" ON kanban_column_workers
+      FOR INSERT WITH CHECK (
+        EXISTS (
+          SELECT 1 FROM kanban_columns kc
+          WHERE kc.id = kanban_column_workers.column_id
+          AND public.user_role() IN ('manager', 'super_manager')
+          AND (
+            kc.department = public.user_department()
+            OR public.user_role() = 'super_manager'
+          )
+        )
+      );
+    
+    CREATE POLICY "kanban_column_workers_update_policy" ON kanban_column_workers
+      FOR UPDATE USING (
+        EXISTS (
+          SELECT 1 FROM kanban_columns kc
+          WHERE kc.id = kanban_column_workers.column_id
+          AND public.user_role() IN ('manager', 'super_manager')
+          AND (
+            kc.department = public.user_department()
+            OR public.user_role() = 'super_manager'
+          )
+        )
+      );
+    
+    CREATE POLICY "kanban_column_workers_delete_policy" ON kanban_column_workers
+      FOR DELETE USING (
         EXISTS (
           SELECT 1 FROM kanban_columns kc
           WHERE kc.id = kanban_column_workers.column_id
