@@ -155,18 +155,38 @@ export const tasksService = {
 export const propertiesService = {
   // Get all properties
   async getAll(lightweight = false): Promise<Property[]> {
-    // For Marketplace/public views, only load essential fields for faster loading
-    const selectFields = lightweight 
-      ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip'
-      : '*';
-    
-    const { data, error } = await supabase
-      .from('properties')
-      .select(selectFields)
-      .order('created_at', { ascending: false });
-    
-    if (error) throw error;
-    return data.map(transformPropertyFromDB);
+    try {
+      console.log('📡 propertiesService.getAll called, lightweight:', lightweight);
+      // For Marketplace/public views, only load essential fields for faster loading
+      const selectFields = lightweight 
+        ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip'
+        : '*';
+      
+      console.log('📡 Querying properties table with fields:', selectFields);
+      const { data, error } = await supabase
+        .from('properties')
+        .select(selectFields)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('❌ Supabase query error:', error);
+        console.error('Error details:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
+        throw error;
+      }
+      
+      console.log('📡 Query successful, received', data?.length || 0, 'rows');
+      const transformed = data.map(transformPropertyFromDB);
+      console.log('📡 Transformed', transformed.length, 'properties');
+      return transformed;
+    } catch (err: any) {
+      console.error('❌ propertiesService.getAll error:', err);
+      throw err;
+    }
   },
 
   // Get property by ID

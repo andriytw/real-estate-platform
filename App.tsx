@@ -73,13 +73,23 @@ const AppContent: React.FC = () => {
       setLoading(true);
       setError(null);
       console.log('🔄 Loading properties from Supabase...');
+      console.log('🔄 Current worker state:', worker?.id || 'not logged in');
+      
       // Use lightweight mode for faster initial load (especially for Marketplace)
+      const startTime = Date.now();
       const data = await propertiesService.getAll(true);
-      console.log('✅ Properties loaded:', data.length, 'items');
+      const loadTime = Date.now() - startTime;
+      
+      console.log(`✅ Properties loaded: ${data.length} items in ${loadTime}ms`);
+      console.log('📊 Properties data:', data.length > 0 ? data.slice(0, 3).map(p => ({ id: p.id, title: p.title })) : 'empty');
+      
       setProperties(data);
       
       if (data.length > 0 && !selectedProperty) {
         setSelectedProperty(data[0]);
+      } else if (data.length === 0) {
+        console.warn('⚠️ No properties found in database');
+        setError('Немає доступних об\'єктів нерухомості');
       }
     } catch (err: any) {
       console.error('❌ Error loading properties:', err);
@@ -88,14 +98,17 @@ const AppContent: React.FC = () => {
         message: errorMessage,
         code: err.code,
         details: err.details,
-        hint: err.hint
+        hint: err.hint,
+        stack: err.stack
       });
+      
       // Always set error, but don't show "Unregistered" errors to user
       if (!errorMessage.includes('Unregistered') && !errorMessage.includes('does not exist')) {
         setError(errorMessage);
       } else {
         // For unregistered errors, just log and set empty array
         console.warn('⚠️ Supabase key issue - properties will be empty');
+        setError('Помилка підключення до бази даних. Перевірте налаштування.');
       }
       setProperties([]);
     } finally {
