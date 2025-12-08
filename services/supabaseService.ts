@@ -244,14 +244,10 @@ export const usersService = {
       throw new Error('Оновлення виконано, але не вдалося отримати оновлені дані через обмеження доступу. Будь ласка, оновіть сторінку вручну.');
     }
     
-    return transformWorkerFromDB(updatedData);
-    
-    if (!data) {
-      // Update succeeded but no data returned - might be RLS issue
-      // Try to get user data with a different approach or just return success
-      console.warn('Update succeeded but no data returned - possible RLS issue');
-      throw new Error('Оновлення виконано, але не вдалося отримати оновлені дані через обмеження доступу. Будь ласка, оновіть сторінку вручну.');
-    }
+    console.log('✅ Updated user data from DB:', { id: updatedData.id, role: updatedData.role, department: updatedData.department });
+    const transformed = transformWorkerFromDB(updatedData);
+    console.log('✅ Transformed user data:', { id: transformed.id, role: transformed.role, department: transformed.department });
+    return transformed;
     
     return transformWorkerFromDB(data);
   },
