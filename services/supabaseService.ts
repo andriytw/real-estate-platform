@@ -6,13 +6,21 @@ const supabase = createClient();
 // ==================== WORKERS ====================
 export const workersService = {
   async getAll(): Promise<Worker[]> {
+    console.log('🔄 Fetching all workers from database...');
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .order('name', { ascending: true });
     
-    if (error) throw error;
-    return data.map(transformWorkerFromDB);
+    if (error) {
+      console.error('❌ Error fetching workers:', error);
+      throw error;
+    }
+    
+    console.log('✅ Raw workers data from DB:', data.map(w => ({ id: w.id, email: w.email, role: w.role, department: w.department })));
+    const transformed = data.map(transformWorkerFromDB);
+    console.log('✅ Transformed workers:', transformed.map(w => ({ id: w.id, email: w.email, role: w.role, department: w.department })));
+    return transformed;
   },
 
   async getById(id: string): Promise<Worker | null> {
@@ -213,15 +221,19 @@ export const usersService = {
     }
 
     // Update the user
-    const { error: updateError } = await supabase
+    console.log('📝 Updating user in database:', { id, updateData });
+    const { error: updateError, data: updateResult } = await supabase
       .from('profiles')
       .update(updateData)
-      .eq('id', id);
+      .eq('id', id)
+      .select('id, role, department'); // Select to verify update
 
     if (updateError) {
-      console.error('Error updating user in database:', updateError);
+      console.error('❌ Error updating user in database:', updateError);
       throw new Error(`Помилка оновлення в базі даних: ${updateError.message || updateError.details || 'Невідома помилка'}`);
     }
+    
+    console.log('✅ Update result from database:', updateResult);
 
     // Fetch updated user data separately (to avoid RLS issues with SELECT after UPDATE)
     const { data: updatedData, error: fetchUpdatedError } = await supabase
