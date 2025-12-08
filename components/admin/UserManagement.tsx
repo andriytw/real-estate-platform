@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { usersService } from '../../services/supabaseService';
 import { Worker, CategoryAccess } from '../../types';
-import { Plus, Trash2, Save, X, User, Mail, Shield, Building2, CheckSquare, Square, Edit, Send } from 'lucide-react';
+import { Plus, Trash2, Save, X, User, Mail, Shield, Building2, CheckSquare, Square, Edit, Send, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<Worker[]>([]);
@@ -9,6 +9,8 @@ const UserManagement: React.FC = () => {
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [editedUser, setEditedUser] = useState<Partial<Worker> | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [resendingInvite, setResendingInvite] = useState<Set<string>>(new Set());
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [newUser, setNewUser] = useState({
     firstName: '',
     lastName: '',
@@ -169,6 +171,28 @@ const UserManagement: React.FC = () => {
         </button>
       </div>
 
+      {/* Message Toast */}
+      {message && (
+        <div className={`mb-4 p-4 rounded-lg border flex items-center gap-3 ${
+          message.type === 'success' 
+            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
+            : 'bg-red-500/10 border-red-500/30 text-red-400'
+        }`}>
+          {message.type === 'success' ? (
+            <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+          ) : (
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          )}
+          <span className="text-sm font-medium">{message.text}</span>
+          <button
+            onClick={() => setMessage(null)}
+            className="ml-auto text-gray-400 hover:text-white transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Users Table */}
       <div className="bg-[#1C1F24] rounded-lg border border-gray-800 overflow-hidden">
         <div className="overflow-x-auto">
@@ -291,10 +315,15 @@ const UserManagement: React.FC = () => {
                           </button>
                           <button
                             onClick={() => handleResendInvite(user.id, user.email)}
-                            className="p-1.5 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 transition-colors"
+                            disabled={resendingInvite.has(user.id)}
+                            className="p-1.5 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Надіслати запрошення"
                           >
-                            <Send className="w-4 h-4" />
+                            {resendingInvite.has(user.id) ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Send className="w-4 h-4" />
+                            )}
                           </button>
                           <button
                             onClick={() => handleDeactivate(user.id)}
