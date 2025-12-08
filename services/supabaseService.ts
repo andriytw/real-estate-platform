@@ -60,17 +60,19 @@ export const usersService = {
                    import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY ||
                    (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : '');
 
-    // Get current session token for authentication
+    // Get current session token for authentication (if JWT verification is enabled)
+    // If JWT verification is disabled in Edge Function, we can use anon key directly
     const { data: { session } } = await supabase.auth.getSession();
     const authToken = session?.access_token || anonKey;
 
     console.log('📧 Calling Edge Function to invite user:', userData.email);
+    console.log('🔑 Using auth token:', authToken ? 'present' : 'missing');
 
     const response = await fetch(functionsUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`,
+        'Authorization': `Bearer ${anonKey}`, // Use anon key when JWT verification is disabled
         'apikey': anonKey,
       },
       body: JSON.stringify({
