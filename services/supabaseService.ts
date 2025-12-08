@@ -221,19 +221,29 @@ export const usersService = {
     }
 
     // Update the user
-    console.log('📝 Updating user in database:', { id, updateData });
+    console.log('📝 Updating user in database:', { id, updateData, role: updates.role, department: updates.department });
+    
+    // First, try UPDATE with SELECT to get immediate result
     const { error: updateError, data: updateResult } = await supabase
       .from('profiles')
       .update(updateData)
       .eq('id', id)
-      .select('id, role, department'); // Select to verify update
+      .select('id, role, department, name'); // Select to verify update
 
     if (updateError) {
       console.error('❌ Error updating user in database:', updateError);
       throw new Error(`Помилка оновлення в базі даних: ${updateError.message || updateError.details || 'Невідома помилка'}`);
     }
     
-    console.log('✅ Update result from database:', updateResult);
+    console.log('✅ Update result from database (immediate):', updateResult);
+    
+    // If updateResult is empty, it might be RLS blocking the SELECT
+    // In that case, we'll fetch separately
+    if (!updateResult || updateResult.length === 0) {
+      console.warn('⚠️ UPDATE succeeded but SELECT returned no rows - likely RLS issue, fetching separately...');
+    } else {
+      console.log('✅ Role in update result:', updateResult[0]?.role);
+    }
 
     // Fetch updated user data separately (to avoid RLS issues with SELECT after UPDATE)
     const { data: updatedData, error: fetchUpdatedError } = await supabase
