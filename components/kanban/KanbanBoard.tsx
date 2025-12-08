@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { tasksService, workersService } from '../../services/supabaseService';
-import { CalendarEvent, Worker, KanbanColumn as IKanbanColumn, TaskStatus } from '../../types';
+import { CalendarEvent, Worker, KanbanColumn as IKanbanColumn, TaskStatus, CustomColumn } from '../../types';
 import KanbanColumn from './KanbanColumn';
 import ColumnCreateModal from './ColumnCreateModal';
 import { useWorker } from '../../contexts/WorkerContext';
@@ -19,15 +19,26 @@ const KanbanBoard: React.FC = () => {
   const [departmentFilter, setDepartmentFilter] = useState<DepartmentFilter>('all');
   
   // State for custom columns (stored in localStorage)
-  const [customColumns, setCustomColumns] = useState<string[]>(() => {
+  const [customColumns, setCustomColumns] = useState<CustomColumn[]>(() => {
     // Load from localStorage on initialization
     const saved = localStorage.getItem('kanban_custom_columns');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // Validate that it's an array
+        // Migration: if old format (string[]), convert to CustomColumn[]
         if (Array.isArray(parsed)) {
-          return parsed;
+          if (parsed.length > 0 && typeof parsed[0] === 'string') {
+            // Old format: string[] (worker IDs)
+            console.log('🔄 Migrating customColumns from old format (string[]) to new format (CustomColumn[])');
+            return parsed.map((workerId: string) => ({
+              id: crypto.randomUUID(),
+              workerId: workerId,
+              createdAt: new Date().toISOString()
+            }));
+          } else {
+            // New format: CustomColumn[]
+            return parsed;
+          }
         }
       } catch (e) {
         console.error('Error parsing customColumns from localStorage:', e);
@@ -82,11 +93,27 @@ const KanbanBoard: React.FC = () => {
       tasks: adminTasks
     });
 
-    // 2. Створені вручну колонки (тільки з customColumns)
-    // Знайти workers/managers по IDs з customColumns
-    customColumns.forEach(workerId => {
-      const worker = workers.find(w => w.id === workerId);
-      if (!worker) return; // Якщо worker не знайдено, пропустити
+    // 2. Створені вручну колонки (з customColumns)
+    customColumns.forEach(customCol => {
+      if (!customCol.workerId) {
+        // Empty column - show placeholder
+        cols.push({
+          id: customCol.id,
+          title: 'Виберіть працівника',
+          type: 'backlog',
+          workerId: undefined,
+          tasks: [] // No tasks until worker is assigned
+        });
+        return;
+      }
+
+      // Find worker by ID
+      const worker = workers.find(w => w.id === customCol.workerId);
+      if (!worker) {
+        // Worker not found - skip this column
+        console.warn('⚠️ Worker not found for column:', customCol.id, customCol.workerId);
+        return;
+      }
 
       // Фільтр по департаменту
       if (departmentFilter !== 'all' && worker.department !== departmentFilter) {
@@ -97,7 +124,7 @@ const KanbanBoard: React.FC = () => {
       const columnType = worker.role === 'manager' ? 'manager' : 'worker';
       
       cols.push({
-        id: worker.id,
+        id: customCol.id,
         title: worker.name,
         type: columnType,
         workerId: worker.id,
@@ -167,26 +194,36 @@ const KanbanBoard: React.FC = () => {
     setTasks(prev => [newTask, ...prev]);
   };
 
-  // Handle column creation
-  const handleColumnCreated = React.useCallback((workerId: string, type: 'manager' | 'worker') => {
-    console.log('🔄 handleColumnCreated called:', workerId, type);
-    console.log('🔄 Creating column for worker:', workerId, 'type:', type);
-    
+  // Handle column creation (creates empty column)
+  const handleColumnCreated = React.useCallback(() => {
+    console.log('🔄 Creating empty column');
+    const newColumn: CustomColumn = {
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString()
+    };
     setCustomColumns(prev => {
-      if (prev.includes(workerId)) {
-        console.warn('⚠️ Column already exists for worker:', workerId);
-        return prev; // Don't modify if already exists
-      }
-      const updated = [...prev, workerId];
-      console.log('✅ Column added. New customColumns count:', updated.length);
+      const updated = [...prev, newColumn];
+      console.log('✅ Empty column created. New customColumns count:', updated.length);
       return updated;
     });
-  }, []); // Empty deps - function doesn't depend on any state
+  }, []);
+
+  // Handle worker assignment to column
+  const handleColumnWorkerAssigned = React.useCallback((columnId: string, workerId: string) => {
+    console.log('🔄 Assigning worker to column:', columnId, workerId);
+    setCustomColumns(prev => {
+      return prev.map(col => 
+        col.id === columnId 
+          ? { ...col, workerId }
+          : col
+      );
+    });
+  }, []);
 
   // Handle column deletion (only if empty or all tasks completed)
-  const handleColumnDeleted = (workerId: string) => {
+  const handleColumnDeleted = (columnId: string) => {
     // Find the column
-    const column = columns.find(c => c.workerId === workerId);
+    const column = columns.find(c => c.id === columnId);
     if (!column) return;
 
     // Check if there are incomplete tasks
@@ -202,7 +239,7 @@ const KanbanBoard: React.FC = () => {
 
     // If all tasks are completed or column is empty, can delete
     if (window.confirm('Ви впевнені, що хочете видалити цю колонку? Всі виконані завдання будуть переміщені в Inbox.')) {
-      setCustomColumns(prev => prev.filter(id => id !== workerId));
+      setCustomColumns(prev => prev.filter(col => col.id !== columnId));
       
       // Move all tasks from this column to Inbox (if any)
       const tasksToMove = column.tasks;
@@ -307,6 +344,9 @@ const KanbanBoard: React.FC = () => {
                       onTaskCreated={handleTaskCreated}
                       onColumnDeleted={handleColumnDeleted}
                       canDelete={currentUser?.role === 'super_manager' && column.id !== 'admin-inbox'}
+                      onWorkerAssigned={column.id !== 'admin-inbox' ? (workerId) => handleColumnWorkerAssigned(column.id, workerId) : undefined}
+                      workers={workers}
+                      columnId={column.id}
                     />
                     {provided.placeholder}
                   </div>

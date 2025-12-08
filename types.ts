@@ -374,6 +374,7 @@ export interface CalendarEvent {
   images?: string[];
   checklist?: Array<{text: string; checked: boolean}>;
   locationText?: string;
+  createdAt?: string; // Date when task was created (for sorting), optional for backward compatibility
 }
 
 export interface TaskWorkflow {
@@ -397,6 +398,13 @@ export interface TaskComment {
   taskId: string;
   userId: string;
   content: string;
+  createdAt: string;
+}
+
+export interface CustomColumn {
+  id: string; // Unique column ID (UUID)
+  workerId?: string; // Optional, assigned after selection
+  title?: string; // Optional custom title
   createdAt: string;
 }
 

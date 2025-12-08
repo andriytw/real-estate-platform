@@ -1,16 +1,22 @@
 import React, { useState, useMemo } from 'react';
 import { Draggable } from '@hello-pangea/dnd';
-import { CalendarEvent, Worker, KanbanColumn as IKanbanColumn, TaskStatus } from '../../types';
+import { CalendarEvent, Worker, KanbanColumn as IKanbanColumn, TaskStatus, TaskType } from '../../types';
 import KanbanTaskCard from './KanbanTaskCard';
-import { Plus, MoreHorizontal, User, Briefcase, Trash2 } from 'lucide-react';
+import { Plus, MoreHorizontal, User, Briefcase, Trash2, Save, X } from 'lucide-react';
 import TaskCreateModal from './TaskCreateModal';
+import WorkerSelectDropdown from './WorkerSelectDropdown';
+import TaskTypeFilters from './TaskTypeFilters';
+import ColumnSortButtons from './ColumnSortButtons';
 
 interface KanbanColumnProps {
   column: IKanbanColumn;
   currentUser: Worker | null;
   onTaskCreated: (task: CalendarEvent) => void;
-  onColumnDeleted?: (workerId: string) => void;
+  onColumnDeleted?: (columnId: string) => void;
   canDelete?: boolean;
+  onWorkerAssigned?: (workerId: string) => void;
+  workers?: Worker[];
+  columnId: string; // Unique column ID for state management
 }
 
 const KanbanColumn: React.FC<KanbanColumnProps> = ({ 
@@ -18,28 +24,96 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   currentUser, 
   onTaskCreated,
   onColumnDeleted,
-  canDelete = false
+  canDelete = false,
+  onWorkerAssigned,
+  workers = [],
+  columnId
 }) => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(column.workerId || null);
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [selectedTaskTypes, setSelectedTaskTypes] = useState<TaskType[]>([]);
+  const [sortBy, setSortBy] = useState<'date' | 'type'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  // Sort tasks: Urgent first, then by time/date
-  const sortedTasks = [...column.tasks].sort((a, b) => {
-    const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
-    const pA = priorityOrder[a.priority || 'medium'];
-    const pB = priorityOrder[b.priority || 'medium'];
-    if (pA !== pB) return pA - pB;
-    // If priority same, sort by time
-    return (a.time || '23:59').localeCompare(b.time || '23:59');
-  });
+  // Get available task types from column tasks
+  const availableTaskTypes = useMemo(() => {
+    const types = new Set<TaskType>();
+    column.tasks.forEach(task => {
+      if (task.type && task.type !== 'other') {
+        types.add(task.type as TaskType);
+      }
+    });
+    return Array.from(types).sort();
+  }, [column.tasks]);
+
+  // Filter and sort tasks
+  const sortedTasks = useMemo(() => {
+    let filtered = [...column.tasks];
+
+    // Apply type filters
+    if (selectedTaskTypes.length > 0) {
+      filtered = filtered.filter(task => 
+        task.type && selectedTaskTypes.includes(task.type as TaskType)
+      );
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      if (sortBy === 'date') {
+        const dateA = a.createdAt || a.date || '';
+        const dateB = b.createdAt || b.date || '';
+        const comparison = dateA.localeCompare(dateB);
+        return sortOrder === 'asc' ? comparison : -comparison;
+      } else {
+        // Sort by type
+        const typeA = a.type || '';
+        const typeB = b.type || '';
+        const comparison = typeA.localeCompare(typeB);
+        return sortOrder === 'asc' ? comparison : -comparison;
+      }
+    });
+
+    // Secondary sort by priority (always urgent first)
+    filtered.sort((a, b) => {
+      const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+      const pA = priorityOrder[a.priority || 'medium'];
+      const pB = priorityOrder[b.priority || 'medium'];
+      return pA - pB;
+    });
+
+    return filtered;
+  }, [column.tasks, selectedTaskTypes, sortBy, sortOrder]);
+
+  // Handle worker assignment
+  const handleWorkerSelect = (workerId: string) => {
+    setSelectedWorkerId(workerId);
+    setIsAssigning(true);
+  };
+
+  const handleSaveWorker = () => {
+    if (selectedWorkerId && onWorkerAssigned) {
+      onWorkerAssigned(selectedWorkerId);
+      setIsAssigning(false);
+    }
+  };
+
+  const handleCancelAssignment = () => {
+    setSelectedWorkerId(column.workerId || null);
+    setIsAssigning(false);
+  };
 
   const isPersonalColumn = currentUser?.id === column.workerId;
   const isSuperAdmin = currentUser?.role === 'super_manager';
-  // Allow creating tasks if: It's my column OR I am manager/admin
-  const canCreateTask = isPersonalColumn || isSuperAdmin || currentUser?.role === 'manager';
+  // Allow creating tasks if: worker is assigned AND (It's my column OR I am manager/admin)
+  const canCreateTask = column.workerId && (isPersonalColumn || isSuperAdmin || currentUser?.role === 'manager');
+  
+  const isUnassigned = !column.workerId;
+  const showWorkerDropdown = isUnassigned || (isAssigning && column.tasks.length === 0);
 
   // Check if column can be deleted (empty or all tasks completed)
   const canDeleteColumn = useMemo(() => {
-    if (!canDelete || !onColumnDeleted || !column.workerId) return false;
+    if (!canDelete || !onColumnDeleted) return false;
     
     // If column is empty - can delete
     if (column.tasks.length === 0) return true;
@@ -63,16 +137,15 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
     <div className="flex-shrink-0 w-80 flex flex-col h-full bg-[#111315] border-r border-gray-800/50">
       {/* Header */}
       <div className="p-3 border-b border-gray-800 flex items-center justify-between bg-[#16181b]">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           {/* Avatar */}
-          <div className="relative">
+          <div className="relative flex-shrink-0">
             {column.type === 'backlog' ? (
               <div className="w-10 h-10 rounded-full bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
                 <Briefcase className="w-5 h-5 text-indigo-400" />
               </div>
             ) : (
               <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden border border-gray-600">
-                {/* Use avatar_url if available in future */}
                 <User className="w-5 h-5 text-gray-400" />
               </div>
             )}
@@ -81,35 +154,76 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
             </span>
           </div>
           
-          {/* Name */}
-          <div>
-            <h3 className="text-sm font-bold text-white truncate max-w-[150px]">
-              {column.title}
-            </h3>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider">
-              {column.type === 'backlog' ? 'Inbox' : column.type}
-            </p>
+          {/* Name or Worker Dropdown */}
+          <div className="flex-1 min-w-0">
+            {showWorkerDropdown ? (
+              <div className="flex items-center gap-2">
+                <WorkerSelectDropdown
+                  workers={workers}
+                  selectedWorkerId={selectedWorkerId}
+                  onSelect={handleWorkerSelect}
+                  disabled={column.tasks.length > 0}
+                  columnId={columnId}
+                />
+                {isAssigning && selectedWorkerId && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={handleSaveWorker}
+                      className="p-1.5 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 transition-colors"
+                      title="Зберегти"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={handleCancelAssignment}
+                      className="p-1.5 rounded bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+                      title="Скасувати"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <h3 className="text-sm font-bold text-white truncate max-w-[150px]">
+                  {column.title}
+                </h3>
+                <p className="text-[10px] text-gray-500 uppercase tracking-wider">
+                  {column.type === 'backlog' ? 'Inbox' : column.type}
+                </p>
+              </>
+            )}
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-shrink-0">
           {canCreateTask && (
             <button 
               onClick={() => setIsCreateModalOpen(true)}
               className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
-              title="Add Task"
+              title="Додати завдання"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          )}
+          {!column.workerId && (
+            <button 
+              disabled
+              className="p-1.5 rounded text-gray-600 cursor-not-allowed opacity-50"
+              title="Спочатку виберіть працівника"
             >
               <Plus className="w-4 h-4" />
             </button>
           )}
           
           {/* Delete Column Button */}
-          {canDelete && onColumnDeleted && column.workerId && (
+          {canDelete && onColumnDeleted && (
             <>
               {canDeleteColumn ? (
                 <button
-                  onClick={() => onColumnDeleted(column.workerId!)}
+                  onClick={() => onColumnDeleted(columnId)}
                   className="p-1.5 rounded hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors"
                   title="Видалити колонку"
                 >
@@ -132,6 +246,32 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Filters and Sorting (only if worker is assigned) */}
+      {column.workerId && (
+        <>
+          <TaskTypeFilters
+            selectedTypes={selectedTaskTypes}
+            onToggleType={(type) => {
+              setSelectedTaskTypes(prev => 
+                prev.includes(type) 
+                  ? prev.filter(t => t !== type)
+                  : [...prev, type]
+              );
+            }}
+            onClearAll={() => setSelectedTaskTypes([])}
+            availableTypes={availableTaskTypes}
+          />
+          <ColumnSortButtons
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            onSortChange={(newSortBy, newSortOrder) => {
+              setSortBy(newSortBy);
+              setSortOrder(newSortOrder);
+            }}
+          />
+        </>
+      )}
 
       {/* Task List */}
       <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">

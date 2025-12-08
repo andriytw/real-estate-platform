@@ -842,6 +842,7 @@ function transformCalendarEventFromDB(db: any): CalendarEvent {
     images: db.images || [],
     checklist: db.checklist || [],
     locationText: db.location_text,
+    createdAt: db.created_at || db.date || new Date().toISOString(), // Use created_at from DB, fallback to date or current time
   };
 }
 
