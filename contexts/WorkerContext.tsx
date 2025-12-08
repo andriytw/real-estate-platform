@@ -199,48 +199,67 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     try {
       console.log('🔐 Attempting login for:', email);
       
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      // Add timeout to prevent infinite loading
+      const loginPromise = (async () => {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
-      if (error) {
-        console.error('❌ Supabase auth error:', error);
-        throw error;
-      }
-
-      if (data.user) {
-        console.log('✅ Auth successful, user ID:', data.user.id);
-        console.log('✅ Session:', data.session ? 'exists' : 'missing');
-        
-        // Wait a bit for session to be stored
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        console.log('🔄 Refreshing worker profile...');
-        // refreshWorker will set loading to false when done
-        await refreshWorker();
-        
-        // Double-check worker was loaded
-        const currentWorker = await getCurrentWorker();
-        if (currentWorker) {
-          console.log('✅ Worker profile loaded:', currentWorker.name, currentWorker.role);
-          setWorker(currentWorker);
-          setLoading(false); // Ensure loading is false after successful login
-        } else {
-          console.error('❌ Worker profile not loaded after refresh');
-          console.error('💡 This usually means the user profile does not exist in the profiles table');
-          setLoading(false);
-          throw new Error('Worker profile not found. Please contact administrator.');
+        if (error) {
+          console.error('❌ Supabase auth error:', error);
+          throw error;
         }
-      } else {
-        console.error('❌ No user data returned from auth');
-        setLoading(false);
-        throw new Error('No user data returned');
-      }
+
+        if (data.user) {
+          console.log('✅ Auth successful, user ID:', data.user.id);
+          console.log('✅ Session:', data.session ? 'exists' : 'missing');
+          
+          // Wait a bit for session to be stored
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          console.log('🔄 Refreshing worker profile...');
+          // refreshWorker will set loading to false when done
+          await refreshWorker();
+          
+          // Double-check worker was loaded
+          const currentWorker = await getCurrentWorker();
+          if (currentWorker) {
+            console.log('✅ Worker profile loaded:', currentWorker.name, currentWorker.role);
+            setWorker(currentWorker);
+            setLoading(false); // Ensure loading is false after successful login
+          } else {
+            console.error('❌ Worker profile not loaded after refresh');
+            console.error('💡 This usually means the user profile does not exist in the profiles table');
+            setLoading(false);
+            throw new Error('Worker profile not found. Please contact administrator.');
+          }
+        } else {
+          console.error('❌ No user data returned from auth');
+          setLoading(false);
+          throw new Error('No user data returned');
+        }
+      })();
+
+      // Add 10 second timeout
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Login timeout: The request took too long. Please try again.')), 10000)
+      );
+
+      await Promise.race([loginPromise, timeoutPromise]);
     } catch (error: any) {
       console.error('❌ Login error:', error);
       setLoading(false);
-      throw error;
+      // Provide user-friendly error messages
+      if (error.message?.includes('timeout')) {
+        throw new Error('Час очікування вичерпано. Спробуйте ще раз.');
+      } else if (error.message?.includes('Invalid login credentials')) {
+        throw new Error('Невірний email або пароль.');
+      } else if (error.message?.includes('profile not found')) {
+        throw new Error('Профіль користувача не знайдено. Зверніться до адміністратора.');
+      } else {
+        throw error;
+      }
     }
   };
 
