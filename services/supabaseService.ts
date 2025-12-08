@@ -212,19 +212,19 @@ export const usersService = {
       .from('profiles')
       .update(updateData)
       .eq('id', id)
-      .select()
-      .single();
+      .select();
 
     if (error) {
       console.error('Error updating user in database:', error);
       throw new Error(`Помилка оновлення в базі даних: ${error.message || error.details || 'Невідома помилка'}`);
     }
     
-    if (!data) {
-      throw new Error('Оновлення виконано, але дані не повернуто');
+    if (!data || data.length === 0) {
+      throw new Error('Оновлення виконано, але дані не повернуто. Можливо, користувача не знайдено або немає доступу.');
     }
     
-    return transformWorkerFromDB(data);
+    // Return first result (should be only one since we're updating by id)
+    return transformWorkerFromDB(data[0]);
   },
 
   // Deactivate user (set is_active = false)
