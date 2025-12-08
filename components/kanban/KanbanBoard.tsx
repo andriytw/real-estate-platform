@@ -54,6 +54,19 @@ const KanbanBoard: React.FC = () => {
     loadBoardData();
   }, [departmentFilter]); // Reload when filter changes (optional, could filter locally)
 
+  // Listen for workers update event (when new user is created/updated)
+  useEffect(() => {
+    const handleWorkersUpdated = () => {
+      console.log('🔄 Workers updated event received, reloading board data...');
+      loadBoardData();
+    };
+
+    window.addEventListener('workersUpdated', handleWorkersUpdated);
+    return () => {
+      window.removeEventListener('workersUpdated', handleWorkersUpdated);
+    };
+  }, []);
+
   // Save custom columns to localStorage
   useEffect(() => {
     localStorage.setItem('kanban_custom_columns', JSON.stringify(customColumns));

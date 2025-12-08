@@ -1,5 +1,5 @@
 import { createClient } from '../utils/supabase/client';
-import { Property, Booking, OfferData, InvoiceData, Lead, RequestData, CalendarEvent, Room, CompanyDetails, Worker, TaskWorkflow, TaskComment } from '../types';
+import { Property, Booking, OfferData, InvoiceData, Lead, RequestData, CalendarEvent, Room, CompanyDetails, Worker, TaskWorkflow, TaskComment, CategoryAccess } from '../types';
 
 const supabase = createClient();
 
@@ -24,6 +24,191 @@ export const workersService = {
     
     if (error) return null;
     return transformWorkerFromDB(data);
+  }
+};
+
+// ==================== USER MANAGEMENT ====================
+export const usersService = {
+  // Get all users (same as workersService.getAll but with more context)
+  async getAll(): Promise<Worker[]> {
+    return workersService.getAll();
+  },
+
+  // Create new user and send invite link
+  // Note: This requires a backend/Edge Function for admin operations
+  // For now, we'll create the profile and let admin handle auth setup manually
+  // Or use a generated password approach
+  async create(userData: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    role: 'super_manager' | 'manager' | 'worker';
+    department: 'facility' | 'accounting' | 'sales' | 'general';
+    categoryAccess?: CategoryAccess[];
+  }): Promise<Worker> {
+    // Generate a temporary password (user will need to reset it)
+    const tempPassword = crypto.randomUUID().substring(0, 12) + 'A1!';
+    
+    // 1. Try to create user in auth (this will work if email confirmation is disabled)
+    // Otherwise, we'll need to handle this via Edge Function
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: userData.email,
+      password: tempPassword,
+      options: {
+        data: {
+          first_name: userData.firstName,
+          last_name: userData.lastName,
+        },
+        emailRedirectTo: window.location.origin + '/account'
+      }
+    });
+
+    let userId: string;
+
+    if (authError) {
+      // If user already exists, check if profile exists
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .eq('email', userData.email)
+        .single();
+
+      if (existingProfile) {
+        // Update existing profile
+        const profileData = {
+          first_name: userData.firstName,
+          last_name: userData.lastName,
+          name: `${userData.firstName} ${userData.lastName}`,
+          role: userData.role,
+          department: userData.department,
+          category_access: userData.categoryAccess || ['properties', 'facility', 'accounting', 'sales', 'tasks'],
+          is_active: true,
+        };
+
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .update(profileData)
+          .eq('id', existingProfile.id)
+          .select()
+          .single();
+
+        if (profileError) throw profileError;
+        return transformWorkerFromDB(profile);
+      }
+      
+      // User exists in auth but no profile - create profile
+      // We need to get user ID from auth, but we can't query by email on client
+      // For now, throw error and ask admin to use Edge Function or manual setup
+      throw new Error(`Користувач з email ${userData.email} вже існує. Будь ласка, використайте Edge Function для створення користувачів або створіть профіль вручну.`);
+    }
+
+    if (!authData?.user) {
+      throw new Error('Не вдалося створити користувача в auth');
+    }
+
+    userId = authData.user.id;
+
+    // 2. Create profile
+    const profileData = {
+      id: userId,
+      name: `${userData.firstName} ${userData.lastName}`,
+      first_name: userData.firstName,
+      last_name: userData.lastName,
+      email: userData.email,
+      role: userData.role,
+      department: userData.department,
+      category_access: userData.categoryAccess || ['properties', 'facility', 'accounting', 'sales', 'tasks'],
+      is_active: true,
+    };
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .insert([profileData])
+      .select()
+      .single();
+
+    if (profileError) {
+      // If profile insert fails, try to clean up auth user
+      console.error('Profile creation failed, auth user may need cleanup:', profileError);
+      throw profileError;
+    }
+
+    // Note: In production, send tempPassword via email or Edge Function
+    // For now, we'll just create the user and they can use password reset
+    console.log('⚠️ User created with temp password. In production, send this via email:', tempPassword);
+    
+    return transformWorkerFromDB(profile);
+  },
+
+  // Update user (role, department, category access)
+  async update(id: string, updates: {
+    role?: 'super_manager' | 'manager' | 'worker';
+    department?: 'facility' | 'accounting' | 'sales' | 'general';
+    categoryAccess?: CategoryAccess[];
+    firstName?: string;
+    lastName?: string;
+  }): Promise<Worker> {
+    // First, get existing data to rebuild name if needed
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('first_name, last_name')
+      .eq('id', id)
+      .single();
+
+    const updateData: any = {};
+    
+    if (updates.role) updateData.role = updates.role;
+    if (updates.department) updateData.department = updates.department;
+    if (updates.categoryAccess) updateData.category_access = updates.categoryAccess;
+    
+    const newFirstName = updates.firstName !== undefined ? updates.firstName : existing?.first_name;
+    const newLastName = updates.lastName !== undefined ? updates.lastName : existing?.last_name;
+    
+    if (updates.firstName !== undefined) {
+      updateData.first_name = updates.firstName;
+    }
+    if (updates.lastName !== undefined) {
+      updateData.last_name = updates.lastName;
+    }
+    
+    // Rebuild name from first_name + last_name
+    if (newFirstName && newLastName) {
+      updateData.name = `${newFirstName} ${newLastName}`;
+    } else if (newFirstName) {
+      updateData.name = newFirstName;
+    } else if (newLastName) {
+      updateData.name = newLastName;
+    }
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return transformWorkerFromDB(data);
+  },
+
+  // Deactivate user (set is_active = false)
+  async deactivate(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ is_active: false })
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
+  // Reactivate user (set is_active = true)
+  async reactivate(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ is_active: true })
+      .eq('id', id);
+
+    if (error) throw error;
   }
 };
 
@@ -469,15 +654,25 @@ export const calendarEventsService = tasksService;
 // ==================== TRANSFORMERS ====================
 
 function transformWorkerFromDB(db: any): Worker {
+  // Build full name from first_name + last_name or fallback to name
+  const firstName = db.first_name || '';
+  const lastName = db.last_name || '';
+  const fullName = (firstName && lastName) 
+    ? `${firstName} ${lastName}` 
+    : (db.name || 'Unknown');
+  
   return {
     id: db.id,
-    name: db.name || 'Unknown',
+    name: fullName,
+    firstName: db.first_name || undefined,
+    lastName: db.last_name || undefined,
     email: db.email || '',
     phone: db.phone,
     department: db.department || 'facility',
     role: db.role || 'worker',
     managerId: db.manager_id,
     isActive: db.is_active !== false,
+    categoryAccess: db.category_access || ['properties', 'facility', 'accounting', 'sales', 'tasks'],
     createdAt: db.created_at,
     updatedAt: db.updated_at,
   };

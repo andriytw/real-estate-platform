@@ -20,7 +20,7 @@ import { MOCK_PROPERTIES } from '../constants';
 import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 
 // --- Types ---
-type Department = 'properties' | 'facility' | 'accounting' | 'sales' | 'tasks';
+type Department = 'admin' | 'properties' | 'facility' | 'accounting' | 'sales' | 'tasks';
 type FacilityTab = 'overview' | 'calendar' | 'messages';
 type AccountingTab = 'dashboard' | 'invoices' | 'expenses' | 'calendar' | 'banking';
 type SalesTab = 'leads' | 'calendar' | 'offers' | 'reservations' | 'requests' | 'history' | 'chat'; 
@@ -95,6 +95,7 @@ const AccountDashboard: React.FC = () => {
   // Navigation State
   const [activeDepartment, setActiveDepartment] = useState<Department>('properties');
   const [expandedSections, setExpandedSections] = useState<Record<Department, boolean>>({
+    admin: false,
     properties: true,
     facility: true,
     accounting: true,
@@ -1669,6 +1670,14 @@ const AccountDashboard: React.FC = () => {
     return <div className="p-8 text-white">Facility Overview (Preserved)</div>;
   };
 
+  const renderAdminContent = () => {
+    return (
+      <div className="h-full w-full">
+        <UserManagement />
+      </div>
+    );
+  };
+
   const renderTasksContent = () => {
     return (
       <div className="h-full w-full">
@@ -2061,6 +2070,26 @@ const AccountDashboard: React.FC = () => {
           <h1 className="text-xl font-bold text-white flex items-center gap-2"><Building2 className="w-6 h-6 text-emerald-500" /> BIM/LAF</h1>
         </div>
         <div className="flex-1 overflow-y-auto py-4 space-y-1 px-3">
+          {/* Admin Section - Only visible to super_manager */}
+          {worker?.role === 'super_manager' && (
+            <>
+              <button onClick={() => { toggleSection('admin'); setActiveDepartment('admin'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
+                <span className="flex items-center gap-3"><Users className="w-4 h-4" /> Адмін</span>
+                {expandedSections.admin ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              </button>
+              {expandedSections.admin && (
+                <div className="ml-4 mb-2 space-y-1 border-l border-gray-700 pl-3">
+                  <button 
+                    onClick={() => { setActiveDepartment('admin'); }}
+                    className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${activeDepartment === 'admin' ? 'text-emerald-500 font-bold bg-emerald-500/10' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Користувачі
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
           {/* Properties */}
           <button onClick={() => { toggleSection('properties'); setActiveDepartment('properties'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
               <span className="flex items-center gap-3"><Home className="w-4 h-4" /> Properties</span><ChevronDown className="w-3 h-3" />
@@ -2085,9 +2114,12 @@ const AccountDashboard: React.FC = () => {
           )}
           
           {/* Facility */}
-          <button onClick={() => { toggleSection('facility'); setActiveDepartment('facility'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
+          {/* Facility - Only show if user has access */}
+          {(!worker?.categoryAccess || worker.categoryAccess.includes('facility')) && (
+            <button onClick={() => { toggleSection('facility'); setActiveDepartment('facility'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
               <span className="flex items-center gap-3"><Settings className="w-4 h-4" /> Facility</span><ChevronDown className="w-3 h-3" />
-          </button>
+            </button>
+          )}
           {expandedSections.facility && (
               <div className="ml-4 space-y-1 border-l border-gray-700 pl-3 my-1">
                 <button onClick={() => { setActiveDepartment('facility'); setFacilityTab('overview'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Overview</button>
@@ -2098,9 +2130,12 @@ const AccountDashboard: React.FC = () => {
 
           {/* Accounting */}
           <div className="mb-2">
-            <button onClick={() => { toggleSection('accounting'); setActiveDepartment('accounting'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
-              <span className="flex items-center gap-3"><Clock className="w-4 h-4" /> Accounting</span><ChevronDown className="w-3 h-3" />
-            </button>
+            {/* Accounting - Only show if user has access */}
+            {(!worker?.categoryAccess || worker.categoryAccess.includes('accounting')) && (
+              <button onClick={() => { toggleSection('accounting'); setActiveDepartment('accounting'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
+                <span className="flex items-center gap-3"><Clock className="w-4 h-4" /> Accounting</span><ChevronDown className="w-3 h-3" />
+              </button>
+            )}
             {expandedSections.accounting && (
               <div className="ml-4 space-y-1 border-l border-gray-700 pl-3 my-1">
                 <button onClick={() => { setActiveDepartment('accounting'); setAccountingTab('dashboard'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Dashboard</button>
@@ -2112,9 +2147,12 @@ const AccountDashboard: React.FC = () => {
           </div>
 
           {/* Sales */}
-          <button onClick={() => { toggleSection('sales'); setActiveDepartment('sales'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
+          {/* Sales Department - Only show if user has access */}
+          {(!worker?.categoryAccess || worker.categoryAccess.includes('sales')) && (
+            <button onClick={() => { toggleSection('sales'); setActiveDepartment('sales'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
               <span className="flex items-center gap-3"><TrendingUp className="w-4 h-4" /> Sales Department</span><ChevronDown className="w-3 h-3" />
-          </button>
+            </button>
+          )}
           {expandedSections.sales && (
               <div className="ml-4 space-y-1 border-l border-gray-700 pl-3 my-1">
                 <button onClick={() => { setActiveDepartment('sales'); setSalesTab('leads'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Leads</button>
@@ -2128,9 +2166,12 @@ const AccountDashboard: React.FC = () => {
           )}
 
           {/* Tasks / Kanban Board */}
-          <button onClick={() => { toggleSection('tasks'); setActiveDepartment('tasks'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
+          {/* Tasks - Only show if user has access */}
+          {(!worker?.categoryAccess || worker.categoryAccess.includes('tasks')) && (
+            <button onClick={() => { toggleSection('tasks'); setActiveDepartment('tasks'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
               <span className="flex items-center gap-3"><CheckCircle2 className="w-4 h-4" /> Tasks</span><ChevronDown className="w-3 h-3" />
-          </button>
+            </button>
+          )}
         </div>
         
         {/* User Info & Logout */}
@@ -2166,6 +2207,7 @@ const AccountDashboard: React.FC = () => {
       </div>
 
       <div className="flex-1 overflow-hidden bg-[#0D1117]">
+        {activeDepartment === 'admin' && renderAdminContent()}
         {activeDepartment === 'properties' && renderPropertiesContent()}
         {activeDepartment === 'facility' && renderFacilityContent()}
         {activeDepartment === 'accounting' && renderAccountingContent()}

@@ -416,15 +416,20 @@ export interface KanbanColumn {
   tasks: CalendarEvent[];
 }
 
+export type CategoryAccess = 'properties' | 'facility' | 'accounting' | 'sales' | 'tasks';
+
 export interface Worker {
   id: string;
-  name: string;
+  name: string; // Full name (for backward compatibility)
+  firstName?: string; // First name
+  lastName?: string; // Last name
   email: string;
   phone?: string;
   department: 'facility' | 'accounting' | 'sales' | 'general';
   role: 'super_manager' | 'manager' | 'worker';
   managerId?: string;
   isActive: boolean;
+  categoryAccess?: CategoryAccess[]; // Categories user can access
   createdAt: string;
   updatedAt: string;
 }
