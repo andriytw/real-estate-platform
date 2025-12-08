@@ -169,6 +169,7 @@ const KanbanBoard: React.FC = () => {
 
   // Handle column creation
   const handleColumnCreated = React.useCallback((workerId: string, type: 'manager' | 'worker') => {
+    console.log('🔄 handleColumnCreated called:', workerId, type);
     console.log('🔄 Creating column for worker:', workerId, 'type:', type);
     
     setCustomColumns(prev => {

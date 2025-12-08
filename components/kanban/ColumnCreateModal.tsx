@@ -35,9 +35,11 @@ const ColumnCreateModal: React.FC<ColumnCreateModalProps> = ({
   }, [workers, selectedType]);
 
   // Use useMemo to compute available workers
+  // Use JSON.stringify to create stable dependency for array comparison
+  const existingColumnIdsStr = JSON.stringify(existingColumnIds);
   const availableWorkers = useMemo(() => {
     return filteredWorkers.filter(w => !existingColumnIds.includes(w.id));
-  }, [filteredWorkers, existingColumnIds]);
+  }, [filteredWorkers, existingColumnIdsStr]);
 
   // Debug logging (only when modal opens)
   useEffect(() => {
