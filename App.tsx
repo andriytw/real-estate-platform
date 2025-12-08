@@ -378,12 +378,28 @@ const AppContent: React.FC = () => {
   };
 
   const renderContent = () => {
-    console.log('Rendering content, currentView:', currentView, 'Auth loading:', authLoading);
+    console.log('Rendering content, currentView:', currentView, 'Auth loading:', authLoading, 'Worker:', worker?.id, 'Timeout:', authTimeoutReached);
     
-    if (authLoading) {
+    // If auth loading takes too long, show login page instead of infinite loading
+    if (authLoading && !authTimeoutReached) {
       return (
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-white">Loading...</div>
+        </div>
+      );
+    }
+    
+    // After timeout, if still loading, show login page for account/dashboard views
+    if (authLoading && authTimeoutReached && (currentView === 'account' || currentView === 'dashboard')) {
+      console.warn('⚠️ Auth loading timed out, showing login page');
+      return (
+        <div className="animate-fadeIn">
+          <LoginPage 
+            onLoginSuccess={() => {
+              setCurrentView('account');
+              window.history.pushState({}, '', '/account');
+            }}
+          />
         </div>
       );
     }
