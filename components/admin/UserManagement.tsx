@@ -290,6 +290,13 @@ const UserManagement: React.FC = () => {
                             <Edit className="w-4 h-4" />
                           </button>
                           <button
+                            onClick={() => handleResendInvite(user.id, user.email)}
+                            className="p-1.5 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 transition-colors"
+                            title="Надіслати запрошення"
+                          >
+                            <Send className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => handleDeactivate(user.id)}
                             className="p-1.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-colors"
                             title="Деактивувати"
