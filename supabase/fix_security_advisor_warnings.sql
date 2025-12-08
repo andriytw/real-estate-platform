@@ -123,55 +123,91 @@ CREATE POLICY "profiles_update_policy" ON profiles
 -- ============================================================================
 
 DO $$
+DECLARE
+  pol RECORD;
 BEGIN
-  -- Перевіряємо, чи існує таблиця та колонка worker_id
+  -- Перевіряємо, чи існує таблиця
   IF EXISTS (
     SELECT 1 
     FROM information_schema.tables 
     WHERE table_schema = 'public' 
     AND table_name = 'task_workflows'
-  ) AND EXISTS (
-    SELECT 1 
-    FROM information_schema.columns 
-    WHERE table_schema = 'public' 
-    AND table_name = 'task_workflows' 
-    AND column_name = 'worker_id'
   ) THEN
-    -- Видаляємо старі політики
-    DROP POLICY IF EXISTS "Workers can manage own workflows" ON task_workflows;
-    DROP POLICY IF EXISTS "Managers can view department workflows" ON task_workflows;
-    DROP POLICY IF EXISTS "Managers can update department workflows" ON task_workflows;
-    DROP POLICY IF EXISTS "task_workflows_select_policy" ON task_workflows;
-    DROP POLICY IF EXISTS "task_workflows_update_policy" ON task_workflows;
-    DROP POLICY IF EXISTS "task_workflows_insert_policy" ON task_workflows;
+    -- Видаляємо ВСІ старі політики динамічно (включаючи небезпечні)
+    FOR pol IN 
+      SELECT policyname 
+      FROM pg_policies 
+      WHERE schemaname = 'public' 
+      AND tablename = 'task_workflows'
+    LOOP
+      EXECUTE format('DROP POLICY IF EXISTS %I ON task_workflows', pol.policyname);
+    END LOOP;
     
-    -- Створюємо нові об'єднані політики
-    CREATE POLICY "task_workflows_select_policy" ON task_workflows
-      FOR SELECT USING (
-        auth.uid() = worker_id
-        OR
-        EXISTS (
-          SELECT 1 FROM public.profiles
-          WHERE id = auth.uid() 
-          AND role IN ('manager', 'super_manager')
-        )
-      );
-    
-    CREATE POLICY "task_workflows_update_policy" ON task_workflows
-      FOR UPDATE USING (
-        auth.uid() = worker_id
-        OR
-        EXISTS (
-          SELECT 1 FROM public.profiles
-          WHERE id = auth.uid() 
-          AND role IN ('manager', 'super_manager')
-        )
-      );
-    
-    CREATE POLICY "task_workflows_insert_policy" ON task_workflows
-      FOR INSERT WITH CHECK (auth.uid() = worker_id);
+    -- Перевіряємо, чи існує колонка worker_id
+    IF EXISTS (
+      SELECT 1 
+      FROM information_schema.columns 
+      WHERE table_schema = 'public' 
+      AND table_name = 'task_workflows' 
+      AND column_name = 'worker_id'
+    ) THEN
+      -- Створюємо нові об'єднані політики (якщо є worker_id)
+      CREATE POLICY "task_workflows_select_policy" ON task_workflows
+        FOR SELECT USING (
+          auth.uid() = worker_id
+          OR
+          EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid() 
+            AND role IN ('manager', 'super_manager')
+          )
+        );
+      
+      CREATE POLICY "task_workflows_update_policy" ON task_workflows
+        FOR UPDATE USING (
+          auth.uid() = worker_id
+          OR
+          EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid() 
+            AND role IN ('manager', 'super_manager')
+          )
+        );
+      
+      CREATE POLICY "task_workflows_insert_policy" ON task_workflows
+        FOR INSERT WITH CHECK (auth.uid() = worker_id);
+    ELSE
+      -- Якщо немає worker_id, створюємо політики без прив'язки до worker_id
+      -- (тільки для менеджерів)
+      CREATE POLICY "task_workflows_select_policy" ON task_workflows
+        FOR SELECT USING (
+          EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid() 
+            AND role IN ('manager', 'super_manager')
+          )
+        );
+      
+      CREATE POLICY "task_workflows_update_policy" ON task_workflows
+        FOR UPDATE USING (
+          EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid() 
+            AND role IN ('manager', 'super_manager')
+          )
+        );
+      
+      CREATE POLICY "task_workflows_insert_policy" ON task_workflows
+        FOR INSERT WITH CHECK (
+          EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid() 
+            AND role IN ('manager', 'super_manager')
+          )
+        );
+    END IF;
   ELSE
-    RAISE NOTICE 'Table task_workflows does not exist or does not have worker_id column. Skipping policies.';
+    RAISE NOTICE 'Table task_workflows does not exist. Skipping policies.';
   END IF;
 END $$;
 
