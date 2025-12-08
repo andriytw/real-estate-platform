@@ -13,6 +13,7 @@ import PropertyAddModal from './PropertyAddModal';
 import RequestModal from './RequestModal';
 import BankingDashboard from './BankingDashboard';
 import KanbanBoard from './kanban/KanbanBoard';
+import UserManagement from './admin/UserManagement';
 import { propertiesService } from '../services/supabaseService';
 import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData } from '../types';
 import { ROOMS } from '../constants';
