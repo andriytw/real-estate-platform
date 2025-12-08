@@ -47,16 +47,33 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
     }
   }, [column.workerId]);
 
-  // Get available task types from column tasks
+  // Get available task types from column tasks, or all possible types if column is empty
   const availableTaskTypes = useMemo(() => {
-    const types = new Set<TaskType>();
-    column.tasks.forEach(task => {
-      if (task.type && task.type !== 'other') {
-        types.add(task.type as TaskType);
-      }
-    });
-    return Array.from(types).sort();
-  }, [column.tasks]);
+    // If column has tasks, show only types that exist in tasks
+    if (column.tasks.length > 0) {
+      const types = new Set<TaskType>();
+      column.tasks.forEach(task => {
+        if (task.type && task.type !== 'other') {
+          types.add(task.type as TaskType);
+        }
+      });
+      return Array.from(types).sort();
+    }
+    
+    // If column is empty but worker is assigned, show all possible task types
+    if (column.workerId) {
+      const allTypes: TaskType[] = [
+        'Einzug', 'Auszug', 'Putzen', 'Reklamation', 'Arbeit nach plan', 
+        'Zeit Abgabe von wohnung', 'Zählerstand',
+        'Tax Payment', 'Payroll', 'Invoice Processing', 'Audit', 'Monthly Closing',
+        'Rent Collection', 'Utility Payment', 'Insurance', 'Mortgage Payment', 'VAT Return',
+        'Financial Report', 'Budget Review', 'Asset Depreciation', 'Vendor Payment', 'Bank Reconciliation'
+      ];
+      return allTypes.sort();
+    }
+    
+    return [];
+  }, [column.tasks, column.workerId]);
 
   // Filter and sort tasks
   const sortedTasks = useMemo(() => {
@@ -258,23 +275,21 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
         </div>
       </div>
 
-      {/* Filters and Sorting (only if worker is assigned) */}
+      {/* Filters and Sorting (always show if worker is assigned) */}
       {column.workerId && (
         <>
-          {availableTaskTypes.length > 0 && (
-            <TaskTypeFilters
-              selectedTypes={selectedTaskTypes}
-              onToggleType={(type) => {
-                setSelectedTaskTypes(prev => 
-                  prev.includes(type) 
-                    ? prev.filter(t => t !== type)
-                    : [...prev, type]
-                );
-              }}
-              onClearAll={() => setSelectedTaskTypes([])}
-              availableTypes={availableTaskTypes}
-            />
-          )}
+          <TaskTypeFilters
+            selectedTypes={selectedTaskTypes}
+            onToggleType={(type) => {
+              setSelectedTaskTypes(prev => 
+                prev.includes(type) 
+                  ? prev.filter(t => t !== type)
+                  : [...prev, type]
+              );
+            }}
+            onClearAll={() => setSelectedTaskTypes([])}
+            availableTypes={availableTaskTypes}
+          />
           <ColumnSortButtons
             sortBy={sortBy}
             sortOrder={sortOrder}
