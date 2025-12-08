@@ -10,6 +10,7 @@ const UserManagement: React.FC = () => {
   const [editedUser, setEditedUser] = useState<Partial<Worker> | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [resendingInvite, setResendingInvite] = useState<Set<string>>(new Set());
+  const [deactivatingUser, setDeactivatingUser] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [newUser, setNewUser] = useState({
     firstName: '',
@@ -336,10 +337,15 @@ const UserManagement: React.FC = () => {
                           </button>
                           <button
                             onClick={() => handleDeactivate(user.id)}
-                            className="p-1.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-colors"
+                            disabled={deactivatingUser.has(user.id)}
+                            className="p-1.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Деактивувати"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            {deactivatingUser.has(user.id) ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
                           </button>
                         </>
                       )}
