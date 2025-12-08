@@ -170,8 +170,15 @@ export const usersService = {
 
     const updateData: any = {};
     
-    if (updates.role) updateData.role = updates.role;
-    if (updates.department) updateData.department = updates.department;
+    // Always update role if provided (even if it's the same value)
+    if (updates.role !== undefined) {
+      updateData.role = updates.role;
+      console.log('📝 Setting role in updateData:', updates.role);
+    }
+    if (updates.department !== undefined) {
+      updateData.department = updates.department;
+      console.log('📝 Setting department in updateData:', updates.department);
+    }
     if (updates.categoryAccess) {
       // Ensure categoryAccess is properly formatted as JSONB array
       updateData.category_access = Array.isArray(updates.categoryAccess) 
