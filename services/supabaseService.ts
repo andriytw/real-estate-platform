@@ -149,17 +149,27 @@ export const usersService = {
     lastName?: string;
   }): Promise<Worker> {
     // First, get existing data to rebuild name if needed
-    const { data: existing } = await supabase
+    const { data: existing, error: fetchError } = await supabase
       .from('profiles')
       .select('first_name, last_name')
       .eq('id', id)
       .single();
 
+    if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 = no rows returned, which is OK
+      console.error('Error fetching existing user data:', fetchError);
+      throw new Error(`Помилка отримання даних користувача: ${fetchError.message}`);
+    }
+
     const updateData: any = {};
     
     if (updates.role) updateData.role = updates.role;
     if (updates.department) updateData.department = updates.department;
-    if (updates.categoryAccess) updateData.category_access = updates.categoryAccess;
+    if (updates.categoryAccess) {
+      // Ensure categoryAccess is properly formatted as JSONB array
+      updateData.category_access = Array.isArray(updates.categoryAccess) 
+        ? updates.categoryAccess 
+        : [];
+    }
     
     const newFirstName = updates.firstName !== undefined ? updates.firstName : existing?.first_name;
     const newLastName = updates.lastName !== undefined ? updates.lastName : existing?.last_name;
@@ -178,6 +188,24 @@ export const usersService = {
       updateData.name = newFirstName;
     } else if (newLastName) {
       updateData.name = newLastName;
+    } else if (existing?.first_name || existing?.last_name) {
+      // Keep existing name if no updates provided
+      const existingName = existing.first_name && existing.last_name
+        ? `${existing.first_name} ${existing.last_name}`
+        : (existing.first_name || existing.last_name || '');
+      if (existingName) updateData.name = existingName;
+    }
+
+    // Don't update if no changes
+    if (Object.keys(updateData).length === 0) {
+      // Return existing user data
+      const { data: currentUser } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', id)
+        .single();
+      if (!currentUser) throw new Error('Користувача не знайдено');
+      return transformWorkerFromDB(currentUser);
     }
 
     const { data, error } = await supabase
@@ -187,7 +215,15 @@ export const usersService = {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error updating user in database:', error);
+      throw new Error(`Помилка оновлення в базі даних: ${error.message || error.details || 'Невідома помилка'}`);
+    }
+    
+    if (!data) {
+      throw new Error('Оновлення виконано, але дані не повернуто');
+    }
+    
     return transformWorkerFromDB(data);
   },
 

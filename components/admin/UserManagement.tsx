@@ -72,9 +72,10 @@ const UserManagement: React.FC = () => {
       
       setEditingUser(null);
       setEditedUser(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating user:', error);
-      alert('Помилка оновлення користувача');
+      const errorMessage = error?.message || error?.details || 'Невідома помилка';
+      alert(`Помилка оновлення користувача: ${errorMessage}`);
     }
   };
 
