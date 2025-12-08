@@ -1,20 +1,31 @@
 -- Прості RLS політики для profiles БЕЗ рекурсії
 -- Використовуємо тільки auth.uid() без додаткових функцій
 
--- 1. Видалити всі існуючі політики
+-- 1. Перевірка, чи таблиця profiles існує
 DO $$ 
 BEGIN
-  DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
-  DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
-  DROP POLICY IF EXISTS "Managers can view all profiles in department" ON profiles;
-  DROP POLICY IF EXISTS "Super managers can view all profiles" ON profiles;
-  DROP POLICY IF EXISTS "profiles_select_policy" ON profiles;
-  DROP POLICY IF EXISTS "profiles_update_policy" ON profiles;
-  DROP POLICY IF EXISTS "Managers can view all profiles" ON profiles;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables 
+    WHERE table_schema = 'public' AND table_name = 'profiles'
+  ) THEN
+    RAISE EXCEPTION 'Table profiles does not exist in public schema';
+  END IF;
 END $$;
 
--- 2. Переконатися, що RLS увімкнено
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+-- 2. Видалити всі існуючі політики
+DO $$ 
+BEGIN
+  DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
+  DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
+  DROP POLICY IF EXISTS "Managers can view all profiles in department" ON public.profiles;
+  DROP POLICY IF EXISTS "Super managers can view all profiles" ON public.profiles;
+  DROP POLICY IF EXISTS "profiles_select_policy" ON public.profiles;
+  DROP POLICY IF EXISTS "profiles_update_policy" ON public.profiles;
+  DROP POLICY IF EXISTS "Managers can view all profiles" ON public.profiles;
+END $$;
+
+-- 3. Переконатися, що RLS увімкнено
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- 4. Створити найпростіші політики (без рекурсії)
 -- Користувач може читати свій власний профіль
