@@ -50,8 +50,9 @@ const ColumnCreateModal: React.FC<ColumnCreateModalProps> = ({
       console.log('  - existingColumnIds length:', existingColumnIds.length);
       console.log('  - availableWorkers count:', availableWorkers.length);
     }
+    // Use primitive values to avoid React error #310
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, selectedType]); // Only log when modal opens or type changes
+  }, [isOpen, selectedType, filteredWorkers.length, availableWorkers.length, existingColumnIds.length]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
