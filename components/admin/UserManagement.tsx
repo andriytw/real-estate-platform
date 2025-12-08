@@ -109,7 +109,8 @@ const UserManagement: React.FC = () => {
 
   const handleCreateUser = async () => {
     if (!newUser.firstName || !newUser.lastName || !newUser.email) {
-      alert('Будь ласка, заповніть всі обов\'язкові поля');
+      setMessage({ type: 'error', text: 'Будь ласка, заповніть всі обов\'язкові поля' });
+      setTimeout(() => setMessage(null), 3000);
       return;
     }
 
@@ -125,10 +126,18 @@ const UserManagement: React.FC = () => {
         department: 'facility',
         categoryAccess: ['properties', 'facility', 'accounting', 'sales', 'tasks']
       });
-      alert('Користувача створено! Користувач з\'явиться в списку Kanban дошки. Користувач може використати "Забули пароль?" для встановлення пароля.');
+      setMessage({ 
+        type: 'success', 
+        text: `Користувача створено! Запрошення надіслано на ${newUser.email}. Користувач з'явиться в списку Kanban дошки.` 
+      });
+      setTimeout(() => setMessage(null), 5000);
     } catch (error: any) {
       console.error('Error creating user:', error);
-      alert(`Помилка створення користувача: ${error.message || 'Невідома помилка'}`);
+      setMessage({ 
+        type: 'error', 
+        text: `Помилка створення користувача: ${error.message || 'Невідома помилка'}` 
+      });
+      setTimeout(() => setMessage(null), 5000);
     }
   };
 
