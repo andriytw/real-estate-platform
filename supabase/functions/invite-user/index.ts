@@ -102,14 +102,14 @@ serve(async (req) => {
           )
         }
 
-        if (!inviteData?.user) {
+        if (!inviteData?.id) {
           return new Response(
             JSON.stringify({ error: 'Failed to create user' }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
         }
 
-        targetUserId = inviteData.user.id
+        targetUserId = inviteData.id
       }
     } else {
       // Resend invitation for existing user - use inviteUserByEmail again (it works for existing users too)
