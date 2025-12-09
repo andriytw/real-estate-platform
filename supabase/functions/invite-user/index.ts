@@ -269,31 +269,86 @@ serve(async (req) => {
       }
       
       if (existingUser) {
-        // User exists - use generateLink with type 'invite' to create invitation link
-        // generateLink automatically sends the email
-        console.log('👤 User exists, generating invite link for:', existingUser.id);
+        // User exists - check if user has confirmed email and password set
+        // If user is already registered, use resetPasswordForEmail instead of invite
+        console.log('👤 User exists in auth system:', existingUser.id, existingUser.email);
+        console.log('📋 User confirmed:', existingUser.email_confirmed_at ? 'Yes' : 'No');
+        console.log('📋 User last sign in:', existingUser.last_sign_in_at || 'Never');
         
-        const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-          type: 'invite',
-          email: email,
-          options: {
-            data: userMetadata,
-            redirectTo: emailRedirectTo || `${baseUrl}/login`
-          }
-        });
+        // Check if user has confirmed email (means they've set password)
+        if (existingUser.email_confirmed_at) {
+          // User is already registered and confirmed - use password reset instead
+          console.log('🔄 User already confirmed, sending password reset email instead of invite');
+          
+          const { data: resetData, error: resetError } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'recovery',
+            email: email,
+            options: {
+              redirectTo: emailRedirectTo || `${baseUrl}/login`
+            }
+          });
 
-        if (linkError) {
-          console.error('❌ Error generating invite link:', linkError);
-          console.error('❌ Link error details:', JSON.stringify(linkError, null, 2));
-          return new Response(
-            JSON.stringify({ error: `Failed to generate invite link: ${linkError.message || 'Unknown error'}` }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
+          if (resetError) {
+            console.error('❌ Error generating password reset link:', resetError);
+            return new Response(
+              JSON.stringify({ error: `Failed to send password reset: ${resetError.message || 'Unknown error'}` }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
+          
+          console.log('✅ Password reset link generated successfully, email should be sent');
+          targetUserId = existingUser.id;
+        } else {
+          // User exists but not confirmed - try generateLink with type 'invite'
+          console.log('👤 User exists but not confirmed, generating invite link');
+          
+          const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'invite',
+            email: email,
+            options: {
+              data: userMetadata,
+              redirectTo: emailRedirectTo || `${baseUrl}/login`
+            }
+          });
+
+          if (linkError) {
+            console.error('❌ Error generating invite link:', linkError);
+            console.error('❌ Link error details:', JSON.stringify(linkError, null, 2));
+            
+            // If invite fails, try recovery link as fallback
+            if (linkError.message?.includes('already been registered') || linkError.message?.includes('already registered')) {
+              console.log('🔄 Invite failed, trying password reset as fallback...');
+              
+              const { data: resetData, error: resetError } = await supabaseAdmin.auth.admin.generateLink({
+                type: 'recovery',
+                email: email,
+                options: {
+                  redirectTo: emailRedirectTo || `${baseUrl}/login`
+                }
+              });
+
+              if (resetError) {
+                console.error('❌ Error generating password reset link (fallback):', resetError);
+                return new Response(
+                  JSON.stringify({ error: `Failed to send invitation: ${resetError.message || 'Unknown error'}` }),
+                  { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+              }
+              
+              console.log('✅ Password reset link generated successfully (fallback)');
+              targetUserId = existingUser.id;
+            } else {
+              return new Response(
+                JSON.stringify({ error: `Failed to generate invite link: ${linkError.message || 'Unknown error'}` }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              )
+            }
+          } else {
+            console.log('✅ Invite link generated successfully, email should be sent automatically');
+            console.log('📧 Link data:', JSON.stringify(linkData, null, 2));
+            targetUserId = existingUser.id;
+          }
         }
-        
-        console.log('✅ Invite link generated successfully, email should be sent automatically');
-        console.log('📧 Link data:', JSON.stringify(linkData, null, 2));
-        targetUserId = existingUser.id;
       } else {
         // User doesn't exist in auth - try inviteUserByEmail (creates new user)
         console.log('👤 User not found in auth, attempting to create new user with invitation');
