@@ -103,14 +103,19 @@ serve(async (req) => {
           console.log('👤 Creating user without invitation:', email);
           console.log('📝 User metadata:', userMetadata);
           
+          // Generate a random temporary password (user won't use it, will set via invitation)
+          // Using crypto.getRandomValues for Deno compatibility
+          const randomBytes = new Uint8Array(32);
+          crypto.getRandomValues(randomBytes);
+          const tempPassword = Array.from(randomBytes, byte => byte.toString(16).padStart(2, '0')).join('');
+          
           // Use JS SDK createUser method - this creates user with a temporary password
           // User will need to set password via invitation later
           const { data: createData, error: createError } = await supabaseAdmin.auth.admin.createUser({
             email: email,
             user_metadata: userMetadata,
             email_confirm: false, // User needs to confirm email and set password via invitation later
-            // Generate a random temporary password (user won't use it, will set via invitation)
-            password: crypto.randomUUID() + crypto.randomUUID(), // Long random password
+            password: tempPassword, // Long random password
           });
 
           if (createError) {
