@@ -176,50 +176,33 @@ serve(async (req) => {
           console.log('✅ User created successfully (no invitation) via JS SDK:', createData.user.id);
           targetUserId = createData.user.id
         } else {
-          // Create new user via invite
+          // Create new user via invite using JS SDK
           console.log('📧 Attempting to invite user:', email);
           console.log('📝 User metadata:', userMetadata);
           
-          const inviteResponse = await fetch(`${adminApiUrl}/invite`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${serviceRoleKey}`,
-              'apikey': serviceRoleKey,
-            },
-            body: JSON.stringify({
-              email: email,
-              data: userMetadata,
-              redirect_to: emailRedirectTo || `${baseUrl}/login`
-            })
+          const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+            data: userMetadata,
+            redirectTo: emailRedirectTo || `${baseUrl}/login`
           });
 
-          if (!inviteResponse.ok) {
-            const errorText = await inviteResponse.text();
-            console.error('❌ Error inviting user:', errorText);
-            let errorData;
-            try {
-              errorData = JSON.parse(errorText);
-            } catch {
-              errorData = { message: errorText };
-            }
+          if (inviteError) {
+            console.error('❌ Error inviting user with JS SDK:', inviteError);
             return new Response(
-              JSON.stringify({ error: `Failed to invite user: ${errorData.message || errorData.error_description || 'Unknown error'}` }),
+              JSON.stringify({ error: `Failed to invite user: ${inviteError.message || 'Unknown error'}` }),
               { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
           }
           
-          const inviteData = await inviteResponse.json();
-          console.log('✅ User invited successfully:', inviteData?.id);
-          
-          if (!inviteData?.id) {
+          if (!inviteData?.user?.id) {
+            console.error('❌ No user ID in JS SDK invite response:', JSON.stringify(inviteData));
             return new Response(
-              JSON.stringify({ error: 'Failed to create user' }),
+              JSON.stringify({ error: 'Failed to create user: No user ID returned from JS SDK' }),
               { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
           }
 
-          targetUserId = inviteData.id
+          console.log('✅ User invited successfully via JS SDK:', inviteData.user.id);
+          targetUserId = inviteData.user.id
           
           // Update last_invite_sent_at after successful invitation
           try {
@@ -245,11 +228,11 @@ serve(async (req) => {
         userMetadata.last_name = lastName.trim();
       }
       
-      // Use direct HTTP request to Admin API instead of JS SDK
+      // Use JS SDK to resend invitation
       console.log('📧 Attempting to resend invitation to:', email);
       console.log('📝 User metadata:', userMetadata);
       
-      // Build correct Admin API URL
+      // Build correct redirect URL
       let baseUrl = supabaseUrl.trim();
       if (baseUrl.includes('/rest/v1')) {
         baseUrl = baseUrl.replace('/rest/v1', '');
@@ -258,37 +241,21 @@ serve(async (req) => {
       if (!baseUrl.startsWith('http')) {
         baseUrl = `https://${baseUrl}`;
       }
-      const adminApiUrl = `${baseUrl}/auth/v1/admin/users`;
-      const inviteResponse = await fetch(`${adminApiUrl}/invite`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${serviceRoleKey}`,
-          'apikey': serviceRoleKey,
-        },
-        body: JSON.stringify({
-          email: email,
-          data: userMetadata,
-          redirect_to: emailRedirectTo || `${supabaseUrl.replace('/rest/v1', '')}/login`
-        })
+      
+      const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+        data: userMetadata,
+        redirectTo: emailRedirectTo || `${baseUrl}/login`
       });
 
-      if (!inviteResponse.ok) {
-        const errorText = await inviteResponse.text();
-        console.error('❌ Error resending invitation:', errorText);
-        let errorData;
-        try {
-          errorData = JSON.parse(errorText);
-        } catch {
-          errorData = { message: errorText };
-        }
+      if (inviteError) {
+        console.error('❌ Error resending invitation with JS SDK:', inviteError);
         return new Response(
-          JSON.stringify({ error: `Failed to resend invitation: ${errorData.message || errorData.error_description || 'Unknown error'}` }),
+          JSON.stringify({ error: `Failed to resend invitation: ${inviteError.message || 'Unknown error'}` }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
       
-      console.log('✅ Invitation resent successfully');
+      console.log('✅ Invitation resent successfully via JS SDK');
     }
 
     // Create or update profile (only if userId was not provided or if we have user data)
