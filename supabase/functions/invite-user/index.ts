@@ -57,14 +57,25 @@ serve(async (req) => {
 
     // If userId not provided, create new user
     if (!targetUserId) {
-      // Check if user already exists - use listUsers and filter by email
+      // Check if user already exists - use direct HTTP request to Admin API
       let existingUserId: string | null = null;
       try {
-        const { data: usersData, error: listError } = await supabaseAdmin.auth.admin.listUsers();
-        if (!listError && usersData?.users) {
-          const existingUser = usersData.users.find((u: any) => u.email === email);
-          if (existingUser) {
-            existingUserId = existingUser.id;
+        const adminApiUrl = `${supabaseUrl.replace('/rest/v1', '')}/auth/v1/admin/users`;
+        const listResponse = await fetch(`${adminApiUrl}?per_page=1000`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${serviceRoleKey}`,
+            'apikey': serviceRoleKey,
+          }
+        });
+        
+        if (listResponse.ok) {
+          const usersData = await listResponse.json();
+          if (usersData?.users) {
+            const existingUser = usersData.users.find((u: any) => u.email === email);
+            if (existingUser) {
+              existingUserId = existingUser.id;
+            }
           }
         }
       } catch (err) {
@@ -86,22 +97,43 @@ serve(async (req) => {
           userMetadata.last_name = lastName.trim();
         }
         
-        const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-          email,
-          {
+        // Use direct HTTP request to Admin API instead of JS SDK
+        console.log('📧 Attempting to invite user:', email);
+        console.log('📝 User metadata:', userMetadata);
+        
+        const adminApiUrl = `${supabaseUrl.replace('/rest/v1', '')}/auth/v1/admin/users`;
+        const inviteResponse = await fetch(`${adminApiUrl}/invite`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${serviceRoleKey}`,
+            'apikey': serviceRoleKey,
+          },
+          body: JSON.stringify({
+            email: email,
             data: userMetadata,
-            redirectTo: emailRedirectTo || `${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '')}/login`
-          }
-        )
+            redirect_to: emailRedirectTo || `${supabaseUrl.replace('/rest/v1', '')}/login`
+          })
+        });
 
-        if (inviteError) {
-          console.error('Error inviting user:', inviteError)
+        if (!inviteResponse.ok) {
+          const errorText = await inviteResponse.text();
+          console.error('❌ Error inviting user:', errorText);
+          let errorData;
+          try {
+            errorData = JSON.parse(errorText);
+          } catch {
+            errorData = { message: errorText };
+          }
           return new Response(
-            JSON.stringify({ error: `Failed to invite user: ${inviteError.message}` }),
+            JSON.stringify({ error: `Failed to invite user: ${errorData.message || errorData.error_description || 'Unknown error'}` }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
         }
-
+        
+        const inviteData = await inviteResponse.json();
+        console.log('✅ User invited successfully:', inviteData?.id);
+        
         if (!inviteData?.id) {
           return new Response(
             JSON.stringify({ error: 'Failed to create user' }),
@@ -122,21 +154,41 @@ serve(async (req) => {
         userMetadata.last_name = lastName.trim();
       }
       
-      const { error: resendError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-        email,
-        {
+      // Use direct HTTP request to Admin API instead of JS SDK
+      console.log('📧 Attempting to resend invitation to:', email);
+      console.log('📝 User metadata:', userMetadata);
+      
+      const adminApiUrl = `${supabaseUrl.replace('/rest/v1', '')}/auth/v1/admin/users`;
+      const inviteResponse = await fetch(`${adminApiUrl}/invite`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${serviceRoleKey}`,
+          'apikey': serviceRoleKey,
+        },
+        body: JSON.stringify({
+          email: email,
           data: userMetadata,
-          redirectTo: emailRedirectTo || `${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '')}/login`
-        }
-      )
+          redirect_to: emailRedirectTo || `${supabaseUrl.replace('/rest/v1', '')}/login`
+        })
+      });
 
-      if (resendError) {
-        console.error('Error resending invitation:', resendError)
+      if (!inviteResponse.ok) {
+        const errorText = await inviteResponse.text();
+        console.error('❌ Error resending invitation:', errorText);
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { message: errorText };
+        }
         return new Response(
-          JSON.stringify({ error: `Failed to resend invitation: ${resendError.message}` }),
+          JSON.stringify({ error: `Failed to resend invitation: ${errorData.message || errorData.error_description || 'Unknown error'}` }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
+      
+      console.log('✅ Invitation resent successfully');
     }
 
     // Create or update profile (only if userId was not provided or if we have user data)
