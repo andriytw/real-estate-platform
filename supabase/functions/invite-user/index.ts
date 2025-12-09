@@ -42,12 +42,24 @@ serve(async (req) => {
 
     // If userId not provided, create new user
     if (!targetUserId) {
-      // Check if user already exists
-      const { data: existingUser } = await supabaseAdmin.auth.admin.getUserByEmail(email)
+      // Check if user already exists - use listUsers and filter by email
+      let existingUserId: string | null = null;
+      try {
+        const { data: usersData, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+        if (!listError && usersData?.users) {
+          const existingUser = usersData.users.find((u: any) => u.email === email);
+          if (existingUser) {
+            existingUserId = existingUser.id;
+          }
+        }
+      } catch (err) {
+        console.log('Error checking existing users:', err);
+        // Continue to create new user if check fails
+      }
       
-      if (existingUser?.user) {
+      if (existingUserId) {
         // User exists, use existing ID
-        targetUserId = existingUser.user.id
+        targetUserId = existingUserId;
       } else {
         // Create new user via invite
         const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
