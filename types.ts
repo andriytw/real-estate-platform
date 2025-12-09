@@ -430,6 +430,7 @@ export interface Worker {
   managerId?: string;
   isActive: boolean;
   categoryAccess?: CategoryAccess[]; // Categories user can access
+  lastInviteSentAt?: string; // Timestamp of when the last invitation email was sent
   createdAt: string;
   updatedAt: string;
 }

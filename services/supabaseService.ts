@@ -42,6 +42,75 @@ export const usersService = {
     return workersService.getAll();
   },
 
+  // Create new user without sending invitation
+  async createWithoutInvite(userData: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    role: 'super_manager' | 'manager' | 'worker';
+    department: 'facility' | 'accounting' | 'sales' | 'general';
+    categoryAccess?: CategoryAccess[];
+  }): Promise<Worker> {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 
+                       import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_URL || 
+                       (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_URL : '');
+    
+    const functionsUrl = `${supabaseUrl}/functions/v1/invite-user`;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 
+                   import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+                   (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : '');
+
+    console.log('👤 Creating user without invitation:', userData.email);
+
+    const response = await fetch(functionsUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${anonKey}`,
+        'apikey': anonKey,
+      },
+      body: JSON.stringify({
+        email: userData.email,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        role: userData.role,
+        department: userData.department,
+        categoryAccess: userData.categoryAccess || ['properties', 'facility', 'accounting', 'sales', 'tasks'],
+        skipInvite: true, // Don't send invitation
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `Failed to create user: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    
+    if (!result.success || !result.user) {
+      throw new Error('Failed to create user: Invalid response from server');
+    }
+
+    console.log('✅ User created without invitation:', result.user.email);
+    
+    // Transform to Worker format
+    return {
+      id: result.user.id,
+      name: result.user.name,
+      firstName: result.user.firstName,
+      lastName: result.user.lastName,
+      email: result.user.email,
+      phone: undefined,
+      department: result.user.department,
+      role: result.user.role,
+      managerId: undefined,
+      isActive: true,
+      categoryAccess: result.user.categoryAccess,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  },
+
   // Create new user and send invite link via Edge Function
   async create(userData: {
     email: string;
@@ -779,6 +848,7 @@ function transformWorkerFromDB(db: any): Worker {
     managerId: db.manager_id,
     isActive: db.is_active !== false,
     categoryAccess: db.category_access || ['properties', 'facility', 'accounting', 'sales', 'tasks'],
+    lastInviteSentAt: db.last_invite_sent_at || undefined,
     createdAt: db.created_at,
     updatedAt: db.updated_at,
   };

@@ -44,7 +44,7 @@ serve(async (req) => {
     )
 
     // Parse request body
-    const { email, firstName, lastName, role, department, categoryAccess, userId, emailRedirectTo } = await req.json()
+    const { email, firstName, lastName, role, department, categoryAccess, userId, emailRedirectTo, skipInvite } = await req.json()
 
     if (!email) {
       return new Response(
@@ -87,7 +87,6 @@ serve(async (req) => {
         // User exists, use existing ID
         targetUserId = existingUserId;
       } else {
-        // Create new user via invite
         // Only include first_name and last_name in metadata if they are provided and not empty
         const userMetadata: any = {};
         if (firstName && firstName.trim() !== '') {
@@ -97,51 +96,112 @@ serve(async (req) => {
           userMetadata.last_name = lastName.trim();
         }
         
-        // Use direct HTTP request to Admin API instead of JS SDK
-        console.log('📧 Attempting to invite user:', email);
-        console.log('📝 User metadata:', userMetadata);
-        
         const adminApiUrl = `${supabaseUrl.replace('/rest/v1', '')}/auth/v1/admin/users`;
-        const inviteResponse = await fetch(`${adminApiUrl}/invite`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${serviceRoleKey}`,
-            'apikey': serviceRoleKey,
-          },
-          body: JSON.stringify({
-            email: email,
-            data: userMetadata,
-            redirect_to: emailRedirectTo || `${supabaseUrl.replace('/rest/v1', '')}/login`
-          })
-        });
+        
+        if (skipInvite) {
+          // Create user without sending invitation
+          console.log('👤 Creating user without invitation:', email);
+          console.log('📝 User metadata:', userMetadata);
+          
+          // Use createUser endpoint instead of invite
+          const createResponse = await fetch(adminApiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${serviceRoleKey}`,
+              'apikey': serviceRoleKey,
+            },
+            body: JSON.stringify({
+              email: email,
+              user_metadata: userMetadata,
+              email_confirm: false, // User needs to set password via invitation later
+            })
+          });
 
-        if (!inviteResponse.ok) {
-          const errorText = await inviteResponse.text();
-          console.error('❌ Error inviting user:', errorText);
-          let errorData;
-          try {
-            errorData = JSON.parse(errorText);
-          } catch {
-            errorData = { message: errorText };
+          if (!createResponse.ok) {
+            const errorText = await createResponse.text();
+            console.error('❌ Error creating user:', errorText);
+            let errorData;
+            try {
+              errorData = JSON.parse(errorText);
+            } catch {
+              errorData = { message: errorText };
+            }
+            return new Response(
+              JSON.stringify({ error: `Failed to create user: ${errorData.message || errorData.error_description || 'Unknown error'}` }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
           }
-          return new Response(
-            JSON.stringify({ error: `Failed to invite user: ${errorData.message || errorData.error_description || 'Unknown error'}` }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
-        }
-        
-        const inviteData = await inviteResponse.json();
-        console.log('✅ User invited successfully:', inviteData?.id);
-        
-        if (!inviteData?.id) {
-          return new Response(
-            JSON.stringify({ error: 'Failed to create user' }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
-        }
+          
+          const createData = await createResponse.json();
+          console.log('✅ User created successfully (no invitation):', createData?.id);
+          
+          if (!createData?.id) {
+            return new Response(
+              JSON.stringify({ error: 'Failed to create user' }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
 
-        targetUserId = inviteData.id
+          targetUserId = createData.id
+        } else {
+          // Create new user via invite
+          console.log('📧 Attempting to invite user:', email);
+          console.log('📝 User metadata:', userMetadata);
+          
+          const inviteResponse = await fetch(`${adminApiUrl}/invite`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${serviceRoleKey}`,
+              'apikey': serviceRoleKey,
+            },
+            body: JSON.stringify({
+              email: email,
+              data: userMetadata,
+              redirect_to: emailRedirectTo || `${supabaseUrl.replace('/rest/v1', '')}/login`
+            })
+          });
+
+          if (!inviteResponse.ok) {
+            const errorText = await inviteResponse.text();
+            console.error('❌ Error inviting user:', errorText);
+            let errorData;
+            try {
+              errorData = JSON.parse(errorText);
+            } catch {
+              errorData = { message: errorText };
+            }
+            return new Response(
+              JSON.stringify({ error: `Failed to invite user: ${errorData.message || errorData.error_description || 'Unknown error'}` }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
+          
+          const inviteData = await inviteResponse.json();
+          console.log('✅ User invited successfully:', inviteData?.id);
+          
+          if (!inviteData?.id) {
+            return new Response(
+              JSON.stringify({ error: 'Failed to create user' }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
+
+          targetUserId = inviteData.id
+          
+          // Update last_invite_sent_at after successful invitation
+          try {
+            await supabaseAdmin
+              .from('profiles')
+              .update({ last_invite_sent_at: new Date().toISOString() })
+              .eq('id', targetUserId);
+            console.log('✅ Updated last_invite_sent_at for user:', targetUserId);
+          } catch (updateError) {
+            console.error('⚠️ Failed to update last_invite_sent_at:', updateError);
+            // Don't fail the request if this update fails
+          }
+        }
       }
     } else {
       // Resend invitation for existing user - use inviteUserByEmail again (it works for existing users too)

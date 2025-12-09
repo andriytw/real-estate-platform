@@ -101,6 +101,8 @@ const UserManagement: React.FC = () => {
     
     try {
       await usersService.resendInvite(userId, email);
+      // Reload users to get updated lastInviteSentAt
+      await loadUsers();
       setMessage({ type: 'success', text: `Запрошення надіслано на ${email}!` });
       // Auto-hide success message after 3 seconds
       setTimeout(() => setMessage(null), 3000);
@@ -161,7 +163,7 @@ const UserManagement: React.FC = () => {
     }
 
     try {
-      await usersService.create(newUser);
+      await usersService.createWithoutInvite(newUser);
       await loadUsers(); // Reload to show new user
       setIsCreateModalOpen(false);
       setNewUser({
@@ -174,7 +176,7 @@ const UserManagement: React.FC = () => {
       });
       setMessage({ 
         type: 'success', 
-        text: `Користувача створено! Запрошення надіслано на ${newUser.email}. Користувач з'явиться в списку Kanban дошки.` 
+        text: `Користувача створено! Натисніть 'Надіслати запрошення' щоб надіслати запрошення на ${newUser.email}. Користувач з'явиться в списку Kanban дошки.` 
       });
       setTimeout(() => setMessage(null), 5000);
     } catch (error: any) {
@@ -341,59 +343,76 @@ const UserManagement: React.FC = () => {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      {editingUser === user.id ? (
-                        <>
-                          <button
-                            onClick={() => handleSave(user.id)}
-                            className="p-1.5 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 transition-colors"
-                            title="Зберегти"
-                          >
-                            <Save className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={handleCancel}
-                            className="p-1.5 rounded bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
-                            title="Скасувати"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => handleEdit(user)}
-                            className="p-1.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30 transition-colors"
-                            title="Редагувати"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleResendInvite(user.id, user.email)}
-                            disabled={resendingInvite.has(user.id)}
-                            className="p-1.5 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Надіслати запрошення"
-                          >
-                            {resendingInvite.has(user.id) ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Send className="w-4 h-4" />
-                            )}
-                          </button>
-                          <button
-                            onClick={() => handleDeactivate(user.id)}
-                            disabled={deactivatingUser.has(user.id)}
-                            className="p-1.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Деактивувати"
-                          >
-                            {deactivatingUser.has(user.id) ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-4 h-4" />
-                            )}
-                          </button>
-                        </>
-                      )}
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        {editingUser === user.id ? (
+                          <>
+                            <button
+                              onClick={() => handleSave(user.id)}
+                              className="p-1.5 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 transition-colors"
+                              title="Зберегти"
+                            >
+                              <Save className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={handleCancel}
+                              className="p-1.5 rounded bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+                              title="Скасувати"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleEdit(user)}
+                              className="p-1.5 rounded bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30 transition-colors"
+                              title="Редагувати"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleResendInvite(user.id, user.email)}
+                              disabled={resendingInvite.has(user.id)}
+                              className="p-1.5 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Надіслати запрошення"
+                            >
+                              {resendingInvite.has(user.id) ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Send className="w-4 h-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleDeactivate(user.id)}
+                              disabled={deactivatingUser.has(user.id)}
+                              className="p-1.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Деактивувати"
+                            >
+                              {deactivatingUser.has(user.id) ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      {!editingUser || editingUser !== user.id ? (
+                        <div className="text-[10px] text-gray-500">
+                          {user.lastInviteSentAt ? (
+                            <>Останнє надсилання: {new Date(user.lastInviteSentAt).toLocaleString('uk-UA', { 
+                              day: '2-digit', 
+                              month: '2-digit', 
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}</>
+                          ) : (
+                            <>Ніколи не надсилалось</>
+                          )}
+                        </div>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
