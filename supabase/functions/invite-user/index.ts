@@ -22,7 +22,11 @@ serve(async (req) => {
     
     console.log('🔧 Edge Function started');
     console.log('📋 Supabase URL:', supabaseUrl ? 'present' : 'MISSING');
+    console.log('📋 Supabase URL value:', supabaseUrl);
     console.log('🔑 Service Role Key:', serviceRoleKey ? 'present' : 'MISSING');
+    console.log('🔑 Service Role Key length:', serviceRoleKey.length);
+    console.log('🔑 Service Role Key first 30 chars:', serviceRoleKey.substring(0, 30));
+    console.log('🔑 Service Role Key is JWT (starts with eyJ):', serviceRoleKey.startsWith('eyJ'));
     
     if (!supabaseUrl || !serviceRoleKey) {
       console.error('❌ Missing environment variables!');
@@ -60,7 +64,16 @@ serve(async (req) => {
       // Check if user already exists - use direct HTTP request to Admin API
       let existingUserId: string | null = null;
       try {
-        const adminApiUrl = `${supabaseUrl.replace('/rest/v1', '')}/auth/v1/admin/users`;
+        // Build correct Admin API URL
+        let baseUrl = supabaseUrl.trim();
+        if (baseUrl.includes('/rest/v1')) {
+          baseUrl = baseUrl.replace('/rest/v1', '');
+        }
+        baseUrl = baseUrl.replace(/\/+$/, '');
+        if (!baseUrl.startsWith('http')) {
+          baseUrl = `https://${baseUrl}`;
+        }
+        const adminApiUrl = `${baseUrl}/auth/v1/admin/users`;
         const listResponse = await fetch(`${adminApiUrl}?per_page=1000`, {
           method: 'GET',
           headers: {
@@ -96,7 +109,16 @@ serve(async (req) => {
           userMetadata.last_name = lastName.trim();
         }
         
-        const adminApiUrl = `${supabaseUrl.replace('/rest/v1', '')}/auth/v1/admin/users`;
+        // Build correct Admin API URL
+        let baseUrl = supabaseUrl.trim();
+        if (baseUrl.includes('/rest/v1')) {
+          baseUrl = baseUrl.replace('/rest/v1', '');
+        }
+        baseUrl = baseUrl.replace(/\/+$/, '');
+        if (!baseUrl.startsWith('http')) {
+          baseUrl = `https://${baseUrl}`;
+        }
+        const adminApiUrl = `${baseUrl}/auth/v1/admin/users`;
         
         if (skipInvite) {
           // Create user without sending invitation using direct HTTP request to Admin API
@@ -109,9 +131,10 @@ serve(async (req) => {
           crypto.getRandomValues(randomBytes);
           const tempPassword = Array.from(randomBytes, byte => byte.toString(16).padStart(2, '0')).join('');
           
-          // Use direct HTTP request to Admin API /auth/v1/admin/users endpoint
-          const adminApiUrl = `${supabaseUrl.replace('/rest/v1', '')}/auth/v1/admin/users`;
-          console.log('🔗 Calling Admin API:', adminApiUrl);
+          console.log('🔍 Original SUPABASE_URL:', supabaseUrl);
+          console.log('🔍 Processed Base URL:', baseUrl);
+          console.log('🔗 Final Admin API URL:', adminApiUrl);
+          console.log('🔗 Calling Admin API endpoint');
           
           const createResponse = await fetch(adminApiUrl, {
             method: 'POST',
@@ -128,23 +151,60 @@ serve(async (req) => {
             })
           });
 
+          console.log('📊 Response status:', createResponse.status);
+          console.log('📊 Response statusText:', createResponse.statusText);
+          console.log('📊 Response headers:', JSON.stringify(Object.fromEntries(createResponse.headers.entries())));
+
           if (!createResponse.ok) {
             const errorText = await createResponse.text();
-            console.error('❌ Error creating user:', errorText);
-            console.error('❌ Response status:', createResponse.status);
+            console.error('❌ Error creating user - Status:', createResponse.status);
+            console.error('❌ Error creating user - Response:', errorText);
+            
             let errorData;
             try {
               errorData = JSON.parse(errorText);
-            } catch {
-              errorData = { message: errorText };
+              console.error('❌ Parsed error data:', JSON.stringify(errorData, null, 2));
+            } catch (parseError) {
+              console.error('❌ Failed to parse error response:', parseError);
+              errorData = { message: errorText || 'Empty response', raw: errorText };
             }
+            
             return new Response(
-              JSON.stringify({ error: `Failed to create user: ${errorData.message || errorData.error_description || 'Unknown error'}` }),
-              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              JSON.stringify({ 
+                error: `Failed to create user: ${errorData.message || errorData.error_description || 'Unknown error'}`,
+                status: createResponse.status,
+                details: errorData
+              }),
+              { status: createResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
           }
           
-          const createData = await createResponse.json();
+          // Check if response has content before parsing
+          const responseText = await createResponse.text();
+          console.log('📄 Response text length:', responseText.length);
+          console.log('📄 Response text (first 500 chars):', responseText.substring(0, 500));
+          
+          if (!responseText || responseText.trim() === '') {
+            console.error('❌ Empty response from Admin API');
+            return new Response(
+              JSON.stringify({ error: 'Failed to create user: Empty response from server' }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
+          
+          let createData;
+          try {
+            createData = JSON.parse(responseText);
+            console.log('✅ Parsed response data:', JSON.stringify(createData, null, 2));
+          } catch (parseError) {
+            console.error('❌ Failed to parse response JSON:', parseError);
+            console.error('❌ Full response text:', responseText);
+            return new Response(
+              JSON.stringify({ error: 'Failed to create user: Invalid response format', raw: responseText }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
+          
           console.log('✅ User created successfully (no invitation):', createData?.id || createData?.user?.id);
           
           const userId = createData?.id || createData?.user?.id;
@@ -172,7 +232,7 @@ serve(async (req) => {
             body: JSON.stringify({
               email: email,
               data: userMetadata,
-              redirect_to: emailRedirectTo || `${supabaseUrl.replace('/rest/v1', '')}/login`
+              redirect_to: emailRedirectTo || `${baseUrl}/login`
             })
           });
 
@@ -231,7 +291,16 @@ serve(async (req) => {
       console.log('📧 Attempting to resend invitation to:', email);
       console.log('📝 User metadata:', userMetadata);
       
-      const adminApiUrl = `${supabaseUrl.replace('/rest/v1', '')}/auth/v1/admin/users`;
+      // Build correct Admin API URL
+      let baseUrl = supabaseUrl.trim();
+      if (baseUrl.includes('/rest/v1')) {
+        baseUrl = baseUrl.replace('/rest/v1', '');
+      }
+      baseUrl = baseUrl.replace(/\/+$/, '');
+      if (!baseUrl.startsWith('http')) {
+        baseUrl = `https://${baseUrl}`;
+      }
+      const adminApiUrl = `${baseUrl}/auth/v1/admin/users`;
       const inviteResponse = await fetch(`${adminApiUrl}/invite`, {
         method: 'POST',
         headers: {
