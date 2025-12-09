@@ -48,7 +48,17 @@ serve(async (req) => {
     )
 
     // Parse request body
-    const { email, firstName, lastName, role, department, categoryAccess, userId, emailRedirectTo, skipInvite } = await req.json()
+    const requestBody = await req.json();
+    const { email, firstName, lastName, role, department, categoryAccess, userId, emailRedirectTo, skipInvite } = requestBody;
+    
+    console.log('📥 Request body received:', {
+      email,
+      firstName: firstName ? `"${firstName}"` : 'undefined/null',
+      lastName: lastName ? `"${lastName}"` : 'undefined/null',
+      role,
+      department,
+      skipInvite
+    });
 
     if (!email) {
       return new Response(
