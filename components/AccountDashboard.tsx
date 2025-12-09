@@ -2117,9 +2117,9 @@ const AccountDashboard: React.FC = () => {
           {/* Facility */}
           {/* Facility - Only show if user has access */}
           {(!worker?.categoryAccess || worker.categoryAccess.includes('facility')) && (
-            <button onClick={() => { toggleSection('facility'); setActiveDepartment('facility'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
+          <button onClick={() => { toggleSection('facility'); setActiveDepartment('facility'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
               <span className="flex items-center gap-3"><Settings className="w-4 h-4" /> Facility</span><ChevronDown className="w-3 h-3" />
-            </button>
+          </button>
           )}
           {expandedSections.facility && (
               <div className="ml-4 space-y-1 border-l border-gray-700 pl-3 my-1">
@@ -2133,9 +2133,9 @@ const AccountDashboard: React.FC = () => {
           <div className="mb-2">
             {/* Accounting - Only show if user has access */}
             {(!worker?.categoryAccess || worker.categoryAccess.includes('accounting')) && (
-              <button onClick={() => { toggleSection('accounting'); setActiveDepartment('accounting'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
-                <span className="flex items-center gap-3"><Clock className="w-4 h-4" /> Accounting</span><ChevronDown className="w-3 h-3" />
-              </button>
+            <button onClick={() => { toggleSection('accounting'); setActiveDepartment('accounting'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
+              <span className="flex items-center gap-3"><Clock className="w-4 h-4" /> Accounting</span><ChevronDown className="w-3 h-3" />
+            </button>
             )}
             {expandedSections.accounting && (
               <div className="ml-4 space-y-1 border-l border-gray-700 pl-3 my-1">
@@ -2150,9 +2150,9 @@ const AccountDashboard: React.FC = () => {
           {/* Sales */}
           {/* Sales Department - Only show if user has access */}
           {(!worker?.categoryAccess || worker.categoryAccess.includes('sales')) && (
-            <button onClick={() => { toggleSection('sales'); setActiveDepartment('sales'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
+          <button onClick={() => { toggleSection('sales'); setActiveDepartment('sales'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
               <span className="flex items-center gap-3"><TrendingUp className="w-4 h-4" /> Sales Department</span><ChevronDown className="w-3 h-3" />
-            </button>
+          </button>
           )}
           {expandedSections.sales && (
               <div className="ml-4 space-y-1 border-l border-gray-700 pl-3 my-1">
