@@ -248,16 +248,29 @@ serve(async (req) => {
       // First, check if user exists and get their ID
       let existingUser: any = null;
       try {
+        console.log('🔍 Checking if user exists in auth system...');
         const { data: usersData, error: listError } = await supabaseAdmin.auth.admin.listUsers();
-        if (!listError && usersData?.users) {
-          existingUser = usersData.users.find((u: any) => u.email === email);
+        
+        if (listError) {
+          console.error('❌ Error listing users:', listError);
+        } else {
+          console.log('📋 Total users found:', usersData?.users?.length || 0);
+          if (usersData?.users) {
+            existingUser = usersData.users.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+            if (existingUser) {
+              console.log('✅ User found in auth system:', existingUser.id, existingUser.email);
+            } else {
+              console.log('⚠️ User not found in auth system, will try to create new user');
+            }
+          }
         }
       } catch (err) {
-        console.log('Error checking existing users:', err);
+        console.error('❌ Error checking existing users:', err);
       }
       
       if (existingUser) {
         // User exists - use generateLink with type 'invite' to create invitation link
+        // generateLink automatically sends the email
         console.log('👤 User exists, generating invite link for:', existingUser.id);
         
         const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
@@ -271,31 +284,89 @@ serve(async (req) => {
 
         if (linkError) {
           console.error('❌ Error generating invite link:', linkError);
+          console.error('❌ Link error details:', JSON.stringify(linkError, null, 2));
           return new Response(
             JSON.stringify({ error: `Failed to generate invite link: ${linkError.message || 'Unknown error'}` }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
         }
         
-        console.log('✅ Invite link generated successfully');
+        console.log('✅ Invite link generated successfully, email should be sent automatically');
+        console.log('📧 Link data:', JSON.stringify(linkData, null, 2));
         targetUserId = existingUser.id;
       } else {
         // User doesn't exist in auth - try inviteUserByEmail (creates new user)
+        console.log('👤 User not found in auth, attempting to create new user with invitation');
+        
         const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
           data: userMetadata,
           redirectTo: emailRedirectTo || `${baseUrl}/login`
         });
 
         if (inviteError) {
-          console.error('❌ Error resending invitation with JS SDK:', inviteError);
-          return new Response(
-            JSON.stringify({ error: `Failed to resend invitation: ${inviteError.message || 'Unknown error'}` }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
+          console.error('❌ Error creating user with invitation:', inviteError);
+          console.error('❌ Invite error details:', JSON.stringify(inviteError, null, 2));
+          
+          // If user already exists error, try generateLink instead
+          if (inviteError.message?.includes('already been registered') || inviteError.message?.includes('already registered')) {
+            console.log('🔄 User already registered, trying generateLink instead...');
+            
+            // Try to get user by email using listUsers with filter
+            try {
+              const { data: usersData, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+              if (!listError && usersData?.users) {
+                const foundUser = usersData.users.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+                if (foundUser) {
+                  console.log('✅ Found user after error, generating invite link:', foundUser.id);
+                  
+                  const { data: linkData, error: linkError2 } = await supabaseAdmin.auth.admin.generateLink({
+                    type: 'invite',
+                    email: email,
+                    options: {
+                      data: userMetadata,
+                      redirectTo: emailRedirectTo || `${baseUrl}/login`
+                    }
+                  });
+
+                  if (linkError2) {
+                    console.error('❌ Error generating invite link (retry):', linkError2);
+                    return new Response(
+                      JSON.stringify({ error: `Failed to generate invite link: ${linkError2.message || 'Unknown error'}` }),
+                      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                    )
+                  }
+                  
+                  console.log('✅ Invite link generated successfully (retry)');
+                  targetUserId = foundUser.id;
+                } else {
+                  return new Response(
+                    JSON.stringify({ error: `User with email ${email} already exists but could not be found` }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                  )
+                }
+              } else {
+                return new Response(
+                  JSON.stringify({ error: `Failed to resend invitation: ${inviteError.message || 'Unknown error'}` }),
+                  { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+              }
+            } catch (retryErr) {
+              console.error('❌ Error in retry logic:', retryErr);
+              return new Response(
+                JSON.stringify({ error: `Failed to resend invitation: ${inviteError.message || 'Unknown error'}` }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              )
+            }
+          } else {
+            return new Response(
+              JSON.stringify({ error: `Failed to resend invitation: ${inviteError.message || 'Unknown error'}` }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
+        } else {
+          console.log('✅ Invitation sent successfully via JS SDK (new user)');
+          targetUserId = inviteData?.user?.id || targetUserId;
         }
-        
-        console.log('✅ Invitation resent successfully via JS SDK');
-        targetUserId = inviteData?.user?.id || targetUserId;
       }
       
       // Update last_invite_sent_at after successful resend
