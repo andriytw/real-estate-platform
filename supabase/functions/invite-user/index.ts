@@ -99,51 +99,37 @@ serve(async (req) => {
         const adminApiUrl = `${supabaseUrl.replace('/rest/v1', '')}/auth/v1/admin/users`;
         
         if (skipInvite) {
-          // Create user without sending invitation
+          // Create user without sending invitation using JS SDK
           console.log('👤 Creating user without invitation:', email);
           console.log('📝 User metadata:', userMetadata);
           
-          // Use createUser endpoint instead of invite
-          const createResponse = await fetch(adminApiUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${serviceRoleKey}`,
-              'apikey': serviceRoleKey,
-            },
-            body: JSON.stringify({
-              email: email,
-              user_metadata: userMetadata,
-              email_confirm: false, // User needs to set password via invitation later
-            })
+          // Use JS SDK createUser method - this creates user with a temporary password
+          // User will need to set password via invitation later
+          const { data: createData, error: createError } = await supabaseAdmin.auth.admin.createUser({
+            email: email,
+            user_metadata: userMetadata,
+            email_confirm: false, // User needs to confirm email and set password via invitation later
+            // Generate a random temporary password (user won't use it, will set via invitation)
+            password: crypto.randomUUID() + crypto.randomUUID(), // Long random password
           });
 
-          if (!createResponse.ok) {
-            const errorText = await createResponse.text();
-            console.error('❌ Error creating user:', errorText);
-            let errorData;
-            try {
-              errorData = JSON.parse(errorText);
-            } catch {
-              errorData = { message: errorText };
-            }
+          if (createError) {
+            console.error('❌ Error creating user:', createError);
             return new Response(
-              JSON.stringify({ error: `Failed to create user: ${errorData.message || errorData.error_description || 'Unknown error'}` }),
+              JSON.stringify({ error: `Failed to create user: ${createError.message || 'Unknown error'}` }),
               { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
           }
           
-          const createData = await createResponse.json();
-          console.log('✅ User created successfully (no invitation):', createData?.id);
-          
-          if (!createData?.id) {
+          if (!createData?.user?.id) {
             return new Response(
-              JSON.stringify({ error: 'Failed to create user' }),
+              JSON.stringify({ error: 'Failed to create user: No user ID returned' }),
               { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
           }
 
-          targetUserId = createData.id
+          console.log('✅ User created successfully (no invitation):', createData.user.id);
+          targetUserId = createData.user.id
         } else {
           // Create new user via invite
           console.log('📧 Attempting to invite user:', email);
