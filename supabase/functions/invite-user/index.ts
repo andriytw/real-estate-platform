@@ -219,7 +219,8 @@ serve(async (req) => {
         }
       }
     } else {
-      // Resend invitation for existing user - use inviteUserByEmail again (it works for existing users too)
+      // Resend invitation for existing user
+      // For existing users, we need to use generateLink with type 'invite' or 'recovery'
       // Only include first_name and last_name in metadata if they are provided and not empty
       const userMetadata: any = {};
       if (firstName && firstName.trim() !== '') {
@@ -243,31 +244,72 @@ serve(async (req) => {
         baseUrl = `https://${baseUrl}`;
       }
       
-      const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-        data: userMetadata,
-        redirectTo: emailRedirectTo || `${baseUrl}/login`
-      });
-
-      if (inviteError) {
-        console.error('❌ Error resending invitation with JS SDK:', inviteError);
-        return new Response(
-          JSON.stringify({ error: `Failed to resend invitation: ${inviteError.message || 'Unknown error'}` }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
+      // For existing users, try to generate an invite link
+      // First, check if user exists and get their ID
+      let existingUser: any = null;
+      try {
+        const { data: usersData, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+        if (!listError && usersData?.users) {
+          existingUser = usersData.users.find((u: any) => u.email === email);
+        }
+      } catch (err) {
+        console.log('Error checking existing users:', err);
       }
       
-      console.log('✅ Invitation resent successfully via JS SDK');
+      if (existingUser) {
+        // User exists - use generateLink with type 'invite' to create invitation link
+        console.log('👤 User exists, generating invite link for:', existingUser.id);
+        
+        const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'invite',
+          email: email,
+          options: {
+            data: userMetadata,
+            redirectTo: emailRedirectTo || `${baseUrl}/login`
+          }
+        });
+
+        if (linkError) {
+          console.error('❌ Error generating invite link:', linkError);
+          return new Response(
+            JSON.stringify({ error: `Failed to generate invite link: ${linkError.message || 'Unknown error'}` }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+        
+        console.log('✅ Invite link generated successfully');
+        targetUserId = existingUser.id;
+      } else {
+        // User doesn't exist in auth - try inviteUserByEmail (creates new user)
+        const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+          data: userMetadata,
+          redirectTo: emailRedirectTo || `${baseUrl}/login`
+        });
+
+        if (inviteError) {
+          console.error('❌ Error resending invitation with JS SDK:', inviteError);
+          return new Response(
+            JSON.stringify({ error: `Failed to resend invitation: ${inviteError.message || 'Unknown error'}` }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+        
+        console.log('✅ Invitation resent successfully via JS SDK');
+        targetUserId = inviteData?.user?.id || targetUserId;
+      }
       
       // Update last_invite_sent_at after successful resend
-      try {
-        await supabaseAdmin
-          .from('profiles')
-          .update({ last_invite_sent_at: new Date().toISOString() })
-          .eq('id', targetUserId);
-        console.log('✅ Updated last_invite_sent_at for user:', targetUserId);
-      } catch (updateError) {
-        console.error('⚠️ Failed to update last_invite_sent_at:', updateError);
-        // Don't fail the request if this update fails
+      if (targetUserId) {
+        try {
+          await supabaseAdmin
+            .from('profiles')
+            .update({ last_invite_sent_at: new Date().toISOString() })
+            .eq('id', targetUserId);
+          console.log('✅ Updated last_invite_sent_at for user:', targetUserId);
+        } catch (updateError) {
+          console.error('⚠️ Failed to update last_invite_sent_at:', updateError);
+          // Don't fail the request if this update fails
+        }
       }
     }
 
