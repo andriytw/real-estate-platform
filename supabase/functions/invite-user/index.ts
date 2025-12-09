@@ -17,9 +17,24 @@ serve(async (req) => {
 
   try {
     // Get Supabase Admin Client (uses service role key from environment)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    
+    console.log('🔧 Edge Function started');
+    console.log('📋 Supabase URL:', supabaseUrl ? 'present' : 'MISSING');
+    console.log('🔑 Service Role Key:', serviceRoleKey ? 'present' : 'MISSING');
+    
+    if (!supabaseUrl || !serviceRoleKey) {
+      console.error('❌ Missing environment variables!');
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error: Missing environment variables' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
     const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      supabaseUrl,
+      serviceRoleKey,
       {
         auth: {
           autoRefreshToken: false,
