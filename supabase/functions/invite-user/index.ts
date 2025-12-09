@@ -121,9 +121,11 @@ serve(async (req) => {
         const adminApiUrl = `${baseUrl}/auth/v1/admin/users`;
         
         if (skipInvite) {
-          // Create user without sending invitation using direct HTTP request to Admin API
+          // Create user without sending invitation using JS SDK (works with both new sb_secret and legacy JWT keys)
           console.log('👤 Creating user without invitation:', email);
           console.log('📝 User metadata:', userMetadata);
+          console.log('📋 Request body firstName:', firstName);
+          console.log('📋 Request body lastName:', lastName);
           
           // Generate a random temporary password (user won't use it, will set via invitation)
           // Using crypto.getRandomValues for Deno compatibility
@@ -131,92 +133,38 @@ serve(async (req) => {
           crypto.getRandomValues(randomBytes);
           const tempPassword = Array.from(randomBytes, byte => byte.toString(16).padStart(2, '0')).join('');
           
-          console.log('🔍 Original SUPABASE_URL:', supabaseUrl);
-          console.log('🔍 Processed Base URL:', baseUrl);
-          console.log('🔗 Final Admin API URL:', adminApiUrl);
-          console.log('🔗 Calling Admin API endpoint');
+          console.log('🔧 Using JS SDK createUser (supports both new sb_secret and legacy JWT keys)');
           
-          const createResponse = await fetch(adminApiUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${serviceRoleKey}`,
-              'apikey': serviceRoleKey,
-            },
-            body: JSON.stringify({
-              email: email,
-              user_metadata: userMetadata,
-              email_confirm: false,
-              password: tempPassword,
-            })
+          // Use JS SDK createUser method - this works with both new sb_secret and legacy JWT keys
+          const { data: createData, error: createError } = await supabaseAdmin.auth.admin.createUser({
+            email: email,
+            user_metadata: userMetadata,
+            email_confirm: false, // User needs to confirm email and set password via invitation later
+            password: tempPassword, // Long random password
           });
 
-          console.log('📊 Response status:', createResponse.status);
-          console.log('📊 Response statusText:', createResponse.statusText);
-          console.log('📊 Response headers:', JSON.stringify(Object.fromEntries(createResponse.headers.entries())));
-
-          if (!createResponse.ok) {
-            const errorText = await createResponse.text();
-            console.error('❌ Error creating user - Status:', createResponse.status);
-            console.error('❌ Error creating user - Response:', errorText);
-            
-            let errorData;
-            try {
-              errorData = JSON.parse(errorText);
-              console.error('❌ Parsed error data:', JSON.stringify(errorData, null, 2));
-            } catch (parseError) {
-              console.error('❌ Failed to parse error response:', parseError);
-              errorData = { message: errorText || 'Empty response', raw: errorText };
-            }
-            
+          if (createError) {
+            console.error('❌ Error creating user with JS SDK:', createError);
+            console.error('❌ Error details:', JSON.stringify(createError, null, 2));
             return new Response(
               JSON.stringify({ 
-                error: `Failed to create user: ${errorData.message || errorData.error_description || 'Unknown error'}`,
-                status: createResponse.status,
-                details: errorData
+                error: `Failed to create user: ${createError.message || 'Unknown error'}`,
+                details: createError
               }),
-              { status: createResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
           }
           
-          // Check if response has content before parsing
-          const responseText = await createResponse.text();
-          console.log('📄 Response text length:', responseText.length);
-          console.log('📄 Response text (first 500 chars):', responseText.substring(0, 500));
-          
-          if (!responseText || responseText.trim() === '') {
-            console.error('❌ Empty response from Admin API');
+          if (!createData?.user?.id) {
+            console.error('❌ No user ID in JS SDK response:', JSON.stringify(createData));
             return new Response(
-              JSON.stringify({ error: 'Failed to create user: Empty response from server' }),
-              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-          }
-          
-          let createData;
-          try {
-            createData = JSON.parse(responseText);
-            console.log('✅ Parsed response data:', JSON.stringify(createData, null, 2));
-          } catch (parseError) {
-            console.error('❌ Failed to parse response JSON:', parseError);
-            console.error('❌ Full response text:', responseText);
-            return new Response(
-              JSON.stringify({ error: 'Failed to create user: Invalid response format', raw: responseText }),
-              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-          }
-          
-          console.log('✅ User created successfully (no invitation):', createData?.id || createData?.user?.id);
-          
-          const userId = createData?.id || createData?.user?.id;
-          if (!userId) {
-            console.error('❌ No user ID in response:', JSON.stringify(createData));
-            return new Response(
-              JSON.stringify({ error: 'Failed to create user: No user ID returned' }),
+              JSON.stringify({ error: 'Failed to create user: No user ID returned from JS SDK' }),
               { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
           }
 
-          targetUserId = userId
+          console.log('✅ User created successfully (no invitation) via JS SDK:', createData.user.id);
+          targetUserId = createData.user.id
         } else {
           // Create new user via invite
           console.log('📧 Attempting to invite user:', email);
@@ -336,17 +284,37 @@ serve(async (req) => {
     // Create or update profile (only if userId was not provided or if we have user data)
     // For resend, we might not have all user data, so only update if provided
     if (firstName || lastName || role || department || categoryAccess) {
+      // Validate and clean firstName/lastName - ensure email is NOT saved as first_name
+      const cleanFirstName = firstName && typeof firstName === 'string' && firstName.trim() !== '' && firstName.trim() !== email 
+        ? firstName.trim() 
+        : null;
+      const cleanLastName = lastName && typeof lastName === 'string' && lastName.trim() !== '' && lastName.trim() !== email
+        ? lastName.trim()
+        : null;
+      
+      console.log('📝 Preparing profile data:');
+      console.log('  - cleanFirstName:', cleanFirstName);
+      console.log('  - cleanLastName:', cleanLastName);
+      console.log('  - email:', email);
+      console.log('  - role:', role);
+      console.log('  - department:', department);
+      
+      // Validate that email is not being saved as first_name
+      if (cleanFirstName === email || cleanLastName === email) {
+        console.error('❌ CRITICAL: Email detected in firstName or lastName! Preventing save.');
+        console.error('  - firstName:', firstName);
+        console.error('  - lastName:', lastName);
+        console.error('  - email:', email);
+      }
+      
       const profileData: any = {
         id: targetUserId,
         email: email,
         is_active: true,
       }
       
-      // Only set name and first_name/last_name if they are provided and not empty
-      if (firstName && firstName.trim() !== '' || lastName && lastName.trim() !== '') {
-        const cleanFirstName = firstName && firstName.trim() !== '' ? firstName.trim() : null;
-        const cleanLastName = lastName && lastName.trim() !== '' ? lastName.trim() : null;
-        
+      // Only set name and first_name/last_name if they are valid (not email, not empty)
+      if (cleanFirstName || cleanLastName) {
         if (cleanFirstName && cleanLastName) {
           profileData.name = `${cleanFirstName} ${cleanLastName}`;
         } else if (cleanFirstName) {
@@ -357,13 +325,20 @@ serve(async (req) => {
           profileData.name = email; // Fallback to email only if both are empty
         }
         
-        profileData.first_name = cleanFirstName;
-        profileData.last_name = cleanLastName;
+        // Only set first_name/last_name if they are valid (not email)
+        if (cleanFirstName && cleanFirstName !== email) {
+          profileData.first_name = cleanFirstName;
+        }
+        if (cleanLastName && cleanLastName !== email) {
+          profileData.last_name = cleanLastName;
+        }
       }
       
       if (role) profileData.role = role
       if (department) profileData.department = department
       if (categoryAccess) profileData.category_access = categoryAccess
+
+      console.log('💾 Profile data to save:', JSON.stringify(profileData, null, 2));
 
       const { data: profile, error: profileError } = await supabaseAdmin
         .from('profiles')
@@ -372,10 +347,17 @@ serve(async (req) => {
         .single()
 
       if (profileError) {
-        console.error('Error creating/updating profile:', profileError)
+        console.error('❌ Error creating/updating profile:', profileError)
         // Don't fail if profile update fails - invitation was sent
-        console.warn('Profile update failed, but invitation was sent')
+        console.warn('⚠️ Profile update failed, but user was created')
       } else {
+        console.log('✅ Profile saved successfully:', {
+          id: profile.id,
+          email: profile.email,
+          first_name: profile.first_name,
+          last_name: profile.last_name,
+          name: profile.name
+        });
         // Return updated profile
         return new Response(
           JSON.stringify({ 
