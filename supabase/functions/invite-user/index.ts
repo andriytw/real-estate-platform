@@ -257,6 +257,18 @@ serve(async (req) => {
       }
       
       console.log('✅ Invitation resent successfully via JS SDK');
+      
+      // Update last_invite_sent_at after successful resend
+      try {
+        await supabaseAdmin
+          .from('profiles')
+          .update({ last_invite_sent_at: new Date().toISOString() })
+          .eq('id', targetUserId);
+        console.log('✅ Updated last_invite_sent_at for user:', targetUserId);
+      } catch (updateError) {
+        console.error('⚠️ Failed to update last_invite_sent_at:', updateError);
+        // Don't fail the request if this update fails
+      }
     }
 
     // Create or update profile (only if userId was not provided or if we have user data)
