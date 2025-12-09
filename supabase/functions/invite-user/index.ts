@@ -62,13 +62,19 @@ serve(async (req) => {
         targetUserId = existingUserId;
       } else {
         // Create new user via invite
+        // Only include first_name and last_name in metadata if they are provided and not empty
+        const userMetadata: any = {};
+        if (firstName && firstName.trim() !== '') {
+          userMetadata.first_name = firstName.trim();
+        }
+        if (lastName && lastName.trim() !== '') {
+          userMetadata.last_name = lastName.trim();
+        }
+        
         const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
           email,
           {
-            data: {
-              first_name: firstName || '',
-              last_name: lastName || '',
-            },
+            data: userMetadata,
             redirectTo: emailRedirectTo || `${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '')}/login`
           }
         )
@@ -92,13 +98,19 @@ serve(async (req) => {
       }
     } else {
       // Resend invitation for existing user - use inviteUserByEmail again (it works for existing users too)
+      // Only include first_name and last_name in metadata if they are provided and not empty
+      const userMetadata: any = {};
+      if (firstName && firstName.trim() !== '') {
+        userMetadata.first_name = firstName.trim();
+      }
+      if (lastName && lastName.trim() !== '') {
+        userMetadata.last_name = lastName.trim();
+      }
+      
       const { error: resendError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
         email,
         {
-          data: {
-            first_name: firstName || '',
-            last_name: lastName || '',
-          },
+          data: userMetadata,
           redirectTo: emailRedirectTo || `${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '')}/login`
         }
       )
@@ -121,10 +133,23 @@ serve(async (req) => {
         is_active: true,
       }
       
-      if (firstName || lastName) {
-        profileData.name = firstName && lastName ? `${firstName} ${lastName}` : (firstName || lastName || email)
-        profileData.first_name = firstName || null
-        profileData.last_name = lastName || null
+      // Only set name and first_name/last_name if they are provided and not empty
+      if (firstName && firstName.trim() !== '' || lastName && lastName.trim() !== '') {
+        const cleanFirstName = firstName && firstName.trim() !== '' ? firstName.trim() : null;
+        const cleanLastName = lastName && lastName.trim() !== '' ? lastName.trim() : null;
+        
+        if (cleanFirstName && cleanLastName) {
+          profileData.name = `${cleanFirstName} ${cleanLastName}`;
+        } else if (cleanFirstName) {
+          profileData.name = cleanFirstName;
+        } else if (cleanLastName) {
+          profileData.name = cleanLastName;
+        } else {
+          profileData.name = email; // Fallback to email only if both are empty
+        }
+        
+        profileData.first_name = cleanFirstName;
+        profileData.last_name = cleanLastName;
       }
       
       if (role) profileData.role = role
