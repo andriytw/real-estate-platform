@@ -829,7 +829,20 @@ const AccountDashboard: React.FC = () => {
       setAdminEvents(prev => [...prev, event]);
   };
 
-  const handleAdminEventUpdate = (updatedEvent: CalendarEvent) => {
+  const handleAdminEventUpdate = async (updatedEvent: CalendarEvent) => {
+      try {
+          // Update in database
+          await tasksService.update(updatedEvent.id, updatedEvent);
+          console.log('✅ Task updated in database:', updatedEvent.id);
+          
+          // Notify other components (Kanban) about task update
+          window.dispatchEvent(new CustomEvent('taskUpdated'));
+      } catch (error: any) {
+          console.error('❌ Error updating task in database:', error);
+          // Continue with local update even if DB update fails
+      }
+      
+      // Update local state
       setAdminEvents(prev => prev.map(ev => ev.id === updatedEvent.id ? updatedEvent : ev));
       
       // Оновити статус броні якщо таска верифікована та пов'язана з бронюванням

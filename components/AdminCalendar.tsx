@@ -2,13 +2,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus, ChevronDown, Calendar as CalendarIcon, X, Check, Building, Clock, CheckCircle2, MoreHorizontal, User, AlignLeft, Tag, LayoutGrid, List, Filter, Paperclip, Send, Image as ImageIcon, FileText, Mail, ClipboardList, Loader, CheckSquare, ArrowUpDown, Layers, Archive, History, ShieldCheck, Hammer, Zap, Droplets, Flame } from 'lucide-react';
 import { MOCK_PROPERTIES } from '../constants';
-import { CalendarEvent, TaskType, TaskStatus, Property, BookingStatus } from '../types';
+import { CalendarEvent, TaskType, TaskStatus, Property, BookingStatus, Worker } from '../types';
 import { updateBookingStatusFromTask } from '../bookingUtils';
+import { workersService, tasksService } from '../services/supabaseService';
 
 type ViewMode = 'month' | 'week' | 'day';
 
 const TASK_TYPES: TaskType[] = ['Einzug', 'Auszug', 'Putzen', 'Reklamation', 'Arbeit nach plan', 'Zeit Abgabe von wohnung', 'Zählerstand'];
-const MOCK_EMPLOYEES = ['Unassigned', 'Julia Müller', 'Hans Weber', 'Anna Schmidt', 'Max Mustermann'];
 
 interface TaskMessage {
   id: string;
@@ -65,11 +65,15 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   // Custom Dropdown State
   const [isTaskTypeDropdownOpen, setIsTaskTypeDropdownOpen] = useState(false);
   
+  // Workers from database
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [loadingWorkers, setLoadingWorkers] = useState(true);
+
   // Form Data
   const [newTaskProperty, setNewTaskProperty] = useState('');
   const [newTaskType, setNewTaskType] = useState<TaskType>('Arbeit nach plan');
   const [newTaskTime, setNewTaskTime] = useState('09:00');
-  const [newTaskAssignee, setNewTaskAssignee] = useState('Unassigned');
+  const [newTaskAssignee, setNewTaskAssignee] = useState<string>(''); // Store worker ID, not name
   const [newTaskComment, setNewTaskComment] = useState('');
 
   // Chat State for Task Detail Modal
@@ -86,6 +90,24 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   const totalTasks = events.length;
   const archivedTasks = events.filter(e => e.status === 'archived').length;
   const pendingTasks = events.filter(e => e.status === 'pending' || e.status === 'review').length;
+
+  // Load workers from database
+  useEffect(() => {
+    const loadWorkers = async () => {
+      try {
+        setLoadingWorkers(true);
+        console.log('🔄 Loading workers for AdminCalendar...');
+        const workersData = await workersService.getAll();
+        console.log('✅ Loaded workers:', workersData.length);
+        setWorkers(workersData);
+      } catch (error) {
+        console.error('❌ Error loading workers:', error);
+      } finally {
+        setLoadingWorkers(false);
+      }
+    };
+    loadWorkers();
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -245,30 +267,50 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     setDayToAdd(day);
     setNewTaskProperty(propertyList[0]?.id || '');
     setNewTaskType('Arbeit nach plan');
-    setNewTaskAssignee('Unassigned');
+    setNewTaskAssignee(''); // Reset to empty (unassigned)
     setNewTaskComment('');
     setIsAddModalOpen(true);
   };
 
-  const handleSaveTask = () => {
+  const handleSaveTask = async () => {
     const property = propertyList.find(p => p.id === newTaskProperty);
     if (!property) return;
 
-    const newEvent: CalendarEvent = {
-      id: Date.now().toString(),
-      title: property.title, // Use Title instead of Address to match Property List
-      propertyId: property.id,
-      time: newTaskTime,
-      type: newTaskType,
-      day: dayToAdd,
-      description: newTaskComment,
-      assignee: newTaskAssignee === 'Unassigned' ? undefined : newTaskAssignee,
-      assignedWorkerId: newTaskAssignee === 'Unassigned' ? undefined : newTaskAssignee,
-      status: newTaskAssignee === 'Unassigned' ? 'open' : 'assigned'
-    };
+    try {
+      // Create date string for the task
+      const taskDate = `${selectedYear}-${String(currentMonthIdx + 1).padStart(2, '0')}-${String(dayToAdd).padStart(2, '0')}`;
+      
+      // Determine department based on task type
+      const department = TASK_TYPES.includes(newTaskType) ? 'facility' : 'accounting';
+      
+      // Create task in database
+      const newTask = await tasksService.create({
+        title: property.title,
+        description: newTaskComment,
+        department: department,
+        type: newTaskType,
+        priority: 'medium',
+        workerId: newTaskAssignee || undefined,
+        propertyId: property.id,
+        date: taskDate,
+        time: newTaskTime,
+        status: newTaskAssignee ? 'assigned' : 'pending',
+        day: dayToAdd,
+        isIssue: false
+      });
 
-    onAddEvent(newEvent);
-    setIsAddModalOpen(false);
+      console.log('✅ Task created in database:', newTask.id);
+      
+      // Notify other components (Kanban) about new task
+      window.dispatchEvent(new CustomEvent('taskUpdated'));
+      
+      // Add to local state via callback
+      onAddEvent(newTask);
+      setIsAddModalOpen(false);
+    } catch (error: any) {
+      console.error('❌ Error creating task:', error);
+      alert(`Помилка створення завдання: ${error.message || 'Невідома помилка'}`);
+    }
   };
 
   const markTaskAsReview = (eventId: string) => {
@@ -768,9 +810,15 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                            value={newTaskAssignee}
                            onChange={(e) => setNewTaskAssignee(e.target.value)}
                            className="w-full appearance-none bg-[#111315] border border-gray-700 rounded-lg p-3 pr-8 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                           disabled={loadingWorkers}
                          >
-                           {MOCK_EMPLOYEES.map(emp => (
-                              <option key={emp} value={emp}>{emp}</option>
+                           <option value="">Unassigned</option>
+                           {workers
+                             .filter(w => w.department === 'facility' || w.role === 'super_manager' || w.role === 'manager')
+                             .map(worker => (
+                              <option key={worker.id} value={worker.id}>
+                                {worker.name} {worker.role === 'manager' ? '(Manager)' : worker.role === 'super_manager' ? '(Super Admin)' : ''}
+                              </option>
                            ))}
                          </select>
                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
@@ -952,26 +1000,48 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                   <User className="w-4 h-4 text-blue-500" />
                               </div>
                               <select 
-                                  value={viewEvent.assignee || 'Unassigned'}
-                                  onChange={(e) => {
+                                  value={viewEvent.workerId || ''}
+                                  onChange={async (e) => {
                                       const val = e.target.value;
-                                      const newAssignee = val === 'Unassigned' ? undefined : val;
-                                      // Оновити статус: якщо призначається працівник і статус open → assigned
-                                      const newStatus = (newAssignee && viewEvent.status === 'open') ? 'assigned' : viewEvent.status;
-                                      const updated = { 
-                                          ...viewEvent, 
-                                          assignee: newAssignee,
-                                          assignedWorkerId: newAssignee ? newAssignee : undefined,
-                                          status: newStatus as TaskStatus
-                                      };
-                                      onUpdateEvent(updated);
-                                      setViewEvent(updated);
+                                      const newWorkerId = val === '' ? undefined : val;
+                                      // Оновити статус: якщо призначається працівник і статус open/pending → assigned
+                                      const newStatus = (newWorkerId && (viewEvent.status === 'open' || viewEvent.status === 'pending')) ? 'assigned' : viewEvent.status;
+                                      
+                                      try {
+                                          // Update in database
+                                          const updated = await tasksService.update(viewEvent.id, {
+                                              workerId: newWorkerId,
+                                              status: newStatus
+                                          });
+                                          
+                                          // Find worker name for display
+                                          const worker = workers.find(w => w.id === newWorkerId);
+                                          const updatedWithName = {
+                                              ...updated,
+                                              assignee: worker?.name,
+                                              assignedWorkerId: newWorkerId
+                                          };
+                                          
+                                          onUpdateEvent(updatedWithName);
+                                          setViewEvent(updatedWithName);
+                                          
+                                          // Notify other components
+                                          window.dispatchEvent(new CustomEvent('taskUpdated'));
+                                      } catch (error: any) {
+                                          console.error('❌ Error updating task assignee:', error);
+                                          alert(`Помилка оновлення завдання: ${error.message || 'Невідома помилка'}`);
+                                      }
                                   }}
-                                  disabled={viewEvent.status === 'archived' || viewEvent.status === 'verified'}
+                                  disabled={viewEvent.status === 'archived' || viewEvent.status === 'verified' || loadingWorkers}
                                   className="w-full appearance-none bg-[#0D1117] border border-gray-700 hover:border-gray-500 rounded-lg py-2 pl-10 pr-8 text-sm text-white focus:border-emerald-500 focus:outline-none cursor-pointer transition-colors"
                               >
-                                  {MOCK_EMPLOYEES.map(emp => (
-                                      <option key={emp} value={emp}>{emp}</option>
+                                  <option value="">Unassigned</option>
+                                  {workers
+                                    .filter(w => w.department === 'facility' || w.role === 'super_manager' || w.role === 'manager')
+                                    .map(worker => (
+                                      <option key={worker.id} value={worker.id}>
+                                        {worker.name} {worker.role === 'manager' ? '(Manager)' : worker.role === 'super_manager' ? '(Super Admin)' : ''}
+                                      </option>
                                   ))}
                               </select>
                               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none group-hover:text-white transition-colors" />
