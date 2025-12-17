@@ -55,3 +55,4 @@ FROM profiles p
 LEFT JOIN auth.users u ON p.id = u.id
 ORDER BY p.created_at DESC;
 
+

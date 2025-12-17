@@ -131,3 +131,4 @@ Available env vars: { VITE_SUPABASE_URL: false, ... }
 **Після виправлення:** Зачекайте 1-2 хвилини на новий deployment і спробуйте знову.
 
 
+

@@ -45,3 +45,4 @@
 2. Перевірте, чи таблиця `task_workflows` існує
 3. Якщо таблиця не існує, виконайте `supabase/migration_kanban_final.sql` спочатку
 
+

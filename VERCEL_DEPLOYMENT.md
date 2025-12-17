@@ -136,3 +136,4 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_cpQrhzVqZRCCeULDWhVJJw_ZIhcLx0Y
 **Останнє оновлення:** 2025-01-XX
 
 
+

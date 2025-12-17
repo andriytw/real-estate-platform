@@ -35,6 +35,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   const [selectedTaskTypes, setSelectedTaskTypes] = useState<TaskType[]>([]);
   const [sortBy, setSortBy] = useState<'date' | 'type'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
 
   // Sync selectedWorkerId with column.workerId when it changes
   useEffect(() => {
@@ -139,6 +140,10 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   const isUnassigned = !column.workerId;
   const showWorkerDropdown = isUnassigned || (isAssigning && column.tasks.length === 0);
 
+  const isInboxColumn = column.type === 'backlog';
+  const showInlineFilters = column.workerId && !isInboxColumn;
+  const showDropdownFilters = column.workerId && isInboxColumn;
+
   // Check if column can be deleted (empty or all tasks completed)
   const canDeleteColumn = useMemo(() => {
     if (!canDelete || !onColumnDeleted) return false;
@@ -162,7 +167,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   }, [column.tasks]);
 
   return (
-    <div className="flex-shrink-0 w-80 flex flex-col h-full bg-[#111315] border-r border-gray-800/50">
+    <div className="flex-shrink-0 w-96 flex flex-col h-full bg-[#111315] border-r border-gray-800/50">
       {/* Header */}
       <div className="p-3 border-b border-gray-800 flex items-center justify-between bg-[#16181b]">
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -269,14 +274,25 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
             </>
           )}
           
-          <button className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
-            <MoreHorizontal className="w-4 h-4" />
-          </button>
+          {/* Filter menu button (dropdown for Inbox column) */}
+          {showDropdownFilters && (
+            <button
+              onClick={() => setIsFilterMenuOpen(prev => !prev)}
+              className={`p-1.5 rounded transition-colors ${
+                isFilterMenuOpen
+                  ? 'bg-gray-700 text-white'
+                  : 'hover:bg-gray-700 text-gray-400 hover:text-white'
+              }`}
+              title="Фільтри"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Filters and Sorting (always show if worker is assigned) */}
-      {column.workerId && (
+      {/* Filters and Sorting */}
+      {showInlineFilters && (
         <>
           <TaskTypeFilters
             selectedTypes={selectedTaskTypes}
@@ -299,6 +315,33 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
             }}
           />
         </>
+      )}
+
+      {showDropdownFilters && isFilterMenuOpen && (
+        <div className="border-b border-gray-800 bg-[#111315]">
+          <div className="p-2 space-y-2">
+            <TaskTypeFilters
+              selectedTypes={selectedTaskTypes}
+              onToggleType={(type) => {
+                setSelectedTaskTypes(prev => 
+                  prev.includes(type) 
+                    ? prev.filter(t => t !== type)
+                    : [...prev, type]
+                );
+              }}
+              onClearAll={() => setSelectedTaskTypes([])}
+              availableTypes={availableTaskTypes}
+            />
+            <ColumnSortButtons
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSortChange={(newSortBy, newSortOrder) => {
+                setSortBy(newSortBy);
+                setSortOrder(newSortOrder);
+              }}
+            />
+          </div>
+        </div>
       )}
 
       {/* Task List */}

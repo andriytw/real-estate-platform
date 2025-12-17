@@ -73,3 +73,4 @@ SELECT * FROM profiles WHERE id = (
 
 Якщо другий запит повертає порожній результат - профіль не створено, виконайте `supabase/create_profile_for_user.sql`.
 
+
