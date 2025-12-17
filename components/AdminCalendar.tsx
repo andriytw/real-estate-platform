@@ -174,12 +174,27 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
   const getEventsForDay = (day: number) => {
     return events.filter(e => {
-      // Check day matching
-      // Note: In a real app we would check Month/Year too. 
-      // For this simplified version we assume the events belong to the current view month or we only match 'day'.
-      const dayMatch = e.day === day; 
+      // Properly match by date, month and year so tasks don't appear in every month
+      let dayMatch = false;
+      let monthMatch = true;
+      let yearMatch = true;
+
+      if (e.date) {
+        const eventDate = new Date(e.date);
+        const eventDay = eventDate.getDate();
+        const eventMonth = eventDate.getMonth(); // 0-based
+        const eventYear = eventDate.getFullYear();
+
+        dayMatch = eventDay === day;
+        monthMatch = eventMonth === currentMonthIdx;
+        yearMatch = eventYear === selectedYear;
+      } else {
+        // Legacy events without full date: fall back to day only, assume current month/year
+        dayMatch = e.day === day;
+      }
+
       const filterMatch = filterTask === 'All' || e.type === filterTask;
-      return dayMatch && filterMatch;
+      return dayMatch && monthMatch && yearMatch && filterMatch;
     });
   };
 
