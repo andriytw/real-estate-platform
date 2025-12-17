@@ -80,10 +80,22 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
 
     try {
       setLoading(true);
+      
+      // Auto-determine department based on task type if not explicitly set
+      let finalDepartment = department;
+      if (!finalDepartment || finalDepartment === 'facility') {
+        // If type is Facility task, ensure department is 'facility'
+        if (FACILITY_TASK_TYPES.includes(type as TaskType)) {
+          finalDepartment = 'facility';
+        } else if (ACCOUNTING_TASK_TYPES.includes(type as TaskType)) {
+          finalDepartment = 'accounting';
+        }
+      }
+      
       const newTask = await tasksService.create({
         title,
         description,
-        department,
+        department: finalDepartment,
         type: type as TaskType,
         priority,
         workerId: workerId || undefined, // If empty string, send undefined
@@ -96,6 +108,9 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
         managerId: currentUser?.id,
         isIssue: false
       });
+      
+      // Dispatch event to notify other components
+      window.dispatchEvent(new CustomEvent('taskUpdated'));
 
       onTaskCreated(newTask);
       onClose();

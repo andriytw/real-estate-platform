@@ -14,7 +14,7 @@ import RequestModal from './RequestModal';
 import BankingDashboard from './BankingDashboard';
 import KanbanBoard from './kanban/KanbanBoard';
 import UserManagement from './admin/UserManagement';
-import { propertiesService } from '../services/supabaseService';
+import { propertiesService, tasksService } from '../services/supabaseService';
 import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData } from '../types';
 import { ROOMS } from '../constants';
 import { MOCK_PROPERTIES } from '../constants';
@@ -234,6 +234,74 @@ const AccountDashboard: React.FC = () => {
   const [invoices, setInvoices] = useState<InvoiceData[]>([]);
   const [adminEvents, setAdminEvents] = useState<CalendarEvent[]>(INITIAL_ADMIN_EVENTS);
   const [accountingEvents, setAccountingEvents] = useState<CalendarEvent[]>(INITIAL_ACCOUNTING_EVENTS);
+
+  // Load Facility tasks from database
+  useEffect(() => {
+    const loadFacilityTasks = async () => {
+      try {
+        console.log('🔄 Loading Facility tasks from database...');
+        console.log('👤 Current user:', worker?.id, worker?.role, worker?.department);
+        
+        // Build filters based on user role
+        const filters: any = {
+          department: 'facility'
+        };
+        
+        // If user is a manager or worker (not super_manager), filter by their ID
+        if (worker?.role === 'manager' || worker?.role === 'worker') {
+          filters.workerId = worker.id;
+        }
+        // For super_manager, don't filter by workerId - show all facility tasks
+        
+        const tasks = await tasksService.getAll(filters);
+        console.log('✅ Loaded Facility tasks:', tasks.length);
+        console.log('📋 Tasks:', tasks.map(t => ({ id: t.id, title: t.title, workerId: t.workerId, department: t.department })));
+        
+        setAdminEvents(tasks);
+      } catch (error) {
+        console.error('❌ Error loading Facility tasks:', error);
+        // Keep INITIAL_ADMIN_EVENTS as fallback
+      }
+    };
+    
+    if (worker) {
+      loadFacilityTasks();
+    }
+  }, [worker]);
+
+  // Listen for task updates from Kanban board
+  useEffect(() => {
+    const handleTaskUpdated = async () => {
+      try {
+        console.log('🔄 Task updated event received, reloading Facility tasks...');
+        
+        // Build filters based on user role
+        const filters: any = {
+          department: 'facility'
+        };
+        
+        // If user is a manager or worker (not super_manager), filter by their ID
+        if (worker?.role === 'manager' || worker?.role === 'worker') {
+          filters.workerId = worker.id;
+        }
+        
+        const tasks = await tasksService.getAll(filters);
+        console.log('✅ Reloaded Facility tasks:', tasks.length);
+        
+        setAdminEvents(tasks);
+      } catch (error) {
+        console.error('❌ Error reloading Facility tasks:', error);
+      }
+    };
+    
+    window.addEventListener('taskUpdated', handleTaskUpdated);
+    window.addEventListener('kanbanTaskCreated', handleTaskUpdated);
+    
+    return () => {
+      window.removeEventListener('taskUpdated', handleTaskUpdated);
+      window.removeEventListener('kanbanTaskCreated', handleTaskUpdated);
+    };
+  }, [worker]);
 
   // --- Modals ---
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
