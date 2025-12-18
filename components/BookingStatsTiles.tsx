@@ -165,8 +165,8 @@ const BookingStatsTiles: React.FC<BookingStatsTilesProps> = ({
         title="Check-ins"
         count={checkIns.length}
         date={checkInDate}
-        icon={<LogIn className="w-4 h-4 text-emerald-500" />}
-        color="border-emerald-500/30"
+        icon={<LogIn className="w-4 h-4 text-purple-500" />}
+        color="border-purple-500/30"
         onDateChange={(offset) => changeDate(setCheckInDate, checkInDate, offset)}
         onClick={() => handleTileClick('checkin', checkInDate, checkIns)}
       />
@@ -174,8 +174,8 @@ const BookingStatsTiles: React.FC<BookingStatsTilesProps> = ({
         title="Check-outs"
         count={checkOuts.length}
         date={checkOutDate}
-        icon={<LogOut className="w-4 h-4 text-orange-500" />}
-        color="border-orange-500/30"
+        icon={<LogOut className="w-4 h-4 text-blue-500" />}
+        color="border-blue-500/30"
         onDateChange={(offset) => changeDate(setCheckOutDate, checkOutDate, offset)}
         onClick={() => handleTileClick('checkout', checkOutDate, checkOuts)}
       />
@@ -183,8 +183,8 @@ const BookingStatsTiles: React.FC<BookingStatsTilesProps> = ({
         title="Cleanings"
         count={cleanings.length}
         date={cleaningDate}
-        icon={<Sparkles className="w-4 h-4 text-blue-500" />}
-        color="border-blue-500/30"
+        icon={<Sparkles className="w-4 h-4 text-orange-500" />}
+        color="border-orange-500/30"
         onDateChange={(offset) => changeDate(setCleaningDate, cleaningDate, offset)}
         onClick={() => handleTileClick('cleaning', cleaningDate, cleanings)}
       />
