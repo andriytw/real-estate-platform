@@ -620,7 +620,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       </div>
 
       {/* Stats Tiles */}
-      <div className="px-4 pt-4 bg-[#111315]">
+      <div className="px-4 py-4 bg-[#111315] border-b border-gray-800">
         <BookingStatsTiles
           reservations={allBookings}
           adminEvents={adminEvents}

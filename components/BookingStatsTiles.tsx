@@ -160,7 +160,7 @@ const BookingStatsTiles: React.FC<BookingStatsTilesProps> = ({
   );
 
   return (
-    <div className="flex gap-4 mb-6">
+    <div className="flex gap-4 w-full">
       <Tile
         title="Check-ins"
         count={checkIns.length}
