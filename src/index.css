@@ -71,6 +71,7 @@ body {
 .booking-bar {
   position: absolute;
   border-radius: 0.375rem; /* rounded-md */
+  z-index: 1; /* контент зверху псевдоелементів */
 }
 
 .booking-bar::before,
@@ -81,6 +82,7 @@ body {
   border-radius: inherit;
   pointer-events: none;
   clip-path: inherit; /* використовує той самий clip-path, що й основний елемент */
+  z-index: -1; /* фон і рамка під текстом */
 }
 
 .booking-bar::before {
