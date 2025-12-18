@@ -67,3 +67,28 @@ body {
   animation: slideUp 0.3s ease-out forwards;
 }
 
+/* Booking bar with border following trapezoid clip-path */
+.booking-bar {
+  position: absolute;
+  border-radius: 0.375rem; /* rounded-md */
+}
+
+.booking-bar::before,
+.booking-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  clip-path: inherit; /* використовує той самий clip-path, що й основний елемент */
+}
+
+.booking-bar::before {
+  border: 2px solid #ffffff; /* біла рамка по всій формі */
+}
+
+.booking-bar::after {
+  inset: 2px;        /* всередину від рамки */
+  background: inherit;
+}
+

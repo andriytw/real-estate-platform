@@ -682,8 +682,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                         onMouseEnter={(e) => setHoveredBooking({ booking, x: e.clientX, y: e.clientY })}
                                         onMouseLeave={() => setHoveredBooking(null)}
                                         className={`
-                                            absolute top-2 h-12 rounded-md text-xs text-white flex px-2 shadow-lg z-10 cursor-pointer
-                                            ${getBookingColor(booking.status)} ${getBookingBorderStyle(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
+                                            booking-bar top-2 h-12 text-xs text-white flex px-2 shadow-lg z-10 cursor-pointer
+                                            ${getBookingColor(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
                                         `}
                                         style={{ left: `${left}px`, width: `${width}px`, clipPath }}
                                     >
