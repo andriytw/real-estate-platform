@@ -67,9 +67,31 @@ body {
   animation: slideUp 0.3s ease-out forwards;
 }
 
-/* Booking bar shape with subtle diagonal edges on start and end */
+/* Booking bar shape with diagonal edges on start and end */
 .booking-bar-shape {
   position: relative;
-  /* Легкі скошені краї на початку та в кінці смужки */
-  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+  overflow: visible; /* дозволяємо трикутникам виходити за межі */
+}
+
+.booking-bar-shape::before,
+.booking-bar-shape::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12px; /* ≈25% ширини дня (48px) */
+  background-color: inherit; /* використовує фон основної смужки */
+  pointer-events: none; /* не блокує кліки по сусідніх днях */
+}
+
+/* Лівий скіс (check-in) */
+.booking-bar-shape::before {
+  left: -1px;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+/* Правий скіс (check-out) */
+.booking-bar-shape::after {
+  right: -1px;
+  clip-path: polygon(0 50%, 100% 0, 100% 100%);
 }
