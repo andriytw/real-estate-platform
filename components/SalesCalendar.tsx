@@ -659,6 +659,18 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
                                 const left = startOffset * DAY_WIDTH;
                                 const width = duration * DAY_WIDTH;
+
+                                // Dynamic trapezoid shape:
+                                // - Left top: 50% of first day
+                                // - Left bottom: 25% of first day
+                                // - Right top: 50% of last day
+                                // - Right bottom: 25% of last day
+                                const dayPercent = 100 / duration;
+                                const leftTopX = 0.5 * dayPercent;
+                                const leftBottomX = 0.25 * dayPercent;
+                                const rightTopX = 100 - 0.5 * dayPercent;
+                                const rightBottomX = 100 - 0.75 * dayPercent; // (N-1 + 0.25)/N
+                                const clipPath = `polygon(${leftTopX}% 0, ${rightTopX}% 0, ${rightBottomX}% 100%, ${leftBottomX}% 100%)`;
                                 
                                 return (
                                     <div 
@@ -670,7 +682,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                             absolute top-2 h-12 rounded-md text-xs text-white flex px-2 shadow-lg z-10 cursor-pointer
                                             ${getBookingColor(booking.status)} ${getBookingBorderStyle(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
                                         `}
-                                        style={{ left: `${left}px`, width: `${width}px` }}
+                                        style={{ left: `${left}px`, width: `${width}px`, clipPath }}
                                     >
                                         <div className="flex justify-between items-center w-full h-full px-1">
                                             {/* Left: Check-in */}
