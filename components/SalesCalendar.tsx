@@ -333,6 +333,12 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const filteredRooms = roomsFromProperties.filter(
     (r) => cityFilter === 'ALL' || r.city === cityFilter
   );
+
+  const getRoomNameById = (roomId: string | undefined | null) => {
+    if (!roomId) return '';
+    const room = roomsFromProperties.find((r) => r.id === roomId);
+    return room?.name || roomId;
+  };
   const todayOffsetDays = dateDiffInDays(currentDate, TODAY);
 
   // Auto-scroll
@@ -701,7 +707,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                 <span className="text-xs font-bold text-emerald-400">({hoveredBooking.booking.status})</span>
             </div>
             <div className="text-xs text-gray-400 mb-2">
-                Property: {ROOMS.find(r => r.id === hoveredBooking.booking.roomId)?.name}
+                Property: {getRoomNameById(hoveredBooking.booking.roomId)}
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
@@ -732,7 +738,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                         <div className="bg-blue-500/10 p-2 rounded text-blue-500"><Briefcase className="w-5 h-5" /></div>
                         <div>
                             <span className="block text-xs text-gray-500">Selected Property</span>
-                            <span className="text-white font-bold">{ROOMS.find(r => r.id === formData.roomId)?.name || 'Select Room'}</span>
+                            <span className="text-white font-bold">{getRoomNameById(formData.roomId) || 'Select Room'}</span>
                         </div>
                     </div>
 

@@ -16,7 +16,6 @@ import KanbanBoard from './kanban/KanbanBoard';
 import UserManagement from './admin/UserManagement';
 import { propertiesService, tasksService } from '../services/supabaseService';
 import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData } from '../types';
-import { ROOMS } from '../constants';
 import { MOCK_PROPERTIES } from '../constants';
 import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 
@@ -234,6 +233,13 @@ const AccountDashboard: React.FC = () => {
   const [invoices, setInvoices] = useState<InvoiceData[]>([]);
   const [adminEvents, setAdminEvents] = useState<CalendarEvent[]>(INITIAL_ADMIN_EVENTS);
   const [accountingEvents, setAccountingEvents] = useState<CalendarEvent[]>(INITIAL_ACCOUNTING_EVENTS);
+
+  const getPropertyNameById = (id: string | number | undefined) => {
+    if (!id) return '';
+    const stringId = String(id);
+    const p = properties.find((prop) => prop.id === stringId);
+    return p?.title || stringId;
+  };
 
   // Load Facility tasks from database
   useEffect(() => {
@@ -1848,7 +1854,7 @@ const AccountDashboard: React.FC = () => {
                                 <tr key={res.id} className="hover:bg-[#16181D]">
                                     <td className="p-4 text-gray-400">#{res.id}</td>
                                     <td className="p-4 font-bold">{res.guest}</td>
-                                    <td className="p-4">{ROOMS.find(r => r.id === res.roomId)?.name || res.roomId}</td>
+                                    <td className="p-4">{getPropertyNameById(res.roomId)}</td>
                                     <td className="p-4">{res.start} - {res.end}</td>
                                     <td className="p-4">
                                         <span className={`px-2 py-1 rounded text-xs font-bold ${res.status === BookingStatus.RESERVED ? 'bg-blue-500/20 text-blue-500' : res.status === BookingStatus.OFFER_SENT ? 'bg-blue-500/20 text-blue-500 border border-dashed' : res.status === BookingStatus.INVOICED ? 'bg-blue-500/20 text-blue-500' : 'bg-emerald-500/20 text-emerald-500'}`}>
@@ -1912,7 +1918,7 @@ const AccountDashboard: React.FC = () => {
                                     <tr key={offer.id} className={`hover:bg-[#16181D] ${isDraft || isInvoiced ? 'opacity-70' : ''}`}>
                                         <td className="p-4 text-gray-400">#{offer.id}</td>
                                         <td className="p-4 font-bold">{offer.clientName}</td>
-                                        <td className="p-4">{ROOMS.find(r => r.id === offer.propertyId)?.name || offer.propertyId}</td>
+                                        <td className="p-4">{getPropertyNameById(offer.propertyId)}</td>
                                         <td className="p-4">{offer.dates}</td>
                                         <td className="p-4">
                                             <span className={`px-2 py-1 rounded text-xs font-bold border border-dashed ${getStatusStyle()}`}>
@@ -2066,7 +2072,7 @@ const AccountDashboard: React.FC = () => {
                                 <tr key={res.id} className="hover:bg-[#16181D] opacity-70">
                                     <td className="p-4 text-gray-400">#{res.id}</td>
                                     <td className="p-4 font-bold">{res.guest || `${res.firstName || ''} ${res.lastName || ''}`.trim() || 'Unknown Guest'}</td>
-                                    <td className="p-4">{ROOMS.find(r => r.id === res.roomId)?.name || res.roomId}</td>
+                                    <td className="p-4">{getPropertyNameById(res.roomId)}</td>
                                     <td className="p-4">{res.start} - {res.end}</td>
                                     <td className="p-4">
                                         <span className="px-2 py-1 rounded text-xs font-bold bg-gray-500/20 text-gray-400 border border-gray-500">
