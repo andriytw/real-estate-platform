@@ -687,9 +687,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                         `}
                                         style={{ left: `${left}px`, width: `${width}px`, clipPath }}
                                     >
-                                        <div className="flex justify-between items-center w-full h-full px-1">
+                                        <div className="flex justify-between items-center w-full h-full px-4">
                                             {/* Left: Check-in */}
-                                            <span className="font-mono text-[10px] font-bold opacity-80">{booking.checkInTime}</span>
+                                            <span className="font-mono text-[10px] font-bold opacity-80 ml-2">{booking.checkInTime}</span>
                                             
                                             {/* Center */}
                                             <div className="flex flex-col items-center justify-center flex-1 px-2 min-w-0">
@@ -700,7 +700,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                             </div>
 
                                             {/* Right: Check-out */}
-                                            <span className="font-mono text-[10px] font-bold opacity-80">{booking.checkOutTime}</span>
+                                            <span className="font-mono text-[10px] font-bold opacity-80 mr-2">{booking.checkOutTime}</span>
                                         </div>
                                     </div>
                                 );
