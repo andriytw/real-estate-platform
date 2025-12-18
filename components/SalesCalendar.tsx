@@ -695,7 +695,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                             <div className="flex flex-col items-center justify-center flex-1 px-2 min-w-0">
                                                 <span className="font-bold text-xs truncate w-full text-center leading-tight">{booking.guest}</span>
                                                 <span className="text-[9px] opacity-80 truncate leading-tight mt-0.5">
-                                                    {duration}N | {parseInt(booking.guests || '0')}G
+                                                    {nights}N | {parseInt(booking.guests || '0')}G
                                                 </span>
                                             </div>
 
