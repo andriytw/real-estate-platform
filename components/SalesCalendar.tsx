@@ -653,23 +653,26 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 const startDate = parseDate(booking.start);
                                 const endDate = parseDate(booking.end);
                                 const startOffset = dateDiffInDays(currentDate, startDate);
-                                const duration = dateDiffInDays(startDate, endDate);
+                                const nights = dateDiffInDays(startDate, endDate); // кількість ночей
 
-                                if (duration <= 0 || (startOffset + duration) < 0 || startOffset >= NUM_DAYS) return null;
+                                if (nights <= 0 || (startOffset + nights) < 0 || startOffset >= NUM_DAYS) return null;
 
+                                // Візуально показуємо з дня заїзду до дня виїзду (включно),
+                                // тобто додаємо одну клітинку для дня виїзду.
+                                const totalDays = nights + 1;
                                 const left = startOffset * DAY_WIDTH;
-                                const width = duration * DAY_WIDTH;
+                                const width = totalDays * DAY_WIDTH;
 
                                 // Dynamic trapezoid shape:
                                 // - Left top: 50% of first day
                                 // - Left bottom: 25% of first day
-                                // - Right top: 50% of last day
-                                // - Right bottom: 25% of last day
-                                const dayPercent = 100 / duration;
+                                // - Right top: 50% of checkout day
+                                // - Right bottom: 25% of checkout day
+                                const dayPercent = 100 / totalDays;
                                 const leftTopX = 0.5 * dayPercent;
                                 const leftBottomX = 0.25 * dayPercent;
                                 const rightTopX = 100 - 0.5 * dayPercent;
-                                const rightBottomX = 100 - 0.75 * dayPercent; // (N-1 + 0.25)/N
+                                const rightBottomX = 100 - 0.75 * dayPercent; // (N-1 + 0.25)/N для totalDays
                                 const clipPath = `polygon(${leftTopX}% 0, ${rightTopX}% 0, ${rightBottomX}% 100%, ${leftBottomX}% 100%)`;
                                 
                                 return (
