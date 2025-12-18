@@ -5,6 +5,8 @@ import { RequestData, Property } from '../types';
 import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard } from 'lucide-react';
 import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus } from '../types';
 import BookingDetailsModal from './BookingDetailsModal';
+import BookingStatsTiles from './BookingStatsTiles';
+import BookingListModal from './BookingListModal';
 import { getBookingColor, getBookingBorderStyle, getBookingStyle } from '../bookingUtils';
 
 interface SalesCalendarProps {
@@ -130,6 +132,13 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   
   // View Details Modal State
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+
+  // Stats Tiles Modal State
+  const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+  const [statsModalType, setStatsModalType] = useState<'checkin' | 'checkout' | 'cleaning' | 'reminder'>('checkin');
+  const [statsModalItems, setStatsModalItems] = useState<(Booking | CalendarEvent)[]>([]);
+  const [statsModalDate, setStatsModalDate] = useState<Date>(new Date());
+  const [statsModalTitle, setStatsModalTitle] = useState<string>('');
 
   // New Booking Form State
   const [formData, setFormData] = useState(() => {
@@ -422,6 +431,24 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     setSelectedBooking(booking);
   };
 
+  const handleStatsTileClick = (
+    type: 'checkin' | 'checkout' | 'cleaning' | 'reminder',
+    date: Date,
+    items: (Booking | CalendarEvent)[]
+  ) => {
+    const titles = {
+      checkin: 'Check-ins',
+      checkout: 'Check-outs',
+      cleaning: 'Cleanings',
+      reminder: 'Reminders (Check-outs in 2 days)',
+    };
+    setStatsModalType(type);
+    setStatsModalItems(items);
+    setStatsModalDate(date);
+    setStatsModalTitle(titles[type]);
+    setIsStatsModalOpen(true);
+  };
+
   // --- Form Calculation ---
   
   const calculateFinancials = () => {
@@ -590,6 +617,17 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                 </select>
             </div>
          </div>
+      </div>
+
+      {/* Stats Tiles */}
+      <div className="px-4 pt-4 bg-[#111315]">
+        <BookingStatsTiles
+          reservations={allBookings}
+          adminEvents={adminEvents}
+          properties={properties}
+          initialDate={TODAY}
+          onTileClick={handleStatsTileClick}
+        />
       </div>
 
       {/* Main Grid Area */}
@@ -913,6 +951,17 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         booking={selectedBooking}
         // Calendar view is read-only for offers logic usually, or we can add it if needed. 
         // For now, let's keep it simple as per request: the "Manage" view needs the actions.
+      />
+
+      {/* --- STATS TILES MODAL --- */}
+      <BookingListModal
+        isOpen={isStatsModalOpen}
+        onClose={() => setIsStatsModalOpen(false)}
+        title={statsModalTitle}
+        items={statsModalItems}
+        type={statsModalType}
+        properties={properties}
+        date={statsModalDate}
       />
 
     </div>
