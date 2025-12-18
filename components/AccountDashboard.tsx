@@ -2100,28 +2100,31 @@ const AccountDashboard: React.FC = () => {
     }
 
     if (salesTab === 'calendar') {
-      return <SalesCalendar 
-        onSaveOffer={handleSaveOffer} 
-        onSaveReservation={handleSaveReservation} 
-        onDeleteReservation={handleDeleteReservation}
-        onAddLead={handleAddLeadFromBooking}
-        reservations={reservations}
-        offers={offers}
-        invoices={invoices}
-        adminEvents={adminEvents}
-        prefilledRequestData={selectedRequest ? {
-          firstName: selectedRequest.firstName,
-          lastName: selectedRequest.lastName,
-          email: selectedRequest.email,
-          phone: selectedRequest.phone,
-          companyName: selectedRequest.companyName,
-          peopleCount: selectedRequest.peopleCount,
-          startDate: selectedRequest.startDate,
-          endDate: selectedRequest.endDate,
-          message: selectedRequest.message,
-          propertyId: selectedRequest.propertyId,
-        } : undefined}
-      />;
+      return (
+        <SalesCalendar 
+          onSaveOffer={handleSaveOffer} 
+          onSaveReservation={handleSaveReservation} 
+          onDeleteReservation={handleDeleteReservation}
+          onAddLead={handleAddLeadFromBooking}
+          reservations={reservations}
+          offers={offers}
+          invoices={invoices}
+          adminEvents={adminEvents}
+          properties={properties}
+          prefilledRequestData={selectedRequest ? {
+            firstName: selectedRequest.firstName,
+            lastName: selectedRequest.lastName,
+            email: selectedRequest.email,
+            phone: selectedRequest.phone,
+            companyName: selectedRequest.companyName,
+            peopleCount: selectedRequest.peopleCount,
+            startDate: selectedRequest.startDate,
+            endDate: selectedRequest.endDate,
+            message: selectedRequest.message,
+            propertyId: selectedRequest.propertyId,
+          } : undefined}
+        />
+      );
     }
 
     if (salesTab === 'chat') {

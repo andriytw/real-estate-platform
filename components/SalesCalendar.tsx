@@ -1,10 +1,9 @@
 
 
 import React, { useState, useEffect, useRef } from 'react';
-import { RequestData } from '../types';
+import { RequestData, Property } from '../types';
 import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard } from 'lucide-react';
 import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus } from '../types';
-import { ROOMS } from '../constants';
 import BookingDetailsModal from './BookingDetailsModal';
 import { getBookingColor, getBookingBorderStyle, getBookingStyle } from '../bookingUtils';
 
@@ -18,6 +17,7 @@ interface SalesCalendarProps {
   invoices?: InvoiceData[];
   adminEvents?: CalendarEvent[];
   prefilledRequestData?: Partial<RequestData>; // Для префілу форми з Request
+  properties?: Property[]; // Реальні об'єкти з Properties List
 }
 
 const INITIAL_BOOKINGS: Booking[] = [
@@ -89,10 +89,34 @@ const getInitialFormData = () => ({
   endDate: '',
 });
 
-const SalesCalendar: React.FC<SalesCalendarProps> = ({ onSaveOffer, onSaveReservation, onDeleteReservation, onAddLead, reservations = [], offers = [], invoices = [], adminEvents = [], prefilledRequestData }) => {
+const SalesCalendar: React.FC<SalesCalendarProps> = ({
+  onSaveOffer,
+  onSaveReservation,
+  onDeleteReservation,
+  onAddLead,
+  reservations = [],
+  offers = [],
+  invoices = [],
+  adminEvents = [],
+  prefilledRequestData,
+  properties = [],
+}) => {
   // State
-  const [bookings, setBookings] = useState<Booking[]>(INITIAL_BOOKINGS);
-  const [currentDate, setCurrentDate] = useState(new Date(2025, 10, 1)); // Nov 1, 2025
+  const [bookings, setBookings] = useState<Booking[]>([]); // Без демо-бронювань
+
+  // Поточна дата / місяць
+  const today = React.useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  const [currentDate, setCurrentDate] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
   const [cityFilter, setCityFilter] = useState('ALL');
   const [hoveredBooking, setHoveredBooking] = useState<{booking: Booking, x: number, y: number} | null>(null);
   
@@ -286,12 +310,29 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({ onSaveOffer, onSaveReserv
     ...offerBookings
   ];
 
-  // Constants for Today (Fixed for demo)
-  const TODAY = new Date(2025, 10, 2); 
-  TODAY.setHours(0,0,0,0);
+  // Constants for Today (dynamic)
+  const TODAY = today;
 
-  const cities = ['ALL', ...Array.from(new Set(ROOMS.map(r => r.city))).sort()];
-  const filteredRooms = ROOMS.filter(r => cityFilter === 'ALL' || r.city === cityFilter);
+  // Побудувати список кімнат із реальних properties
+  const roomsFromProperties = React.useMemo(
+    () =>
+      (properties || []).map((p) => ({
+        id: p.id,
+        name: p.title,
+        city: p.city,
+        details: p.address || p.fullAddress || '',
+      })),
+    [properties]
+  );
+
+  const cities = [
+    'ALL',
+    ...Array.from(new Set(roomsFromProperties.map((r) => r.city).filter(Boolean))).sort(),
+  ];
+
+  const filteredRooms = roomsFromProperties.filter(
+    (r) => cityFilter === 'ALL' || r.city === cityFilter
+  );
   const todayOffsetDays = dateDiffInDays(currentDate, TODAY);
 
   // Auto-scroll
