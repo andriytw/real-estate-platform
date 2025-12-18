@@ -388,7 +388,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       const startIndex = Math.min(dragStart.dayIndex, dragEnd.dayIndex);
       const endIndex = Math.max(dragStart.dayIndex, dragEnd.dayIndex);
       const startD = getDateFromIndex(startIndex);
-      const endD = getDateFromIndex(endIndex + 1); // End date is exclusive typically in UI inputs
+      // Кінцева дата тепер відповідає останньому виділеному дню (інклюзивно)
+      const endD = getDateFromIndex(endIndex);
 
       // RESET and then SET
       resetForm();
