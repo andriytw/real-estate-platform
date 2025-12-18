@@ -657,9 +657,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
                                 if (duration <= 0 || (startOffset + duration) < 0 || startOffset >= NUM_DAYS) return null;
 
-                                // Невелике зміщення та зменшення ширини, щоб не блокувати наступний день
-                                const left = startOffset * DAY_WIDTH + 2;
-                                const width = (duration * DAY_WIDTH) - 4;
+                                // Смужка візуально тягнеться від дати заїзду до дати виїзду (інклюзивно)
+                                const left = startOffset * DAY_WIDTH;
+                                const width = (duration + 1) * DAY_WIDTH;
                                 
                                 return (
                                     <div 
