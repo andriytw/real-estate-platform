@@ -657,8 +657,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
                                 if (duration <= 0 || (startOffset + duration) < 0 || startOffset >= NUM_DAYS) return null;
 
-                                const left = startOffset * DAY_WIDTH;
-                                const width = duration * DAY_WIDTH;
+                                // Невелике зміщення та зменшення ширини, щоб не блокувати наступний день
+                                const left = startOffset * DAY_WIDTH + 2;
+                                const width = (duration * DAY_WIDTH) - 4;
                                 
                                 return (
                                     <div 
@@ -667,7 +668,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                         onMouseEnter={(e) => setHoveredBooking({ booking, x: e.clientX, y: e.clientY })}
                                         onMouseLeave={() => setHoveredBooking(null)}
                                         className={`
-                                            absolute top-2 h-12 rounded-md text-xs text-white flex px-2 shadow-lg z-10 cursor-pointer
+                                            absolute top-2 h-12 rounded-md text-xs text-white flex px-2 shadow-lg z-10 cursor-pointer booking-bar-shape
                                             ${getBookingColor(booking.status)} ${getBookingBorderStyle(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
                                         `}
                                         style={{ left: `${left}px`, width: `${width}px` }}

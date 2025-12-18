@@ -66,3 +66,10 @@ body {
 .animate-slideUp {
   animation: slideUp 0.3s ease-out forwards;
 }
+
+/* Booking bar shape with subtle diagonal edges on start and end */
+.booking-bar-shape {
+  position: relative;
+  /* Легкі скошені краї на початку та в кінці смужки */
+  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+}
