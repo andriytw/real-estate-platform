@@ -660,20 +660,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 // Візуально показуємо з дня заїзду до дня виїзду (включно),
                                 // тобто додаємо одну клітинку для дня виїзду.
                                 const totalDays = nights + 1;
-                                const left = startOffset * DAY_WIDTH;
-                                const width = totalDays * DAY_WIDTH;
-
-                                // Dynamic trapezoid shape:
-                                // - Left top: 30% of first day
-                                // - Left bottom: 15% of first day
-                                // - Right top: 30% of checkout day
-                                // - Right bottom: 15% of checkout day
-                                const dayPercent = 100 / totalDays;
-                                const leftTopX = 0.3 * dayPercent;
-                                const leftBottomX = 0.15 * dayPercent;
-                                const rightTopX = 100 - 0.3 * dayPercent;
-                                const rightBottomX = 100 - 0.85 * dayPercent; // (N-1 + 0.15)/N для totalDays
-                                const clipPath = `polygon(${leftTopX}% 0, ${rightTopX}% 0, ${rightBottomX}% 100%, ${leftBottomX}% 100%)`;
+                                // Початок: 60% відступу від лівого краю першого дня
+                                const left = startOffset * DAY_WIDTH + DAY_WIDTH * 0.6;
+                                // Ширина: totalDays - 1 (повні дні) - 0.3 (відступ справа на 30% останнього дня)
+                                const width = (totalDays - 1.3) * DAY_WIDTH;
                                 
                                 return (
                                     <div 
@@ -682,10 +672,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                         onMouseEnter={(e) => setHoveredBooking({ booking, x: e.clientX, y: e.clientY })}
                                         onMouseLeave={() => setHoveredBooking(null)}
                                         className={`
-                                            booking-bar top-2 h-12 text-xs text-white flex px-2 shadow-lg z-10 cursor-pointer
-                                            ${getBookingColor(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
+                                            absolute top-2 h-12 rounded-md text-xs text-white flex px-2 shadow-lg z-10 cursor-pointer
+                                            ${getBookingColor(booking.status)} ${getBookingBorderStyle(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
                                         `}
-                                        style={{ left: `${left}px`, width: `${width}px`, clipPath, '--clip-path': clipPath } as React.CSSProperties}
+                                        style={{ left: `${left}px`, width: `${width}px` }}
                                     >
                                         <div className="flex justify-between items-center w-full h-full px-4">
                                             {/* Left: Check-in */}
