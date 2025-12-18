@@ -664,15 +664,15 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 const width = totalDays * DAY_WIDTH;
 
                                 // Dynamic trapezoid shape:
-                                // - Left top: 50% of first day
-                                // - Left bottom: 25% of first day
-                                // - Right top: 50% of checkout day
-                                // - Right bottom: 25% of checkout day
+                                // - Left top: 30% of first day
+                                // - Left bottom: 15% of first day
+                                // - Right top: 30% of checkout day
+                                // - Right bottom: 15% of checkout day
                                 const dayPercent = 100 / totalDays;
-                                const leftTopX = 0.5 * dayPercent;
-                                const leftBottomX = 0.25 * dayPercent;
-                                const rightTopX = 100 - 0.5 * dayPercent;
-                                const rightBottomX = 100 - 0.75 * dayPercent; // (N-1 + 0.25)/N для totalDays
+                                const leftTopX = 0.3 * dayPercent;
+                                const leftBottomX = 0.15 * dayPercent;
+                                const rightTopX = 100 - 0.3 * dayPercent;
+                                const rightBottomX = 100 - 0.85 * dayPercent; // (N-1 + 0.15)/N для totalDays
                                 const clipPath = `polygon(${leftTopX}% 0, ${rightTopX}% 0, ${rightBottomX}% 100%, ${leftBottomX}% 100%)`;
                                 
                                 return (
@@ -685,7 +685,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                             booking-bar top-2 h-12 text-xs text-white flex px-2 shadow-lg z-10 cursor-pointer
                                             ${getBookingColor(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
                                         `}
-                                        style={{ left: `${left}px`, width: `${width}px`, clipPath }}
+                                        style={{ left: `${left}px`, width: `${width}px`, clipPath, '--clip-path': clipPath } as React.CSSProperties}
                                     >
                                         <div className="flex justify-between items-center w-full h-full px-4">
                                             {/* Left: Check-in */}

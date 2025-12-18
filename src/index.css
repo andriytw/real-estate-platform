@@ -81,7 +81,7 @@ body {
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  clip-path: inherit; /* використовує той самий clip-path, що й основний елемент */
+  clip-path: var(--clip-path, none); /* використовує CSS змінну з clip-path */
   z-index: -1; /* фон і рамка під текстом */
 }
 
