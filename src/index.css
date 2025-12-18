@@ -67,10 +67,30 @@ body {
   animation: slideUp 0.3s ease-out forwards;
 }
 
-/* Booking bar shape with sharp diagonal edges on start and end.
- * Використовуємо clip-path, щоб і фон, і біла рамка повторювали форму. */
+/* Booking bar shape as trapezoid with sharp edges and full border */
 .booking-bar-shape {
   position: relative;
-  /* 12px ≈ 25% від ширини дня (48px) — чітко помітний скіс */
+  border-radius: 0.375rem; /* rounded-md */
+  border: none;           /* рамку малюємо у ::before */
+}
+
+.booking-bar-shape::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid #ffffff; /* рамка навколо всієї трапеції */
+  /* 12px ≈ 25% ширини дня (48px) */
   clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+  pointer-events: none;
+}
+
+.booking-bar-shape::after {
+  content: '';
+  position: absolute;
+  inset: 2px; /* всередину від рамки */
+  border-radius: inherit;
+  background: inherit; /* фон беремо з основного елемента */
+  clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%);
+  pointer-events: none;
 }

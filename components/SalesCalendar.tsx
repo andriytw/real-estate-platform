@@ -657,9 +657,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
                                 if (duration <= 0 || (startOffset + duration) < 0 || startOffset >= NUM_DAYS) return null;
 
-                                // Смужка візуально тягнеться від дати заїзду до дати виїзду (інклюзивно)
+                                // Смужка починається з дати заїзду і заходить на ~25% клітинки дати виїзду
                                 const left = startOffset * DAY_WIDTH;
-                                const width = (duration + 1) * DAY_WIDTH;
+                                const width = (duration * DAY_WIDTH) + DAY_WIDTH * 0.25;
                                 
                                 return (
                                     <div 
@@ -668,8 +668,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                         onMouseEnter={(e) => setHoveredBooking({ booking, x: e.clientX, y: e.clientY })}
                                         onMouseLeave={() => setHoveredBooking(null)}
                                         className={`
-                                            absolute top-2 h-12 rounded-md text-xs text-white flex px-2 shadow-lg z-10 cursor-pointer booking-bar-shape
-                                            ${getBookingColor(booking.status)} ${getBookingBorderStyle(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
+                                            absolute top-2 h-12 text-xs text-white flex px-2 shadow-lg z-10 cursor-pointer booking-bar-shape
+                                            ${getBookingColor(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
                                         `}
                                         style={{ left: `${left}px`, width: `${width}px` }}
                                     >
