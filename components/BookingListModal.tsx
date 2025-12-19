@@ -43,6 +43,22 @@ const getPropertyName = (propertyId: string | undefined, properties: Property[])
   return parts.length > 0 ? parts.join(' — ') : propertyId;
 };
 
+// Отримуємо тільки назву квартири (title)
+const getApartmentName = (propertyId: string | undefined, properties: Property[]): string => {
+  if (!propertyId) return 'Unknown';
+  const property = properties.find(p => p.id === propertyId);
+  if (!property) return propertyId;
+  return property.title || propertyId;
+};
+
+// Отримуємо тільки адресу (вулицю)
+const getAddress = (propertyId: string | undefined, properties: Property[]): string => {
+  if (!propertyId) return 'Unknown';
+  const property = properties.find(p => p.id === propertyId);
+  if (!property) return propertyId;
+  return (property.fullAddress as string | undefined) || property.address || propertyId;
+};
+
 const getGuestName = (item: Booking | CalendarEvent): string => {
   if ('lastName' in item && item.lastName) {
     // Використовуємо прізвище якщо є
@@ -110,17 +126,19 @@ const generateExcel = (
   properties: Property[]
 ) => {
   try {
-    // Заголовки колонок
-    const headers = ['Property', 'Guest', 'Phone', 'Date/Time'];
+    // Заголовки колонок (додано колонку Apartment на початку)
+    const headers = ['Apartment', 'Address', 'Guest', 'Phone', 'Date/Time'];
     
     // Формуємо рядки даних
     const rows = items.map((item) => {
-      const propertyName = getPropertyName(getPropertyId(item), properties);
+      const propertyId = getPropertyId(item);
+      const apartmentName = getApartmentName(propertyId, properties);
+      const address = getAddress(propertyId, properties);
       const guestName = getGuestName(item);
       const phone = getPhone(item);
       const dateTime = getDateTime(item, type);
       
-      return [propertyName, guestName, phone, dateTime];
+      return [apartmentName, address, guestName, phone, dateTime];
     });
 
     // Функція для екранування CSV значень (обробка ком, лапок, переносів рядків)
@@ -242,7 +260,8 @@ const BookingListModal: React.FC<BookingListModalProps> = ({
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-800">
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Property</th>
+                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Apartment</th>
+                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Address</th>
                       <th className="text-left py-3 px-4 text-gray-400 font-medium">Guest</th>
                       <th className="text-left py-3 px-4 text-gray-400 font-medium">Phone</th>
                       <th className="text-left py-3 px-4 text-gray-400 font-medium">Date/Time</th>
@@ -250,7 +269,9 @@ const BookingListModal: React.FC<BookingListModalProps> = ({
                   </thead>
                   <tbody>
                     {items.map((item, index) => {
-                      const propertyName = getPropertyName(getPropertyId(item), properties);
+                      const propertyId = getPropertyId(item);
+                      const apartmentName = getApartmentName(propertyId, properties);
+                      const address = getAddress(propertyId, properties);
                       const guestName = getGuestName(item);
                       const phone = getPhone(item);
                       const dateTime = getDateTime(item, type);
@@ -273,9 +294,10 @@ const BookingListModal: React.FC<BookingListModalProps> = ({
                                 onClick={(e) => e.stopPropagation()}
                                 className="w-4 h-4"
                               />
-                              <span className="text-white">{propertyName}</span>
+                              <span className="text-white">{apartmentName}</span>
                             </div>
                           </td>
+                          <td className="py-3 px-4 text-white">{address}</td>
                           <td className="py-3 px-4 text-white">{guestName}</td>
                           <td className="py-3 px-4 text-gray-300">{phone}</td>
                           <td className="py-3 px-4 text-gray-300">{dateTime}</td>
