@@ -25,27 +25,18 @@ const getPropertyName = (propertyId: string | undefined, properties: Property[])
   const property = properties.find(p => p.id === propertyId);
   if (!property) return propertyId;
 
-  // Використовуємо address або fullAddress як основну адресу
+  // Використовуємо address або fullAddress як вулицю (як в SalesCalendar: details = p.address || p.fullAddress)
   const street = (property.fullAddress as string | undefined) || property.address || '';
   
-  // Перевіряємо, чи street виглядає як нормальна адреса (містить букви, не містить багато спецсимволів)
-  const hasLetters = street && /[a-zA-ZäöüÄÖÜß]/.test(street);
-  const hasTooManySpecialChars = street && (street.match(/[@=]/g) || []).length > 2;
-  const isValidAddress = hasLetters && !hasTooManySpecialChars && street.trim().length > 3;
-  
-  // Використовуємо title як назву квартири, якщо він не виглядає як технічний ID
+  // Використовуємо title як назву квартири (як в SalesCalendar: name = p.title)
   const title = property.title || '';
-  const isTitleTechnicalId = title && (
-    title.includes('@') && title.split('@').length > 2 ||
-    /^[A-Z0-9@=]+$/i.test(title.replace(/\s/g, ''))
-  );
   
-  // Формуємо частини: street (якщо валідна), title (якщо не технічний ID)
+  // Формуємо частини: вулиця + назва квартири
   const parts: string[] = [];
-  if (isValidAddress) {
+  if (street && street.trim().length > 0) {
     parts.push(street.trim());
   }
-  if (title && !isTitleTechnicalId && title.trim().length > 0) {
+  if (title && title.trim().length > 0) {
     parts.push(title.trim());
   }
 
