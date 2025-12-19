@@ -45,8 +45,23 @@ const getPropertyName = (propertyId: string | undefined, properties: Property[])
 };
 
 const getGuestName = (item: Booking | CalendarEvent): string => {
+  if ('lastName' in item && item.lastName) {
+    // Використовуємо прізвище якщо є
+    return item.lastName;
+  }
+  if ('firstName' in item && item.firstName && 'lastName' in item && item.lastName) {
+    // Якщо є і ім'я і прізвище, використовуємо прізвище
+    return item.lastName;
+  }
   if ('guest' in item) {
-    return item.guest || 'Unknown';
+    // Якщо немає прізвища, використовуємо guest (може містити повне ім'я)
+    const guest = item.guest || '';
+    // Спробуємо витягти прізвище з guest (останнє слово)
+    const parts = guest.trim().split(/\s+/);
+    if (parts.length > 1) {
+      return parts[parts.length - 1]; // Останнє слово (прізвище)
+    }
+    return guest || 'Unknown';
   }
   if ('title' in item) {
     return item.title || 'Unknown';
