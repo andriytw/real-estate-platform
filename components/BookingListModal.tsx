@@ -26,18 +26,30 @@ const getPropertyName = (propertyId: string | undefined, properties: Property[])
   if (!property) return propertyId;
 
   // Використовуємо address або fullAddress як основну адресу
-  const street = (property.fullAddress as string | undefined) || property.address;
+  const street = (property.fullAddress as string | undefined) || property.address || '';
   
-  // Якщо title виглядає як технічний ID (містить @ або тільки цифри/букви без пробілів), не використовуємо його
-  const title = property.title;
-  const isTechnicalId = title && (title.includes('@') || /^[A-Z0-9]+$/i.test(title.replace(/\s/g, '')));
+  // Перевіряємо, чи street виглядає як нормальна адреса (містить букви, не містить багато спецсимволів)
+  const hasLetters = street && /[a-zA-ZäöüÄÖÜß]/.test(street);
+  const hasTooManySpecialChars = street && (street.match(/[@=]/g) || []).length > 2;
+  const isValidAddress = hasLetters && !hasTooManySpecialChars && street.trim().length > 3;
   
-  // Формуємо частини: street, city, title (якщо не технічний ID)
+  // Використовуємо title як назву квартири, якщо він не виглядає як технічний ID
+  const title = property.title || '';
+  const isTitleTechnicalId = title && (
+    title.includes('@') && title.split('@').length > 2 ||
+    /^[A-Z0-9@=]+$/i.test(title.replace(/\s/g, ''))
+  );
+  
+  // Формуємо частини: street (якщо валідна), title (якщо не технічний ID)
   const parts: string[] = [];
-  if (street) parts.push(street);
-  if (property.city) parts.push(property.city);
-  if (title && !isTechnicalId) parts.push(title);
+  if (isValidAddress) {
+    parts.push(street.trim());
+  }
+  if (title && !isTitleTechnicalId && title.trim().length > 0) {
+    parts.push(title.trim());
+  }
 
+  // Якщо нічого не знайшли, повертаємо propertyId
   return parts.length > 0 ? parts.join(' — ') : propertyId;
 };
 
