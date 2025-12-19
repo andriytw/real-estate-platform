@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { X, Download } from 'lucide-react';
 import { Booking, CalendarEvent, Property } from '../types';
-import jsPDF from 'jspdf';
 
 interface BookingListModalProps {
   isOpen: boolean;
@@ -102,87 +101,63 @@ const getPropertyId = (item: Booking | CalendarEvent): string | undefined => {
   return undefined;
 };
 
-const generatePDF = (
+
+// Генерація Excel файлу (CSV формат з BOM для правильного відображення Unicode)
+const generateExcel = (
   items: (Booking | CalendarEvent)[],
   type: string,
   date: Date,
   properties: Property[]
 ) => {
   try {
-    const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 10; // More space on the right side for Date/Time column
-  const startY = 30;
-  let currentY = startY;
-
-  // Title
-  doc.setFontSize(18);
-  doc.text(`${type.charAt(0).toUpperCase() + type.slice(1)} List`, margin, currentY);
-  currentY += 10;
-
-  doc.setFontSize(12);
-  doc.text(`Date: ${formatDateISO(date)}`, margin, currentY);
-  currentY += 15;
-
-  // Table headers
-  doc.setFontSize(10);
-  doc.setFont(undefined, 'bold');
-  const colWidths = [80, 50, 35, 25]; // Sum should fit within page width minus margins
-  const headers = ['Property', 'Guest', 'Phone', 'Date/Time'];
-  let xPos = margin;
-
-  headers.forEach((header, index) => {
-    doc.text(header, xPos, currentY);
-    xPos += colWidths[index];
-  });
-
-  currentY += 8;
-  doc.setFont(undefined, 'normal');
-
-  // Table rows
-  items.forEach((item, index) => {
-    if (currentY > pageHeight - 30) {
-      doc.addPage();
-      currentY = margin + 10;
-    }
-
-    const propertyName = getPropertyName(getPropertyId(item), properties);
-    const guestName = getGuestName(item);
-    const phone = getPhone(item);
-    const dateTime = getDateTime(item, type);
-
-    xPos = margin;
-    const rowData = [
-      propertyName.length > 40 ? propertyName.substring(0, 40) + '...' : propertyName,
-      guestName.length > 20 ? guestName.substring(0, 20) + '...' : guestName,
-      phone.length > 15 ? phone.substring(0, 15) + '...' : phone,
-      dateTime.length > 16 ? dateTime.substring(0, 16) + '...' : dateTime,
-    ];
-
-    rowData.forEach((data, colIndex) => {
-      doc.text(data, xPos, currentY);
-      xPos += colWidths[colIndex];
+    // Заголовки колонок
+    const headers = ['Property', 'Guest', 'Phone', 'Date/Time'];
+    
+    // Формуємо рядки даних
+    const rows = items.map((item) => {
+      const propertyName = getPropertyName(getPropertyId(item), properties);
+      const guestName = getGuestName(item);
+      const phone = getPhone(item);
+      const dateTime = getDateTime(item, type);
+      
+      return [propertyName, guestName, phone, dateTime];
     });
 
-    currentY += 7;
-  });
+    // Функція для екранування CSV значень (обробка ком, лапок, переносів рядків)
+    const escapeCSV = (value: string): string => {
+      if (!value) return '';
+      const stringValue = String(value);
+      // Якщо значення містить кому, лапки або перенос рядка, обгортаємо в лапки
+      if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+        // Подвоюємо лапки всередині значення
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    };
 
-  // Footer
-  doc.setFontSize(8);
-  doc.setTextColor(128, 128, 128);
-  doc.text(
-    `Generated on ${new Date().toLocaleString()}`,
-    margin,
-    pageHeight - 10
-  );
+    // Формуємо CSV контент
+    const csvContent = [
+      headers.map(escapeCSV).join(','),
+      ...rows.map(row => row.map(escapeCSV).join(','))
+    ].join('\n');
 
-    // Save
-    const fileName = `${type}-${formatDateISO(date)}.pdf`;
-    doc.save(fileName);
+    // Додаємо BOM (Byte Order Mark) для правильного відображення Unicode в Excel
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    
+    // Створюємо посилання для завантаження
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${type}-${formatDateISO(date)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   } catch (error) {
-    console.error('Error generating PDF:', error);
-    alert('Failed to generate PDF. Please try again.');
+    console.error('Error generating Excel:', error);
+    alert('Failed to generate Excel file. Please try again.');
   }
 };
 
@@ -218,12 +193,12 @@ const BookingListModal: React.FC<BookingListModalProps> = ({
   };
 
   const handleDownloadAll = () => {
-    generatePDF(items, type, date, properties);
+    generateExcel(items, type, date, properties);
   };
 
   const handleDownloadSelected = () => {
     const selected = Array.from(selectedItems).map(index => items[index]);
-    generatePDF(selected, type, date, properties);
+    generateExcel(selected, type, date, properties);
   };
 
   return (
