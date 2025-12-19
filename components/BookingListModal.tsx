@@ -23,7 +23,13 @@ const formatDateISO = (date: Date): string => {
 const getPropertyName = (propertyId: string | undefined, properties: Property[]): string => {
   if (!propertyId) return 'Unknown';
   const property = properties.find(p => p.id === propertyId);
-  return property?.title || propertyId;
+  if (!property) return propertyId;
+
+  const street = (property.fullAddress as string | undefined) || property.address;
+  const title = property.title;
+  const parts = [street, title].filter(Boolean) as string[];
+
+  return parts.join(' — ');
 };
 
 const getGuestName = (item: Booking | CalendarEvent): string => {
@@ -79,7 +85,7 @@ const generatePDF = (
     const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 20;
+  const margin = 10; // More space on the right side for Date/Time column
   const startY = 30;
   let currentY = startY;
 
@@ -95,7 +101,7 @@ const generatePDF = (
   // Table headers
   doc.setFontSize(10);
   doc.setFont(undefined, 'bold');
-  const colWidths = [60, 50, 50, 30];
+  const colWidths = [80, 50, 35, 25]; // Sum should fit within page width minus margins
   const headers = ['Property', 'Guest', 'Phone', 'Date/Time'];
   let xPos = margin;
 
@@ -121,10 +127,10 @@ const generatePDF = (
 
     xPos = margin;
     const rowData = [
-      propertyName.length > 25 ? propertyName.substring(0, 25) + '...' : propertyName,
+      propertyName.length > 40 ? propertyName.substring(0, 40) + '...' : propertyName,
       guestName.length > 20 ? guestName.substring(0, 20) + '...' : guestName,
       phone.length > 15 ? phone.substring(0, 15) + '...' : phone,
-      dateTime.length > 15 ? dateTime.substring(0, 15) + '...' : dateTime,
+      dateTime.length > 16 ? dateTime.substring(0, 16) + '...' : dateTime,
     ];
 
     rowData.forEach((data, colIndex) => {
