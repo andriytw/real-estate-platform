@@ -25,11 +25,20 @@ const getPropertyName = (propertyId: string | undefined, properties: Property[])
   const property = properties.find(p => p.id === propertyId);
   if (!property) return propertyId;
 
+  // Використовуємо address або fullAddress як основну адресу
   const street = (property.fullAddress as string | undefined) || property.address;
+  
+  // Якщо title виглядає як технічний ID (містить @ або тільки цифри/букви без пробілів), не використовуємо його
   const title = property.title;
-  const parts = [street, title].filter(Boolean) as string[];
+  const isTechnicalId = title && (title.includes('@') || /^[A-Z0-9]+$/i.test(title.replace(/\s/g, '')));
+  
+  // Формуємо частини: street, city, title (якщо не технічний ID)
+  const parts: string[] = [];
+  if (street) parts.push(street);
+  if (property.city) parts.push(property.city);
+  if (title && !isTechnicalId) parts.push(title);
 
-  return parts.join(' — ');
+  return parts.length > 0 ? parts.join(' — ') : propertyId;
 };
 
 const getGuestName = (item: Booking | CalendarEvent): string => {
