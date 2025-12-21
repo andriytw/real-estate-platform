@@ -464,50 +464,44 @@ ${emailData.length > 1 ? `\n... та ще ${emailData.length - 1} email(ів)` :
             {selectedItems.size > 0 ? `${selectedItems.size} selected` : `${items.length} total`}
           </div>
           <div className="flex gap-3">
-            {/* Кнопки для нагадувань */}
-            {type === 'reminder' ? (
+            {/* Кнопки для нагадувань - додаємо поруч з Download */}
+            {type === 'reminder' && (
               <>
-                {/* Кнопка "Надіслати нагадування всім" - завжди видима */}
                 <button
                   onClick={handleSendEmailToAll}
                   className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
                 >
                   <Mail className="w-4 h-4" />
-                  Надіслати нагадування всім ({items.length})
+                  Send ({items.length})
                 </button>
-                
-                {/* Кнопка "Надіслати нагадування виділеним" - тільки якщо є вибрані */}
                 {selectedItems.size > 0 && (
                   <button
                     onClick={handleSendEmailToSelected}
                     className="px-4 py-2 bg-purple-500 hover:bg-purple-400 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
                   >
                     <Mail className="w-4 h-4" />
-                    Надіслати нагадування виділеним ({selectedItems.size})
+                    Send ({selectedItems.size})
                   </button>
                 )}
-              </>
-            ) : (
-              <>
-                {/* Звичайні кнопки Download для інших типів */}
-                {selectedItems.size > 0 && (
-                  <button
-                    onClick={handleDownloadSelected}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-                  >
-                    <Download className="w-4 h-4" />
-                    Download Selected ({selectedItems.size})
-                  </button>
-                )}
-                <button
-                  onClick={handleDownloadAll}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-                >
-                  <Download className="w-4 h-4" />
-                  Download All ({items.length})
-                </button>
               </>
             )}
+            {/* Кнопки Download - завжди видимі */}
+            {selectedItems.size > 0 && (
+              <button
+                onClick={handleDownloadSelected}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                Download ({selectedItems.size})
+              </button>
+            )}
+            <button
+              onClick={handleDownloadAll}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Download ({items.length})
+            </button>
           </div>
         </div>
       </div>
