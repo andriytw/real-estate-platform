@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Download } from 'lucide-react';
+import { X, Download, Mail } from 'lucide-react';
 import { Booking, CalendarEvent, Property } from '../types';
 
 interface BookingListModalProps {
@@ -57,6 +57,49 @@ const getAddress = (propertyId: string | undefined, properties: Property[]): str
   const property = properties.find(p => p.id === propertyId);
   if (!property) return propertyId;
   return (property.fullAddress as string | undefined) || property.address || propertyId;
+};
+
+// Отримуємо актуальне ім'я/прізвище/назву компанії для звернення
+const getClientGreetingName = (item: Booking | CalendarEvent): string => {
+  // Якщо це компанія - використовуємо назву компанії
+  if ('clientType' in item && item.clientType === 'Company') {
+    if ('companyName' in item && item.companyName) {
+      return item.companyName;
+    }
+    if ('company' in item && item.company && item.company !== 'N/A') {
+      return item.company;
+    }
+  }
+  
+  // Якщо це приватна особа - використовуємо ім'я та прізвище
+  if ('firstName' in item && 'lastName' in item) {
+    if (item.firstName && item.lastName) {
+      return `${item.firstName} ${item.lastName}`;
+    }
+    if (item.lastName) {
+      return item.lastName;
+    }
+    if (item.firstName) {
+      return item.firstName;
+    }
+  }
+  
+  // Якщо є тільки lastName
+  if ('lastName' in item && item.lastName) {
+    return item.lastName;
+  }
+  
+  // Якщо є тільки firstName
+  if ('firstName' in item && item.firstName) {
+    return item.firstName;
+  }
+  
+  // Fallback на guest
+  if ('guest' in item && item.guest) {
+    return item.guest;
+  }
+  
+  return 'Шановний/а';
 };
 
 const getGuestName = (item: Booking | CalendarEvent): string => {
@@ -219,6 +262,110 @@ const BookingListModal: React.FC<BookingListModalProps> = ({
     generateExcel(selected, type, date, properties);
   };
 
+  const handleSendEmailToAll = async () => {
+    if (items.length === 0) {
+      alert('Немає гостей для надсилання нагадувань');
+      return;
+    }
+
+    await sendEmails(items, 'all');
+  };
+
+  const handleSendEmailToSelected = async () => {
+    if (selectedItems.size === 0) {
+      alert('Будь ласка, виберіть хоча б одного орендаря для надсилання нагадування');
+      return;
+    }
+
+    const selected = Array.from(selectedItems).map(index => items[index]);
+    await sendEmails(selected, 'selected');
+  };
+
+  const sendEmails = async (itemsToSend: (Booking | CalendarEvent)[], type: 'all' | 'selected') => {
+    // Формуємо дані для email
+    const emailData = itemsToSend.map(item => {
+      const propertyId = getPropertyId(item);
+      const property = properties.find(p => p.id === propertyId);
+      const apartmentName = getApartmentName(propertyId, properties);
+      const address = getAddress(propertyId, properties);
+      const guestName = getGuestName(item);
+      const clientGreetingName = getClientGreetingName(item); // Актуальне ім'я/компанія
+      const email = 'email' in item ? item.email : undefined;
+      const checkOutDate = 'end' in item ? item.end : undefined;
+      const checkOutTime = 'checkOutTime' in item ? item.checkOutTime : undefined;
+
+      // Формуємо текст email з актуальним ім'ям/компанією на початку
+      const emailSubject = `Нагадування про виїзд - ${apartmentName}`;
+      const emailBody = `${clientGreetingName},
+
+Нагадуємо, що у вас через 2 дні виїзд:
+- Квартира: ${apartmentName}
+- Адреса: ${address}
+- Дата виїзду: ${checkOutDate}${checkOutTime ? ` о ${checkOutTime}` : ''}
+
+Чи будете ви виїзджати, чи можливо хочете продовження перебування?
+
+Будь ласка, підтвердіть ваші плани.
+
+З повагою,
+Команда управління нерухомістю`;
+
+      return {
+        email,
+        guestName,
+        clientGreetingName, // Додаємо для логування
+        apartmentName,
+        address,
+        checkOutDate,
+        checkOutTime,
+        subject: emailSubject,
+        body: emailBody
+      };
+    }).filter(item => item.email); // Фільтруємо тільки ті, у яких є email
+
+    if (emailData.length === 0) {
+      alert('У гостей немає email адрес');
+      return;
+    }
+
+    // МОК: Показуємо дані в консолі та alert (замість реального надсилання)
+    console.log(`📧 Email data to send (${type}):`, emailData);
+    
+    // Показуємо preview першого email
+    const firstEmail = emailData[0];
+    const preview = `
+📧 Email буде надіслано на: ${firstEmail.email}
+👤 Звернення: ${firstEmail.clientGreetingName}
+
+Тема: ${firstEmail.subject}
+
+Текст:
+${firstEmail.body}
+
+${emailData.length > 1 ? `\n... та ще ${emailData.length - 1} email(ів)` : ''}
+    `.trim();
+
+    // Підтвердження перед "надсиланням"
+    const confirmed = window.confirm(
+      `Надіслати нагадування ${emailData.length} орендарю(ям)?\n\n${preview}`
+    );
+
+    if (confirmed) {
+      // МОК: Імітуємо надсилання
+      console.log(`✅ Sending emails (${type})...`, emailData);
+      
+      // Симулюємо затримку
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      alert(`✅ Нагадування успішно надіслано ${emailData.length} орендарю(ям)!\n\n(Це тестова версія - реальні email не надсилаються)`);
+      
+      // Очищаємо вибір після "надсилання" (тільки якщо надсилали виділеним)
+      if (type === 'selected') {
+        setSelectedItems(new Set());
+      }
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
       <div
@@ -317,22 +464,50 @@ const BookingListModal: React.FC<BookingListModalProps> = ({
             {selectedItems.size > 0 ? `${selectedItems.size} selected` : `${items.length} total`}
           </div>
           <div className="flex gap-3">
-            {selectedItems.size > 0 && (
-              <button
-                onClick={handleDownloadSelected}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-              >
-                <Download className="w-4 h-4" />
-                Download Selected ({selectedItems.size})
-              </button>
+            {/* Кнопки для нагадувань */}
+            {type === 'reminder' ? (
+              <>
+                {/* Кнопка "Надіслати нагадування всім" - завжди видима */}
+                <button
+                  onClick={handleSendEmailToAll}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+                >
+                  <Mail className="w-4 h-4" />
+                  Надіслати нагадування всім ({items.length})
+                </button>
+                
+                {/* Кнопка "Надіслати нагадування виділеним" - тільки якщо є вибрані */}
+                {selectedItems.size > 0 && (
+                  <button
+                    onClick={handleSendEmailToSelected}
+                    className="px-4 py-2 bg-purple-500 hover:bg-purple-400 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+                  >
+                    <Mail className="w-4 h-4" />
+                    Надіслати нагадування виділеним ({selectedItems.size})
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Звичайні кнопки Download для інших типів */}
+                {selectedItems.size > 0 && (
+                  <button
+                    onClick={handleDownloadSelected}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download Selected ({selectedItems.size})
+                  </button>
+                )}
+                <button
+                  onClick={handleDownloadAll}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Download All ({items.length})
+                </button>
+              </>
             )}
-            <button
-              onClick={handleDownloadAll}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              Download All ({items.length})
-            </button>
           </div>
         </div>
       </div>
