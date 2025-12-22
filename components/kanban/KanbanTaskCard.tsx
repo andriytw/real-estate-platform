@@ -22,19 +22,27 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
     }
   };
 
+  const isCompleted = task.status === 'completed' || task.status === 'verified' || task.status === 'archived';
+
   return (
     <div 
       onClick={onClick}
       className={`
-        group relative p-3 rounded-lg border bg-[#1C1F24] hover:bg-[#25282e] transition-all cursor-pointer mb-3
-        ${task.priority === 'urgent' ? 'border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.1)]' : 'border-gray-800 hover:border-gray-700'}
+        group relative p-3 rounded-lg border transition-all cursor-pointer mb-3
+        ${isCompleted 
+          ? 'bg-[#1C1F24]/50 border-gray-700/50 opacity-60' 
+          : 'bg-[#1C1F24] hover:bg-[#25282e] border-gray-800 hover:border-gray-700'
+        }
+        ${task.priority === 'urgent' && !isCompleted ? 'border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.1)]' : ''}
       `}
     >
       {/* Header: Priority & Time/Date */}
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-center gap-2">
-          {getPriorityIcon()}
-          <span className={`text-xs font-medium px-2 py-0.5 rounded border ${colorClass}`}>
+          {!isCompleted && getPriorityIcon()}
+          <span className={`text-xs font-medium px-2 py-0.5 rounded border ${
+            isCompleted ? 'border-gray-600 text-gray-500 bg-gray-800/30' : colorClass
+          }`}>
             {task.type}
           </span>
         </div>
@@ -61,7 +69,11 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
       </div>
 
       {/* Title */}
-      <h4 className="text-sm font-medium text-white mb-1 line-clamp-2 group-hover:text-blue-400 transition-colors">
+      <h4 className={`text-sm font-medium mb-1 line-clamp-2 transition-colors ${
+        isCompleted 
+          ? 'text-gray-500 line-through' 
+          : 'text-white group-hover:text-blue-400'
+      }`}>
         {task.title}
       </h4>
 

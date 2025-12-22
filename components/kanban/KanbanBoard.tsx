@@ -101,13 +101,9 @@ const KanbanBoard: React.FC = () => {
   const columns = useMemo(() => {
     const cols: IKanbanColumn[] = [];
 
-    // Фільтр для виключення виконаних завдань
-    const activeStatuses: TaskStatus[] = ['open', 'assigned', 'in_progress'];
-    const activeTasks = tasks.filter(t => activeStatuses.includes(t.status));
-
     // 1. Super Admin / Inbox Column (завжди видима)
     const adminWorker = workers.find(w => w.role === 'super_manager');
-    const adminTasks = activeTasks.filter(t => 
+    const adminTasks = tasks.filter(t => 
       !t.workerId || (adminWorker && t.workerId === adminWorker.id)
     );
     
@@ -154,7 +150,7 @@ const KanbanBoard: React.FC = () => {
         title: worker.name,
         type: columnType,
         workerId: worker.id,
-        tasks: activeTasks.filter(t => t.workerId === worker.id)
+        tasks: tasks.filter(t => t.workerId === worker.id)
       });
     });
 
