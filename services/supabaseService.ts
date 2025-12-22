@@ -38,6 +38,7 @@ export interface WarehouseStockItem {
   unitPrice?: number; // Price per unit (from invoice or default)
   invoiceNumber?: string; // Invoice number from first IN movement
   purchaseDate?: string; // Purchase date from first IN movement
+  vendor?: string; // Vendor/store name where item was purchased
   lastPropertyName?: string | null; // Property name if transferred, null if still on warehouse
   warehouseName?: string; // Human-readable warehouse name
   propertyAddress?: string; // Property address (street) for search
@@ -145,18 +146,20 @@ export const warehouseService = {
         let invoiceNumber: string | undefined;
         let purchaseDate: string | undefined;
         let unitPrice: number | undefined;
+        let vendor: string | undefined;
 
         if (firstInMovement?.invoice_id) {
           // Fetch invoice details
           const { data: invoice } = await supabase
             .from('warehouse_invoices')
-            .select('invoice_number, date')
+            .select('invoice_number, date, vendor')
             .eq('id', firstInMovement.invoice_id)
             .maybeSingle();
 
           if (invoice) {
             invoiceNumber = invoice.invoice_number;
             purchaseDate = invoice.date;
+            vendor = invoice.vendor;
 
             // Try to get unit price from invoice line
             const { data: invoiceLine } = await supabase
@@ -250,6 +253,7 @@ export const warehouseService = {
           unitPrice: unitPrice,
           invoiceNumber: invoiceNumber,
           purchaseDate: purchaseDate,
+          vendor: vendor,
           lastPropertyName: lastPropertyName,
           warehouseName,
           propertyAddress,

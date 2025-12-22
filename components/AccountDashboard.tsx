@@ -1047,6 +1047,7 @@ const AccountDashboard: React.FC = () => {
         sku: row.sku,
         invoiceNumber: row.invoiceNumber,
         purchaseDate: row.purchaseDate,
+        vendor: row.vendor,
       }));
 
       // 2) Створити завдання для працівника (Facility) з даними про transfer
@@ -2196,6 +2197,7 @@ const AccountDashboard: React.FC = () => {
                                 <th className="p-3 font-bold text-xs uppercase text-right">Ціна (од.)</th>
                                 <th className="p-3 font-bold text-xs uppercase">Номер інвойсу</th>
                                 <th className="p-3 font-bold text-xs uppercase">Дата покупки</th>
+                                <th className="p-3 font-bold text-xs uppercase">Магазин</th>
                                 {isInventoryEditing && (
                                   <th className="p-3 font-bold text-xs uppercase text-center">Дії</th>
                                 )}
@@ -2327,6 +2329,20 @@ const AccountDashboard: React.FC = () => {
                                       />
                                     ) : (
                                       formattedDate
+                                    )}
+                                  </td>
+                                  <td className="p-3 text-gray-400 text-xs">
+                                    {isInventoryEditing ? (
+                                      <input
+                                        className="bg-transparent border-b border-gray-700 w-full text-xs text-white outline-none"
+                                        value={item.vendor || ''}
+                                        onChange={(e) =>
+                                          handleUpdateInventoryItem(idx, 'vendor', e.target.value)
+                                        }
+                                        placeholder="Магазин"
+                                      />
+                                    ) : (
+                                      item.vendor || '-'
                                     )}
                                   </td>
                                   {isInventoryEditing && (
@@ -3027,6 +3043,7 @@ const AccountDashboard: React.FC = () => {
                           <th className="px-3 py-2 text-right border-b border-gray-700">Ціна (од.)</th>
                           <th className="px-3 py-2 text-left border-b border-gray-700">Номер інвойсу</th>
                           <th className="px-3 py-2 text-left border-b border-gray-700">Дата покупки</th>
+                          <th className="px-3 py-2 text-left border-b border-gray-700">Магазин</th>
                           <th className="px-3 py-2 text-left border-b border-gray-700">Об'єкт</th>
                           <th className="px-3 py-2 text-center border-b border-gray-700">Actions</th>
                         </tr>
@@ -3080,6 +3097,7 @@ const AccountDashboard: React.FC = () => {
                               <td className="px-3 py-2 text-right text-gray-300">{formattedPrice}</td>
                               <td className="px-3 py-2 text-gray-400">{row.invoiceNumber || '-'}</td>
                               <td className="px-3 py-2 text-gray-400">{formattedDate}</td>
+                              <td className="px-3 py-2 text-gray-400">{row.vendor || '-'}</td>
                               <td className="px-3 py-2">
                                 <span
                                   className={`text-xs font-medium ${
