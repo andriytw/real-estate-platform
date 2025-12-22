@@ -86,15 +86,24 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
   const colorClass = getTaskColor(task.type);
   let parsedDescription: any = null;
+  let displayDescription = task.description || 'No description';
+
+  // Парсимо JSON, якщо це transfer task, показуємо зрозумілий текст
   try {
     if (task.description) {
       parsedDescription = JSON.parse(task.description);
+      // Якщо це transfer task, показуємо originalDescription
+      if (parsedDescription?.action === 'transfer_inventory' && parsedDescription.originalDescription) {
+        displayDescription = parsedDescription.originalDescription;
+      } else if (parsedDescription?.originalDescription) {
+        displayDescription = parsedDescription.originalDescription;
+      }
+      // Якщо не знайшли originalDescription, залишаємо як є (може бути інший формат JSON)
     }
   } catch (e) {
-    // Not JSON, use as is
+    // Не JSON, використовуємо як є
+    displayDescription = task.description || 'No description';
   }
-
-  const displayDescription = parsedDescription?.originalDescription || task.description || 'No description';
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">

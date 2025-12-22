@@ -81,6 +81,27 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   const [chatInputValue, setChatInputValue] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Функція для отримання зрозумілого опису (прибирає JSON, показує тільки текст)
+  const getReadableDescription = (description: string | undefined): string => {
+    if (!description) return '';
+    
+    try {
+      const parsed = JSON.parse(description);
+      // Якщо це transfer task, повертаємо originalDescription
+      if (parsed?.action === 'transfer_inventory' && parsed.originalDescription) {
+        return parsed.originalDescription;
+      }
+      if (parsed?.originalDescription) {
+        return parsed.originalDescription;
+      }
+      // Якщо не знайшли originalDescription, повертаємо весь JSON як текст (не ідеально, але краще ніж нічого)
+      return description;
+    } catch (e) {
+      // Не JSON, повертаємо як є
+      return description;
+    }
+  };
   
   // Refs for clicking outside
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -712,7 +733,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                           <div className="mt-1 bg-yellow-500/20 text-yellow-500 text-[10px] px-1 rounded inline-block">Awaiting Verification</div>
                       )}
                       {viewMode === 'day' && event.description && (
-                         <p className="mt-2 text-sm opacity-70">{event.description}</p>
+                         <p className="mt-2 text-sm opacity-70">{getReadableDescription(event.description)}</p>
                       )}
                     </div>
                   )) : viewMode === 'day' && (
@@ -1064,9 +1085,9 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                         </div>
 
                         <div>
-                           <label className="text-xs text-gray-500 font-medium block mb-1">Description</label>
-                           <p className="text-sm text-gray-300 leading-relaxed">
-                              {viewEvent.description || "No additional description provided."}
+                             <label className="text-xs text-gray-500 font-medium block mb-1">Description</label>
+                             <p className="text-sm text-gray-300 leading-relaxed">
+                               {getReadableDescription(viewEvent.description) || "No additional description provided."}
                            </p>
                         </div>
                         
@@ -1248,7 +1269,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                          )}
                          {event.description && event.status !== 'done_by_worker' && (
                             <p className="text-xs text-gray-500 mt-1 line-clamp-1">
-                               {event.description}
+                               {getReadableDescription(event.description)}
                             </p>
                          )}
                          {event.assignee && (
