@@ -179,54 +179,60 @@ export const warehouseService = {
           unitPrice = row.items?.default_price != null ? parseFloat(row.items.default_price) : undefined;
         }
 
-        // Find last TRANSFER or OUT movement with property_id (to determine current location)
-        const { data: lastTransferMovement } = await supabase
-          .from('stock_movements')
-          .select('property_id, date')
-          .eq('item_id', itemId)
-          .eq('warehouse_id', stockWarehouseId)
-          .in('type', ['TRANSFER', 'OUT'])
-          .not('property_id', 'is', null)
-          .order('date', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
+        // Determine current location: if quantity > 0, item is on warehouse
+        // Only check for property if quantity = 0 (all items transferred)
+        const currentQuantity = parseFloat(row.quantity ?? 0);
         let lastPropertyName: string | null = null;
         let propertyAddress: string | undefined;
         let transferTaskStatus: string | null = null;
 
-        if (lastTransferMovement?.property_id) {
-          // Check if this transfer happened after purchase (if we have purchase date)
-          const shouldShowProperty =
-            !purchaseDate || new Date(lastTransferMovement.date) >= new Date(purchaseDate);
+        // Only check for property transfer if quantity is 0 (all items transferred)
+        if (currentQuantity === 0) {
+          // Find last TRANSFER or OUT movement with property_id (to determine where items went)
+          const { data: lastTransferMovement } = await supabase
+            .from('stock_movements')
+            .select('property_id, date')
+            .eq('item_id', itemId)
+            .eq('warehouse_id', stockWarehouseId)
+            .in('type', ['TRANSFER', 'OUT'])
+            .not('property_id', 'is', null)
+            .order('date', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-          if (shouldShowProperty) {
-            // Fetch property name + address
-            const { data: property } = await supabase
-              .from('properties')
-              .select('title, address, full_address')
-              .eq('id', lastTransferMovement.property_id)
-              .maybeSingle();
+          if (lastTransferMovement?.property_id) {
+            // Check if this transfer happened after purchase (if we have purchase date)
+            const shouldShowProperty =
+              !purchaseDate || new Date(lastTransferMovement.date) >= new Date(purchaseDate);
 
-            if (property) {
-              if (property.title) lastPropertyName = property.title;
-              propertyAddress = property.full_address || property.address || undefined;
-            }
+            if (shouldShowProperty) {
+              // Fetch property name + address
+              const { data: property } = await supabase
+                .from('properties')
+                .select('title, address, full_address')
+                .eq('id', lastTransferMovement.property_id)
+                .maybeSingle();
 
-            // Try to find related Facility task for this transfer to determine status
-            const { data: transferTask } = await supabase
-              .from('calendar_events')
-              .select('status')
-              .eq('department', 'facility')
-              .eq('type', 'Arbeit nach plan')
-              .eq('property_id', lastTransferMovement.property_id)
-              .ilike('title', '%Перевезти інвентар%')
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
+              if (property) {
+                if (property.title) lastPropertyName = property.title;
+                propertyAddress = property.full_address || property.address || undefined;
+              }
 
-            if (transferTask) {
-              transferTaskStatus = transferTask.status || null;
+              // Try to find related Facility task for this transfer to determine status
+              const { data: transferTask } = await supabase
+                .from('calendar_events')
+                .select('status')
+                .eq('department', 'facility')
+                .eq('type', 'Arbeit nach plan')
+                .eq('property_id', lastTransferMovement.property_id)
+                .ilike('title', '%Перевезти інвентар%')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (transferTask) {
+                transferTaskStatus = transferTask.status || null;
+              }
             }
           }
         }
