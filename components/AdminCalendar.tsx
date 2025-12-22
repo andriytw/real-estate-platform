@@ -707,7 +707,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                       className={`
                         relative p-2 rounded border hover:bg-opacity-80 transition-colors flex-shrink-0
                         ${getEventColor(event.type as string)}
-                        ${event.status === 'archived' || event.status === 'verified' ? 'opacity-50 grayscale' : ''}
+                        ${event.status === 'archived' || event.status === 'verified' || event.status === 'completed' ? 'opacity-50 grayscale' : ''}
                         ${event.status === 'done_by_worker' ? 'ring-1 ring-yellow-500' : ''}
                         ${viewMode === 'day' ? 'p-4 text-base' : ''}
                       `}
@@ -989,7 +989,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                      )}
 
                      {/* --- REVIEW/APPROVAL MODE --- */}
-                     {viewEvent.status === 'done_by_worker' ? (
+                     {viewEvent.status === 'done_by_worker' || viewEvent.status === 'completed' ? (
                         <div className="mb-6 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
                            <div className="flex items-center gap-2 text-yellow-500 mb-2">
                               <ShieldCheck className="w-5 h-5" />
@@ -1234,7 +1234,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                         onClick={(e) => handleEventClick(e, event)}
                         className={`
                           border rounded-lg p-3 transition-colors group flex items-center justify-between gap-4 shadow-sm hover:shadow-md cursor-pointer relative
-                          ${event.status === 'archived' || event.status === 'verified'
+                          ${event.status === 'archived' || event.status === 'verified' || event.status === 'completed'
                              ? 'bg-[#161B22]/50 border-gray-800 opacity-50 grayscale' 
                              : event.status === 'done_by_worker'
                                 ? 'bg-[#161B22] border-yellow-500/50'
@@ -1259,7 +1259,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                 <span>{event.isAllDay ? 'All Day' : event.time}</span>
                             </div>
                         </div>
-                        <h3 className={`text-sm font-bold truncate ${event.status === 'archived' ? 'text-gray-500 line-through' : 'text-white'}`}>
+                        <h3 className={`text-sm font-bold truncate ${event.status === 'archived' || event.status === 'completed' || event.status === 'verified' ? 'text-gray-500 line-through' : 'text-white'}`}>
                           {event.title}
                         </h3>
                          {event.status === 'done_by_worker' && (
@@ -1282,7 +1282,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
                       {/* Actions Right */}
                       <div className="flex items-center gap-1">
-                         {event.status !== 'archived' && event.status !== 'verified' && (
+                         {event.status !== 'archived' && event.status !== 'verified' && event.status !== 'completed' && (
                              <button 
                                 className={`
                                    p-2 rounded-lg transition-colors
@@ -1296,7 +1296,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                 {event.status === 'done_by_worker' ? <History className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
                              </button>
                          )}
-                         {(event.status === 'archived' || event.status === 'verified') && (
+                         {(event.status === 'archived' || event.status === 'verified' || event.status === 'completed') && (
                              <Archive className="w-5 h-5 text-gray-600" />
                          )}
                          
