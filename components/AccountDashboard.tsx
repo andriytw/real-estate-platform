@@ -2527,8 +2527,21 @@ const AccountDashboard: React.FC = () => {
                             : '-';
                           // Format price
                           const formattedPrice = row.unitPrice != null ? `€${row.unitPrice.toFixed(2)}` : '-';
-                          // Determine object (Склад or property name)
-                          const objectName = row.lastPropertyName || row.warehouseName || 'Склад';
+                          // Determine object (warehouse / transfer in progress / property name)
+                          let objectName: string;
+                          const transferStatus = row.transferTaskStatus || '';
+                          const isTransferInProgress =
+                            transferStatus &&
+                            !['completed', 'verified', 'archived'].includes(transferStatus);
+
+                          if (isTransferInProgress && (row.propertyAddress || row.lastPropertyName)) {
+                            const address = row.propertyAddress || row.lastPropertyName || 'квартиру';
+                            objectName = `В процесі перевезення на ${address}`;
+                          } else if (row.lastPropertyName) {
+                            objectName = row.lastPropertyName;
+                          } else {
+                            objectName = row.warehouseName || 'Склад';
+                          }
                           return (
                             <tr
                               key={row.stockId}

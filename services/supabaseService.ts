@@ -41,6 +41,7 @@ export interface WarehouseStockItem {
   lastPropertyName?: string | null; // Property name if transferred, null if still on warehouse
   warehouseName?: string; // Human-readable warehouse name
   propertyAddress?: string; // Property address (street) for search
+  transferTaskStatus?: string | null; // Status of last transfer task (calendar_events.status)
 }
 
 // ==================== WORKERS ====================
@@ -192,6 +193,7 @@ export const warehouseService = {
 
         let lastPropertyName: string | null = null;
         let propertyAddress: string | undefined;
+        let transferTaskStatus: string | null = null;
 
         if (lastTransferMovement?.property_id) {
           // Check if this transfer happened after purchase (if we have purchase date)
@@ -209,6 +211,22 @@ export const warehouseService = {
             if (property) {
               if (property.title) lastPropertyName = property.title;
               propertyAddress = property.full_address || property.address || undefined;
+            }
+
+            // Try to find related Facility task for this transfer to determine status
+            const { data: transferTask } = await supabase
+              .from('calendar_events')
+              .select('status')
+              .eq('department', 'facility')
+              .eq('type', 'Arbeit nach plan')
+              .eq('property_id', lastTransferMovement.property_id)
+              .ilike('title', '%Перевезти інвентар%')
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (transferTask) {
+              transferTaskStatus = transferTask.status || null;
             }
           }
         }
@@ -229,6 +247,7 @@ export const warehouseService = {
           lastPropertyName: lastPropertyName,
           warehouseName,
           propertyAddress,
+          transferTaskStatus,
         };
       })
     );

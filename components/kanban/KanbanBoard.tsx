@@ -88,6 +88,39 @@ const KanbanBoard: React.FC = () => {
     }
   };
 
+  // Toggle task status when card is clicked
+  const handleTaskStatusToggle = async (task: CalendarEvent) => {
+    try {
+      const current = task.status as TaskStatus;
+      let next: TaskStatus;
+
+      // Simple status flow: open/pending/assigned -> in_progress -> completed -> verified
+      if (current === 'in_progress') {
+        next = 'completed';
+      } else if (current === 'completed') {
+        next = 'verified';
+      } else if (current === 'verified' || current === 'archived') {
+        next = current;
+      } else {
+        next = 'in_progress';
+      }
+
+      // Optimistic UI update
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, status: next } : t))
+      );
+
+      await tasksService.update(task.id, { status: next });
+
+      // Inform other parts of app (Facility calendar, Warehouse etc.)
+      window.dispatchEvent(new CustomEvent('taskUpdated'));
+    } catch (error) {
+      console.error('Failed to toggle task status:', error);
+      // Reload board to stay consistent
+      loadBoardData();
+    }
+  };
+
   // Generate Columns - ТІЛЬКИ Inbox + колонки з customColumns (створені вручну Super Admin)
   const columns = useMemo(() => {
     const cols: IKanbanColumn[] = [];
@@ -360,6 +393,7 @@ const KanbanBoard: React.FC = () => {
                       onWorkerAssigned={column.id !== 'admin-inbox' ? (workerId) => handleColumnWorkerAssigned(column.id, workerId) : undefined}
                       workers={workers}
                       columnId={column.id}
+                      onTaskClick={handleTaskStatusToggle}
                     />
                     {provided.placeholder}
                   </div>

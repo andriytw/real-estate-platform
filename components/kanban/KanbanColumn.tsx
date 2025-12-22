@@ -17,6 +17,7 @@ interface KanbanColumnProps {
   onWorkerAssigned?: (workerId: string) => void;
   workers?: Worker[];
   columnId: string; // Unique column ID for state management
+  onTaskClick?: (task: CalendarEvent) => void;
 }
 
 const KanbanColumn: React.FC<KanbanColumnProps> = ({ 
@@ -27,7 +28,8 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   canDelete = false,
   onWorkerAssigned,
   workers = [],
-  columnId
+  columnId,
+  onTaskClick,
 }) => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(column.workerId || null);
@@ -362,7 +364,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
                 >
                   <KanbanTaskCard 
                     task={task} 
-                    onClick={() => console.log('Task clicked', task.id)} 
+                    onClick={() => onTaskClick?.(task)} 
                   />
                 </div>
               )}
