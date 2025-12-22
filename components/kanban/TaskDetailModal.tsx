@@ -68,7 +68,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         onClick={() => handleStatusChange(status)}
         disabled={isUpdating || isActive}
         className={`
-          flex items-center gap-2 px-4 py-2 rounded-lg border transition-all
+          flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-all
           ${isActive 
             ? 'bg-blue-500/20 border-blue-500 text-blue-400 cursor-not-allowed' 
             : 'bg-[#1C1F24] border-gray-700 text-gray-300 hover:border-blue-500 hover:text-blue-400'
@@ -107,122 +107,93 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-[#16181D] rounded-xl border border-gray-800 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="bg-[#16181D] rounded-xl border border-gray-800 w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-800">
+        <div className="flex items-center justify-between p-4 border-b border-gray-800">
           <div className="flex items-center gap-3">
-            <span className={`text-xs font-medium px-3 py-1 rounded border ${colorClass}`}>
+            <span className={`text-xs font-medium px-2 py-1 rounded border ${colorClass}`}>
               {task.type}
             </span>
-            <h2 className="text-xl font-bold text-white">{task.title}</h2>
+            <h2 className="text-lg font-bold text-white">{task.title}</h2>
           </div>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors"
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left: Task Details */}
-            <div className="space-y-6">
-              {/* Worker Action Card */}
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Wrench className="w-5 h-5 text-blue-400" />
-                  <h3 className="text-lg font-semibold text-white">Worker Action</h3>
-                </div>
-                <p className="text-sm text-gray-400 mb-4">
-                  Change task status to mark progress
-                </p>
-                <div className="flex flex-col gap-2">
-                  {getStatusButton('in_progress', 'In Progress', <Circle className="w-4 h-4" />)}
-                  {getStatusButton('completed', 'Mark as Done', <CheckCircle2 className="w-4 h-4" />)}
-                  {getStatusButton('verified', 'Verified', <Check className="w-4 h-4" />)}
-                </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="space-y-4">
+            {/* Worker Action Card */}
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Wrench className="w-4 h-4 text-blue-400" />
+                <h3 className="text-sm font-semibold text-white">Worker Action</h3>
               </div>
-
-              {/* Date & Time */}
-              <div className="flex items-center gap-2 text-gray-400">
-                <Calendar className="w-5 h-5" />
-                <span>
-                  {task.date ? new Date(task.date).toLocaleDateString('uk-UA', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric'
-                  }) : 'No date'}
-                  {task.time && ` • ${task.time}`}
-                </span>
-              </div>
-
-              {/* Assignee */}
-              <div className="flex items-center gap-2 text-gray-400">
-                <User className="w-5 h-5" />
-                <span>{assignee?.name || task.assignee || 'Unassigned'}</span>
-                {assignee?.role && (
-                  <span className="text-xs text-gray-500">({assignee.role})</span>
-                )}
-              </div>
-
-              {/* Property */}
-              {property && (
-                <div className="flex items-center gap-2 text-gray-400">
-                  <Building2 className="w-5 h-5" />
-                  <span>{property.title}</span>
-                </div>
-              )}
-
-              {/* Description */}
-              <div>
-                <h3 className="text-sm font-semibold text-gray-400 mb-2">Description</h3>
-                <div className="bg-[#1C1F24] rounded-lg p-4 border border-gray-800">
-                  <pre className="text-sm text-gray-300 whitespace-pre-wrap font-mono">
-                    {displayDescription}
-                  </pre>
-                  {parsedDescription?.action === 'transfer_inventory' && (
-                    <div className="mt-4 pt-4 border-t border-gray-700">
-                      <p className="text-xs text-gray-500 mb-2">Transfer Data:</p>
-                      <pre className="text-xs text-gray-400 whitespace-pre-wrap">
-                        {JSON.stringify(parsedDescription.transferData, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Status */}
-              <div>
-                <h3 className="text-sm font-semibold text-gray-400 mb-2">Status</h3>
-                <div className="flex items-center gap-2">
-                  {task.status === 'completed' || task.status === 'verified' ? (
-                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                  ) : (
-                    <Circle className="w-5 h-5 text-gray-500" />
-                  )}
-                  <span className="text-white capitalize">{task.status.replace('_', ' ')}</span>
-                </div>
+              <p className="text-xs text-gray-400 mb-3">
+                Change task status to mark progress
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {getStatusButton('in_progress', 'In Progress', <Circle className="w-3 h-3" />)}
+                {getStatusButton('completed', 'Mark as Done', <CheckCircle2 className="w-3 h-3" />)}
+                {getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />)}
               </div>
             </div>
 
-            {/* Right: Task Chat (placeholder) */}
-            <div className="bg-[#1C1F24] rounded-lg border border-gray-800 p-4">
-              <h3 className="text-lg font-semibold text-white mb-2">Task Chat</h3>
-              <p className="text-sm text-gray-400 mb-4">Communication history</p>
-              <div className="space-y-2">
-                <div className="bg-[#16181D] rounded-lg p-3 border border-gray-700">
-                  <p className="text-sm text-gray-300">Task received. I will be there on time.</p>
-                  <p className="text-xs text-gray-500 mt-1">08:30</p>
-                </div>
+            {/* Date & Time */}
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <Calendar className="w-4 h-4" />
+              <span>
+                {task.date ? new Date(task.date).toLocaleDateString('uk-UA', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric'
+                }) : 'No date'}
+                {task.time && ` • ${task.time}`}
+              </span>
+            </div>
+
+            {/* Assignee */}
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <User className="w-4 h-4" />
+              <span>{assignee?.name || task.assignee || 'Unassigned'}</span>
+              {assignee?.role && (
+                <span className="text-xs text-gray-500">({assignee.role})</span>
+              )}
+            </div>
+
+            {/* Property */}
+            {property && (
+              <div className="flex items-center gap-2 text-sm text-gray-400">
+                <Building2 className="w-4 h-4" />
+                <span>{property.title}</span>
               </div>
-              <div className="mt-4 pt-4 border-t border-gray-700">
-                <input
-                  type="text"
-                  placeholder="Type a message to the worker..."
-                  className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-4 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
+            )}
+
+            {/* Description */}
+            <div>
+              <h3 className="text-xs font-semibold text-gray-400 mb-2">Description</h3>
+              <div className="bg-[#1C1F24] rounded-lg p-3 border border-gray-800">
+                <p className="text-sm text-gray-300 whitespace-pre-wrap">
+                  {displayDescription}
+                </p>
+                {/* Приховано Transfer Data JSON - він не потрібен для відображення */}
+              </div>
+            </div>
+
+            {/* Status */}
+            <div>
+              <h3 className="text-xs font-semibold text-gray-400 mb-2">Status</h3>
+              <div className="flex items-center gap-2">
+                {task.status === 'completed' || task.status === 'verified' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                ) : (
+                  <Circle className="w-4 h-4 text-gray-500" />
+                )}
+                <span className="text-sm text-white capitalize">{task.status.replace('_', ' ')}</span>
               </div>
             </div>
           </div>
