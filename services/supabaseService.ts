@@ -34,6 +34,11 @@ export interface WarehouseStockItem {
   category?: string;
   sku?: string;
   defaultPrice?: number;
+  // New fields for extended stock view
+  unitPrice?: number; // Price per unit (from invoice or default)
+  invoiceNumber?: string; // Invoice number from first IN movement
+  purchaseDate?: string; // Purchase date from first IN movement
+  lastPropertyName?: string | null; // Property name if transferred, null if still on warehouse
 }
 
 // ==================== WORKERS ====================
@@ -73,6 +78,10 @@ export const workersService = {
 export const warehouseService = {
   /**
    * Load stock with joined item info for UI.
+   * Includes invoice info from first IN movement and last property from TRANSFER/OUT movements.
+   * 
+   * Note: In the future, invoiceNumber and purchaseDate can come directly from AI-recognized invoices
+   * (from OCR modal Add inventory), which will create warehouse_invoices and warehouse_invoice_lines records.
    */
   async getStock(warehouseId?: string): Promise<WarehouseStockItem[]> {
     console.log('📦 Loading warehouse stock...', warehouseId ? { warehouseId } : 'all warehouses');
@@ -108,17 +117,112 @@ export const warehouseService = {
       throw error;
     }
 
-    return (data || []).map((row: any): WarehouseStockItem => ({
-      stockId: row.id,
-      warehouseId: row.warehouse_id,
-      itemId: row.item_id,
-      quantity: parseFloat(row.quantity ?? 0),
-      itemName: row.items?.name || 'Unknown item',
-      unit: row.items?.unit || 'pcs',
-      category: row.items?.category || undefined,
-      sku: row.items?.sku || undefined,
-      defaultPrice: row.items?.default_price != null ? parseFloat(row.items.default_price) : undefined,
-    }));
+    // For each stock item, fetch invoice info and last property
+    const enrichedItems = await Promise.all(
+      (data || []).map(async (row: any): Promise<WarehouseStockItem> => {
+        const itemId = row.item_id;
+        const stockWarehouseId = row.warehouse_id;
+
+        // Find first IN movement for this item (to get invoice info)
+        const { data: firstInMovement } = await supabase
+          .from('stock_movements')
+          .select('invoice_id, date')
+          .eq('item_id', itemId)
+          .eq('warehouse_id', stockWarehouseId)
+          .eq('type', 'IN')
+          .order('date', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        let invoiceNumber: string | undefined;
+        let purchaseDate: string | undefined;
+        let unitPrice: number | undefined;
+
+        if (firstInMovement?.invoice_id) {
+          // Fetch invoice details
+          const { data: invoice } = await supabase
+            .from('warehouse_invoices')
+            .select('invoice_number, date')
+            .eq('id', firstInMovement.invoice_id)
+            .maybeSingle();
+
+          if (invoice) {
+            invoiceNumber = invoice.invoice_number;
+            purchaseDate = invoice.date;
+
+            // Try to get unit price from invoice line
+            const { data: invoiceLine } = await supabase
+              .from('warehouse_invoice_lines')
+              .select('unit_price')
+              .eq('invoice_id', firstInMovement.invoice_id)
+              .eq('suggested_item_id', itemId)
+              .order('created_at', { ascending: true })
+              .limit(1)
+              .maybeSingle();
+
+            if (invoiceLine?.unit_price) {
+              unitPrice = parseFloat(invoiceLine.unit_price);
+            }
+          }
+        }
+
+        // If no invoice price, use default_price from items
+        if (!unitPrice) {
+          unitPrice = row.items?.default_price != null ? parseFloat(row.items.default_price) : undefined;
+        }
+
+        // Find last TRANSFER or OUT movement with property_id (to determine current location)
+        const { data: lastTransferMovement } = await supabase
+          .from('stock_movements')
+          .select('property_id, date')
+          .eq('item_id', itemId)
+          .eq('warehouse_id', stockWarehouseId)
+          .in('type', ['TRANSFER', 'OUT'])
+          .not('property_id', 'is', null)
+          .order('date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        let lastPropertyName: string | null = null;
+
+        if (lastTransferMovement?.property_id) {
+          // Check if this transfer happened after purchase (if we have purchase date)
+          const shouldShowProperty =
+            !purchaseDate || new Date(lastTransferMovement.date) >= new Date(purchaseDate);
+
+          if (shouldShowProperty) {
+            // Fetch property name
+            const { data: property } = await supabase
+              .from('properties')
+              .select('title')
+              .eq('id', lastTransferMovement.property_id)
+              .maybeSingle();
+
+            if (property?.title) {
+              lastPropertyName = property.title;
+            }
+          }
+        }
+
+        return {
+          stockId: row.id,
+          warehouseId: row.warehouse_id,
+          itemId: row.item_id,
+          quantity: parseFloat(row.quantity ?? 0),
+          itemName: row.items?.name || 'Unknown item',
+          unit: row.items?.unit || 'pcs',
+          category: row.items?.category || undefined,
+          sku: row.items?.sku || undefined,
+          defaultPrice: row.items?.default_price != null ? parseFloat(row.items.default_price) : undefined,
+          unitPrice: unitPrice,
+          invoiceNumber: invoiceNumber,
+          purchaseDate: purchaseDate,
+          lastPropertyName: lastPropertyName,
+        };
+      })
+    );
+
+    return enrichedItems;
   },
 
   /**

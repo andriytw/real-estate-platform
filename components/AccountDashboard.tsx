@@ -2135,17 +2135,31 @@ const AccountDashboard: React.FC = () => {
                               }}
                             />
                           </th>
-                          <th className="px-3 py-2 text-left border-b border-gray-700">Item</th>
-                          <th className="px-3 py-2 text-left border-b border-gray-700">Category</th>
-                          <th className="px-3 py-2 text-left border-b border-gray-700">SKU</th>
-                          <th className="px-3 py-2 text-right border-b border-gray-700">Quantity</th>
-                          <th className="px-3 py-2 text-left border-b border-gray-700">Unit</th>
+                          <th className="px-3 py-2 text-left border-b border-gray-700">Артикул</th>
+                          <th className="px-3 py-2 text-left border-b border-gray-700">Назва товару</th>
+                          <th className="px-3 py-2 text-right border-b border-gray-700">К-сть</th>
+                          <th className="px-3 py-2 text-right border-b border-gray-700">Ціна (од.)</th>
+                          <th className="px-3 py-2 text-left border-b border-gray-700">Номер інвойсу</th>
+                          <th className="px-3 py-2 text-left border-b border-gray-700">Дата покупки</th>
+                          <th className="px-3 py-2 text-left border-b border-gray-700">Об'єкт</th>
                           <th className="px-3 py-2 text-center border-b border-gray-700">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-800">
                         {warehouseStock.map((row) => {
                           const selected = selectedStockIds.has(row.stockId);
+                          // Format purchase date
+                          const formattedDate = row.purchaseDate
+                            ? new Date(row.purchaseDate).toLocaleDateString('uk-UA', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                              })
+                            : '-';
+                          // Format price
+                          const formattedPrice = row.unitPrice != null ? `€${row.unitPrice.toFixed(2)}` : '-';
+                          // Determine object (Склад or property name)
+                          const objectName = row.lastPropertyName || 'Склад';
                           return (
                             <tr
                               key={row.stockId}
@@ -2159,13 +2173,25 @@ const AccountDashboard: React.FC = () => {
                                   onChange={() => toggleStockSelection(row.stockId)}
                                 />
                               </td>
+                              <td className="px-3 py-2 text-gray-400">{row.sku || '-'}</td>
                               <td className="px-3 py-2">
                                 <div className="font-medium text-gray-100">{row.itemName}</div>
                               </td>
-                              <td className="px-3 py-2 text-gray-400">{row.category || '-'}</td>
-                              <td className="px-3 py-2 text-gray-400">{row.sku || '-'}</td>
                               <td className="px-3 py-2 text-right font-mono text-gray-100">{row.quantity}</td>
-                              <td className="px-3 py-2 text-gray-400">{row.unit}</td>
+                              <td className="px-3 py-2 text-right text-gray-300">{formattedPrice}</td>
+                              <td className="px-3 py-2 text-gray-400">{row.invoiceNumber || '-'}</td>
+                              <td className="px-3 py-2 text-gray-400">{formattedDate}</td>
+                              <td className="px-3 py-2">
+                                <span
+                                  className={`text-xs font-medium ${
+                                    row.lastPropertyName
+                                      ? 'text-blue-400'
+                                      : 'text-gray-400'
+                                  }`}
+                                >
+                                  {objectName}
+                                </span>
+                              </td>
                               <td className="px-3 py-2 text-center">
                                 <button
                                   onClick={() => handleDeleteStockItem(row.stockId)}
