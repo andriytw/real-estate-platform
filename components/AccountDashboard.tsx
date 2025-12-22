@@ -1670,7 +1670,12 @@ const AccountDashboard: React.FC = () => {
     if (!selectedProperty) return <div>Loading...</div>;
     const expense = selectedProperty.ownerExpense || { mortgage: 0, management: 0, taxIns: 0, reserve: 0 };
     const totalExpense = expense.mortgage + expense.management + expense.taxIns + expense.reserve;
-    const totalInventoryCost = selectedProperty.inventory.reduce((acc, item) => acc + (item.cost * item.quantity), 0);
+    // Use unitPrice if present, otherwise fall back to legacy cost field
+    const totalInventoryCost = selectedProperty.inventory.reduce((acc, item: any) => {
+      const unitPrice = item.unitPrice != null ? item.unitPrice : (item.cost || 0);
+      const qty = item.quantity || 0;
+      return acc + unitPrice * qty;
+    }, 0);
 
     return (
       <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-[#111315]">
@@ -1795,7 +1800,12 @@ const AccountDashboard: React.FC = () => {
                             {isInventoryEditing ? 'Зберегти' : 'Редагувати'}
                         </button>
                         {isInventoryEditing && (
-                            <button onClick={handleAddInventoryRow} className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"><Plus className="w-3 h-3 mr-1 inline"/> Додати</button>
+                            <button
+                                onClick={handleAddInventoryRow}
+                                className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                            >
+                                <Plus className="w-3 h-3 mr-1 inline" /> Додати
+                            </button>
                         )}
                     </div>
                 </div>
@@ -1803,38 +1813,162 @@ const AccountDashboard: React.FC = () => {
                     <table className="w-full text-sm text-left">
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
                             <tr>
-                                <th className="p-3 font-bold text-xs uppercase w-[30%]">Тип</th>
-                                <th className="p-3 font-bold text-xs uppercase w-[25%]">Інвентарний №</th>
-                                <th className="p-3 font-bold text-xs uppercase w-[15%]">К-сть</th>
-                                <th className="p-3 font-bold text-xs uppercase w-[20%]">Вартість</th>
-                                {isInventoryEditing && <th className="p-3 font-bold text-xs uppercase w-[10%] text-center">Дії</th>}
+                                <th className="p-3 font-bold text-xs uppercase">Артикул</th>
+                                <th className="p-3 font-bold text-xs uppercase">Назва товару</th>
+                                <th className="p-3 font-bold text-xs uppercase text-right">К-сть</th>
+                                <th className="p-3 font-bold text-xs uppercase text-right">Ціна (од.)</th>
+                                <th className="p-3 font-bold text-xs uppercase">Номер інвойсу</th>
+                                <th className="p-3 font-bold text-xs uppercase">Дата покупки</th>
+                                {isInventoryEditing && (
+                                  <th className="p-3 font-bold text-xs uppercase text-center">Дії</th>
+                                )}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                            {selectedProperty.inventory.map((item, idx) => (
+                            {selectedProperty.inventory.map((item: any, idx: number) => {
+                              const unitPrice =
+                                item.unitPrice != null ? item.unitPrice : (item.cost || 0);
+                              const formattedPrice =
+                                unitPrice > 0 ? `€${unitPrice.toFixed(2)}` : '-';
+                              const formattedDate = item.purchaseDate
+                                ? new Date(item.purchaseDate).toLocaleDateString('uk-UA', {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                  })
+                                : '-';
+
+                              return (
                                 <tr key={idx} className="hover:bg-[#1C1F24]">
-                                    <td className="p-3">
-                                        {isInventoryEditing ? <input className="bg-transparent border-b border-gray-700 w-full text-white outline-none" value={item.type} onChange={(e) => handleUpdateInventoryItem(idx, 'type', e.target.value)} /> : <span className="text-white font-bold">{item.type}</span>}
-                                    </td>
-                                    <td className="p-3 text-gray-400 text-xs">{item.invNumber}</td>
-                                    <td className="p-3">
-                                        {isInventoryEditing ? <input type="number" className="bg-transparent border-b border-gray-700 w-16 text-white outline-none" value={item.quantity} onChange={(e) => handleUpdateInventoryItem(idx, 'quantity', parseInt(e.target.value))} /> : <span className="text-gray-300">{item.quantity} шт.</span>}
-                                    </td>
-                                    <td className="p-3">
-                                        {isInventoryEditing ? <input type="number" className="bg-transparent border-b border-gray-700 w-20 text-white outline-none" value={item.cost} onChange={(e) => handleUpdateInventoryItem(idx, 'cost', parseFloat(e.target.value))} /> : <span className="text-white font-mono">{item.cost} €</span>}
-                                    </td>
-                                    {isInventoryEditing && (
-                                        <td className="p-3 text-center">
-                                            <button onClick={() => handleDeleteInventoryItem(idx)} className="text-red-500 hover:text-red-400 p-1"><Trash2 className="w-3 h-3"/></button>
-                                        </td>
+                                  <td className="p-3 text-gray-400 text-xs">
+                                    {isInventoryEditing ? (
+                                      <input
+                                        className="bg-transparent border-b border-gray-700 w-full text-xs text-white outline-none"
+                                        value={item.sku || ''}
+                                        onChange={(e) =>
+                                          handleUpdateInventoryItem(idx, 'sku', e.target.value)
+                                        }
+                                        placeholder="SKU"
+                                      />
+                                    ) : (
+                                      item.sku || '-'
                                     )}
+                                  </td>
+                                  <td className="p-3">
+                                    {isInventoryEditing ? (
+                                      <input
+                                        className="bg-transparent border-b border-gray-700 w-full text-white outline-none"
+                                        value={item.name || item.type || ''}
+                                        onChange={(e) =>
+                                          handleUpdateInventoryItem(idx, 'name', e.target.value)
+                                        }
+                                        placeholder="Назва товару"
+                                      />
+                                    ) : (
+                                      <span className="text-white font-bold">
+                                        {item.name || item.type}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    {isInventoryEditing ? (
+                                      <input
+                                        type="number"
+                                        className="bg-transparent border-b border-gray-700 w-16 text-right text-white outline-none"
+                                        value={item.quantity || 0}
+                                        onChange={(e) =>
+                                          handleUpdateInventoryItem(
+                                            idx,
+                                            'quantity',
+                                            parseInt(e.target.value || '0', 10)
+                                          )
+                                        }
+                                      />
+                                    ) : (
+                                      <span className="text-gray-300 font-mono">
+                                        {item.quantity || 0}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    {isInventoryEditing ? (
+                                      <input
+                                        type="number"
+                                        className="bg-transparent border-b border-gray-700 w-20 text-right text-white outline-none"
+                                        value={unitPrice}
+                                        onChange={(e) =>
+                                          handleUpdateInventoryItem(
+                                            idx,
+                                            'unitPrice',
+                                            parseFloat(e.target.value || '0')
+                                          )
+                                        }
+                                      />
+                                    ) : (
+                                      <span className="text-white font-mono">
+                                        {formattedPrice}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="p-3 text-gray-400 text-xs">
+                                    {isInventoryEditing ? (
+                                      <input
+                                        className="bg-transparent border-b border-gray-700 w-full text-xs text-white outline-none"
+                                        value={item.invoiceNumber || ''}
+                                        onChange={(e) =>
+                                          handleUpdateInventoryItem(
+                                            idx,
+                                            'invoiceNumber',
+                                            e.target.value
+                                          )
+                                        }
+                                        placeholder="INV-..."
+                                      />
+                                    ) : (
+                                      item.invoiceNumber || '-'
+                                    )}
+                                  </td>
+                                  <td className="p-3 text-gray-400 text-xs">
+                                    {isInventoryEditing ? (
+                                      <input
+                                        type="date"
+                                        className="bg-transparent border-b border-gray-700 text-xs text-white outline-none"
+                                        value={item.purchaseDate || ''}
+                                        onChange={(e) =>
+                                          handleUpdateInventoryItem(
+                                            idx,
+                                            'purchaseDate',
+                                            e.target.value
+                                          )
+                                        }
+                                      />
+                                    ) : (
+                                      formattedDate
+                                    )}
+                                  </td>
+                                  {isInventoryEditing && (
+                                    <td className="p-3 text-center">
+                                      <button
+                                        onClick={() => handleDeleteInventoryItem(idx)}
+                                        className="text-red-500 hover:text-red-400 p-1"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </td>
+                                  )}
                                 </tr>
-                            ))}
+                              );
+                            })}
                         </tbody>
                     </table>
                 </div>
                 <div className="flex justify-end mt-3 pt-3 border-t border-gray-700">
-                    <p className="text-sm font-bold text-gray-400">Загальна вартість: <span className="text-emerald-500 ml-1">{totalInventoryCost} €</span></p>
+                    <p className="text-sm font-bold text-gray-400">
+                      Загальна вартість:
+                      <span className="text-emerald-500 ml-1">
+                        {totalInventoryCost.toFixed(2)} €
+                      </span>
+                    </p>
                 </div>
             </section>
 
