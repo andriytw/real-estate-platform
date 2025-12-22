@@ -653,6 +653,76 @@ const AccountDashboard: React.FC = () => {
     }
   };
 
+  // Функція для виконання transfer інвентарю після підтвердження завдання
+  const executeInventoryTransfer = async (transferData: any) => {
+    try {
+      const { transferData: items, propertyId } = transferData;
+
+      // 1) Зменшити залишки на складі + записати рух
+      for (const item of items) {
+        await warehouseService.decreaseStockQuantity(item.stockId, item.quantity);
+        await warehouseService.createStockMovement({
+          warehouseId: item.warehouseId,
+          itemId: item.itemId,
+          type: 'OUT',
+          quantity: item.quantity,
+          reason: 'Transfer to property (confirmed)',
+          propertyId: propertyId,
+          workerId: undefined,
+          invoiceId: undefined,
+        });
+      }
+
+      // 2) Оновити інвентар квартири (отримуємо property з бази для надійності)
+      const property = await propertiesService.getById(propertyId);
+      if (property) {
+        const newInventory = [...(property.inventory || [])];
+
+        items.forEach((item: any) => {
+          const invId = `WAREHOUSE-${item.itemId}`;
+          const existingIndex = newInventory.findIndex((i: any) => i.invNumber === invId);
+
+          if (existingIndex >= 0) {
+            const existing = newInventory[existingIndex];
+            newInventory[existingIndex] = {
+              ...existing,
+              quantity: (existing.quantity || 0) + item.quantity,
+            };
+          } else {
+            newInventory.push({
+              type: item.itemName,
+              invNumber: invId,
+              quantity: item.quantity,
+              cost: item.unitPrice || 0,
+              itemId: item.itemId,
+              name: item.itemName,
+              unitPrice: item.unitPrice || 0,
+              totalCost: (item.unitPrice || 0) * item.quantity,
+              sku: item.sku,
+              invoiceNumber: item.invoiceNumber,
+              purchaseDate: item.purchaseDate,
+            });
+          }
+        });
+
+        await propertiesService.update(propertyId, {
+          ...property,
+          inventory: newInventory,
+        });
+      }
+
+      // 3) Оновити склад
+      const refreshed = await warehouseService.getStock();
+      setWarehouseStock(refreshed);
+      
+      // 4) Оновити список квартир (щоб інвентар відобразився)
+      window.dispatchEvent(new CustomEvent('propertiesUpdated'));
+    } catch (error) {
+      console.error('Error executing inventory transfer:', error);
+      throw error;
+    }
+  };
+
   const handleExecuteTransfer = async () => {
     if (!transferPropertyId || !transferWorkerId || selectedStockItems.length === 0) return;
 
@@ -660,64 +730,34 @@ const AccountDashboard: React.FC = () => {
       setIsExecutingTransfer(true);
       setTransferError(null);
 
-      // 1) Зменшити залишки на складі + записати рух
-      for (const row of selectedStockItems) {
-        const qtyToTransfer = row.quantity; // поточно переносимо все, що вибрано
-        if (qtyToTransfer <= 0) continue;
+      // НЕ міняємо warehouse_stock і property.inventory відразу!
+      // Тільки створюємо завдання з інформацією про transfer
+      // Transfer виконається тільки після підтвердження завдання (completed/verified)
 
-        await warehouseService.decreaseStockQuantity(row.stockId, qtyToTransfer);
-        await warehouseService.createStockMovement({
-          warehouseId: row.warehouseId,
-          itemId: row.itemId,
-          type: 'OUT',
-          quantity: qtyToTransfer,
-          reason: 'Transfer to property',
-          propertyId: transferPropertyId,
-          workerId: transferWorkerId,
-          invoiceId: undefined,
-        });
-      }
+      // 1) Підготувати дані для transfer (зберігаємо в завданні)
+      const transferData = selectedStockItems.map((row) => ({
+        stockId: row.stockId,
+        warehouseId: row.warehouseId,
+        itemId: row.itemId,
+        itemName: row.itemName,
+        quantity: row.quantity,
+        unitPrice: row.unitPrice || row.defaultPrice || 0,
+        sku: row.sku,
+        invoiceNumber: row.invoiceNumber,
+        purchaseDate: row.purchaseDate,
+      }));
 
-      // 2) Оновити інвентар квартири (Property.inventory)
-      const property = properties.find((p) => p.id === transferPropertyId);
-      if (property) {
-        const newInventory = [...(property.inventory || [])];
-
-        selectedStockItems.forEach((row) => {
-          const invId = `WAREHOUSE-${row.itemId}`;
-          const existingIndex = newInventory.findIndex((i: any) => i.invNumber === invId);
-          const qtyToAdd = row.quantity;
-
-          if (existingIndex >= 0) {
-            const existing = newInventory[existingIndex];
-            newInventory[existingIndex] = {
-              ...existing,
-              quantity: (existing.quantity || 0) + qtyToAdd,
-            };
-          } else {
-            newInventory.push({
-              type: row.itemName,
-              invNumber: invId,
-              quantity: qtyToAdd,
-              cost: 0,
-              itemId: row.itemId,
-              name: row.itemName,
-              unitPrice: row.defaultPrice,
-              totalCost: row.defaultPrice != null ? row.defaultPrice * qtyToAdd : 0,
-            });
-          }
-        });
-
-        await propertiesService.update(transferPropertyId, {
-          ...property,
-          inventory: newInventory,
-        });
-      }
-
-      // 3) Створити таску для працівника (Facility)
+      // 2) Створити завдання для працівника (Facility) з даними про transfer
       const propertyName = getPropertyNameById(transferPropertyId) || 'квартира';
       const workerObj = workers.find((w) => w.id === transferWorkerId);
       const today = new Date();
+
+      const taskDescription = {
+        action: 'transfer_inventory',
+        transferData: transferData,
+        propertyId: transferPropertyId,
+        originalDescription: `Перевезти інвентар зі складу в ${propertyName}. Призначено: ${workerObj?.name || 'працівник'}.`,
+      };
 
       await tasksService.create({
         id: '', // буде згенеровано на бекенді
@@ -730,9 +770,7 @@ const AccountDashboard: React.FC = () => {
         type: 'Arbeit nach plan',
         day: today.getDate(),
         date: today.toISOString().split('T')[0],
-        description: `Перевезти інвентар зі складу в ${propertyName}. Призначено: ${
-          workerObj?.name || 'працівник'
-        }.`,
+        description: JSON.stringify(taskDescription),
         assignee: workerObj?.name,
         assignedWorkerId: transferWorkerId,
         hasUnreadMessage: false,
@@ -749,14 +787,17 @@ const AccountDashboard: React.FC = () => {
         createdAt: today.toISOString(),
       });
 
+      // 3) Оновити календар Facility
+      window.dispatchEvent(new CustomEvent('taskUpdated'));
+
       // 4) Перечитати склад та очистити вибір
       const refreshed = await warehouseService.getStock();
       setWarehouseStock(refreshed);
       setSelectedStockIds(new Set());
       setIsTransferModalOpen(false);
     } catch (error: any) {
-      console.error('Error executing transfer:', error);
-      setTransferError(error?.message || 'Не вдалося виконати перевезення. Спробуйте ще раз.');
+      console.error('Error creating transfer task:', error);
+      setTransferError(error?.message || 'Не вдалося створити завдання. Спробуйте ще раз.');
     } finally {
       setIsExecutingTransfer(false);
     }
@@ -814,6 +855,33 @@ const AccountDashboard: React.FC = () => {
         
         const tasks = await tasksService.getAll(filters);
         console.log('✅ Reloaded Facility tasks:', tasks.length);
+        
+        // Перевірити, чи є transfer tasks, які стали completed/verified і потребують виконання
+        for (const task of tasks) {
+          if ((task.status === 'completed' || task.status === 'verified') && task.description) {
+            try {
+              const desc = task.description;
+              const parsed = JSON.parse(desc);
+              if (parsed.action === 'transfer_inventory' && parsed.transferData) {
+                // Перевірити, чи transfer вже виконано (можна додати прапорець в parsed)
+                if (!parsed.transferExecuted) {
+                  console.log('📦 Executing inventory transfer for task:', task.id);
+                  await executeInventoryTransfer(parsed);
+                  
+                  // Позначити transfer як виконаний в description
+                  parsed.transferExecuted = true;
+                  await tasksService.update(task.id, {
+                    description: JSON.stringify(parsed),
+                  });
+                  
+                  console.log('✅ Inventory transfer executed for task:', task.id);
+                }
+              }
+            } catch (e) {
+              // Не JSON або не transfer task - ігноруємо
+            }
+          }
+        }
         
         setAdminEvents(tasks);
       } catch (error) {
