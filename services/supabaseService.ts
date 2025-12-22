@@ -1180,7 +1180,16 @@ export const propertiesService = {
 
   // Update property
   async update(id: string, updates: Partial<Property>): Promise<Property> {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1182',message:'propertiesService.update entry',data:{propertyId:id,hasInventory:!!updates.inventory,inventoryCount:updates.inventory?.length||0,inventoryItems:updates.inventory?.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+    
     const dbData = transformPropertyToDB(updates as Property);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1186',message:'dbData before update',data:{hasInventory:!!dbData.inventory,inventoryCount:dbData.inventory?.length||0,inventoryItems:dbData.inventory?.slice(0,3)||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+    
     const { data, error } = await supabase
       .from('properties')
       .update(dbData)
@@ -1188,8 +1197,20 @@ export const propertiesService = {
       .select()
       .single();
     
-    if (error) throw error;
-    return transformPropertyFromDB(data);
+    if (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1193',message:'propertiesService.update error',data:{error:error.message,code:error.code},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
+      throw error;
+    }
+    
+    const transformed = transformPropertyFromDB(data);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1200',message:'propertiesService.update success',data:{propertyId:id,returnedInventoryCount:transformed.inventory?.length||0,returnedInventoryItems:transformed.inventory?.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
+    
+    return transformed;
   },
 
   // Delete property
@@ -1480,7 +1501,7 @@ function transformPropertyFromDB(db: any): Property {
     // For lightweight queries, these may be undefined - provide defaults
     details: db.details || {},
     building: db.building || {},
-    inventory: db.inventory || [],
+    inventory: Array.isArray(db.inventory) ? db.inventory : (db.inventory ? JSON.parse(db.inventory) : []),
     meterReadings: db.meter_readings || db.meterReadings || [],
     meterLog: db.meter_log || db.meterLog || [],
     tenant: db.tenant,
@@ -1511,56 +1532,63 @@ function transformPropertyFromDB(db: any): Property {
 }
 
 function transformPropertyToDB(property: Property): any {
-  return {
-    title: property.title,
-    address: property.address,
-    zip: property.zip,
-    city: property.city,
-    district: property.district,
-    country: property.country,
-    price: property.price,
-    price_per_sqm: property.pricePerSqm,
-    rooms: property.rooms,
-    area: property.area,
-    image: property.image,
-    images: property.images,
-    status: property.status,
-    full_address: property.fullAddress,
-    meta: property.meta,
-    term: property.term,
-    term_status: property.termStatus,
-    balance: property.balance,
-    description: property.description,
-    details: property.details,
-    building: property.building,
-    inventory: property.inventory,
-    meter_readings: property.meterReadings,
-    meter_log: property.meterLog,
-    tenant: property.tenant,
-    rental_history: property.rentalHistory,
-    rent_payments: property.rentPayments,
-    owner_expense: property.ownerExpense,
-    future_payments: property.futurePayments,
-    repair_requests: property.repairRequests,
-    events: property.events,
-    floor: property.floor,
-    total_floors: property.totalFloors,
-    bathrooms: property.bathrooms,
-    balcony: property.balcony,
-    built_year: property.builtYear,
-    renovation_year: property.renovationYear,
-    net_rent: property.netRent,
-    ancillary_costs: property.ancillaryCosts,
-    heating_costs: property.heatingCosts,
-    heating_included: property.heatingIncluded,
-    deposit: property.deposit,
-    building_type: property.buildingType,
-    heating_type: property.heatingType,
-    energy_certificate: property.energyCertificate,
-    end_energy_demand: property.endEnergyDemand,
-    energy_efficiency_class: property.energyEfficiencyClass,
-    parking: property.parking,
-  };
+  const result: any = {};
+  
+  // Додаємо поля тільки якщо вони визначені (для Partial<Property>)
+  if (property.title !== undefined) result.title = property.title;
+  if (property.address !== undefined) result.address = property.address;
+  if (property.zip !== undefined) result.zip = property.zip;
+  if (property.city !== undefined) result.city = property.city;
+  if (property.district !== undefined) result.district = property.district;
+  if (property.country !== undefined) result.country = property.country;
+  if (property.price !== undefined) result.price = property.price;
+  if (property.pricePerSqm !== undefined) result.price_per_sqm = property.pricePerSqm;
+  if (property.rooms !== undefined) result.rooms = property.rooms;
+  if (property.area !== undefined) result.area = property.area;
+  if (property.image !== undefined) result.image = property.image;
+  if (property.images !== undefined) result.images = property.images;
+  if (property.status !== undefined) result.status = property.status;
+  if (property.fullAddress !== undefined) result.full_address = property.fullAddress;
+  if (property.meta !== undefined) result.meta = property.meta;
+  if (property.term !== undefined) result.term = property.term;
+  if (property.termStatus !== undefined) result.term_status = property.termStatus;
+  if (property.balance !== undefined) result.balance = property.balance;
+  if (property.description !== undefined) result.description = property.description;
+  if (property.details !== undefined) result.details = property.details;
+  if (property.building !== undefined) result.building = property.building;
+  // КРИТИЧНО: inventory завжди має бути масивом (навіть порожнім), не undefined
+  // Якщо inventory передано, завжди встановлюємо його (навіть якщо це порожній масив)
+  if (property.inventory !== undefined) {
+    result.inventory = Array.isArray(property.inventory) ? property.inventory : [];
+  }
+  if (property.meterReadings !== undefined) result.meter_readings = property.meterReadings;
+  if (property.meterLog !== undefined) result.meter_log = property.meterLog;
+  if (property.tenant !== undefined) result.tenant = property.tenant;
+  if (property.rentalHistory !== undefined) result.rental_history = property.rentalHistory;
+  if (property.rentPayments !== undefined) result.rent_payments = property.rentPayments;
+  if (property.ownerExpense !== undefined) result.owner_expense = property.ownerExpense;
+  if (property.futurePayments !== undefined) result.future_payments = property.futurePayments;
+  if (property.repairRequests !== undefined) result.repair_requests = property.repairRequests;
+  if (property.events !== undefined) result.events = property.events;
+  if (property.floor !== undefined) result.floor = property.floor;
+  if (property.totalFloors !== undefined) result.total_floors = property.totalFloors;
+  if (property.bathrooms !== undefined) result.bathrooms = property.bathrooms;
+  if (property.balcony !== undefined) result.balcony = property.balcony;
+  if (property.builtYear !== undefined) result.built_year = property.builtYear;
+  if (property.renovationYear !== undefined) result.renovation_year = property.renovationYear;
+  if (property.netRent !== undefined) result.net_rent = property.netRent;
+  if (property.ancillaryCosts !== undefined) result.ancillary_costs = property.ancillaryCosts;
+  if (property.heatingCosts !== undefined) result.heating_costs = property.heatingCosts;
+  if (property.heatingIncluded !== undefined) result.heating_included = property.heatingIncluded;
+  if (property.deposit !== undefined) result.deposit = property.deposit;
+  if (property.buildingType !== undefined) result.building_type = property.buildingType;
+  if (property.heatingType !== undefined) result.heating_type = property.heatingType;
+  if (property.energyCertificate !== undefined) result.energy_certificate = property.energyCertificate;
+  if (property.endEnergyDemand !== undefined) result.end_energy_demand = property.endEnergyDemand;
+  if (property.energyEfficiencyClass !== undefined) result.energy_efficiency_class = property.energyEfficiencyClass;
+  if (property.parking !== undefined) result.parking = property.parking;
+  
+  return result;
 }
 
 function transformBookingFromDB(db: any): Booking {

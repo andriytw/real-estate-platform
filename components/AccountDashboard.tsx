@@ -118,7 +118,79 @@ const AccountDashboard: React.FC = () => {
       try {
         setIsLoadingProperties(true);
         const data = await propertiesService.getAll();
-        setProperties(data);
+        
+        // #region agent log
+        if (data.length > 0) {
+          const firstProperty = data[0];
+          fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:120',message:'Properties loaded',data:{totalProperties:data.length,firstProperty:{id:firstProperty.id,title:firstProperty.title,inventoryCount:firstProperty.inventory?.length||0,inventoryItems:firstProperty.inventory?.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type,sku:i.sku}))||[]}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        }
+        // #endregion
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:129',message:'Setting properties from DB',data:{propertiesCount:data.length,isUsingMock:false,firstPropertyId:data[0]?.id,firstPropertyTitle:data[0]?.title,firstPropertyInventoryCount:data[0]?.inventory?.length||0,firstPropertyInventory:data[0]?.inventory?.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
+        
+        // Очистити inventory, який пов'язаний зі складом, але не знайдений на складі
+        // Це автоматично видалить inventory, який був видалений зі складу
+        let stock: any[] = [];
+        try {
+          stock = await warehouseService.getStock();
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:137',message:'Warehouse stock loaded for cleanup',data:{stockCount:stock.length,stockItemIds:stock.map(s=>s.itemId).slice(0,5)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+          // #endregion
+        } catch (error) {
+          console.error('Error loading warehouse stock for cleanup:', error);
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:142',message:'Error loading warehouse stock',data:{error:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+          // #endregion
+        }
+        
+        const stockItemIds = new Set(stock.map(s => s.itemId));
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:148',message:'Stock itemIds set created',data:{stockItemIdsCount:stockItemIds.size,stockItemIdsArray:Array.from(stockItemIds).slice(0,5)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+        // #endregion
+        
+        const cleanedData = await Promise.all(data.map(async (property) => {
+          if (property.inventory && property.inventory.length > 0) {
+            const cleanedInventory = property.inventory.filter((item: any) => {
+              // Залишаємо старий інвентар без itemId та без invNumber у форматі WAREHOUSE-
+              if (!item.itemId && (!item.invNumber || !item.invNumber.startsWith('WAREHOUSE-'))) {
+                return true; // Старий інвентар - залишаємо
+              }
+              
+              // Якщо item має itemId, перевіряємо, чи він є на складі
+              if (item.itemId) {
+                return stockItemIds.has(item.itemId);
+              }
+              
+              // Якщо item має invNumber у форматі WAREHOUSE-, перевіряємо, чи відповідний itemId є на складі
+              if (item.invNumber && item.invNumber.startsWith('WAREHOUSE-')) {
+                const itemIdFromInvNumber = item.invNumber.replace('WAREHOUSE-', '');
+                return stockItemIds.has(itemIdFromInvNumber);
+              }
+              
+              return true; // Якщо не визначено - залишаємо (старий інвентар)
+            });
+            
+            if (cleanedInventory.length !== property.inventory.length) {
+              console.log(`🧹 Cleaning inventory for ${property.title}: ${property.inventory.length} -> ${cleanedInventory.length} items`);
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:168',message:'Cleaning property inventory',data:{propertyId:property.id,propertyTitle:property.title,oldCount:property.inventory.length,newCount:cleanedInventory.length,removedItems:property.inventory.filter((i:any)=>!cleanedInventory.some((ci:any)=>ci.itemId===i.itemId&&ci.invNumber===i.invNumber)).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+              // #endregion
+              // Оновити property в БД
+              await propertiesService.update(property.id, {
+                inventory: cleanedInventory,
+              });
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:175',message:'Property inventory updated in DB',data:{propertyId:property.id,newInventoryCount:cleanedInventory.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+              // #endregion
+              return { ...property, inventory: cleanedInventory };
+            }
+          }
+          return property;
+        }));
+        
+        setProperties(cleanedData);
         // Use functional update to avoid dependency on selectedPropertyId
         setSelectedPropertyId(prev => {
           if (!prev && data.length > 0) {
@@ -128,6 +200,9 @@ const AccountDashboard: React.FC = () => {
         });
       } catch (error) {
         console.error('Error loading properties in Dashboard:', error);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:137',message:'Error loading properties, using MOCK_PROPERTIES',data:{error:error instanceof Error ? error.message : String(error),mockPropertiesCount:MOCK_PROPERTIES.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
         // Fallback to mock data if error
         setProperties(MOCK_PROPERTIES);
         setSelectedPropertyId(prev => {
@@ -608,8 +683,17 @@ const AccountDashboard: React.FC = () => {
     if (!confirm('Are you sure you want to delete this item from warehouse stock? This will also remove it from all apartments where it was transferred.')) return;
 
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:607',message:'handleDeleteStockItem entry',data:{stockId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      
       // Спочатку отримуємо інформацію про stock item, щоб знати itemId
       const stockItem = warehouseStock.find(item => item.stockId === stockId);
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:612',message:'stockItem found',data:{stockItem:stockItem?{stockId:stockItem.stockId,itemId:stockItem.itemId,itemName:stockItem.itemName}:null,warehouseStockLength:warehouseStock.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      
       if (!stockItem) {
         alert('Stock item not found');
         return;
@@ -617,6 +701,10 @@ const AccountDashboard: React.FC = () => {
 
       const itemId = stockItem.itemId;
       const invNumber = `WAREHOUSE-${itemId}`;
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:619',message:'itemId and invNumber extracted',data:{itemId,invNumber,itemName:stockItem.itemName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
 
       // Видаляємо зі складу
       await warehouseService.deleteStockItem(stockId);
@@ -627,27 +715,48 @@ const AccountDashboard: React.FC = () => {
         const allProperties = await propertiesService.getAll();
         const itemName = stockItem.itemName;
         
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:625',message:'Starting property search',data:{allPropertiesCount:allProperties.length,itemId,itemName,invNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        
         for (const property of allProperties) {
           if (property.inventory && property.inventory.length > 0) {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:630',message:'Checking property inventory',data:{propertyId:property.id,propertyTitle:property.title,inventoryCount:property.inventory.length,inventoryItems:property.inventory.map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
+            
             // Шукаємо інвентар за itemId, invNumber або назвою товару
             const inventoryToRemove = property.inventory.filter((item: any) => {
               // Перевірка за itemId
               if (item.itemId === itemId) {
                 console.log(`  ✓ Found by itemId in ${property.title}: ${item.name || item.type}`);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:635',message:'Match found by itemId',data:{propertyId:property.id,item:item},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                // #endregion
                 return true;
               }
               // Перевірка за invNumber
               if (item.invNumber === invNumber) {
                 console.log(`  ✓ Found by invNumber in ${property.title}: ${item.name || item.type}`);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:640',message:'Match found by invNumber',data:{propertyId:property.id,item:item,invNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                // #endregion
                 return true;
               }
               // Перевірка за назвою товару (якщо немає itemId)
               if (!item.itemId && (item.name === itemName || item.type === itemName)) {
                 console.log(`  ✓ Found by name in ${property.title}: ${item.name || item.type}`);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:645',message:'Match found by name',data:{propertyId:property.id,item:item,itemName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+                // #endregion
                 return true;
               }
               return false;
             });
+            
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:650',message:'inventoryToRemove result',data:{propertyId:property.id,foundCount:inventoryToRemove.length,itemsToRemove:inventoryToRemove.map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
             
             if (inventoryToRemove.length > 0) {
               console.log(`🗑️ Removing ${inventoryToRemove.length} inventory item(s) from property: ${property.title}`);
@@ -660,17 +769,38 @@ const AccountDashboard: React.FC = () => {
                 );
               });
               
-              await propertiesService.update(property.id, {
-                ...property,
-                inventory: updatedInventory,
-              });
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:660',message:'Before property update',data:{propertyId:property.id,oldInventoryCount:property.inventory.length,newInventoryCount:updatedInventory.length,oldInventory:property.inventory.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type})),newInventory:updatedInventory.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+              // #endregion
+              
+              // Створюємо payload тільки з необхідними полями для оновлення
+              // Важливо: передаємо inventory як масив, навіть якщо він порожній
+              // Також передаємо id property, щоб Supabase знав, який запис оновлювати
+              const updatePayload: Partial<Property> = {
+                id: property.id, // Додаємо id для явного вказання
+                inventory: Array.isArray(updatedInventory) ? updatedInventory : [], // Гарантуємо, що це масив
+              };
+              
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:667',message:'Update payload prepared',data:{propertyId:property.id,payloadInventoryCount:updatePayload.inventory?.length||0,payloadInventory:updatePayload.inventory?.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+              // #endregion
+              
+              const updatedProperty = await propertiesService.update(property.id, updatePayload);
+              
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:675',message:'After property update',data:{propertyId:property.id,returnedInventoryCount:updatedProperty.inventory?.length||0,returnedInventory:updatedProperty.inventory?.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+              // #endregion
             }
           }
         }
         
         // Оновити локальний стан properties
         setProperties((prev) => {
-          return prev.map((p) => {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:675',message:'Before local state update',data:{prevPropertiesCount:prev.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+          
+          const updated = prev.map((p) => {
             if (p.inventory && p.inventory.length > 0) {
               const updatedInventory = p.inventory.filter((item: any) => {
                 // Залишаємо тільки ті, які не відповідають критеріям видалення
@@ -682,11 +812,20 @@ const AccountDashboard: React.FC = () => {
               });
               if (updatedInventory.length !== p.inventory.length) {
                 console.log(`  ✓ Updated local state for property: ${p.title}`);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:685',message:'Local state updated for property',data:{propertyId:p.id,propertyTitle:p.title,oldCount:p.inventory.length,newCount:updatedInventory.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                // #endregion
                 return { ...p, inventory: updatedInventory };
               }
             }
             return p;
           });
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:692',message:'After local state update',data:{updatedPropertiesCount:updated.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+          
+          return updated;
         });
         
         // Оновити список квартир
@@ -1859,6 +1998,13 @@ const AccountDashboard: React.FC = () => {
 
   const renderPropertiesContent = () => {
     const selectedProperty = properties.find(p => p.id === selectedPropertyId) || properties[0];
+    
+    // #region agent log
+    if (selectedProperty) {
+      fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1931',message:'selectedProperty used for rendering',data:{propertyId:selectedProperty.id,propertyTitle:selectedProperty.title,inventoryCount:selectedProperty.inventory?.length||0,inventoryItems:selectedProperty.inventory?.slice(0,5).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type,sku:i.sku})),isFromMock:selectedProperty.id === '1' && selectedProperty.title === 'Apartment 1, Lviv'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+    }
+    // #endregion
+    
     if (!selectedProperty) return <div>Loading...</div>;
     const expense = selectedProperty.ownerExpense || { mortgage: 0, management: 0, taxIns: 0, reserve: 0 };
     const totalExpense = expense.mortgage + expense.management + expense.taxIns + expense.reserve;
@@ -2018,6 +2164,12 @@ const AccountDashboard: React.FC = () => {
                         </thead>
                         <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
                             {selectedProperty.inventory.map((item: any, idx: number) => {
+                              // #region agent log
+                              if (idx === 0) {
+                                fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2075',message:'Rendering property inventory',data:{propertyId:selectedProperty.id,propertyTitle:selectedProperty.title,totalInventoryCount:selectedProperty.inventory.length,firstItem:{itemId:item.itemId,invNumber:item.invNumber,name:item.name,type:item.type,sku:item.sku}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                              }
+                              // #endregion
+                              
                               const unitPrice =
                                 item.unitPrice != null ? item.unitPrice : (item.cost || 0);
                               const formattedPrice =
