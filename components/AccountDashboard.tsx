@@ -157,8 +157,20 @@ const AccountDashboard: React.FC = () => {
   const [uploadedInventoryFileName, setUploadedInventoryFileName] = useState<string | null>(null);
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
   const [ocrInventoryRows, setOcrInventoryRows] = useState<
-    Array<{ id: string; name: string; quantity: string; unit: string; price: string }>
+    Array<{
+      id: string;
+      sku: string;
+      name: string;
+      quantity: string;
+      unit: string;
+      price: string;
+      invoiceNumber: string;
+      purchaseDate: string;
+      object: string; // Always "Склад" for OCR items
+    }>
   >([]);
+  const [ocrInvoiceNumber, setOcrInvoiceNumber] = useState<string>('');
+  const [ocrPurchaseDate, setOcrPurchaseDate] = useState<string>('');
   const [transferPropertyId, setTransferPropertyId] = useState<string>('');
   const [transferWorkerId, setTransferWorkerId] = useState<string>('');
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -334,19 +346,70 @@ const AccountDashboard: React.FC = () => {
     }
     setIsOcrProcessing(true);
     setTimeout(() => {
+      const today = new Date().toISOString().split('T')[0];
+      const mockInvoiceNumber = `INV-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(4, '0')}`;
+      setOcrInvoiceNumber(mockInvoiceNumber);
+      setOcrPurchaseDate(today);
       setOcrInventoryRows([
-        { id: '1', name: 'Bed 160x200', quantity: '2', unit: 'pcs', price: '350' },
-        { id: '2', name: 'Chair', quantity: '4', unit: 'pcs', price: '45' },
-        { id: '3', name: 'Table', quantity: '1', unit: 'pcs', price: '120' },
+        {
+          id: '1',
+          sku: 'BED-160-200',
+          name: 'Bed 160x200',
+          quantity: '2',
+          unit: 'pcs',
+          price: '350',
+          invoiceNumber: mockInvoiceNumber,
+          purchaseDate: today,
+          object: 'Склад',
+        },
+        {
+          id: '2',
+          sku: 'CHAIR-001',
+          name: 'Chair',
+          quantity: '4',
+          unit: 'pcs',
+          price: '45',
+          invoiceNumber: mockInvoiceNumber,
+          purchaseDate: today,
+          object: 'Склад',
+        },
+        {
+          id: '3',
+          sku: 'TABLE-001',
+          name: 'Table',
+          quantity: '1',
+          unit: 'pcs',
+          price: '120',
+          invoiceNumber: mockInvoiceNumber,
+          purchaseDate: today,
+          object: 'Склад',
+        },
       ]);
       setIsOcrProcessing(false);
     }, 800);
   };
 
-  const handleOcrCellChange = (rowId: string, field: 'name' | 'quantity' | 'unit' | 'price', value: string) => {
+  const handleOcrCellChange = (
+    rowId: string,
+    field: 'sku' | 'name' | 'quantity' | 'unit' | 'price' | 'invoiceNumber' | 'purchaseDate',
+    value: string
+  ) => {
     setOcrInventoryRows((prev) =>
       prev.map((row) => (row.id === rowId ? { ...row, [field]: value } : row))
     );
+    // If invoice number or date changes, update all rows
+    if (field === 'invoiceNumber') {
+      setOcrInvoiceNumber(value);
+      setOcrInventoryRows((prev) =>
+        prev.map((row) => ({ ...row, invoiceNumber: value }))
+      );
+    }
+    if (field === 'purchaseDate') {
+      setOcrPurchaseDate(value);
+      setOcrInventoryRows((prev) =>
+        prev.map((row) => ({ ...row, purchaseDate: value }))
+      );
+    }
   };
 
   const handleSaveInventoryFromOCR = async () => {
@@ -365,6 +428,7 @@ const AccountDashboard: React.FC = () => {
           unit: row.unit.trim() || 'pcs',
           price: parseFloat(row.price) || undefined,
           category: undefined, // Can be extended later
+          sku: row.sku?.trim() || undefined,
         }));
 
       if (itemsToAdd.length === 0) {
@@ -372,7 +436,11 @@ const AccountDashboard: React.FC = () => {
         return;
       }
 
-      await warehouseService.addInventoryFromOCR(itemsToAdd);
+      // Get invoice number and date from first row (they should be the same for all)
+      const invoiceNumber = ocrInvoiceNumber || ocrInventoryRows[0]?.invoiceNumber || undefined;
+      const purchaseDate = ocrPurchaseDate || ocrInventoryRows[0]?.purchaseDate || undefined;
+
+      await warehouseService.addInventoryFromOCR(itemsToAdd, undefined, invoiceNumber, purchaseDate);
 
       // Refresh stock list
       const refreshed = await warehouseService.getStock();
@@ -382,6 +450,8 @@ const AccountDashboard: React.FC = () => {
       setIsAddInventoryModalOpen(false);
       setOcrInventoryRows([]);
       setUploadedInventoryFileName(null);
+      setOcrInvoiceNumber('');
+      setOcrPurchaseDate('');
       setTransferError(null);
       alert(`✅ Successfully added ${itemsToAdd.length} item(s) to warehouse stock!`);
     } catch (error: any) {
@@ -2223,6 +2293,8 @@ const AccountDashboard: React.FC = () => {
                       setIsAddInventoryModalOpen(true);
                       setUploadedInventoryFileName(null);
                       setOcrInventoryRows([]);
+                      setOcrInvoiceNumber('');
+                      setOcrPurchaseDate('');
                       setTransferError(null);
                     }}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium flex items-center gap-2 transition-colors"
@@ -2981,6 +3053,8 @@ const AccountDashboard: React.FC = () => {
                   setTransferError(null);
                   setOcrInventoryRows([]);
                   setUploadedInventoryFileName(null);
+                  setOcrInvoiceNumber('');
+                  setOcrPurchaseDate('');
                 }}
                 className="p-1.5 rounded-full hover:bg-white/5 text-gray-400 hover:text-white transition-colors"
               >
@@ -3047,51 +3121,90 @@ const AccountDashboard: React.FC = () => {
                         OCR result will appear here as an editable table after recognition.
                       </div>
                     ) : (
-                      <div className="max-h-64 overflow-auto">
-                        <table className="min-w-full text-[11px]">
-                          <thead className="bg-[#020617] text-gray-300 border-b border-gray-800 sticky top-0">
-                            <tr>
-                              <th className="px-2 py-2 text-left">Item name</th>
-                              <th className="px-2 py-2 text-right">Quantity</th>
-                              <th className="px-2 py-2 text-left">Unit</th>
-                              <th className="px-2 py-2 text-right">Price</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-800">
-                            {ocrInventoryRows.map((row) => (
-                              <tr key={row.id}>
-                                <td className="px-2 py-1.5">
-                                  <input
-                                    value={row.name}
-                                    onChange={(e) => handleOcrCellChange(row.id, 'name', e.target.value)}
-                                    className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                  />
-                                </td>
-                                <td className="px-2 py-1.5 text-right">
-                                  <input
-                                    value={row.quantity}
-                                    onChange={(e) => handleOcrCellChange(row.id, 'quantity', e.target.value)}
-                                    className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-right text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                  />
-                                </td>
-                                <td className="px-2 py-1.5">
-                                  <input
-                                    value={row.unit}
-                                    onChange={(e) => handleOcrCellChange(row.id, 'unit', e.target.value)}
-                                    className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                  />
-                                </td>
-                                <td className="px-2 py-1.5 text-right">
-                                  <input
-                                    value={row.price}
-                                    onChange={(e) => handleOcrCellChange(row.id, 'price', e.target.value)}
-                                    className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-right text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                  />
-                                </td>
+                      <div className="space-y-3">
+                        {/* Invoice and Date fields (shared for all items) */}
+                        <div className="grid grid-cols-2 gap-3 pb-2 border-b border-gray-800">
+                          <div>
+                            <label className="block text-[10px] text-gray-400 mb-1">Номер інвойсу</label>
+                            <input
+                              value={ocrInvoiceNumber}
+                              onChange={(e) => {
+                                setOcrInvoiceNumber(e.target.value);
+                                setOcrInventoryRows((prev) =>
+                                  prev.map((row) => ({ ...row, invoiceNumber: e.target.value }))
+                                );
+                              }}
+                              className="w-full bg-transparent border border-gray-700 rounded px-2 py-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              placeholder="INV-2025-0001"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-400 mb-1">Дата покупки</label>
+                            <input
+                              type="date"
+                              value={ocrPurchaseDate}
+                              onChange={(e) => {
+                                setOcrPurchaseDate(e.target.value);
+                                setOcrInventoryRows((prev) =>
+                                  prev.map((row) => ({ ...row, purchaseDate: e.target.value }))
+                                );
+                              }}
+                              className="w-full bg-transparent border border-gray-700 rounded px-2 py-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+                        {/* Items table */}
+                        <div className="max-h-64 overflow-auto">
+                          <table className="min-w-full text-[11px]">
+                            <thead className="bg-[#020617] text-gray-300 border-b border-gray-800 sticky top-0">
+                              <tr>
+                                <th className="px-2 py-2 text-left">Артикул</th>
+                                <th className="px-2 py-2 text-left">Назва товару</th>
+                                <th className="px-2 py-2 text-right">К-сть</th>
+                                <th className="px-2 py-2 text-right">Ціна (од.)</th>
+                                <th className="px-2 py-2 text-left">Об'єкт</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody className="divide-y divide-gray-800">
+                              {ocrInventoryRows.map((row) => (
+                                <tr key={row.id}>
+                                  <td className="px-2 py-1.5">
+                                    <input
+                                      value={row.sku}
+                                      onChange={(e) => handleOcrCellChange(row.id, 'sku', e.target.value)}
+                                      className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                      placeholder="SKU"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-1.5">
+                                    <input
+                                      value={row.name}
+                                      onChange={(e) => handleOcrCellChange(row.id, 'name', e.target.value)}
+                                      className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right">
+                                    <input
+                                      value={row.quantity}
+                                      onChange={(e) => handleOcrCellChange(row.id, 'quantity', e.target.value)}
+                                      className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-right text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right">
+                                    <input
+                                      value={row.price}
+                                      onChange={(e) => handleOcrCellChange(row.id, 'price', e.target.value)}
+                                      className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-right text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-1.5">
+                                    <span className="text-[11px] text-gray-400">{row.object}</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -3111,6 +3224,8 @@ const AccountDashboard: React.FC = () => {
                     setTransferError(null);
                     setOcrInventoryRows([]);
                     setUploadedInventoryFileName(null);
+                    setOcrInvoiceNumber('');
+                    setOcrPurchaseDate('');
                   }}
                   className="px-3 py-1.5 rounded-md border border-gray-700 text-gray-300 hover:bg-white/5 transition-colors"
                 >

@@ -399,10 +399,20 @@ export const warehouseService = {
   /**
    * Add inventory items from OCR table to warehouse stock.
    * Creates/updates items in catalog and adds/updates warehouse_stock.
+   * Optionally creates invoice record if invoiceNumber and purchaseDate are provided.
    */
   async addInventoryFromOCR(
-    items: Array<{ name: string; quantity: number; unit: string; price?: number; category?: string }>,
-    warehouseId?: string
+    items: Array<{
+      name: string;
+      quantity: number;
+      unit: string;
+      price?: number;
+      category?: string;
+      sku?: string;
+    }>,
+    warehouseId?: string,
+    invoiceNumber?: string,
+    purchaseDate?: string
   ): Promise<void> {
     if (!items.length) return;
 
@@ -419,6 +429,23 @@ export const warehouseService = {
       targetWarehouseId = warehouses[0].id;
     }
 
+    // Create invoice if invoiceNumber and purchaseDate are provided
+    let invoiceId: string | undefined;
+    if (invoiceNumber && purchaseDate) {
+      try {
+        const invoice = await this.createInvoice({
+          vendor: 'Unknown', // Can be extended later
+          invoiceNumber: invoiceNumber,
+          date: purchaseDate,
+          fileUrl: undefined,
+          createdBy: undefined,
+        });
+        invoiceId = invoice.id;
+      } catch (error) {
+        console.warn('⚠️ Failed to create invoice, continuing without invoice link:', error);
+      }
+    }
+
     for (const item of items) {
       if (!item.name || item.quantity <= 0) continue;
 
@@ -432,12 +459,16 @@ export const warehouseService = {
 
       if (existingItem) {
         itemId = existingItem.id;
-        // Update default_price if provided and different
+        // Update default_price and sku if provided
+        const updateData: any = {};
         if (item.price !== undefined && item.price > 0) {
-          await supabase
-            .from('items')
-            .update({ default_price: item.price })
-            .eq('id', itemId);
+          updateData.default_price = item.price;
+        }
+        if (item.sku) {
+          updateData.sku = item.sku.trim();
+        }
+        if (Object.keys(updateData).length > 0) {
+          await supabase.from('items').update(updateData).eq('id', itemId);
         }
       } else {
         // Create new Item
@@ -449,6 +480,7 @@ export const warehouseService = {
               category: item.category || 'General',
               unit: item.unit || 'pcs',
               default_price: item.price || null,
+              sku: item.sku?.trim() || null,
             },
           ])
           .select('id')
@@ -487,13 +519,14 @@ export const warehouseService = {
         ]);
       }
 
-      // Create stock movement (IN type)
+      // Create stock movement (IN type) with invoice link if available
       await this.createStockMovement({
         warehouseId: targetWarehouseId,
         itemId: itemId,
         type: 'IN',
         quantity: item.quantity,
         reason: 'OCR import',
+        invoiceId: invoiceId,
       });
     }
   },
