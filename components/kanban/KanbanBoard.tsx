@@ -4,6 +4,7 @@ import { tasksService, workersService } from '../../services/supabaseService';
 import { CalendarEvent, Worker, KanbanColumn as IKanbanColumn, TaskStatus, CustomColumn } from '../../types';
 import KanbanColumn from './KanbanColumn';
 import ColumnCreateModal from './ColumnCreateModal';
+import TaskDetailModal from './TaskDetailModal';
 import { useWorker } from '../../contexts/WorkerContext';
 import { Filter, Plus } from 'lucide-react';
 
@@ -48,6 +49,8 @@ const KanbanBoard: React.FC = () => {
     return [];
   });
   const [isColumnCreateModalOpen, setIsColumnCreateModalOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<CalendarEvent | null>(null);
+  const [isTaskDetailModalOpen, setIsTaskDetailModalOpen] = useState(false);
 
   // Load Data
   useEffect(() => {
@@ -88,37 +91,10 @@ const KanbanBoard: React.FC = () => {
     }
   };
 
-  // Toggle task status when card is clicked
-  const handleTaskStatusToggle = async (task: CalendarEvent) => {
-    try {
-      const current = task.status as TaskStatus;
-      let next: TaskStatus;
-
-      // Simple status flow: open/pending/assigned -> in_progress -> completed -> verified
-      if (current === 'in_progress') {
-        next = 'completed';
-      } else if (current === 'completed') {
-        next = 'verified';
-      } else if (current === 'verified' || current === 'archived') {
-        next = current;
-      } else {
-        next = 'in_progress';
-      }
-
-      // Optimistic UI update
-      setTasks((prev) =>
-        prev.map((t) => (t.id === task.id ? { ...t, status: next } : t))
-      );
-
-      await tasksService.update(task.id, { status: next });
-
-      // Inform other parts of app (Facility calendar, Warehouse etc.)
-      window.dispatchEvent(new CustomEvent('taskUpdated'));
-    } catch (error) {
-      console.error('Failed to toggle task status:', error);
-      // Reload board to stay consistent
-      loadBoardData();
-    }
+  // Open task detail modal when card is clicked
+  const handleTaskClick = (task: CalendarEvent) => {
+    setSelectedTask(task);
+    setIsTaskDetailModalOpen(true);
   };
 
   // Generate Columns - ТІЛЬКИ Inbox + колонки з customColumns (створені вручну Super Admin)
@@ -393,7 +369,7 @@ const KanbanBoard: React.FC = () => {
                       onWorkerAssigned={column.id !== 'admin-inbox' ? (workerId) => handleColumnWorkerAssigned(column.id, workerId) : undefined}
                       workers={workers}
                       columnId={column.id}
-                      onTaskClick={handleTaskStatusToggle}
+                      onTaskClick={handleTaskClick}
                     />
                     {provided.placeholder}
                   </div>
@@ -429,6 +405,30 @@ const KanbanBoard: React.FC = () => {
         workers={workers}
         existingColumnIds={customColumns}
       />
+
+      {/* Task Detail Modal */}
+      {isTaskDetailModalOpen && selectedTask && (
+        <TaskDetailModal
+          isOpen={isTaskDetailModalOpen}
+          onClose={() => {
+            setIsTaskDetailModalOpen(false);
+            setSelectedTask(null);
+          }}
+          task={selectedTask}
+          onUpdateTask={async (updatedTask) => {
+            await tasksService.update(updatedTask.id, updatedTask);
+            loadBoardData(); // Reload all tasks to reflect changes
+            window.dispatchEvent(new CustomEvent('taskUpdated'));
+          }}
+          onDeleteTask={async (taskId) => {
+            await tasksService.delete(taskId);
+            loadBoardData(); // Reload all tasks
+            window.dispatchEvent(new CustomEvent('taskUpdated'));
+            setIsTaskDetailModalOpen(false);
+            setSelectedTask(null);
+          }}
+        />
+      )}
     </div>
   );
 };
