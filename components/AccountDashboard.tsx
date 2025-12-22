@@ -145,7 +145,7 @@ const AccountDashboard: React.FC = () => {
   }, []); // Empty deps - only run once on mount
   const [isPropertyAddModalOpen, setIsPropertyAddModalOpen] = useState(false);
   const [isInventoryEditing, setIsInventoryEditing] = useState(false);
-  const [warehouseTab, setWarehouseTab] = useState<'stock' | 'invoices'>('stock');
+  const [warehouseTab, setWarehouseTab] = useState<'stock' | 'addInventory'>('stock');
   const [warehouseStock, setWarehouseStock] = useState<WarehouseStockItem[]>([]);
   const [isLoadingWarehouseStock, setIsLoadingWarehouseStock] = useState(false);
   const [warehouseStockError, setWarehouseStockError] = useState<string | null>(null);
@@ -153,6 +153,12 @@ const AccountDashboard: React.FC = () => {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isExecutingTransfer, setIsExecutingTransfer] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
+  const [isAddInventoryModalOpen, setIsAddInventoryModalOpen] = useState(false);
+  const [uploadedInventoryFileName, setUploadedInventoryFileName] = useState<string | null>(null);
+  const [isOcrProcessing, setIsOcrProcessing] = useState(false);
+  const [ocrInventoryRows, setOcrInventoryRows] = useState<
+    Array<{ id: string; name: string; quantity: string; unit: string; price: string }>
+  >([]);
   const [transferPropertyId, setTransferPropertyId] = useState<string>('');
   const [transferWorkerId, setTransferWorkerId] = useState<string>('');
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -320,6 +326,27 @@ const AccountDashboard: React.FC = () => {
     setIsTransferModalOpen(false);
     setTransferError(null);
     setIsExecutingTransfer(false);
+  };
+
+  const handleOcrMock = () => {
+    if (!uploadedInventoryFileName) {
+      setUploadedInventoryFileName('inventory_list.pdf');
+    }
+    setIsOcrProcessing(true);
+    setTimeout(() => {
+      setOcrInventoryRows([
+        { id: '1', name: 'Bed 160x200', quantity: '2', unit: 'pcs', price: '350' },
+        { id: '2', name: 'Chair', quantity: '4', unit: 'pcs', price: '45' },
+        { id: '3', name: 'Table', quantity: '1', unit: 'pcs', price: '120' },
+      ]);
+      setIsOcrProcessing(false);
+    }, 800);
+  };
+
+  const handleOcrCellChange = (rowId: string, field: 'name' | 'quantity' | 'unit' | 'price', value: string) => {
+    setOcrInventoryRows((prev) =>
+      prev.map((row) => (row.id === rowId ? { ...row, [field]: value } : row))
+    );
   };
 
   const handleExecuteTransfer = async () => {
@@ -1972,14 +1999,14 @@ const AccountDashboard: React.FC = () => {
                 Stock
               </button>
               <button
-                onClick={() => setWarehouseTab('invoices')}
+                onClick={() => setWarehouseTab('addInventory')}
                 className={`px-3 py-1 rounded-full transition-colors ${
-                  warehouseTab === 'invoices'
+                  warehouseTab === 'addInventory'
                     ? 'bg-emerald-600 text-white'
                     : 'text-gray-400 hover:text-white'
                 }`}
               >
-                Invoices
+                Add inventory
               </button>
             </div>
           </div>
@@ -2087,21 +2114,28 @@ const AccountDashboard: React.FC = () => {
               <div className="bg-[#161B22] border border-gray-800 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-lg font-semibold">Warehouse Invoices</h3>
+                    <h3 className="text-lg font-semibold">Add Inventory from Document</h3>
                     <p className="text-xs text-gray-400">
-                      Here we will add AI-powered invoice import and mapping to stock.
+                      Upload an invoice or item list, recognize it with OCR and adjust items before adding to stock.
                     </p>
                   </div>
                   <button
-                    disabled
-                    className="px-4 py-2 bg-blue-600/40 text-blue-300 rounded-lg text-xs font-medium cursor-not-allowed"
+                    onClick={() => {
+                      setIsAddInventoryModalOpen(true);
+                      setUploadedInventoryFileName(null);
+                      setOcrInventoryRows([]);
+                      setTransferError(null);
+                    }}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium flex items-center gap-2 transition-colors"
                   >
-                    New Invoice (AI) – coming next
+                    <Upload className="w-4 h-4" />
+                    Add inventory
                   </button>
                 </div>
                 <div className="text-xs text-gray-500">
-                  Invoice UI will use new tables: <code>warehouse_invoices</code> and <code>warehouse_invoice_lines</code>.
-                  We will later integrate Gemini to parse invoice PDFs into structured lines.
+                  This is a draft UI. Later we will connect AI OCR (Gemini) and map recognized lines directly into
+                  <code> warehouse_invoices</code> and <code> warehouse_invoice_lines</code> and update stock
+                  automatically.
                 </div>
               </div>
             )}
@@ -2825,6 +2859,159 @@ const AccountDashboard: React.FC = () => {
                 >
                   <Check className="w-4 h-4" />
                   {isExecutingTransfer ? 'Виконую...' : 'Виконувати'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isAddInventoryModalOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
+          <div className="w-full max-w-5xl max-h-[90vh] bg-[#020617] border border-gray-800 rounded-2xl shadow-2xl flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-white">Add inventory from document</h2>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  Drag & drop or upload an invoice / item list, then recognize it with OCR and adjust items manually.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsAddInventoryModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-white/5 text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 flex-1 overflow-auto space-y-4 text-xs text-gray-100">
+              <div className="grid grid-cols-1 md:grid-cols-[2fr,3fr] gap-4">
+                <label
+                  className="relative flex flex-col items-center justify-center border-2 border-dashed border-gray-700 hover:border-blue-500/70 bg-black/20 rounded-xl px-4 py-8 cursor-pointer transition-colors"
+                >
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setUploadedInventoryFileName(file.name);
+                        setOcrInventoryRows([]);
+                      }
+                    }}
+                  />
+                  <Upload className="w-6 h-6 text-blue-400 mb-2" />
+                  <span className="text-xs font-medium text-white">
+                    Drag & drop file here or click to browse
+                  </span>
+                  <span className="mt-1 text-[11px] text-gray-500">
+                    PDF, JPG, PNG or Excel with item list
+                  </span>
+                  {uploadedInventoryFileName && (
+                    <span className="mt-3 px-2 py-1 rounded bg-blue-500/10 text-blue-300 text-[11px]">
+                      Selected: {uploadedInventoryFileName}
+                    </span>
+                  )}
+                </label>
+
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] text-gray-400">
+                      Step 2 – recognize document with OCR and review extracted items.
+                    </div>
+                    <button
+                      onClick={handleOcrMock}
+                      disabled={isOcrProcessing}
+                      className={`px-3 py-1.5 rounded-md text-[11px] font-semibold flex items-center gap-2 transition-colors ${
+                        isOcrProcessing
+                          ? 'bg-purple-600/40 text-purple-200/70 cursor-not-allowed'
+                          : 'bg-purple-600 hover:bg-purple-500 text-white'
+                      }`}
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      {isOcrProcessing ? 'Recognizing… (mock)' : 'Recognize with OCR (mock)'}
+                    </button>
+                  </div>
+                  <div className="flex-1 border border-gray-800 rounded-lg p-3 bg-[#020617]">
+                    {ocrInventoryRows.length === 0 ? (
+                      <div className="h-full flex items-center justify-center text-[11px] text-gray-500 text-center">
+                        OCR result will appear here as an editable table after recognition.
+                      </div>
+                    ) : (
+                      <div className="max-h-64 overflow-auto">
+                        <table className="min-w-full text-[11px]">
+                          <thead className="bg-[#020617] text-gray-300 border-b border-gray-800 sticky top-0">
+                            <tr>
+                              <th className="px-2 py-2 text-left">Item name</th>
+                              <th className="px-2 py-2 text-right">Quantity</th>
+                              <th className="px-2 py-2 text-left">Unit</th>
+                              <th className="px-2 py-2 text-right">Price</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-800">
+                            {ocrInventoryRows.map((row) => (
+                              <tr key={row.id}>
+                                <td className="px-2 py-1.5">
+                                  <input
+                                    value={row.name}
+                                    onChange={(e) => handleOcrCellChange(row.id, 'name', e.target.value)}
+                                    className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5 text-right">
+                                  <input
+                                    value={row.quantity}
+                                    onChange={(e) => handleOcrCellChange(row.id, 'quantity', e.target.value)}
+                                    className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-right text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5">
+                                  <input
+                                    value={row.unit}
+                                    onChange={(e) => handleOcrCellChange(row.id, 'unit', e.target.value)}
+                                    className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5 text-right">
+                                  <input
+                                    value={row.price}
+                                    onChange={(e) => handleOcrCellChange(row.id, 'price', e.target.value)}
+                                    className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-right text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-3 border-t border-gray-800 flex items-center justify-between text-[11px]">
+              <div className="text-gray-400">
+                Recognized items:{' '}
+                <span className="text-gray-200 font-medium">{ocrInventoryRows.length}</span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsAddInventoryModalOpen(false)}
+                  className="px-3 py-1.5 rounded-md border border-gray-700 text-gray-300 hover:bg-white/5 transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  disabled={ocrInventoryRows.length === 0}
+                  className={`px-4 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-colors ${
+                    ocrInventoryRows.length === 0
+                      ? 'bg-emerald-600/30 text-emerald-200/60 cursor-not-allowed'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  }`}
+                >
+                  <Save className="w-4 h-4" />
+                  Save to inventory (mock)
                 </button>
               </div>
             </div>
