@@ -72,12 +72,7 @@ export const MOCK_PROPERTIES: Property[] = [
         parking: "Open Space", pets: "Allowed", elevator: "No", kitchen: "Yes", 
         access: "No", certificate: "Consumption-based", energyDemand: "120", centralHeating: "No" 
     },
-    inventory: [ 
-        { type: "Ліжко", invNumber: "KV1-L001", quantity: 2, cost: 500 },
-        { type: "Шафа", invNumber: "KV1-SH003", quantity: 3, cost: 300 },
-        { type: "Холодильник", invNumber: "KV1-HOL01", quantity: 1, cost: 750 },
-        { type: "Інше (Вкажіть у кількості)", invNumber: "KV1-PRM01", quantity: 1, cost: 150 }
-    ],
+    inventory: [], // Мок-дані видалені - використовується тільки реальний inventory з БД
     meterReadings: [
         { name: "Електроенергія", number: "12345", initial: "1250 кВт/год", current: "1450 кВт/год" },
         { name: "Гаряча Вода", number: "54321", initial: "50 м³", current: "55 м³" }
@@ -142,10 +137,7 @@ export const MOCK_PROPERTIES: Property[] = [
         parking: "Garage", pets: "Allowed", elevator: "No", kitchen: "Yes", 
         access: "No", certificate: "Demand-based", energyDemand: "25", centralHeating: "Yes" 
     },
-    inventory: [ 
-        { type: "Sofa", invNumber: "BRL-DIV04", quantity: 4, cost: 1200 },
-        { type: "Fridge", invNumber: "BRL-HOL02", quantity: 2, cost: 1500 },
-    ],
+    inventory: [], // Мок-дані видалені - використовується тільки реальний inventory з БД
     meterReadings: [
         { name: "Electricity", number: "M-1001", initial: "1000 kWh", current: "2500 kWh" },
         { name: "Water", number: "W-2020", initial: "100 m³", current: "120 m³" }
@@ -239,10 +231,7 @@ export const MOCK_PROPERTIES: Property[] = [
         parking: "Carport", pets: "Not Allowed", elevator: "Yes", kitchen: "Yes", 
         access: "Yes", certificate: "Demand-based", energyDemand: "50", centralHeating: "Yes" 
     },
-    inventory: [ 
-        { type: "Sofa", invNumber: "WRS-D001", quantity: 1, cost: 600 },
-        { type: "Fridge", invNumber: "WRS-H001", quantity: 1, cost: 500 },
-    ],
+    inventory: [], // Мок-дані видалені - використовується тільки реальний inventory з БД
     meterReadings: [
         { name: "Electric", number: "E-555", initial: "500", current: "600" }
     ],

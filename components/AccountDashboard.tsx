@@ -150,9 +150,19 @@ const AccountDashboard: React.FC = () => {
         fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:148',message:'Stock itemIds set created',data:{stockItemIdsCount:stockItemIds.size,stockItemIdsArray:Array.from(stockItemIds).slice(0,5)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
         // #endregion
         
+        // Мок-дані inventory, які потрібно видалити (якщо вони є в БД)
+        const mockInventoryTypes = ['Ліжко', 'Шафа', 'Холодильник', 'Інше (Вкажіть у кількості)', 'Sofa', 'Fridge'];
+        const mockInvNumbers = ['KV1-L001', 'KV1-SH003', 'KV1-HOL01', 'KV1-PRM01', 'BRL-DIV04', 'BRL-HOL02', 'WRS-D001', 'WRS-H001'];
+        
         const cleanedData = await Promise.all(data.map(async (property) => {
           if (property.inventory && property.inventory.length > 0) {
             const cleanedInventory = property.inventory.filter((item: any) => {
+              // Видаляємо мок-дані inventory (якщо вони є в БД)
+              if (mockInventoryTypes.includes(item.type) || mockInvNumbers.includes(item.invNumber)) {
+                console.log(`🗑️ Removing mock inventory: ${item.type || item.name} (${item.invNumber}) from ${property.title}`);
+                return false; // Видаляємо мок-дані
+              }
+              
               // Залишаємо старий інвентар без itemId та без invNumber у форматі WAREHOUSE-
               if (!item.itemId && (!item.invNumber || !item.invNumber.startsWith('WAREHOUSE-'))) {
                 return true; // Старий інвентар - залишаємо
