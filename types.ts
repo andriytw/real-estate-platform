@@ -1,9 +1,26 @@
 
+// Inventory entry for a specific property (apartment)
+// Backward-compatible: existing fields type/invNumber/quantity/cost все ще підтримуються
 export interface InventoryItem {
+  // NEW: зв'язок з Item на складі (може бути відсутній для старих даних)
+  itemId?: string;
+  // NEW: зручна назва предмета (наприклад, "Ліжко 160x200")
+  name?: string;
+
+  // ІСНУЮЧІ ПОЛЯ (використовуються в поточному UI)
   type: string;
   invNumber: string;
   quantity: number;
+  // Історично використовувалось як вартість; зберігаємо для сумісності.
   cost: number;
+
+  // NEW: ціна за одиницю та загальна вартість для цієї квартири
+  unitPrice?: number;
+  totalCost?: number;
+
+  // NEW: посилання на інвойс/рух, з якого з'явився цей предмет
+  sourceInvoiceId?: string;
+  lastMovementDate?: string;
 }
 
 export interface MeterReading {
@@ -76,6 +93,74 @@ export interface PropertyEvent {
   description: string;
   participant: string;
   priority: 'High' | 'Medium' | 'Low';
+}
+
+// ===== Warehouse & Inventory (Facility Department) =====
+
+// Каталог предметів складу
+export interface Item {
+  id: string;
+  name: string;
+  category?: string;
+  sku?: string;
+  defaultPrice?: number;
+  unit: string; // 'pcs', 'set', 'm2', etc.
+}
+
+// Склад (фізичне місце зберігання)
+export interface Warehouse {
+  id: string;
+  name: string;
+  location?: string;
+  description?: string;
+}
+
+// Залишки на складі
+export interface WarehouseStock {
+  id: string;
+  warehouseId: string;
+  itemId: string;
+  quantity: number;
+}
+
+export type StockMovementType = 'IN' | 'OUT' | 'TRANSFER';
+
+// Рухи по складу (історія)
+export interface StockMovement {
+  id: string;
+  warehouseId: string;
+  itemId: string;
+  type: StockMovementType;
+  quantity: number;
+  date: string; // ISO string
+  reason?: string;
+  propertyId?: string; // якщо рух пов'язаний з конкретною квартирою
+  workerId?: string;   // якщо завдання на конкретного працівника
+  invoiceId?: string;  // якщо рух з інвойсу
+}
+
+// Інвойс для складу (закупка інвентарю)
+export interface WarehouseInvoice {
+  id: string;
+  vendor: string;
+  invoiceNumber: string;
+  date: string; // ISO date
+  fileUrl?: string;
+  createdBy?: string;
+  lines: WarehouseInvoiceLine[];
+}
+
+// Рядок інвойсу (позиція закупки)
+export interface WarehouseInvoiceLine {
+  id: string;
+  invoiceId: string;
+  itemName: string;
+  description?: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  suggestedItemId?: string;   // Item, до якого це, ймовірно, належить
+  targetPropertyId?: string;  // Якщо інвойс явно вказує квартиру
 }
 
 export interface PropertyDetails {

@@ -213,6 +213,83 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- ===== Warehouse & Inventory (Facility) =====
+
+-- Каталог предметів (інвентарю)
+CREATE TABLE IF NOT EXISTS items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  category TEXT,
+  sku TEXT,
+  default_price DECIMAL(10,2),
+  unit TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Таблиця складів
+CREATE TABLE IF NOT EXISTS warehouses (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  location TEXT,
+  description TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Залишки на складі
+CREATE TABLE IF NOT EXISTS warehouse_stock (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  warehouse_id UUID REFERENCES warehouses(id) ON DELETE CASCADE,
+  item_id UUID REFERENCES items(id) ON DELETE CASCADE,
+  quantity DECIMAL(10,2) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Рухи по складу
+CREATE TABLE IF NOT EXISTS stock_movements (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  warehouse_id UUID REFERENCES warehouses(id) ON DELETE SET NULL,
+  item_id UUID REFERENCES items(id) ON DELETE SET NULL,
+  type TEXT NOT NULL CHECK (type IN ('IN', 'OUT', 'TRANSFER')),
+  quantity DECIMAL(10,2) NOT NULL,
+  date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  reason TEXT,
+  property_id UUID REFERENCES properties(id) ON DELETE SET NULL,
+  worker_id TEXT,
+  invoice_id UUID,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Інвойси складу (закупка інвентарю)
+CREATE TABLE IF NOT EXISTS warehouse_invoices (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  vendor TEXT NOT NULL,
+  invoice_number TEXT NOT NULL,
+  date DATE NOT NULL,
+  file_url TEXT,
+  created_by TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Рядки інвойсів складу
+CREATE TABLE IF NOT EXISTS warehouse_invoice_lines (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  invoice_id UUID REFERENCES warehouse_invoices(id) ON DELETE CASCADE,
+  item_name TEXT NOT NULL,
+  description TEXT,
+  quantity DECIMAL(10,2) NOT NULL,
+  unit_price DECIMAL(10,2) NOT NULL,
+  total_price DECIMAL(10,2) NOT NULL,
+  suggested_item_id UUID REFERENCES items(id) ON DELETE SET NULL,
+  target_property_id UUID REFERENCES properties(id) ON DELETE SET NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Rooms table (кімнати/юніти)
 CREATE TABLE IF NOT EXISTS rooms (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -252,6 +329,13 @@ CREATE INDEX IF NOT EXISTS idx_requests_status ON requests(status);
 CREATE INDEX IF NOT EXISTS idx_calendar_events_property_id ON calendar_events(property_id);
 CREATE INDEX IF NOT EXISTS idx_calendar_events_date ON calendar_events(date);
 
+-- Indexes for warehouse module
+CREATE INDEX IF NOT EXISTS idx_items_name ON items(name);
+CREATE INDEX IF NOT EXISTS idx_warehouse_stock_warehouse_id ON warehouse_stock(warehouse_id);
+CREATE INDEX IF NOT EXISTS idx_warehouse_stock_item_id ON warehouse_stock(item_id);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_item_id ON stock_movements(item_id);
+CREATE INDEX IF NOT EXISTS idx_warehouse_invoices_number ON warehouse_invoices(invoice_number);
+
 -- Enable Row Level Security (RLS)
 ALTER TABLE properties ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
@@ -262,6 +346,12 @@ ALTER TABLE requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE calendar_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rooms ENABLE ROW LEVEL SECURITY;
 ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE warehouses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE warehouse_stock ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stock_movements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE warehouse_invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE warehouse_invoice_lines ENABLE ROW LEVEL SECURITY;
 
 -- Create RLS policies (allow all for now - you can restrict later)
 -- Drop existing policies if they exist, then create new ones
@@ -274,6 +364,12 @@ DROP POLICY IF EXISTS "Allow all operations on requests" ON requests;
 DROP POLICY IF EXISTS "Allow all operations on calendar_events" ON calendar_events;
 DROP POLICY IF EXISTS "Allow all operations on rooms" ON rooms;
 DROP POLICY IF EXISTS "Allow all operations on companies" ON companies;
+DROP POLICY IF EXISTS "Allow all operations on items" ON items;
+DROP POLICY IF EXISTS "Allow all operations on warehouses" ON warehouses;
+DROP POLICY IF EXISTS "Allow all operations on warehouse_stock" ON warehouse_stock;
+DROP POLICY IF EXISTS "Allow all operations on stock_movements" ON stock_movements;
+DROP POLICY IF EXISTS "Allow all operations on warehouse_invoices" ON warehouse_invoices;
+DROP POLICY IF EXISTS "Allow all operations on warehouse_invoice_lines" ON warehouse_invoice_lines;
 
 CREATE POLICY "Allow all operations on properties" ON properties FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all operations on bookings" ON bookings FOR ALL USING (true) WITH CHECK (true);
@@ -284,6 +380,12 @@ CREATE POLICY "Allow all operations on requests" ON requests FOR ALL USING (true
 CREATE POLICY "Allow all operations on calendar_events" ON calendar_events FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all operations on rooms" ON rooms FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all operations on companies" ON companies FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all operations on items" ON items FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all operations on warehouses" ON warehouses FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all operations on warehouse_stock" ON warehouse_stock FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all operations on stock_movements" ON stock_movements FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all operations on warehouse_invoices" ON warehouse_invoices FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all operations on warehouse_invoice_lines" ON warehouse_invoice_lines FOR ALL USING (true) WITH CHECK (true);
 
 -- Create function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -305,6 +407,12 @@ DROP TRIGGER IF EXISTS update_requests_updated_at ON requests;
 DROP TRIGGER IF EXISTS update_calendar_events_updated_at ON calendar_events;
 DROP TRIGGER IF EXISTS update_rooms_updated_at ON rooms;
 DROP TRIGGER IF EXISTS update_companies_updated_at ON companies;
+DROP TRIGGER IF EXISTS update_items_updated_at ON items;
+DROP TRIGGER IF EXISTS update_warehouses_updated_at ON warehouses;
+DROP TRIGGER IF EXISTS update_warehouse_stock_updated_at ON warehouse_stock;
+DROP TRIGGER IF EXISTS update_stock_movements_updated_at ON stock_movements;
+DROP TRIGGER IF EXISTS update_warehouse_invoices_updated_at ON warehouse_invoices;
+DROP TRIGGER IF EXISTS update_warehouse_invoice_lines_updated_at ON warehouse_invoice_lines;
 
 CREATE TRIGGER update_properties_updated_at BEFORE UPDATE ON properties FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_bookings_updated_at BEFORE UPDATE ON bookings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -315,4 +423,10 @@ CREATE TRIGGER update_requests_updated_at BEFORE UPDATE ON requests FOR EACH ROW
 CREATE TRIGGER update_calendar_events_updated_at BEFORE UPDATE ON calendar_events FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_rooms_updated_at BEFORE UPDATE ON rooms FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_companies_updated_at BEFORE UPDATE ON companies FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_items_updated_at BEFORE UPDATE ON items FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_warehouses_updated_at BEFORE UPDATE ON warehouses FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_warehouse_stock_updated_at BEFORE UPDATE ON warehouse_stock FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_stock_movements_updated_at BEFORE UPDATE ON stock_movements FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_warehouse_invoices_updated_at BEFORE UPDATE ON warehouse_invoices FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_warehouse_invoice_lines_updated_at BEFORE UPDATE ON warehouse_invoice_lines FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

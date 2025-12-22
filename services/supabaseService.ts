@@ -1,7 +1,40 @@
 import { createClient } from '../utils/supabase/client';
-import { Property, Booking, OfferData, InvoiceData, Lead, RequestData, CalendarEvent, Room, CompanyDetails, Worker, TaskWorkflow, TaskComment, CategoryAccess } from '../types';
+import {
+  Property,
+  Booking,
+  OfferData,
+  InvoiceData,
+  Lead,
+  RequestData,
+  CalendarEvent,
+  Room,
+  CompanyDetails,
+  Worker,
+  TaskWorkflow,
+  TaskComment,
+  CategoryAccess,
+  Item,
+  Warehouse,
+  WarehouseStock,
+  StockMovement,
+  WarehouseInvoice,
+  WarehouseInvoiceLine,
+} from '../types';
 
 const supabase = createClient();
+
+// Lightweight type for joined stock + item for UI
+export interface WarehouseStockItem {
+  stockId: string;
+  warehouseId: string;
+  itemId: string;
+  quantity: number;
+  itemName: string;
+  unit: string;
+  category?: string;
+  sku?: string;
+  defaultPrice?: number;
+}
 
 // ==================== WORKERS ====================
 export const workersService = {
@@ -33,6 +66,231 @@ export const workersService = {
     if (error) return null;
     return transformWorkerFromDB(data);
   }
+};
+
+// ==================== WAREHOUSE (STOCK & INVOICES) ====================
+
+export const warehouseService = {
+  /**
+   * Load stock with joined item info for UI.
+   */
+  async getStock(warehouseId?: string): Promise<WarehouseStockItem[]> {
+    console.log('📦 Loading warehouse stock...', warehouseId ? { warehouseId } : 'all warehouses');
+
+    let query = supabase
+      .from('warehouse_stock')
+      .select(
+        `
+        id,
+        warehouse_id,
+        item_id,
+        quantity,
+        items (
+          id,
+          name,
+          category,
+          sku,
+          default_price,
+          unit
+        )
+      `
+      )
+      .order('created_at', { ascending: false });
+
+    if (warehouseId) {
+      query = query.eq('warehouse_id', warehouseId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('❌ Error loading warehouse stock:', error);
+      throw error;
+    }
+
+    return (data || []).map((row: any): WarehouseStockItem => ({
+      stockId: row.id,
+      warehouseId: row.warehouse_id,
+      itemId: row.item_id,
+      quantity: parseFloat(row.quantity ?? 0),
+      itemName: row.items?.name || 'Unknown item',
+      unit: row.items?.unit || 'pcs',
+      category: row.items?.category || undefined,
+      sku: row.items?.sku || undefined,
+      defaultPrice: row.items?.default_price != null ? parseFloat(row.items.default_price) : undefined,
+    }));
+  },
+
+  /**
+   * Decrease stock quantity for a specific stock row.
+   * Quantity is validated on the client side before calling this.
+   */
+  async decreaseStockQuantity(stockId: string, quantityToSubtract: number): Promise<void> {
+    if (quantityToSubtract <= 0) return;
+
+    const { data, error } = await supabase
+      .from('warehouse_stock')
+      .select('quantity')
+      .eq('id', stockId)
+      .single();
+
+    if (error) {
+      console.error('❌ Error reading current stock quantity:', error);
+      throw error;
+    }
+
+    const currentQty = parseFloat(data?.quantity ?? 0);
+    const newQty = Math.max(currentQty - quantityToSubtract, 0);
+
+    const { error: updateError } = await supabase
+      .from('warehouse_stock')
+      .update({ quantity: newQty })
+      .eq('id', stockId);
+
+    if (updateError) {
+      console.error('❌ Error updating stock quantity:', updateError);
+      throw updateError;
+    }
+  },
+
+  /**
+   * Create stock movement entries for audit/history.
+   */
+  async createStockMovement(movement: Omit<StockMovement, 'id' | 'createdAt' | 'updatedAt' | 'date'>): Promise<void> {
+    const payload = {
+      warehouse_id: movement.warehouseId,
+      item_id: movement.itemId,
+      type: movement.type,
+      quantity: movement.quantity,
+      reason: movement.reason,
+      property_id: movement.propertyId,
+      worker_id: movement.workerId,
+      invoice_id: movement.invoiceId,
+      // date, created_at, updated_at handled by DB defaults
+    };
+
+    const { error } = await supabase.from('stock_movements').insert([payload]);
+    if (error) {
+      console.error('❌ Error creating stock movement:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Simple helpers for invoices list (used by Warehouse → Invoices tab).
+   * AI parsing / Edge Function will fill lines on the server later.
+   */
+  async getInvoices(): Promise<WarehouseInvoice[]> {
+    const { data, error } = await supabase
+      .from('warehouse_invoices')
+      .select('*')
+      .order('date', { ascending: false });
+
+    if (error) {
+      console.error('❌ Error loading warehouse invoices:', error);
+      throw error;
+    }
+
+    return (data || []).map(
+      (row: any): WarehouseInvoice => ({
+        id: row.id,
+        vendor: row.vendor,
+        invoiceNumber: row.invoice_number,
+        date: row.date,
+        fileUrl: row.file_url || undefined,
+        createdBy: row.created_by || undefined,
+        lines: [], // Lines are loaded separately for now
+      })
+    );
+  },
+
+  async getInvoiceLines(invoiceId: string): Promise<WarehouseInvoiceLine[]> {
+    const { data, error } = await supabase
+      .from('warehouse_invoice_lines')
+      .select('*')
+      .eq('invoice_id', invoiceId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('❌ Error loading warehouse invoice lines:', error);
+      throw error;
+    }
+
+    return (data || []).map(
+      (row: any): WarehouseInvoiceLine => ({
+        id: row.id,
+        invoiceId: row.invoice_id,
+        itemName: row.item_name,
+        description: row.description || undefined,
+        quantity: parseFloat(row.quantity ?? 0),
+        unitPrice: parseFloat(row.unit_price ?? 0),
+        totalPrice: parseFloat(row.total_price ?? 0),
+        suggestedItemId: row.suggested_item_id || undefined,
+        targetPropertyId: row.target_property_id || undefined,
+      })
+    );
+  },
+
+  /**
+   * Create simple invoice record – for now used as a mock when testing AI flow.
+   * Lines can be created separately via createInvoiceLines.
+   */
+  async createInvoice(
+    payload: Omit<WarehouseInvoice, 'id' | 'lines' | 'createdAt' | 'updatedAt'>
+  ): Promise<WarehouseInvoice> {
+    const insertData = {
+      vendor: payload.vendor,
+      invoice_number: payload.invoiceNumber,
+      date: payload.date,
+      file_url: payload.fileUrl,
+      created_by: payload.createdBy,
+    };
+
+    const { data, error } = await supabase
+      .from('warehouse_invoices')
+      .insert([insertData])
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('❌ Error creating warehouse invoice:', error);
+      throw error;
+    }
+
+    return {
+      id: data.id,
+      vendor: data.vendor,
+      invoiceNumber: data.invoice_number,
+      date: data.date,
+      fileUrl: data.file_url || undefined,
+      createdBy: data.created_by || undefined,
+      lines: [],
+    };
+  },
+
+  async createInvoiceLines(
+    invoiceId: string,
+    lines: Array<Omit<WarehouseInvoiceLine, 'id' | 'invoiceId' | 'createdAt' | 'updatedAt'>>
+  ): Promise<void> {
+    if (!lines.length) return;
+
+    const insertData = lines.map((l) => ({
+      invoice_id: invoiceId,
+      item_name: l.itemName,
+      description: l.description,
+      quantity: l.quantity,
+      unit_price: l.unitPrice,
+      total_price: l.totalPrice,
+      suggested_item_id: l.suggestedItemId,
+      target_property_id: l.targetPropertyId,
+    }));
+
+    const { error } = await supabase.from('warehouse_invoice_lines').insert(insertData);
+    if (error) {
+      console.error('❌ Error creating warehouse invoice lines:', error);
+      throw error;
+    }
+  },
 };
 
 // ==================== USER MANAGEMENT ====================
