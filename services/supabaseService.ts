@@ -541,6 +541,63 @@ export const warehouseService = {
       throw error;
     }
   },
+
+  /**
+   * Get all warehouses.
+   */
+  async getWarehouses(): Promise<Warehouse[]> {
+    const { data, error } = await supabase
+      .from('warehouses')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.error('❌ Error loading warehouses:', error);
+      throw error;
+    }
+
+    return (data || []).map(
+      (row: any): Warehouse => ({
+        id: row.id,
+        name: row.name,
+        location: row.location || undefined,
+        description: row.description || undefined,
+      })
+    );
+  },
+
+  /**
+   * Create a new warehouse.
+   */
+  async createWarehouse(
+    name: string,
+    location?: string,
+    description?: string
+  ): Promise<Warehouse> {
+    const insertData: any = {
+      name: name.trim(),
+    };
+    if (location) insertData.location = location.trim();
+    if (description) insertData.description = description.trim();
+
+    const { data, error } = await supabase
+      .from('warehouses')
+      .insert([insertData])
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('❌ Error creating warehouse:', error);
+      throw error;
+    }
+
+    return {
+      id: data.id,
+      name: data.name,
+      location: data.location || undefined,
+      description: data.description || undefined,
+    };
+  },
 };
 
 // ==================== USER MANAGEMENT ====================

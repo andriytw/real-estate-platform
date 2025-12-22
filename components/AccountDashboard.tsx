@@ -15,7 +15,7 @@ import BankingDashboard from './BankingDashboard';
 import KanbanBoard from './kanban/KanbanBoard';
 import UserManagement from './admin/UserManagement';
 import { propertiesService, tasksService, workersService, warehouseService, WarehouseStockItem } from '../services/supabaseService';
-import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker } from '../types';
+import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse } from '../types';
 import { MOCK_PROPERTIES } from '../constants';
 import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 
@@ -174,6 +174,12 @@ const AccountDashboard: React.FC = () => {
   const [transferPropertyId, setTransferPropertyId] = useState<string>('');
   const [transferWorkerId, setTransferWorkerId] = useState<string>('');
   const [workers, setWorkers] = useState<Worker[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('');
+  const [isCreateWarehouseModalOpen, setIsCreateWarehouseModalOpen] = useState(false);
+  const [newWarehouseName, setNewWarehouseName] = useState<string>('');
+  const [newWarehouseLocation, setNewWarehouseLocation] = useState<string>('');
+  const [newWarehouseDescription, setNewWarehouseDescription] = useState<string>('');
 
   const [activities, setActivities] = useState<ActivityItem[]>(INITIAL_ACTIVITIES);
   const [leads, setLeads] = useState<Lead[]>(() => {
@@ -278,6 +284,50 @@ const AccountDashboard: React.FC = () => {
 
     loadWorkers();
   }, []);
+
+  // Load warehouses
+  useEffect(() => {
+    const loadWarehouses = async () => {
+      try {
+        const all = await warehouseService.getWarehouses();
+        setWarehouses(all);
+        // Auto-select first warehouse if only one exists
+        if (all.length === 1) {
+          setSelectedWarehouseId(all[0].id);
+        } else if (all.length > 0 && !selectedWarehouseId) {
+          // Select first warehouse by default if none selected
+          setSelectedWarehouseId(all[0].id);
+        }
+      } catch (error) {
+        console.error('Error loading warehouses:', error);
+      }
+    };
+
+    if (activeDepartment === 'facility' && facilityTab === 'warehouse') {
+      loadWarehouses();
+    }
+  }, [activeDepartment, facilityTab]);
+
+  // Load warehouses when Add inventory modal opens
+  useEffect(() => {
+    if (isAddInventoryModalOpen && warehouses.length === 0) {
+      const loadWarehouses = async () => {
+        try {
+          const all = await warehouseService.getWarehouses();
+          setWarehouses(all);
+          // Auto-select first warehouse if only one exists
+          if (all.length === 1) {
+            setSelectedWarehouseId(all[0].id);
+          } else if (all.length > 0 && !selectedWarehouseId) {
+            setSelectedWarehouseId(all[0].id);
+          }
+        } catch (error) {
+          console.error('Error loading warehouses:', error);
+        }
+      };
+      loadWarehouses();
+    }
+  }, [isAddInventoryModalOpen]);
 
   useEffect(() => {
     const shouldLoadStock = activeDepartment === 'facility' && facilityTab === 'warehouse' && warehouseTab === 'stock';
@@ -415,6 +465,11 @@ const AccountDashboard: React.FC = () => {
   const handleSaveInventoryFromOCR = async () => {
     if (ocrInventoryRows.length === 0) return;
 
+    if (!selectedWarehouseId) {
+      setTransferError('Please select a warehouse to save inventory.');
+      return;
+    }
+
     try {
       setIsExecutingTransfer(true);
       setTransferError(null);
@@ -440,7 +495,7 @@ const AccountDashboard: React.FC = () => {
       const invoiceNumber = ocrInvoiceNumber || ocrInventoryRows[0]?.invoiceNumber || undefined;
       const purchaseDate = ocrPurchaseDate || ocrInventoryRows[0]?.purchaseDate || undefined;
 
-      await warehouseService.addInventoryFromOCR(itemsToAdd, undefined, invoiceNumber, purchaseDate);
+      await warehouseService.addInventoryFromOCR(itemsToAdd, selectedWarehouseId, invoiceNumber, purchaseDate);
 
       // Refresh stock list
       const refreshed = await warehouseService.getStock();
@@ -479,6 +534,35 @@ const AccountDashboard: React.FC = () => {
     } catch (error: any) {
       console.error('Error deleting stock item:', error);
       alert(`Failed to delete item: ${error?.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleCreateWarehouse = async () => {
+    if (!newWarehouseName.trim()) {
+      alert('Please enter warehouse name');
+      return;
+    }
+
+    try {
+      const newWarehouse = await warehouseService.createWarehouse(
+        newWarehouseName.trim(),
+        newWarehouseLocation.trim() || undefined,
+        newWarehouseDescription.trim() || undefined
+      );
+      // Refresh warehouses list
+      const refreshed = await warehouseService.getWarehouses();
+      setWarehouses(refreshed);
+      // Auto-select newly created warehouse
+      setSelectedWarehouseId(newWarehouse.id);
+      // Close modal and reset form
+      setIsCreateWarehouseModalOpen(false);
+      setNewWarehouseName('');
+      setNewWarehouseLocation('');
+      setNewWarehouseDescription('');
+      alert(`✅ Warehouse "${newWarehouse.name}" created successfully!`);
+    } catch (error: any) {
+      console.error('Error creating warehouse:', error);
+      alert(`Failed to create warehouse: ${error?.message || 'Unknown error'}`);
     }
   };
 
@@ -2120,27 +2204,36 @@ const AccountDashboard: React.FC = () => {
                 Manage stock, transfers to apartments and invoice imports (draft UI)
               </p>
             </div>
-            <div className="flex items-center gap-2 text-xs bg-[#161B22] rounded-full p-1">
+            <div className="flex items-center gap-3">
               <button
-                onClick={() => setWarehouseTab('stock')}
-                className={`px-3 py-1 rounded-full transition-colors ${
-                  warehouseTab === 'stock'
-                    ? 'bg-emerald-600 text-white'
-                    : 'text-gray-400 hover:text-white'
-                }`}
+                onClick={() => setIsCreateWarehouseModalOpen(true)}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium flex items-center gap-2 transition-colors"
               >
-                Stock
+                <Plus className="w-3.5 h-3.5" />
+                Create Warehouse
               </button>
-              <button
-                onClick={() => setWarehouseTab('addInventory')}
-                className={`px-3 py-1 rounded-full transition-colors ${
-                  warehouseTab === 'addInventory'
-                    ? 'bg-emerald-600 text-white'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Add inventory
-              </button>
+              <div className="flex items-center gap-2 text-xs bg-[#161B22] rounded-full p-1">
+                <button
+                  onClick={() => setWarehouseTab('stock')}
+                  className={`px-3 py-1 rounded-full transition-colors ${
+                    warehouseTab === 'stock'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Stock
+                </button>
+                <button
+                  onClick={() => setWarehouseTab('addInventory')}
+                  className={`px-3 py-1 rounded-full transition-colors ${
+                    warehouseTab === 'addInventory'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Add inventory
+                </button>
+              </div>
             </div>
           </div>
 
@@ -3122,6 +3215,39 @@ const AccountDashboard: React.FC = () => {
                       </div>
                     ) : (
                       <div className="space-y-3">
+                        {/* Warehouse selection */}
+                        {warehouses.length === 0 ? (
+                          <div className="mb-3 p-3 bg-yellow-500/10 border border-yellow-500/40 rounded-md">
+                            <p className="text-[11px] text-yellow-400 mb-2">
+                              No warehouses found. Please create a warehouse first.
+                            </p>
+                            <button
+                              onClick={() => {
+                                setIsAddInventoryModalOpen(false);
+                                setIsCreateWarehouseModalOpen(true);
+                              }}
+                              className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 text-white rounded-md text-[11px] font-medium"
+                            >
+                              Create Warehouse
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="pb-2 border-b border-gray-800">
+                            <label className="block text-[10px] text-gray-400 mb-1">Склад (Warehouse)</label>
+                            <select
+                              value={selectedWarehouseId}
+                              onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                              className="w-full bg-transparent border border-gray-700 rounded px-2 py-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+                              <option value="">-- Select warehouse --</option>
+                              {warehouses.map((wh) => (
+                                <option key={wh.id} value={wh.id}>
+                                  {wh.name} {wh.location ? `(${wh.location})` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                         {/* Invoice and Date fields (shared for all items) */}
                         <div className="grid grid-cols-2 gap-3 pb-2 border-b border-gray-800">
                           <div>
@@ -3233,9 +3359,9 @@ const AccountDashboard: React.FC = () => {
                 </button>
                 <button
                   onClick={handleSaveInventoryFromOCR}
-                  disabled={ocrInventoryRows.length === 0 || isExecutingTransfer}
+                  disabled={ocrInventoryRows.length === 0 || isExecutingTransfer || !selectedWarehouseId || warehouses.length === 0}
                   className={`px-4 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-colors ${
-                    ocrInventoryRows.length === 0 || isExecutingTransfer
+                    ocrInventoryRows.length === 0 || isExecutingTransfer || !selectedWarehouseId || warehouses.length === 0
                       ? 'bg-emerald-600/30 text-emerald-200/60 cursor-not-allowed'
                       : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                   }`}
@@ -3274,6 +3400,87 @@ const AccountDashboard: React.FC = () => {
         request={selectedRequest}
         onGoToCalendar={handleGoToCalendarFromRequest}
       />
+
+      {/* Create Warehouse Modal */}
+      {isCreateWarehouseModalOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
+          <div className="w-full max-w-md bg-[#020617] border border-gray-800 rounded-2xl shadow-2xl">
+            <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-white">Create Warehouse</h2>
+              <button
+                onClick={() => {
+                  setIsCreateWarehouseModalOpen(false);
+                  setNewWarehouseName('');
+                  setNewWarehouseLocation('');
+                  setNewWarehouseDescription('');
+                }}
+                className="p-1.5 rounded-full hover:bg-white/5 text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5">Name *</label>
+                <input
+                  type="text"
+                  value={newWarehouseName}
+                  onChange={(e) => setNewWarehouseName(e.target.value)}
+                  className="w-full bg-transparent border border-gray-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="Main Warehouse"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5">Location</label>
+                <input
+                  type="text"
+                  value={newWarehouseLocation}
+                  onChange={(e) => setNewWarehouseLocation(e.target.value)}
+                  className="w-full bg-transparent border border-gray-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="Berlin, Germany"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5">Description</label>
+                <textarea
+                  value={newWarehouseDescription}
+                  onChange={(e) => setNewWarehouseDescription(e.target.value)}
+                  className="w-full bg-transparent border border-gray-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="Optional description"
+                  rows={3}
+                />
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-800 flex items-center justify-end gap-2">
+              <button
+                onClick={() => {
+                  setIsCreateWarehouseModalOpen(false);
+                  setNewWarehouseName('');
+                  setNewWarehouseLocation('');
+                  setNewWarehouseDescription('');
+                }}
+                className="px-4 py-2 rounded-md border border-gray-700 text-gray-300 hover:bg-white/5 transition-colors text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateWarehouse}
+                disabled={!newWarehouseName.trim()}
+                className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${
+                  !newWarehouseName.trim()
+                    ? 'bg-blue-600/30 text-blue-200/60 cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-500 text-white'
+                }`}
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
