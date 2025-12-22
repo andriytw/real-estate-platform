@@ -605,10 +605,66 @@ const AccountDashboard: React.FC = () => {
   };
 
   const handleDeleteStockItem = async (stockId: string) => {
-    if (!confirm('Are you sure you want to delete this item from warehouse stock?')) return;
+    if (!confirm('Are you sure you want to delete this item from warehouse stock? This will also remove it from all apartments where it was transferred.')) return;
 
     try {
+      // Спочатку отримуємо інформацію про stock item, щоб знати itemId
+      const stockItem = warehouseStock.find(item => item.stockId === stockId);
+      if (!stockItem) {
+        alert('Stock item not found');
+        return;
+      }
+
+      const itemId = stockItem.itemId;
+      const invNumber = `WAREHOUSE-${itemId}`;
+
+      // Видаляємо зі складу
       await warehouseService.deleteStockItem(stockId);
+
+      // Знаходимо всі квартири, де є цей інвентар, і видаляємо його
+      if (itemId) {
+        console.log(`🗑️ Removing inventory with itemId ${itemId} from all properties...`);
+        const allProperties = await propertiesService.getAll();
+        
+        for (const property of allProperties) {
+          if (property.inventory && property.inventory.length > 0) {
+            const inventoryIndex = property.inventory.findIndex(
+              (item: any) => item.invNumber === invNumber || item.itemId === itemId
+            );
+            
+            if (inventoryIndex >= 0) {
+              console.log(`🗑️ Removing inventory from property: ${property.title}`);
+              const updatedInventory = property.inventory.filter(
+                (_: any, index: number) => index !== inventoryIndex
+              );
+              
+              await propertiesService.update(property.id, {
+                ...property,
+                inventory: updatedInventory,
+              });
+            }
+          }
+        }
+        
+        // Оновити локальний стан properties
+        setProperties((prev) => {
+          return prev.map((p) => {
+            if (p.inventory && p.inventory.length > 0) {
+              const updatedInventory = p.inventory.filter(
+                (item: any) => item.invNumber !== invNumber && item.itemId !== itemId
+              );
+              if (updatedInventory.length !== p.inventory.length) {
+                return { ...p, inventory: updatedInventory };
+              }
+            }
+            return p;
+          });
+        });
+        
+        // Оновити список квартир
+        window.dispatchEvent(new CustomEvent('propertiesUpdated'));
+      }
+
       // Refresh stock list
       const refreshed = await warehouseService.getStock();
       setWarehouseStock(refreshed);
@@ -618,6 +674,8 @@ const AccountDashboard: React.FC = () => {
         next.delete(stockId);
         return next;
       });
+      
+      console.log('✅ Stock item deleted and removed from all properties');
     } catch (error: any) {
       console.error('Error deleting stock item:', error);
       alert(`Failed to delete item: ${error?.message || 'Unknown error'}`);
