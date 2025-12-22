@@ -623,20 +623,42 @@ const AccountDashboard: React.FC = () => {
 
       // Знаходимо всі квартири, де є цей інвентар, і видаляємо його
       if (itemId) {
-        console.log(`🗑️ Removing inventory with itemId ${itemId} from all properties...`);
+        console.log(`🗑️ Removing inventory with itemId ${itemId} (${stockItem.itemName}) from all properties...`);
         const allProperties = await propertiesService.getAll();
+        const itemName = stockItem.itemName;
         
         for (const property of allProperties) {
           if (property.inventory && property.inventory.length > 0) {
-            const inventoryIndex = property.inventory.findIndex(
-              (item: any) => item.invNumber === invNumber || item.itemId === itemId
-            );
+            // Шукаємо інвентар за itemId, invNumber або назвою товару
+            const inventoryToRemove = property.inventory.filter((item: any) => {
+              // Перевірка за itemId
+              if (item.itemId === itemId) {
+                console.log(`  ✓ Found by itemId in ${property.title}: ${item.name || item.type}`);
+                return true;
+              }
+              // Перевірка за invNumber
+              if (item.invNumber === invNumber) {
+                console.log(`  ✓ Found by invNumber in ${property.title}: ${item.name || item.type}`);
+                return true;
+              }
+              // Перевірка за назвою товару (якщо немає itemId)
+              if (!item.itemId && (item.name === itemName || item.type === itemName)) {
+                console.log(`  ✓ Found by name in ${property.title}: ${item.name || item.type}`);
+                return true;
+              }
+              return false;
+            });
             
-            if (inventoryIndex >= 0) {
-              console.log(`🗑️ Removing inventory from property: ${property.title}`);
-              const updatedInventory = property.inventory.filter(
-                (_: any, index: number) => index !== inventoryIndex
-              );
+            if (inventoryToRemove.length > 0) {
+              console.log(`🗑️ Removing ${inventoryToRemove.length} inventory item(s) from property: ${property.title}`);
+              const updatedInventory = property.inventory.filter((item: any) => {
+                // Залишаємо тільки ті, які не знайдені для видалення
+                return !(
+                  item.itemId === itemId ||
+                  item.invNumber === invNumber ||
+                  (!item.itemId && (item.name === itemName || item.type === itemName))
+                );
+              });
               
               await propertiesService.update(property.id, {
                 ...property,
@@ -650,10 +672,16 @@ const AccountDashboard: React.FC = () => {
         setProperties((prev) => {
           return prev.map((p) => {
             if (p.inventory && p.inventory.length > 0) {
-              const updatedInventory = p.inventory.filter(
-                (item: any) => item.invNumber !== invNumber && item.itemId !== itemId
-              );
+              const updatedInventory = p.inventory.filter((item: any) => {
+                // Залишаємо тільки ті, які не відповідають критеріям видалення
+                return !(
+                  item.itemId === itemId ||
+                  item.invNumber === invNumber ||
+                  (!item.itemId && (item.name === itemName || item.type === itemName))
+                );
+              });
               if (updatedInventory.length !== p.inventory.length) {
+                console.log(`  ✓ Updated local state for property: ${p.title}`);
                 return { ...p, inventory: updatedInventory };
               }
             }
@@ -663,6 +691,7 @@ const AccountDashboard: React.FC = () => {
         
         // Оновити список квартир
         window.dispatchEvent(new CustomEvent('propertiesUpdated'));
+        console.log('✅ Inventory removal completed');
       }
 
       // Refresh stock list
