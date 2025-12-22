@@ -988,6 +988,7 @@ const AccountDashboard: React.FC = () => {
             sku: item.sku,
             invoiceNumber: item.invoiceNumber,
             purchaseDate: item.purchaseDate,
+            vendor: item.vendor,
           };
           newInventory.push(newItem);
           console.log(`📦 Added new inventory item: ${item.itemName}, quantity: ${item.quantity}`);
