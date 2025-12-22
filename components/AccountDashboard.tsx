@@ -151,21 +151,50 @@ const AccountDashboard: React.FC = () => {
         // #endregion
         
         // Мок-дані inventory, які потрібно видалити (якщо вони є в БД)
-        const mockInventoryTypes = ['Ліжко', 'Шафа', 'Холодильник', 'Інше (Вкажіть у кількості)', 'Sofa', 'Fridge'];
+        // Перевіряємо як type, так і name, ігноруючи регістр
+        const mockInventoryTypes = ['ліжко', 'шафа', 'холодильник', 'інше (вкажіть у кількості)', 'sofa', 'fridge'];
         const mockInvNumbers = ['KV1-L001', 'KV1-SH003', 'KV1-HOL01', 'KV1-PRM01', 'BRL-DIV04', 'BRL-HOL02', 'WRS-D001', 'WRS-H001'];
         
         const cleanedData = await Promise.all(data.map(async (property) => {
           if (property.inventory && property.inventory.length > 0) {
             const cleanedInventory = property.inventory.filter((item: any) => {
-              // Видаляємо мок-дані inventory (якщо вони є в БД)
-              if (mockInventoryTypes.includes(item.type) || mockInvNumbers.includes(item.invNumber)) {
-                console.log(`🗑️ Removing mock inventory: ${item.type || item.name} (${item.invNumber}) from ${property.title}`);
+              // Видаляємо мок-дані inventory (перевіряємо type і name, ігноруючи регістр)
+              const itemType = (item.type || '').toLowerCase().trim();
+              const itemName = (item.name || '').toLowerCase().trim();
+              
+              // Перевірка на мок-дані: "ліжко", "шафа", "холодильник" в будь-якому регістрі
+              const isMockItem = 
+                itemType.includes('ліжко') || itemName.includes('ліжко') ||
+                itemType.includes('шафа') || itemName.includes('шафа') ||
+                itemType.includes('холодильник') || itemName.includes('холодильник') ||
+                itemType.includes('sofa') || itemName.includes('sofa') ||
+                itemType.includes('fridge') || itemName.includes('fridge') ||
+                mockInventoryTypes.some(mock => itemType === mock || itemName === mock);
+              
+              const isMockInvNumber = item.invNumber && mockInvNumbers.includes(item.invNumber);
+              
+              if (isMockItem || isMockInvNumber) {
+                console.log(`🗑️ Removing mock inventory: ${item.type || item.name} (${item.invNumber || 'no invNumber'}) from ${property.title}`);
                 return false; // Видаляємо мок-дані
               }
               
-              // Залишаємо старий інвентар без itemId та без invNumber у форматі WAREHOUSE-
+              // Якщо склад пустий, видаляємо весь старий inventory без itemId (крім тих, що точно не мок-дані)
+              // Це означає, що весь inventory має бути пов'язаний зі складом
+              if (stock.length === 0) {
+                // Якщо склад пустий, видаляємо весь inventory без itemId (він не може бути зі складу)
+                if (!item.itemId) {
+                  console.log(`🗑️ Removing old inventory (no warehouse): ${item.type || item.name} from ${property.title}`);
+                  return false;
+                }
+              }
+              
+              // Залишаємо старий інвентар без itemId тільки якщо склад не пустий
               if (!item.itemId && (!item.invNumber || !item.invNumber.startsWith('WAREHOUSE-'))) {
-                return true; // Старий інвентар - залишаємо
+                // Але перевіряємо, чи це не мок-дані
+                if (isMockType || isMockInvNumber) {
+                  return false;
+                }
+                return true; // Старий інвентар - залишаємо тільки якщо не мок-дані
               }
               
               // Якщо item має itemId, перевіряємо, чи він є на складі
