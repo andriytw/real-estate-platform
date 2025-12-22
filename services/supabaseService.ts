@@ -39,6 +39,8 @@ export interface WarehouseStockItem {
   invoiceNumber?: string; // Invoice number from first IN movement
   purchaseDate?: string; // Purchase date from first IN movement
   lastPropertyName?: string | null; // Property name if transferred, null if still on warehouse
+  warehouseName?: string; // Human-readable warehouse name
+  propertyAddress?: string; // Property address (street) for search
 }
 
 // ==================== WORKERS ====================
@@ -101,6 +103,10 @@ export const warehouseService = {
           sku,
           default_price,
           unit
+        ),
+        warehouses (
+          id,
+          name
         )
       `
       )
@@ -122,6 +128,7 @@ export const warehouseService = {
       (data || []).map(async (row: any): Promise<WarehouseStockItem> => {
         const itemId = row.item_id;
         const stockWarehouseId = row.warehouse_id;
+        const warehouseName: string | undefined = row.warehouses?.name || undefined;
 
         // Find first IN movement for this item (to get invoice info)
         const { data: firstInMovement } = await supabase
@@ -184,6 +191,7 @@ export const warehouseService = {
           .maybeSingle();
 
         let lastPropertyName: string | null = null;
+        let propertyAddress: string | undefined;
 
         if (lastTransferMovement?.property_id) {
           // Check if this transfer happened after purchase (if we have purchase date)
@@ -191,15 +199,16 @@ export const warehouseService = {
             !purchaseDate || new Date(lastTransferMovement.date) >= new Date(purchaseDate);
 
           if (shouldShowProperty) {
-            // Fetch property name
+            // Fetch property name + address
             const { data: property } = await supabase
               .from('properties')
-              .select('title')
+              .select('title, address, full_address')
               .eq('id', lastTransferMovement.property_id)
               .maybeSingle();
 
-            if (property?.title) {
-              lastPropertyName = property.title;
+            if (property) {
+              if (property.title) lastPropertyName = property.title;
+              propertyAddress = property.full_address || property.address || undefined;
             }
           }
         }
@@ -218,6 +227,8 @@ export const warehouseService = {
           invoiceNumber: invoiceNumber,
           purchaseDate: purchaseDate,
           lastPropertyName: lastPropertyName,
+          warehouseName,
+          propertyAddress,
         };
       })
     );

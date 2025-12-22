@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 import AdminCalendar from './AdminCalendar';
@@ -181,6 +181,12 @@ const AccountDashboard: React.FC = () => {
   const [newWarehouseLocation, setNewWarehouseLocation] = useState<string>('');
   const [newWarehouseDescription, setNewWarehouseDescription] = useState<string>('');
 
+  // Warehouse stock filters & search
+  const [filterWarehouseId, setFilterWarehouseId] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchSuggestions, setSearchSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
   const [activities, setActivities] = useState<ActivityItem[]>(INITIAL_ACTIVITIES);
   const [leads, setLeads] = useState<Lead[]>(() => {
     try {
@@ -337,7 +343,7 @@ const AccountDashboard: React.FC = () => {
       try {
         setIsLoadingWarehouseStock(true);
         setWarehouseStockError(null);
-        const stock = await warehouseService.getStock();
+        const stock = await warehouseService.getStock(filterWarehouseId || undefined);
         setWarehouseStock(stock);
       } catch (error: any) {
         console.error('Error loading warehouse stock:', error);
@@ -348,7 +354,88 @@ const AccountDashboard: React.FC = () => {
     };
 
     loadStock();
-  }, [activeDepartment, facilityTab, warehouseTab]);
+  }, [activeDepartment, facilityTab, warehouseTab, filterWarehouseId]);
+
+  // Autocomplete suggestions for warehouse stock search
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    const query = searchQuery.toLowerCase().trim();
+    const suggestions = new Set<string>();
+
+    warehouseStock.forEach((item) => {
+      // Назва товару
+      if (item.itemName?.toLowerCase().includes(query)) {
+        suggestions.add(item.itemName);
+      }
+      // Артикул
+      if (item.sku?.toLowerCase().includes(query)) {
+        suggestions.add(item.sku);
+      }
+      // Номер інвойсу
+      if (item.invoiceNumber?.toLowerCase().includes(query)) {
+        suggestions.add(item.invoiceNumber);
+      }
+      // Дата покупки
+      if (item.purchaseDate) {
+        const dateStr = new Date(item.purchaseDate).toLocaleDateString('uk-UA');
+        if (dateStr.toLowerCase().includes(query)) {
+          suggestions.add(dateStr);
+        }
+      }
+      // Ціна
+      if (item.unitPrice != null) {
+        const priceStr = `€${item.unitPrice.toFixed(2)}`;
+        if (priceStr.toLowerCase().includes(query)) {
+          suggestions.add(priceStr);
+        }
+      }
+      // Назва складу
+      if (item.warehouseName?.toLowerCase().includes(query)) {
+        suggestions.add(item.warehouseName);
+      }
+      // Назва квартири
+      if (item.lastPropertyName?.toLowerCase().includes(query)) {
+        suggestions.add(item.lastPropertyName);
+      }
+      // Адреса (вулиця)
+      if (item.propertyAddress?.toLowerCase().includes(query)) {
+        suggestions.add(item.propertyAddress);
+      }
+    });
+
+    const list = Array.from(suggestions).slice(0, 10);
+    setSearchSuggestions(list);
+    setShowSuggestions(list.length > 0);
+  }, [searchQuery, warehouseStock]);
+
+  // Filtered stock based on search query
+  const filteredWarehouseStock = useMemo(() => {
+    if (!searchQuery.trim()) return warehouseStock;
+
+    const query = searchQuery.toLowerCase().trim();
+    return warehouseStock.filter((item) => {
+      const dateStr = item.purchaseDate
+        ? new Date(item.purchaseDate).toLocaleDateString('uk-UA').toLowerCase()
+        : '';
+      const priceStr = item.unitPrice != null ? `€${item.unitPrice.toFixed(2)}`.toLowerCase() : '';
+
+      return (
+        item.itemName?.toLowerCase().includes(query) ||
+        item.sku?.toLowerCase().includes(query) ||
+        item.invoiceNumber?.toLowerCase().includes(query) ||
+        dateStr.includes(query) ||
+        priceStr.includes(query) ||
+        item.warehouseName?.toLowerCase().includes(query) ||
+        item.lastPropertyName?.toLowerCase().includes(query) ||
+        item.propertyAddress?.toLowerCase().includes(query)
+      );
+    });
+  }, [warehouseStock, searchQuery]);
 
   const getPropertyNameById = (id: string | number | undefined) => {
     if (!id) return '';
@@ -2337,6 +2424,53 @@ const AccountDashboard: React.FC = () => {
                   </button>
                 </div>
 
+                {/* Filters & search */}
+                <div className="mb-4 flex items-center gap-3">
+                  {/* Warehouse filter */}
+                  <select
+                    value={filterWarehouseId}
+                    onChange={(e) => setFilterWarehouseId(e.target.value)}
+                    className="px-3 py-2 bg-[#161B22] border border-gray-700 rounded-lg text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="">Всі склади</option>
+                    {warehouses.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} {w.location ? `(${w.location})` : ''}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Search with autocomplete */}
+                  <div className="flex-1 relative">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onFocus={() => setShowSuggestions(searchSuggestions.length > 0)}
+                      onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                      placeholder="Пошук: назва товару, артикул, інвойс, дата, ціна, склад, квартира, адреса..."
+                      className="w-full px-3 py-2 bg-[#161B22] border border-gray-700 rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    {showSuggestions && searchSuggestions.length > 0 && (
+                      <div className="absolute z-20 w-full mt-1 bg-[#1F2933] border border-gray-700 rounded-lg shadow-lg max-h-60 overflow-auto">
+                        {searchSuggestions.map((suggestion, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              setSearchQuery(suggestion);
+                              setShowSuggestions(false);
+                            }}
+                            className="w-full px-3 py-2 text-left text-xs text-gray-300 hover:bg-white/5 transition-colors"
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {warehouseStockError && (
                   <div className="mb-3 text-xs text-red-400 bg-red-500/10 border border-red-500/40 rounded-md px-3 py-2">
                     {warehouseStockError}
@@ -2345,9 +2479,11 @@ const AccountDashboard: React.FC = () => {
 
                 {isLoadingWarehouseStock ? (
                   <div className="py-12 text-center text-gray-400 text-sm">Loading warehouse stock...</div>
-                ) : warehouseStock.length === 0 ? (
+                ) : filteredWarehouseStock.length === 0 ? (
                   <div className="py-12 text-center text-gray-500 text-sm">
-                    No items on warehouse yet. Import invoice on the Invoices tab or add stock manually in database.
+                    {searchQuery.trim()
+                      ? 'Нічого не знайдено за вашим запитом.'
+                      : 'No items on warehouse yet. Import invoice on the Invoices tab or add stock manually in database.'}
                   </div>
                 ) : (
                   <div className="overflow-auto border border-gray-800 rounded-md">
@@ -2379,7 +2515,7 @@ const AccountDashboard: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-800">
-                        {warehouseStock.map((row) => {
+                        {filteredWarehouseStock.map((row) => {
                           const selected = selectedStockIds.has(row.stockId);
                           // Format purchase date
                           const formattedDate = row.purchaseDate
@@ -2392,7 +2528,7 @@ const AccountDashboard: React.FC = () => {
                           // Format price
                           const formattedPrice = row.unitPrice != null ? `€${row.unitPrice.toFixed(2)}` : '-';
                           // Determine object (Склад or property name)
-                          const objectName = row.lastPropertyName || 'Склад';
+                          const objectName = row.lastPropertyName || row.warehouseName || 'Склад';
                           return (
                             <tr
                               key={row.stockId}
