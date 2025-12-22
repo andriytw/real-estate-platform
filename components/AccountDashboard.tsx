@@ -145,7 +145,7 @@ const AccountDashboard: React.FC = () => {
   }, []); // Empty deps - only run once on mount
   const [isPropertyAddModalOpen, setIsPropertyAddModalOpen] = useState(false);
   const [isInventoryEditing, setIsInventoryEditing] = useState(false);
-  const [warehouseTab, setWarehouseTab] = useState<'stock' | 'addInventory'>('stock');
+  const [warehouseTab, setWarehouseTab] = useState<'warehouses' | 'stock' | 'addInventory'>('warehouses');
   const [warehouseStock, setWarehouseStock] = useState<WarehouseStockItem[]>([]);
   const [isLoadingWarehouseStock, setIsLoadingWarehouseStock] = useState(false);
   const [warehouseStockError, setWarehouseStockError] = useState<string | null>(null);
@@ -2214,6 +2214,16 @@ const AccountDashboard: React.FC = () => {
               </button>
               <div className="flex items-center gap-2 text-xs bg-[#161B22] rounded-full p-1">
                 <button
+                  onClick={() => setWarehouseTab('warehouses')}
+                  className={`px-3 py-1 rounded-full transition-colors ${
+                    warehouseTab === 'warehouses'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Warehouses
+                </button>
+                <button
                   onClick={() => setWarehouseTab('stock')}
                   className={`px-3 py-1 rounded-full transition-colors ${
                     warehouseTab === 'stock'
@@ -2239,7 +2249,67 @@ const AccountDashboard: React.FC = () => {
 
           {/* Content */}
           <div className="flex-1 overflow-auto p-6">
-            {warehouseTab === 'stock' ? (
+            {warehouseTab === 'warehouses' ? (
+              <div className="bg-[#161B22] border border-gray-800 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">Warehouses List</h3>
+                    <p className="text-xs text-gray-400">
+                      Manage your warehouses. Create, view, and manage warehouse locations.
+                    </p>
+                  </div>
+                </div>
+
+                {warehouses.length === 0 ? (
+                  <div className="py-12 text-center text-gray-500 text-sm">
+                    No warehouses created yet. Click "Create Warehouse" button to add your first warehouse.
+                  </div>
+                ) : (
+                  <div className="overflow-auto border border-gray-800 rounded-md">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-[#1F2933] text-gray-300">
+                        <tr>
+                          <th className="px-3 py-2 text-left border-b border-gray-700">Name</th>
+                          <th className="px-3 py-2 text-left border-b border-gray-700">Location</th>
+                          <th className="px-3 py-2 text-left border-b border-gray-700">Description</th>
+                          <th className="px-3 py-2 text-center border-b border-gray-700">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-800">
+                        {warehouses.map((warehouse) => (
+                          <tr key={warehouse.id} className="hover:bg-white/5">
+                            <td className="px-3 py-2">
+                              <div className="font-medium text-gray-100">{warehouse.name}</div>
+                            </td>
+                            <td className="px-3 py-2 text-gray-400">{warehouse.location || '-'}</td>
+                            <td className="px-3 py-2 text-gray-400">{warehouse.description || '-'}</td>
+                            <td className="px-3 py-2 text-center">
+                              <button
+                                onClick={async () => {
+                                  if (confirm(`Are you sure you want to delete warehouse "${warehouse.name}"?`)) {
+                                    try {
+                                      // Note: We need to add deleteWarehouse method to service
+                                      // For now, just show a message
+                                      alert('Delete functionality will be added. For now, you can delete manually from database.');
+                                    } catch (error: any) {
+                                      alert(`Failed to delete warehouse: ${error?.message || 'Unknown error'}`);
+                                    }
+                                  }
+                                }}
+                                className="px-2 py-1 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"
+                                title="Delete warehouse"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : warehouseTab === 'stock' ? (
               <div className="bg-[#161B22] border border-gray-800 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-4">
                   <div>
