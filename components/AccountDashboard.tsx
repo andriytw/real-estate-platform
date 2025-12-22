@@ -656,10 +656,24 @@ const AccountDashboard: React.FC = () => {
   // Функція для виконання transfer інвентарю після підтвердження завдання
   const executeInventoryTransfer = async (transferData: any) => {
     try {
+      console.log('📦 Starting inventory transfer execution...', transferData);
       const { transferData: items, propertyId } = transferData;
+
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        console.error('❌ No items to transfer');
+        return;
+      }
+
+      if (!propertyId) {
+        console.error('❌ No propertyId provided');
+        return;
+      }
+
+      console.log(`📦 Transferring ${items.length} items to property ${propertyId}`);
 
       // 1) Зменшити залишки на складі + записати рух
       for (const item of items) {
+        console.log(`📦 Processing item: ${item.itemName}, quantity: ${item.quantity}, stockId: ${item.stockId}`);
         await warehouseService.decreaseStockQuantity(item.stockId, item.quantity);
         await warehouseService.createStockMovement({
           warehouseId: item.warehouseId,
@@ -673,52 +687,75 @@ const AccountDashboard: React.FC = () => {
         });
       }
 
+      console.log('✅ Warehouse stock decreased and movements created');
+
       // 2) Оновити інвентар квартири (отримуємо property з бази для надійності)
       const property = await propertiesService.getById(propertyId);
-      if (property) {
-        const newInventory = [...(property.inventory || [])];
-
-        items.forEach((item: any) => {
-          const invId = `WAREHOUSE-${item.itemId}`;
-          const existingIndex = newInventory.findIndex((i: any) => i.invNumber === invId);
-
-          if (existingIndex >= 0) {
-            const existing = newInventory[existingIndex];
-            newInventory[existingIndex] = {
-              ...existing,
-              quantity: (existing.quantity || 0) + item.quantity,
-            };
-          } else {
-            newInventory.push({
-              type: item.itemName,
-              invNumber: invId,
-              quantity: item.quantity,
-              cost: item.unitPrice || 0,
-              itemId: item.itemId,
-              name: item.itemName,
-              unitPrice: item.unitPrice || 0,
-              totalCost: (item.unitPrice || 0) * item.quantity,
-              sku: item.sku,
-              invoiceNumber: item.invoiceNumber,
-              purchaseDate: item.purchaseDate,
-            });
-          }
-        });
-
-        await propertiesService.update(propertyId, {
-          ...property,
-          inventory: newInventory,
-        });
+      if (!property) {
+        console.error(`❌ Property ${propertyId} not found`);
+        return;
       }
+
+      console.log(`📦 Property found: ${property.title}, current inventory items: ${(property.inventory || []).length}`);
+      const newInventory = [...(property.inventory || [])];
+
+      items.forEach((item: any) => {
+        const invId = `WAREHOUSE-${item.itemId}`;
+        const existingIndex = newInventory.findIndex((i: any) => i.invNumber === invId);
+
+        if (existingIndex >= 0) {
+          const existing = newInventory[existingIndex];
+          newInventory[existingIndex] = {
+            ...existing,
+            quantity: (existing.quantity || 0) + item.quantity,
+          };
+          console.log(`📦 Updated existing inventory item: ${item.itemName}, new quantity: ${newInventory[existingIndex].quantity}`);
+        } else {
+          const newItem = {
+            type: item.itemName,
+            invNumber: invId,
+            quantity: item.quantity,
+            cost: item.unitPrice || 0,
+            itemId: item.itemId,
+            name: item.itemName,
+            unitPrice: item.unitPrice || 0,
+            totalCost: (item.unitPrice || 0) * item.quantity,
+            sku: item.sku,
+            invoiceNumber: item.invoiceNumber,
+            purchaseDate: item.purchaseDate,
+          };
+          newInventory.push(newItem);
+          console.log(`📦 Added new inventory item: ${item.itemName}, quantity: ${item.quantity}`);
+        }
+      });
+
+      console.log(`📦 Updating property with ${newInventory.length} inventory items`);
+      const updatedProperty = {
+        ...property,
+        inventory: newInventory,
+      };
+      await propertiesService.update(propertyId, updatedProperty);
+
+      console.log('✅ Property inventory updated successfully');
+
+      // Оновити локальний стан properties (selectedProperty оновиться автоматично через properties.find())
+      setProperties((prev) => {
+        const updated = prev.map((p) => (p.id === propertyId ? updatedProperty : p));
+        return updated;
+      });
+      console.log('✅ Local properties state updated');
 
       // 3) Оновити склад
       const refreshed = await warehouseService.getStock();
       setWarehouseStock(refreshed);
+      console.log('✅ Warehouse stock refreshed');
       
-      // 4) Оновити список квартир (щоб інвентар відобразився)
+      // 4) Оновити список квартир (щоб інвентар відобразився в інших компонентах)
       window.dispatchEvent(new CustomEvent('propertiesUpdated'));
+      console.log('✅ Properties update event dispatched');
+      console.log('✅ Inventory transfer completed successfully');
     } catch (error) {
-      console.error('Error executing inventory transfer:', error);
+      console.error('❌ Error executing inventory transfer:', error);
       throw error;
     }
   };
