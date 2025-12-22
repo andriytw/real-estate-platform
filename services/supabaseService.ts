@@ -291,6 +291,119 @@ export const warehouseService = {
       throw error;
     }
   },
+
+  /**
+   * Add inventory items from OCR table to warehouse stock.
+   * Creates/updates items in catalog and adds/updates warehouse_stock.
+   */
+  async addInventoryFromOCR(
+    items: Array<{ name: string; quantity: number; unit: string; price?: number; category?: string }>,
+    warehouseId?: string
+  ): Promise<void> {
+    if (!items.length) return;
+
+    // Get default warehouse (first one) if not provided
+    let targetWarehouseId = warehouseId;
+    if (!targetWarehouseId) {
+      const { data: warehouses } = await supabase
+        .from('warehouses')
+        .select('id')
+        .limit(1);
+      if (!warehouses || warehouses.length === 0) {
+        throw new Error('No warehouse found. Please create a warehouse first.');
+      }
+      targetWarehouseId = warehouses[0].id;
+    }
+
+    for (const item of items) {
+      if (!item.name || item.quantity <= 0) continue;
+
+      // Find or create Item in catalog
+      let itemId: string;
+      const { data: existingItem } = await supabase
+        .from('items')
+        .select('id')
+        .eq('name', item.name.trim())
+        .maybeSingle();
+
+      if (existingItem) {
+        itemId = existingItem.id;
+        // Update default_price if provided and different
+        if (item.price !== undefined && item.price > 0) {
+          await supabase
+            .from('items')
+            .update({ default_price: item.price })
+            .eq('id', itemId);
+        }
+      } else {
+        // Create new Item
+        const { data: newItem, error: createError } = await supabase
+          .from('items')
+          .insert([
+            {
+              name: item.name.trim(),
+              category: item.category || 'General',
+              unit: item.unit || 'pcs',
+              default_price: item.price || null,
+            },
+          ])
+          .select('id')
+          .single();
+
+        if (createError) {
+          console.error(`❌ Error creating item "${item.name}":`, createError);
+          continue;
+        }
+        itemId = newItem.id;
+      }
+
+      // Find or create warehouse_stock entry
+      const { data: existingStock } = await supabase
+        .from('warehouse_stock')
+        .select('id, quantity')
+        .eq('warehouse_id', targetWarehouseId)
+        .eq('item_id', itemId)
+        .maybeSingle();
+
+      if (existingStock) {
+        // Update quantity (add to existing)
+        const newQuantity = parseFloat(existingStock.quantity ?? 0) + item.quantity;
+        await supabase
+          .from('warehouse_stock')
+          .update({ quantity: newQuantity })
+          .eq('id', existingStock.id);
+      } else {
+        // Create new stock entry
+        await supabase.from('warehouse_stock').insert([
+          {
+            warehouse_id: targetWarehouseId,
+            item_id: itemId,
+            quantity: item.quantity,
+          },
+        ]);
+      }
+
+      // Create stock movement (IN type)
+      await this.createStockMovement({
+        warehouseId: targetWarehouseId,
+        itemId: itemId,
+        type: 'IN',
+        quantity: item.quantity,
+        reason: 'OCR import',
+      });
+    }
+  },
+
+  /**
+   * Delete stock item (remove from warehouse_stock).
+   */
+  async deleteStockItem(stockId: string): Promise<void> {
+    const { error } = await supabase.from('warehouse_stock').delete().eq('id', stockId);
+    if (error) {
+      console.error('❌ Error deleting stock item:', error);
+      throw error;
+    }
+  },
 };
 
 // ==================== USER MANAGEMENT ====================
