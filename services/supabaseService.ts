@@ -452,7 +452,8 @@ export const warehouseService = {
     }>,
     warehouseId?: string,
     invoiceNumber?: string,
-    purchaseDate?: string
+    purchaseDate?: string,
+    vendor?: string
   ): Promise<void> {
     if (!items.length) return;
 
@@ -474,7 +475,7 @@ export const warehouseService = {
     if (invoiceNumber && purchaseDate) {
       try {
         const invoice = await this.createInvoice({
-          vendor: 'Unknown', // Can be extended later
+          vendor: vendor || 'Unknown',
           invoiceNumber: invoiceNumber,
           date: purchaseDate,
           fileUrl: undefined,

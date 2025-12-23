@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, Clock, User, CheckCircle2, Circle, Building2, Wrench, Check } from 'lucide-react';
+import { X, Calendar, Clock, User, CheckCircle2, Circle, Building2, Wrench, Check, Image as ImageIcon, FileVideo } from 'lucide-react';
 import { tasksService, workersService, propertiesService } from '../../services/supabaseService';
 import { CalendarEvent, TaskStatus, Property, Worker } from '../../types';
 import { getTaskColor } from '../../utils/taskColors';
+import { createClient } from '../../utils/supabase/client';
 
 interface TaskDetailModalProps {
   isOpen: boolean;
@@ -22,12 +23,28 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const [property, setProperty] = useState<Property | null>(null);
   const [assignee, setAssignee] = useState<Worker | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [checklist, setChecklist] = useState(task?.checklist || []);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [media, setMedia] = useState<string[]>(task?.images || []);
 
   useEffect(() => {
     if (isOpen && task) {
       loadTaskDetails();
     }
   }, [isOpen, task]);
+
+  useEffect(() => {
+    if (task?.checklist) {
+      setChecklist(task.checklist);
+    } else {
+      setChecklist([]);
+    }
+    if (task?.images) {
+      setMedia(task.images);
+    } else {
+      setMedia([]);
+    }
+  }, [task]);
 
   const loadTaskDetails = async () => {
     if (!task) return;
@@ -58,6 +75,67 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       console.error('Error updating task status:', error);
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handleChecklistToggle = async (index: number) => {
+    if (!task) return;
+    try {
+      const updated = checklist.map((item, i) =>
+        i === index ? { ...item, checked: !item.checked } : item
+      );
+      setChecklist(updated);
+      const updatedTask = await tasksService.update(task.id, { checklist: updated });
+      onUpdateTask(updatedTask);
+      window.dispatchEvent(new CustomEvent('taskUpdated'));
+    } catch (error) {
+      console.error('Error updating checklist:', error);
+    }
+  };
+
+  const handleMediaUpload = async (files: FileList | null) => {
+    if (!files || !task) return;
+    const supabase = createClient();
+    if (!supabase) return;
+
+    setIsUploadingMedia(true);
+
+    try {
+      const uploadedUrls: string[] = [];
+
+      for (const file of Array.from(files)) {
+        const filePath = `task-media/${task.id}/${Date.now()}-${file.name}`;
+        const { error: uploadError } = await supabase
+          .storage
+          .from('task-media')
+          .upload(filePath, file);
+
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          continue;
+        }
+
+        const { data } = supabase
+          .storage
+          .from('task-media')
+          .getPublicUrl(filePath);
+
+        if (data?.publicUrl) {
+          uploadedUrls.push(data.publicUrl);
+        }
+      }
+
+      if (uploadedUrls.length > 0) {
+        const updatedImages = [...(task.images || []), ...uploadedUrls];
+        const updatedTask = await tasksService.update(task.id, { images: updatedImages });
+        setMedia(updatedImages);
+        onUpdateTask(updatedTask);
+        window.dispatchEvent(new CustomEvent('taskUpdated'));
+      }
+    } catch (error) {
+      console.error('Error uploading media:', error);
+    } finally {
+      setIsUploadingMedia(false);
     }
   };
 
@@ -141,6 +219,23 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 {getStatusButton('completed', 'Mark as Done', <CheckCircle2 className="w-3 h-3" />)}
                 {getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />)}
               </div>
+              {/* Media upload for worker */}
+              <div className="mt-3 border-t border-blue-500/20 pt-3">
+                <label className="text-[10px] text-gray-300 mb-1 block">
+                  Attach photos / videos
+                </label>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,video/*"
+                  disabled={isUploadingMedia}
+                  onChange={(e) => handleMediaUpload(e.target.files)}
+                  className="text-[10px] text-gray-400"
+                />
+                {isUploadingMedia && (
+                  <p className="text-[10px] text-blue-300 mt-1">Uploading...</p>
+                )}
+              </div>
             </div>
 
             {/* Date & Time */}
@@ -183,6 +278,109 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 {/* Приховано Transfer Data JSON - він не потрібен для відображення */}
               </div>
             </div>
+
+            {/* Inventory to Transfer (for transfer_inventory tasks) */}
+            {parsedDescription?.action === 'transfer_inventory' && Array.isArray(parsedDescription.transferData) && (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-400 mb-2">
+                  Inventory to transfer
+                </h3>
+                <div className="bg-[#1C1F24] rounded-lg border border-gray-800 overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-[#111319] text-gray-400">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Item</th>
+                        <th className="px-3 py-2 text-right">Qty</th>
+                        <th className="px-3 py-2 text-right">Price</th>
+                        <th className="px-3 py-2 text-left">SKU</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-800">
+                      {parsedDescription.transferData.map((item: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-[#1E2027]">
+                          <td className="px-3 py-2 text-gray-100">
+                            {item.itemName || '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-200 font-mono">
+                            {item.quantity ?? '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-300 font-mono">
+                            {item.unitPrice != null ? `€${Number(item.unitPrice).toFixed(2)}` : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-gray-400">
+                            {item.sku || '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Worker checklist based on transfer items */}
+            {checklist && checklist.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-400 mb-2">
+                  Worker checklist
+                </h3>
+                <div className="bg-[#1C1F24] rounded-lg p-3 border border-gray-800 space-y-2">
+                  {checklist.map((item: any, idx: number) => (
+                    <label
+                      key={idx}
+                      className="flex items-center gap-2 text-xs text-gray-200 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-3 w-3 rounded border-gray-600 bg-transparent text-emerald-500"
+                        checked={!!item.checked}
+                        onChange={() => handleChecklistToggle(idx)}
+                      />
+                      <span className={item.checked ? 'line-through text-gray-500' : ''}>
+                        {item.text}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Media gallery */}
+            {media && media.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-400 mb-2">Photos & Videos</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {media.map((url, idx) => (
+                    <a
+                      key={idx}
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block group"
+                    >
+                      <div className="aspect-video bg-black/40 rounded-lg overflow-hidden border border-gray-800 group-hover:border-blue-500 transition-colors flex items-center justify-center">
+                        {/* Простий прев'ю: пробуємо як зображення; якщо не вдалось – показуємо іконку відео */}
+                        <img
+                          src={url}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                        {/* Overlay icons (не обов'язково, але красиво) */}
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/40 transition-opacity">
+                          {url.match(/\\.mp4$|\\.mov$|\\.webm$/i) ? (
+                            <FileVideo className="w-6 h-6 text-white" />
+                          ) : (
+                            <ImageIcon className="w-6 h-6 text-white" />
+                          )}
+                        </div>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Status */}
             <div>

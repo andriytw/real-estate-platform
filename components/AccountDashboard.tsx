@@ -269,6 +269,7 @@ const AccountDashboard: React.FC = () => {
   const [transferError, setTransferError] = useState<string | null>(null);
   const [isAddInventoryModalOpen, setIsAddInventoryModalOpen] = useState(false);
   const [uploadedInventoryFileName, setUploadedInventoryFileName] = useState<string | null>(null);
+  const [uploadedInventoryFile, setUploadedInventoryFile] = useState<File | null>(null);
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
   const [ocrInventoryRows, setOcrInventoryRows] = useState<
     Array<{
@@ -285,6 +286,7 @@ const AccountDashboard: React.FC = () => {
   >([]);
   const [ocrInvoiceNumber, setOcrInvoiceNumber] = useState<string>('');
   const [ocrPurchaseDate, setOcrPurchaseDate] = useState<string>('');
+  const [ocrVendor, setOcrVendor] = useState<string>('');
   const [transferPropertyId, setTransferPropertyId] = useState<string>('');
   const [transferWorkerId, setTransferWorkerId] = useState<string>('');
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -591,53 +593,115 @@ const AccountDashboard: React.FC = () => {
     setIsExecutingTransfer(false);
   };
 
-  const handleOcrMock = () => {
-    if (!uploadedInventoryFileName) {
-      setUploadedInventoryFileName('inventory_list.pdf');
+  const handleOcrReal = async () => {
+    if (!uploadedInventoryFile) {
+      setTransferError('Please upload a file first');
+      return;
     }
+
     setIsOcrProcessing(true);
-    setTimeout(() => {
-      const today = new Date().toISOString().split('T')[0];
-      const mockInvoiceNumber = `INV-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(4, '0')}`;
-      setOcrInvoiceNumber(mockInvoiceNumber);
-      setOcrPurchaseDate(today);
-      setOcrInventoryRows([
-        {
-          id: '1',
-          sku: 'BED-160-200',
-          name: 'Bed 160x200',
-          quantity: '2',
-          unit: 'pcs',
-          price: '350',
-          invoiceNumber: mockInvoiceNumber,
-          purchaseDate: today,
-          object: 'Склад',
-        },
-        {
-          id: '2',
-          sku: 'CHAIR-001',
-          name: 'Chair',
-          quantity: '4',
-          unit: 'pcs',
-          price: '45',
-          invoiceNumber: mockInvoiceNumber,
-          purchaseDate: today,
-          object: 'Склад',
-        },
-        {
-          id: '3',
-          sku: 'TABLE-001',
-          name: 'Table',
-          quantity: '1',
-          unit: 'pcs',
-          price: '120',
-          invoiceNumber: mockInvoiceNumber,
-          purchaseDate: today,
-          object: 'Склад',
-        },
-      ]);
+    setTransferError(null);
+
+    try {
+      // Convert file to base64
+      const reader = new FileReader();
+      
+      reader.onloadend = async () => {
+        try {
+          const base64String = reader.result as string;
+          const base64Data = base64String.split(',')[1]; // Remove data:image/jpeg;base64, prefix
+          const mimeType = uploadedInventoryFile.type;
+
+          // Get Supabase client for auth
+          const { createClient } = await import('../utils/supabase/client');
+          const supabase = createClient();
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          if (!session) {
+            throw new Error('Not authenticated. Please log in again.');
+          }
+
+          // Get Supabase URL
+          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 
+                            import.meta.env.NEXT_PUBLIC_SUPABASE_URL || 
+                            'https://qcpuzfhawcondygspiok.supabase.co';
+          
+          const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 
+                         import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
+                         'sb_publishable_cpQrhzVqZRCCeULDWhVJJw_ZIhcLx0Y';
+
+          // Call Edge Function
+          const response = await fetch(`${supabaseUrl}/functions/v1/ocr-invoice`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+              'apikey': anonKey,
+            },
+            body: JSON.stringify({
+              fileBase64: base64Data,
+              mimeType: mimeType,
+              fileName: uploadedInventoryFileName,
+            }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || `OCR processing failed: ${response.status}`);
+          }
+
+          const result = await response.json();
+          
+          if (!result.success || !result.data) {
+            throw new Error('Invalid OCR response format');
+          }
+
+          const ocrData = result.data;
+
+          // Update state with recognized data
+          setOcrInvoiceNumber(ocrData.invoiceNumber || '');
+          setOcrPurchaseDate(ocrData.purchaseDate || new Date().toISOString().split('T')[0]);
+          setOcrVendor(ocrData.vendor || '');
+          
+          const rows = (ocrData.items || []).map((item: any, idx: number) => ({
+            id: String(idx + 1),
+            sku: item.sku || '',
+            name: item.name || '',
+            quantity: String(item.quantity || 1),
+            unit: item.unit || 'pcs',
+            price: String(item.price || 0),
+            invoiceNumber: ocrData.invoiceNumber || '',
+            purchaseDate: ocrData.purchaseDate || '',
+            object: 'Склад',
+          }));
+
+          setOcrInventoryRows(rows);
+          setIsOcrProcessing(false);
+          
+          if (rows.length === 0) {
+            setTransferError('No items found in the invoice. Please check the document or try another file.');
+          } else {
+            // Show success message
+            console.log(`✅ OCR completed: ${rows.length} items recognized`);
+          }
+        } catch (error: any) {
+          console.error('OCR Error:', error);
+          setTransferError(error.message || 'Failed to process OCR. Please try again.');
+          setIsOcrProcessing(false);
+        }
+      };
+
+      reader.onerror = () => {
+        setTransferError('Failed to read file');
+        setIsOcrProcessing(false);
+      };
+
+      reader.readAsDataURL(uploadedInventoryFile);
+    } catch (error: any) {
+      console.error('File reading error:', error);
+      setTransferError(error.message || 'Failed to read file');
       setIsOcrProcessing(false);
-    }, 800);
+    }
   };
 
   const handleOcrCellChange = (
@@ -692,11 +756,12 @@ const AccountDashboard: React.FC = () => {
         return;
       }
 
-      // Get invoice number and date from first row (they should be the same for all)
+      // Get invoice number, date, and vendor from first row (they should be the same for all)
       const invoiceNumber = ocrInvoiceNumber || ocrInventoryRows[0]?.invoiceNumber || undefined;
       const purchaseDate = ocrPurchaseDate || ocrInventoryRows[0]?.purchaseDate || undefined;
+      const vendor = ocrVendor || undefined;
 
-      await warehouseService.addInventoryFromOCR(itemsToAdd, selectedWarehouseId, invoiceNumber, purchaseDate);
+      await warehouseService.addInventoryFromOCR(itemsToAdd, selectedWarehouseId, invoiceNumber, purchaseDate, vendor);
 
       // Refresh stock list
       const refreshed = await warehouseService.getStock();
@@ -705,9 +770,11 @@ const AccountDashboard: React.FC = () => {
       // Close modal and reset
       setIsAddInventoryModalOpen(false);
       setOcrInventoryRows([]);
+      setUploadedInventoryFile(null);
       setUploadedInventoryFileName(null);
       setOcrInvoiceNumber('');
       setOcrPurchaseDate('');
+      setOcrVendor('');
       setTransferError(null);
       alert(`✅ Successfully added ${itemsToAdd.length} item(s) to warehouse stock!`);
     } catch (error: any) {
@@ -1063,6 +1130,12 @@ const AccountDashboard: React.FC = () => {
         originalDescription: `Перевезти інвентар зі складу в ${propertyName}. Призначено: ${workerObj?.name || 'працівник'}.`,
       };
 
+      // Checklist для працівника на основі інвентарю
+      const checklist = transferData.map((item) => ({
+        text: `${item.itemName || 'Предмет'} × ${item.quantity || 1}`,
+        checked: false,
+      }));
+
       await tasksService.create({
         id: '', // буде згенеровано на бекенді
         title: `Перевезти інвентар (${selectedStockItems.length} поз.) – ${propertyName}`,
@@ -1086,7 +1159,7 @@ const AccountDashboard: React.FC = () => {
         workerId: transferWorkerId,
         department: 'facility',
         images: [],
-        checklist: [],
+        checklist,
         locationText: getPropertyAddressById(transferPropertyId),
         createdAt: today.toISOString(),
       });
@@ -3139,10 +3212,12 @@ const AccountDashboard: React.FC = () => {
                   <button
                     onClick={() => {
                       setIsAddInventoryModalOpen(true);
+                      setUploadedInventoryFile(null);
                       setUploadedInventoryFileName(null);
                       setOcrInventoryRows([]);
                       setOcrInvoiceNumber('');
                       setOcrPurchaseDate('');
+                      setOcrVendor('');
                       setTransferError(null);
                     }}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium flex items-center gap-2 transition-colors"
@@ -3900,9 +3975,11 @@ const AccountDashboard: React.FC = () => {
                   setIsAddInventoryModalOpen(false);
                   setTransferError(null);
                   setOcrInventoryRows([]);
+                  setUploadedInventoryFile(null);
                   setUploadedInventoryFileName(null);
                   setOcrInvoiceNumber('');
                   setOcrPurchaseDate('');
+                  setOcrVendor('');
                 }}
                 className="p-1.5 rounded-full hover:bg-white/5 text-gray-400 hover:text-white transition-colors"
               >
@@ -3926,8 +4003,10 @@ const AccountDashboard: React.FC = () => {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
+                        setUploadedInventoryFile(file);
                         setUploadedInventoryFileName(file.name);
                         setOcrInventoryRows([]);
+                        setTransferError(null);
                       }
                     }}
                   />
@@ -3951,16 +4030,16 @@ const AccountDashboard: React.FC = () => {
                       Step 2 – recognize document with OCR and review extracted items.
                     </div>
                     <button
-                      onClick={handleOcrMock}
-                      disabled={isOcrProcessing}
+                      onClick={handleOcrReal}
+                      disabled={isOcrProcessing || !uploadedInventoryFile}
                       className={`px-3 py-1.5 rounded-md text-[11px] font-semibold flex items-center gap-2 transition-colors ${
-                        isOcrProcessing
+                        isOcrProcessing || !uploadedInventoryFile
                           ? 'bg-purple-600/40 text-purple-200/70 cursor-not-allowed'
                           : 'bg-purple-600 hover:bg-purple-500 text-white'
                       }`}
                     >
                       <Zap className="w-3.5 h-3.5" />
-                      {isOcrProcessing ? 'Recognizing… (mock)' : 'Recognize with OCR (mock)'}
+                      {isOcrProcessing ? 'Recognizing…' : 'Recognize with OCR'}
                     </button>
                   </div>
                   <div className="flex-1 border border-gray-800 rounded-lg p-3 bg-[#020617]">
