@@ -288,6 +288,7 @@ const AccountDashboard: React.FC = () => {
   const [ocrInvoiceNumber, setOcrInvoiceNumber] = useState<string>('');
   const [ocrPurchaseDate, setOcrPurchaseDate] = useState<string>('');
   const [ocrVendor, setOcrVendor] = useState<string>('');
+  const inventoryFileInputRef = useRef<HTMLInputElement | null>(null);
   const [transferPropertyId, setTransferPropertyId] = useState<string>('');
   const [transferWorkerId, setTransferWorkerId] = useState<string>('');
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -3976,7 +3977,7 @@ const AccountDashboard: React.FC = () => {
 
       {isAddInventoryModalOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
-          <div className="w-full max-w-5xl max-h-[90vh] bg-[#020617] border border-gray-800 rounded-2xl shadow-2xl flex flex-col">
+      <div className="w-full max-w-6xl h-[90vh] max-h-[95vh] bg-[#020617] border border-gray-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
               <div>
                 <h2 className="text-base font-semibold text-white">Add inventory from document</h2>
@@ -4011,45 +4012,76 @@ const AccountDashboard: React.FC = () => {
                   {transferError}
                 </div>
               )}
-              <div className="grid grid-cols-1 md:grid-cols-[2fr,3fr] gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-[3fr,4fr] gap-4">
                 <div className="flex flex-col gap-3">
-                  <label
-                    className="relative flex flex-col items-center justify-center border-2 border-dashed border-gray-700 hover:border-blue-500/70 bg-black/20 rounded-xl px-4 py-6 cursor-pointer transition-colors"
-                  >
-                    <input
-                      type="file"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
+                  <input
+                    ref={inventoryFileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      if (uploadedInventoryPreviewUrl) {
+                        URL.revokeObjectURL(uploadedInventoryPreviewUrl);
+                      }
+                      if (file) {
+                        setUploadedInventoryFile(file);
+                        setUploadedInventoryFileName(file.name);
+                        const url = URL.createObjectURL(file);
+                        setUploadedInventoryPreviewUrl(url);
+                        setOcrInventoryRows([]);
+                        setTransferError(null);
+                      } else {
+                        setUploadedInventoryFile(null);
+                        setUploadedInventoryFileName(null);
+                        setUploadedInventoryPreviewUrl(null);
+                      }
+                    }}
+                  />
+
+                  {!uploadedInventoryFile && (
+                    <div
+                      className="relative flex flex-col items-center justify-center border-2 border-dashed border-gray-700 hover:border-blue-500/70 bg-black/20 rounded-xl px-4 py-8 cursor-pointer transition-colors"
+                      onClick={() => inventoryFileInputRef.current?.click()}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const file = e.dataTransfer.files?.[0];
                         if (file) {
-                          setUploadedInventoryFile(file);
-                          setUploadedInventoryFileName(file.name);
                           if (uploadedInventoryPreviewUrl) {
                             URL.revokeObjectURL(uploadedInventoryPreviewUrl);
                           }
+                          setUploadedInventoryFile(file);
+                          setUploadedInventoryFileName(file.name);
                           const url = URL.createObjectURL(file);
                           setUploadedInventoryPreviewUrl(url);
                           setOcrInventoryRows([]);
                           setTransferError(null);
                         }
                       }}
-                    />
-                    <Upload className="w-6 h-6 text-blue-400 mb-2" />
-                    <span className="text-xs font-medium text-white">
-                      Drag & drop file here or click to browse
-                    </span>
-                    <span className="mt-1 text-[11px] text-gray-500">
-                      PDF, JPG, PNG or Excel with item list
-                    </span>
-                    {uploadedInventoryFileName && (
-                      <span className="mt-3 px-2 py-1 rounded bg-blue-500/10 text-blue-300 text-[11px]">
-                        Selected: {uploadedInventoryFileName}
+                    >
+                      <Upload className="w-6 h-6 text-blue-400 mb-2" />
+                      <span className="text-xs font-medium text-white">
+                        Drag & drop file here or click to browse
                       </span>
-                    )}
-                  </label>
+                      <span className="mt-1 text-[11px] text-gray-500">
+                        PDF, JPG, PNG or Excel with item list
+                      </span>
+                    </div>
+                  )}
 
                   {uploadedInventoryPreviewUrl && (
-                    <div className="flex-1 min-h-[220px] max-h-[360px] border border-gray-800 rounded-xl overflow-hidden bg-black/40">
+                    <div className="relative flex-1 min-h-[260px] max-h-[520px] border border-gray-800 rounded-xl overflow-hidden bg-black/40">
+                      <div className="absolute top-2 right-2 z-10 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => inventoryFileInputRef.current?.click()}
+                          className="px-2 py-1 rounded-md bg-black/70 text-[10px] text-gray-200 border border-gray-600 hover:bg-black/90"
+                        >
+                          Change file
+                        </button>
+                      </div>
                       {uploadedInventoryFile?.type === 'application/pdf' ? (
                         <iframe
                           src={uploadedInventoryPreviewUrl}
