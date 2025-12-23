@@ -38,7 +38,10 @@ serve(async (req) => {
     console.log('📄 Processing OCR request:', { fileName, mimeType, fileSize: fileBase64.length })
 
     // Prompt for Gemini API
-    const prompt = `Analyze this invoice/receipt image or document and extract all items in a structured JSON format.
+    const prompt = `You are processing German furniture and electronics invoices (e.g. POCO).
+On these invoices there is usually a column "Artikel-Nr.", "Art.-Nr.", "Artikelnr" or similar with the article number before the description.
+
+Analyze this invoice/receipt image or document and extract all items in a structured JSON format.
 
 For each item in the invoice, extract:
 - name (product/item name)
@@ -69,7 +72,11 @@ Return ONLY a valid JSON object with this exact structure:
 }
 
 Important:
-- The "sku" field is VERY IMPORTANT: it must contain the exact article number from the line item (e.g. 6001473). Do NOT invent values. If the invoice has a column with article numbers or item IDs, always copy that value into "sku".
+- The "sku" field is VERY IMPORTANT:
+  - It MUST contain the exact article number from the line item (e.g. 6001473) taken from the "Artikel-Nr" / "Art.-Nr" column.
+  - NEVER invent values and NEVER use the literal text "SKU".
+  - If there is any numeric or alphanumeric article id before the description, always copy it into "sku".
+  - Only leave "sku" empty if there is absolutely no article number visible for that line.
 - If a field is not found, use empty string "" or 0 for numbers
 - Ensure all prices are numbers (not strings)
 - Ensure all quantities are numbers (not strings)
