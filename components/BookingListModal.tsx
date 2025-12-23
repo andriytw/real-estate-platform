@@ -479,7 +479,7 @@ ${emailData.length > 1 ? `\n... та ще ${emailData.length - 1} email(ів)` :
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
             >
               <Download className="w-4 h-4" />
-              Download All
+              Download
             </button>
           </div>
         </div>
