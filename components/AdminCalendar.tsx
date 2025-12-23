@@ -1004,26 +1004,22 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                    <table className="w-full text-[11px]">
                                      <thead className="bg-[#111319] text-gray-400">
                                        <tr>
+                                         <th className="px-3 py-2 text-left">ID</th>
                                          <th className="px-3 py-2 text-left">Item</th>
                                          <th className="px-3 py-2 text-right">Qty</th>
-                                         <th className="px-3 py-2 text-right">Price</th>
-                                         <th className="px-3 py-2 text-left">SKU</th>
                                        </tr>
                                      </thead>
                                      <tbody className="divide-y divide-gray-800">
                                        {parsed.transferData.map((item: any, idx: number) => (
                                          <tr key={idx} className="hover:bg-[#1E2027]">
+                                           <td className="px-3 py-2 text-gray-400 font-mono">
+                                             {item.sku || item.itemId || idx + 1}
+                                           </td>
                                            <td className="px-3 py-2 text-gray-100">
                                              {item.itemName || '—'}
                                            </td>
                                            <td className="px-3 py-2 text-right text-gray-200 font-mono">
                                              {item.quantity ?? '—'}
-                                           </td>
-                                           <td className="px-3 py-2 text-right text-gray-300 font-mono">
-                                             {item.unitPrice != null ? `€${Number(item.unitPrice).toFixed(2)}` : '—'}
-                                           </td>
-                                           <td className="px-3 py-2 text-gray-400">
-                                             {item.sku || '—'}
                                            </td>
                                          </tr>
                                        ))}
