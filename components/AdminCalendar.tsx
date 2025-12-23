@@ -988,6 +988,58 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                         </div>
                      )}
 
+                     {/* --- INVENTORY LIST FOR TRANSFER TASKS --- */}
+                     {(() => {
+                       try {
+                         if (viewEvent.description) {
+                           const parsed = JSON.parse(viewEvent.description as string);
+                           if (parsed?.action === 'transfer_inventory' && Array.isArray(parsed.transferData)) {
+                             return (
+                               <div className="mb-6 bg-[#0D1117] border border-gray-700 rounded-lg p-4 shadow-inner">
+                                 <h5 className="text-xs font-bold text-white mb-3 flex items-center gap-2">
+                                   <ClipboardList className="w-4 h-4 text-emerald-500" />
+                                   Inventory to transfer
+                                 </h5>
+                                 <div className="border border-gray-800 rounded-lg overflow-hidden">
+                                   <table className="w-full text-[11px]">
+                                     <thead className="bg-[#111319] text-gray-400">
+                                       <tr>
+                                         <th className="px-3 py-2 text-left">Item</th>
+                                         <th className="px-3 py-2 text-right">Qty</th>
+                                         <th className="px-3 py-2 text-right">Price</th>
+                                         <th className="px-3 py-2 text-left">SKU</th>
+                                       </tr>
+                                     </thead>
+                                     <tbody className="divide-y divide-gray-800">
+                                       {parsed.transferData.map((item: any, idx: number) => (
+                                         <tr key={idx} className="hover:bg-[#1E2027]">
+                                           <td className="px-3 py-2 text-gray-100">
+                                             {item.itemName || '—'}
+                                           </td>
+                                           <td className="px-3 py-2 text-right text-gray-200 font-mono">
+                                             {item.quantity ?? '—'}
+                                           </td>
+                                           <td className="px-3 py-2 text-right text-gray-300 font-mono">
+                                             {item.unitPrice != null ? `€${Number(item.unitPrice).toFixed(2)}` : '—'}
+                                           </td>
+                                           <td className="px-3 py-2 text-gray-400">
+                                             {item.sku || '—'}
+                                           </td>
+                                         </tr>
+                                       ))}
+                                     </tbody>
+                                   </table>
+                                 </div>
+                               </div>
+                             );
+                           }
+                         }
+                       } catch (e) {
+                         // ignore parse errors
+                       }
+                       return null;
+                     })()}
+
                      {/* --- REVIEW/APPROVAL MODE --- */}
                      {viewEvent.status === 'done_by_worker' || viewEvent.status === 'completed' ? (
                         <div className="mb-6 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
@@ -1019,6 +1071,36 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                            </button>
                         </div>
                      ) : null}
+
+                     {/* --- MEDIA FROM WORKER --- */}
+                     {viewEvent.images && viewEvent.images.length > 0 && (
+                       <div className="mb-6 bg-[#0D1117] border border-gray-700 rounded-lg p-4">
+                         <h5 className="text-xs font-bold text-white mb-3">
+                           Photos & Videos from worker
+                         </h5>
+                         <div className="grid grid-cols-3 gap-2">
+                           {viewEvent.images.map((url, idx) => (
+                             <a
+                               key={idx}
+                               href={url}
+                               target="_blank"
+                               rel="noreferrer"
+                               className="block group"
+                             >
+                               <div className="aspect-video bg-black/40 rounded-lg overflow-hidden border border-gray-800 group-hover:border-blue-500 transition-colors flex items-center justify-center">
+                                 <img
+                                   src={url}
+                                   className="w-full h-full object-cover"
+                                   onError={(e) => {
+                                     (e.target as HTMLImageElement).style.display = 'none';
+                                   }}
+                                 />
+                               </div>
+                             </a>
+                           ))}
+                         </div>
+                       </div>
+                     )}
 
                      <div className={`space-y-6 ${viewEvent.status === 'archived' ? 'opacity-60' : ''}`}>
                         <div>
