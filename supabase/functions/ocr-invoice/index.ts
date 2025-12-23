@@ -10,7 +10,7 @@ const corsHeaders = {
 
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
 // Використовуємо актуальну назву моделі Gemini 1.5 Flash (‑latest)
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent'
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent'
 
 serve(async (req) => {
   // Handle CORS preflight requests
