@@ -4006,14 +4006,15 @@ const AccountDashboard: React.FC = () => {
               </button>
             </div>
 
-            <div className="px-6 py-5 flex-1 overflow-auto space-y-4 text-xs text-gray-100">
+            <div className="px-6 py-5 flex-1 flex flex-col overflow-hidden space-y-4 text-xs text-gray-100">
               {transferError && (
                 <div className="mb-3 text-xs text-red-400 bg-red-500/10 border border-red-500/40 rounded-md px-3 py-2">
                   {transferError}
                 </div>
               )}
-              <div className="grid grid-cols-1 md:grid-cols-[3fr,4fr] gap-4">
-                <div className="flex flex-col gap-3">
+              <div className="flex-1 grid grid-cols-1 md:grid-cols-[3fr,4fr] gap-4 items-stretch min-h-0">
+                {/* LEFT: PDF preview */}
+                <div className="flex flex-col gap-3 h-full min-h-0">
                   <input
                     ref={inventoryFileInputRef}
                     type="file"
@@ -4072,7 +4073,7 @@ const AccountDashboard: React.FC = () => {
                   )}
 
                   {uploadedInventoryPreviewUrl && (
-                    <div className="relative flex-1 min-h-[260px] max-h-[520px] border border-gray-800 rounded-xl overflow-hidden bg-black/40">
+                    <div className="relative flex-1 min-h-0 border border-gray-800 rounded-xl overflow-hidden bg-black/40">
                       <div className="absolute top-2 right-2 z-10 flex gap-2">
                         <button
                           type="button"
@@ -4099,7 +4100,8 @@ const AccountDashboard: React.FC = () => {
                   )}
                 </div>
 
-                <div className="flex flex-col gap-2">
+                {/* RIGHT: OCR table */}
+                <div className="flex flex-col gap-2 h-full min-h-0">
                   <div className="flex items-center justify-between">
                     <div className="text-[11px] text-gray-400">
                       Step 2 – recognize document with OCR and review extracted items.
@@ -4117,7 +4119,7 @@ const AccountDashboard: React.FC = () => {
                       {isOcrProcessing ? 'Recognizing…' : 'Recognize with OCR'}
                     </button>
                   </div>
-                  <div className="flex-1 border border-gray-800 rounded-lg p-3 bg-[#020617]">
+                  <div className="flex-1 min-h-0 border border-gray-800 rounded-lg p-3 bg-[#020617] flex flex-col">
                     {ocrInventoryRows.length === 0 ? (
                       <div className="h-full flex items-center justify-center text-[11px] text-gray-500 text-center">
                         OCR result will appear here as an editable table after recognition.
@@ -4189,7 +4191,7 @@ const AccountDashboard: React.FC = () => {
                           </div>
                         </div>
                         {/* Items table */}
-                        <div className="max-h-64 overflow-auto">
+                        <div className="flex-1 min-h-0 overflow-auto">
                           <table className="min-w-full text-[11px]">
                             <thead className="bg-[#020617] text-gray-300 border-b border-gray-800 sticky top-0">
                               <tr>
