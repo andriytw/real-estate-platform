@@ -270,6 +270,7 @@ const AccountDashboard: React.FC = () => {
   const [isAddInventoryModalOpen, setIsAddInventoryModalOpen] = useState(false);
   const [uploadedInventoryFileName, setUploadedInventoryFileName] = useState<string | null>(null);
   const [uploadedInventoryFile, setUploadedInventoryFile] = useState<File | null>(null);
+  const [uploadedInventoryPreviewUrl, setUploadedInventoryPreviewUrl] = useState<string | null>(null);
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
   const [ocrInventoryRows, setOcrInventoryRows] = useState<
     Array<{
@@ -390,6 +391,15 @@ const AccountDashboard: React.FC = () => {
   const [invoices, setInvoices] = useState<InvoiceData[]>([]);
   const [adminEvents, setAdminEvents] = useState<CalendarEvent[]>(INITIAL_ADMIN_EVENTS);
   const [accountingEvents, setAccountingEvents] = useState<CalendarEvent[]>(INITIAL_ACCOUNTING_EVENTS);
+
+  // Cleanup object URL for uploaded inventory preview
+  useEffect(() => {
+    return () => {
+      if (uploadedInventoryPreviewUrl) {
+        URL.revokeObjectURL(uploadedInventoryPreviewUrl);
+      }
+    };
+  }, [uploadedInventoryPreviewUrl]);
 
   // --- Warehouse: load workers (for assigning transfer tasks) & stock ---
   useEffect(() => {
@@ -3214,6 +3224,10 @@ const AccountDashboard: React.FC = () => {
                       setIsAddInventoryModalOpen(true);
                       setUploadedInventoryFile(null);
                       setUploadedInventoryFileName(null);
+                      if (uploadedInventoryPreviewUrl) {
+                        URL.revokeObjectURL(uploadedInventoryPreviewUrl);
+                        setUploadedInventoryPreviewUrl(null);
+                      }
                       setOcrInventoryRows([]);
                       setOcrInvoiceNumber('');
                       setOcrPurchaseDate('');
@@ -3977,6 +3991,10 @@ const AccountDashboard: React.FC = () => {
                   setOcrInventoryRows([]);
                   setUploadedInventoryFile(null);
                   setUploadedInventoryFileName(null);
+                  if (uploadedInventoryPreviewUrl) {
+                    URL.revokeObjectURL(uploadedInventoryPreviewUrl);
+                    setUploadedInventoryPreviewUrl(null);
+                  }
                   setOcrInvoiceNumber('');
                   setOcrPurchaseDate('');
                   setOcrVendor('');
@@ -3994,35 +4012,60 @@ const AccountDashboard: React.FC = () => {
                 </div>
               )}
               <div className="grid grid-cols-1 md:grid-cols-[2fr,3fr] gap-4">
-                <label
-                  className="relative flex flex-col items-center justify-center border-2 border-dashed border-gray-700 hover:border-blue-500/70 bg-black/20 rounded-xl px-4 py-8 cursor-pointer transition-colors"
-                >
-                  <input
-                    type="file"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        setUploadedInventoryFile(file);
-                        setUploadedInventoryFileName(file.name);
-                        setOcrInventoryRows([]);
-                        setTransferError(null);
-                      }
-                    }}
-                  />
-                  <Upload className="w-6 h-6 text-blue-400 mb-2" />
-                  <span className="text-xs font-medium text-white">
-                    Drag & drop file here or click to browse
-                  </span>
-                  <span className="mt-1 text-[11px] text-gray-500">
-                    PDF, JPG, PNG or Excel with item list
-                  </span>
-                  {uploadedInventoryFileName && (
-                    <span className="mt-3 px-2 py-1 rounded bg-blue-500/10 text-blue-300 text-[11px]">
-                      Selected: {uploadedInventoryFileName}
+                <div className="flex flex-col gap-3">
+                  <label
+                    className="relative flex flex-col items-center justify-center border-2 border-dashed border-gray-700 hover:border-blue-500/70 bg-black/20 rounded-xl px-4 py-6 cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setUploadedInventoryFile(file);
+                          setUploadedInventoryFileName(file.name);
+                          if (uploadedInventoryPreviewUrl) {
+                            URL.revokeObjectURL(uploadedInventoryPreviewUrl);
+                          }
+                          const url = URL.createObjectURL(file);
+                          setUploadedInventoryPreviewUrl(url);
+                          setOcrInventoryRows([]);
+                          setTransferError(null);
+                        }
+                      }}
+                    />
+                    <Upload className="w-6 h-6 text-blue-400 mb-2" />
+                    <span className="text-xs font-medium text-white">
+                      Drag & drop file here or click to browse
                     </span>
+                    <span className="mt-1 text-[11px] text-gray-500">
+                      PDF, JPG, PNG or Excel with item list
+                    </span>
+                    {uploadedInventoryFileName && (
+                      <span className="mt-3 px-2 py-1 rounded bg-blue-500/10 text-blue-300 text-[11px]">
+                        Selected: {uploadedInventoryFileName}
+                      </span>
+                    )}
+                  </label>
+
+                  {uploadedInventoryPreviewUrl && (
+                    <div className="flex-1 min-h-[220px] max-h-[360px] border border-gray-800 rounded-xl overflow-hidden bg-black/40">
+                      {uploadedInventoryFile?.type === 'application/pdf' ? (
+                        <iframe
+                          src={uploadedInventoryPreviewUrl}
+                          className="w-full h-full"
+                          title="Invoice preview"
+                        />
+                      ) : (
+                        <img
+                          src={uploadedInventoryPreviewUrl}
+                          alt="Invoice preview"
+                          className="w-full h-full object-contain bg-black"
+                        />
+                      )}
+                    </div>
                   )}
-                </label>
+                </div>
 
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
