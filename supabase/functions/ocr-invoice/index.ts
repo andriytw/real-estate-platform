@@ -69,6 +69,7 @@ Return ONLY a valid JSON object with this exact structure:
 }
 
 Important:
+- The "sku" field is VERY IMPORTANT: it must contain the exact article number from the line item (e.g. 6001473). Do NOT invent values. If the invoice has a column with article numbers or item IDs, always copy that value into "sku".
 - If a field is not found, use empty string "" or 0 for numbers
 - Ensure all prices are numbers (not strings)
 - Ensure all quantities are numbers (not strings)

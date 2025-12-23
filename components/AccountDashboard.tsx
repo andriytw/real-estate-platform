@@ -4199,6 +4199,7 @@ const AccountDashboard: React.FC = () => {
                                 <th className="px-2 py-2 text-left">Назва товару</th>
                                 <th className="px-2 py-2 text-right">К-сть</th>
                                 <th className="px-2 py-2 text-right">Ціна (од.)</th>
+                                <th className="px-2 py-2 text-left">Магазин</th>
                                 <th className="px-2 py-2 text-left">Об'єкт</th>
                               </tr>
                             </thead>
@@ -4233,6 +4234,9 @@ const AccountDashboard: React.FC = () => {
                                       onChange={(e) => handleOcrCellChange(row.id, 'price', e.target.value)}
                                       className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-right text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                                     />
+                                  </td>
+                                  <td className="px-2 py-1.5">
+                                    <span className="text-[11px] text-gray-400">{ocrVendor || '-'}</span>
                                   </td>
                                   <td className="px-2 py-1.5">
                                     <span className="text-[11px] text-gray-400">{row.object}</span>
