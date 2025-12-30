@@ -1451,12 +1451,16 @@ const AccountDashboard: React.FC = () => {
           propertyToUpdate.meterLog = propertyToEdit.meterLog;
         }
         
-        // Видалити meterReadings з updates, щоб не перезаписати їх
-        delete propertyToUpdate.meterReadings;
+        // Зберігати meterReadings разом з meterLog (не видаляти!)
+        // meterReadings потрібні для відображення в модальному вікні редагування
+        if (newProperty.meterReadings !== undefined) {
+          propertyToUpdate.meterReadings = newProperty.meterReadings;
+        }
         
         const updatedProperty = await propertiesService.update(propertyToEdit.id, propertyToUpdate);
         console.log('✅ Property updated in database:', updatedProperty.id);
         console.log('📊 Updated property meterLog:', updatedProperty.meterLog);
+        console.log('📊 Updated property meterReadings:', updatedProperty.meterReadings);
         
         // Оновити локальний стан
         setProperties(prev => prev.map(p => p.id === updatedProperty.id ? updatedProperty : p));
@@ -1519,6 +1523,7 @@ const AccountDashboard: React.FC = () => {
         const savedProperty = await propertiesService.create(propertyWithoutId);
         console.log('✅ Property saved to database:', savedProperty.id);
         console.log('📊 Saved property meterLog:', savedProperty.meterLog);
+        console.log('📊 Saved property meterReadings:', savedProperty.meterReadings);
         
         // Оновити локальний стан з об'єктом з бази (з правильним ID)
         setProperties([...properties, savedProperty]);
