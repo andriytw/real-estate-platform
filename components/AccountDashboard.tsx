@@ -2355,11 +2355,36 @@ const AccountDashboard: React.FC = () => {
                         <div><span className="text-gray-500 text-xs block">Площа</span><span className="text-white font-bold">{selectedProperty.details.area}</span></div>
                         <div><span className="text-gray-500 text-xs block">Кімнати/Ліжка</span><span className="text-white font-bold">{selectedProperty.details.rooms} / {selectedProperty.details.beds}</span></div>
                         <div><span className="text-gray-500 text-xs block">Поверх</span><span className="text-white font-bold">{selectedProperty.details.floor} / {selectedProperty.details.buildingFloors}</span></div>
+                        <div><span className="text-gray-500 text-xs block">Ванні/Балкони</span><span className="text-white font-bold">{selectedProperty.details.baths || 0} / {selectedProperty.details.balconies || 0}</span></div>
                         <div><span className="text-gray-500 text-xs block">Тип Будівлі</span><span className="text-white font-bold">{selectedProperty.building.type}</span></div>
+                        {selectedProperty.details?.year && selectedProperty.details.year > 0 && (
+                            <div><span className="text-gray-500 text-xs block">Рік</span><span className="text-white font-bold">{selectedProperty.details.year}</span></div>
+                        )}
+                        {selectedProperty.building?.repairYear && selectedProperty.building.repairYear > 0 && (
+                            <div><span className="text-gray-500 text-xs block">Ремонт</span><span className="text-white font-bold">{selectedProperty.building.repairYear}</span></div>
+                        )}
                         <div><span className="text-gray-500 text-xs block">Опалення</span><span className="text-white font-bold">{selectedProperty.building.heating}</span></div>
                         <div><span className="text-gray-500 text-xs block">Центр. Опалення</span><span className="text-white font-bold">{selectedProperty.building.centralHeating}</span></div>
                         <div><span className="text-gray-500 text-xs block">Паркування</span><span className="text-white font-bold">{selectedProperty.building.parking}</span></div>
+                        {selectedProperty.building?.elevator && (
+                            <div><span className="text-gray-500 text-xs block">Ліфт</span><span className="text-white font-bold">{selectedProperty.building.elevator}</span></div>
+                        )}
+                        {selectedProperty.building?.pets && (
+                            <div><span className="text-gray-500 text-xs block">Тварини</span><span className="text-white font-bold">{selectedProperty.building.pets}</span></div>
+                        )}
+                        {selectedProperty.building?.access && (
+                            <div><span className="text-gray-500 text-xs block">Доступ</span><span className="text-white font-bold">{selectedProperty.building.access}</span></div>
+                        )}
+                        {selectedProperty.building?.kitchen && (
+                            <div><span className="text-gray-500 text-xs block">Кухня</span><span className="text-white font-bold">{selectedProperty.building.kitchen}</span></div>
+                        )}
+                        {selectedProperty.building?.certificate && (
+                            <div><span className="text-gray-500 text-xs block">Сертифікат</span><span className="text-white font-bold">{selectedProperty.building.certificate}</span></div>
+                        )}
                         <div><span className="text-gray-500 text-xs block">Енергоклас</span><span className="text-white font-bold">{selectedProperty.building.energyClass}</span></div>
+                        {selectedProperty.building?.energyDemand && (
+                            <div><span className="text-gray-500 text-xs block">Попит</span><span className="text-white font-bold">{selectedProperty.building.energyDemand}</span></div>
+                        )}
                     </div>
                 </div>
             </section>
