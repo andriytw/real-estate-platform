@@ -5,7 +5,7 @@ import { MOCK_PROPERTIES } from '../constants';
 import { CalendarEvent, TaskType, TaskStatus, Property, BookingStatus, Worker } from '../types';
 import { updateBookingStatusFromTask } from '../bookingUtils';
 import { workersService, tasksService } from '../services/supabaseService';
-import { ACCOUNTING_TASK_TYPES } from '../utils/taskColors';
+import { ACCOUNTING_TASK_TYPES, getTaskColor } from '../utils/taskColors';
 
 type ViewMode = 'month' | 'week' | 'day';
 
@@ -236,59 +236,43 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     });
   };
 
-  // Color Logic based on Task Type
-  const getEventColor = (type: string) => {
-    switch (type) {
-      case 'Einzug': return 'border-l-2 border-purple-500 bg-purple-500/10 text-purple-200';
-      case 'Auszug': return 'border-l-2 border-blue-500 bg-blue-500/10 text-blue-200';
-      case 'Putzen': return 'border-l-2 border-orange-500 bg-orange-500/10 text-orange-200';
-      case 'Reklamation': return 'border-l-2 border-red-600 bg-red-600/10 text-red-200';
-      case 'Arbeit nach plan': return 'border-l-2 border-emerald-500 bg-emerald-500/10 text-emerald-200';
-      case 'Zeit Abgabe von wohnung': return 'border-l-2 border-yellow-500 bg-yellow-500/10 text-yellow-200';
-      case 'Zählerstand': return 'border-l-2 border-cyan-500 bg-cyan-500/10 text-cyan-200';
-      default: return 'border-l-2 border-gray-500 bg-gray-500/10 text-gray-300';
-    }
+  // Calendar Event Color - uses getTaskColor to match board colors
+  const getCalendarEventColor = (type: string) => {
+    // getTaskColor повертає: "bg-blue-500/10 border-blue-500 text-blue-400"
+    // Потрібно перетворити на: "border-l-2 border-blue-500 bg-blue-500/10 text-blue-400"
+    const colorString = getTaskColor(type);
+    const parts = colorString.split(' ');
+    
+    const borderClass = parts.find(p => p.startsWith('border-')) || 'border-gray-500';
+    const bgClass = parts.find(p => p.startsWith('bg-')) || 'bg-gray-500/10';
+    const textClass = parts.find(p => p.startsWith('text-')) || 'text-gray-300';
+    
+    return `border-l-2 ${borderClass} ${bgClass} ${textClass}`;
   };
 
-  // Sidebar Item Border Color Logic
+  // Sidebar Item Border Color Logic - uses getTaskColor to match board colors
   const getSidebarBorderClass = (type: string) => {
-    switch (type) {
-      case 'Einzug': return 'border-purple-500/50 hover:border-purple-500';
-      case 'Auszug': return 'border-blue-500/50 hover:border-blue-500';
-      case 'Putzen': return 'border-orange-500/50 hover:border-orange-500';
-      case 'Reklamation': return 'border-red-600/50 hover:border-red-600';
-      case 'Arbeit nach plan': return 'border-emerald-500/50 hover:border-emerald-500';
-      case 'Zeit Abgabe von wohnung': return 'border-yellow-500/50 hover:border-yellow-500';
-      case 'Zählerstand': return 'border-cyan-500/50 hover:border-cyan-500';
-      default: return 'border-gray-800 hover:border-gray-600';
-    }
+    const colors = getTaskColor(type).split(' ');
+    const borderClass = colors.find(c => c.startsWith('border-')) || 'border-gray-500';
+    return `${borderClass}/50 hover:${borderClass}`;
   };
 
+  // Event Badge Color - uses getTaskColor to match board colors
   const getEventBadgeColor = (type: string) => {
-    switch (type) {
-      case 'Einzug': return 'text-purple-400 bg-purple-400/10 border border-purple-500/20';
-      case 'Auszug': return 'text-blue-400 bg-blue-400/10 border border-blue-500/20';
-      case 'Putzen': return 'text-orange-400 bg-orange-400/10 border border-orange-500/20';
-      case 'Reklamation': return 'text-red-500 bg-red-500/10 border border-red-600/20';
-      case 'Arbeit nach plan': return 'text-emerald-400 bg-emerald-400/10 border border-emerald-500/20';
-      case 'Zeit Abgabe von wohnung': return 'text-yellow-400 bg-yellow-400/10 border border-yellow-500/20';
-      case 'Zählerstand': return 'text-cyan-400 bg-cyan-400/10 border border-cyan-500/20';
-      default: return 'text-gray-400 bg-gray-400/10';
-    }
+    const colors = getTaskColor(type).split(' ');
+    const borderClass = colors.find(c => c.startsWith('border-')) || 'border-gray-500';
+    const textClass = colors.find(c => c.startsWith('text-')) || 'text-gray-400';
+    const bgClass = colors.find(c => c.startsWith('bg-')) || 'bg-gray-400/10';
+    return `${textClass} ${bgClass} border ${borderClass}/20`;
   };
 
-  // Dot Color for Legend
+  // Dot Color for Legend - uses getTaskColor to match board colors
   const getDotColor = (type: string) => {
-    switch (type) {
-      case 'Einzug': return 'bg-purple-500';
-      case 'Auszug': return 'bg-blue-500';
-      case 'Putzen': return 'bg-orange-500';
-      case 'Reklamation': return 'bg-red-600';
-      case 'Arbeit nach plan': return 'bg-emerald-500';
-      case 'Zeit Abgabe von wohnung': return 'bg-yellow-500';
-      case 'Zählerstand': return 'bg-cyan-500';
-      default: return 'bg-gray-500';
-    }
+    const colors = getTaskColor(type).split(' ');
+    const borderClass = colors.find(c => c.startsWith('border-')) || 'border-gray-500';
+    // Extract color from border class (e.g., "border-blue-500" -> "bg-blue-500")
+    const colorName = borderClass.replace('border-', 'bg-');
+    return colorName;
   };
 
   // Helper for dropdown text color
@@ -726,7 +710,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                       onClick={(e) => handleEventClick(e, event)}
                       className={`
                         relative p-2 rounded border hover:bg-opacity-80 transition-colors flex-shrink-0
-                        ${getEventColor(event.type as string)}
+                        ${getCalendarEventColor(event.type as string)}
                         ${event.status === 'archived' ? 'opacity-50 grayscale' : ''}
                         ${event.status === 'done_by_worker' ? 'ring-1 ring-yellow-500' : ''}
                         ${viewMode === 'day' ? 'p-4 text-base' : ''}
