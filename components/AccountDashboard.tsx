@@ -2870,50 +2870,57 @@ const AccountDashboard: React.FC = () => {
                                 </button>
                                 
                                 {expandedMeterGroups.has(group.id) && (
-                                    <div className="p-4 border-t border-gray-700 bg-[#0D1117]">
+                                    <div className="p-2 border-t border-gray-700 bg-[#0D1117]">
                                         {group.type === 'initial' ? (
-                                            // Initial readings display - show all meterReadings
-                                            <div className="space-y-3">
-                                                <div className="text-sm font-semibold text-gray-400 mb-3">Початкові показники</div>
+                                            // Initial readings display - show all meterReadings in compact table
+                                            <div className="space-y-1">
                                                 {selectedProperty.meterReadings && selectedProperty.meterReadings.length > 0 ? (
-                                                    <div className="space-y-3">
-                                                        {selectedProperty.meterReadings.map((meter, idx) => {
-                                                            const nameLower = meter.name.toLowerCase();
-                                                            let icon = <Flame className="w-4 h-4 text-orange-500" />;
-                                                            if (nameLower === 'electricity' || nameLower.includes('electric') || nameLower.includes('електро') || nameLower.includes('strom')) {
-                                                                icon = <Zap className="w-4 h-4 text-yellow-500" />;
-                                                            } else if (nameLower === 'water' || nameLower.includes('вода') || nameLower.includes('wasser')) {
-                                                                icon = <Droplet className="w-4 h-4 text-blue-500" />;
-                                                            } else if (nameLower === 'gas' || nameLower.includes('газ')) {
-                                                                icon = <Flame className="w-4 h-4 text-orange-500" />;
-                                                            } else if (nameLower === 'heating' || nameLower.includes('heizung') || nameLower.includes('опалення')) {
-                                                                icon = <Flame className="w-4 h-4 text-orange-500" />;
-                                                            }
-                                                            
-                                                            return (
-                                                                <div key={idx} className="flex items-center justify-between gap-4 p-3 bg-[#16181D] rounded-lg border border-gray-700">
-                                                                    <div className="flex items-center gap-3 flex-1">
-                                                                        {icon}
-                                                                        <div className="flex flex-col">
-                                                                            <span className="text-xs text-gray-400">{meter.name}</span>
-                                                                            {meter.number && (
-                                                                                <span className="text-[10px] text-gray-500 font-mono">№ {meter.number}</span>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-4">
-                                                                        <div className="text-right">
-                                                                            <span className="text-xs text-gray-400 block">Початкове</span>
-                                                                            <span className="text-white font-mono font-bold">{meter.initial || '-'}</span>
-                                                                        </div>
-                                                                        <div className="text-right">
-                                                                            <span className="text-xs text-gray-400 block">Актуальне</span>
-                                                                            <span className="text-emerald-400 font-mono font-bold">{meter.current || meter.initial || '-'}</span>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
+                                                    <div className="overflow-hidden border border-gray-700 rounded">
+                                                        <table className="w-full text-xs">
+                                                            <thead className="bg-[#16181D] border-b border-gray-700">
+                                                                <tr>
+                                                                    <th className="p-1.5 text-left text-[10px] font-bold text-gray-400 uppercase">Тип</th>
+                                                                    <th className="p-1.5 text-left text-[10px] font-bold text-gray-400 uppercase">Номер</th>
+                                                                    <th className="p-1.5 text-right text-[10px] font-bold text-gray-400 uppercase">Початкове</th>
+                                                                    <th className="p-1.5 text-right text-[10px] font-bold text-gray-400 uppercase">Актуальне</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-gray-700/50">
+                                                                {selectedProperty.meterReadings.map((meter, idx) => {
+                                                                    const nameLower = meter.name.toLowerCase();
+                                                                    let icon = <Flame className="w-3 h-3 text-orange-500" />;
+                                                                    if (nameLower === 'electricity' || nameLower.includes('electric') || nameLower.includes('електро') || nameLower.includes('strom')) {
+                                                                        icon = <Zap className="w-3 h-3 text-yellow-500" />;
+                                                                    } else if (nameLower === 'water' || nameLower.includes('вода') || nameLower.includes('wasser')) {
+                                                                        icon = <Droplet className="w-3 h-3 text-blue-500" />;
+                                                                    } else if (nameLower === 'gas' || nameLower.includes('газ')) {
+                                                                        icon = <Flame className="w-3 h-3 text-orange-500" />;
+                                                                    } else if (nameLower === 'heating' || nameLower.includes('heizung') || nameLower.includes('опалення')) {
+                                                                        icon = <Flame className="w-3 h-3 text-orange-500" />;
+                                                                    }
+                                                                    
+                                                                    return (
+                                                                        <tr key={idx} className="hover:bg-[#16181D]">
+                                                                            <td className="p-1.5">
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    {icon}
+                                                                                    <span className="text-white text-xs">{meter.name}</span>
+                                                                                </div>
+                                                                            </td>
+                                                                            <td className="p-1.5">
+                                                                                <span className="text-gray-300 font-mono text-[10px]">{meter.number || '-'}</span>
+                                                                            </td>
+                                                                            <td className="p-1.5 text-right">
+                                                                                <span className="text-white font-mono text-xs font-semibold">{meter.initial || '-'}</span>
+                                                                            </td>
+                                                                            <td className="p-1.5 text-right">
+                                                                                <span className="text-emerald-400 font-mono text-xs font-bold">{meter.current || meter.initial || '-'}</span>
+                                                                            </td>
+                                                                        </tr>
+                                                                    );
+                                                                })}
+                                                            </tbody>
+                                                        </table>
                                                     </div>
                                                 ) : (
                                                     // Fallback to meterLog if meterReadings not available
