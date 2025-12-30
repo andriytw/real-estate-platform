@@ -2244,8 +2244,8 @@ const AccountDashboard: React.FC = () => {
                   </div>
                   <p className="text-xs text-gray-500 truncate mb-2">{prop.address}</p>
                   
-                  {/* Characteristics - Row 1 */}
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-400 mb-1">
+                  {/* Characteristics */}
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-gray-400">
                      {prop.details?.area && (
                         <span>Площа: <span className="text-gray-300 font-medium">{prop.details.area} м²</span></span>
                      )}
@@ -2255,59 +2255,14 @@ const AccountDashboard: React.FC = () => {
                      {(prop.details?.floor || prop.details?.buildingFloors) && (
                         <span>Поверх: <span className="text-gray-300 font-medium">{prop.details.floor || 0}/{prop.details.buildingFloors || 0}</span></span>
                      )}
-                     {(prop.details?.baths || prop.details?.balconies) && (
-                        <span>Ванні/Балкони: <span className="text-gray-300 font-medium">{prop.details.baths || 0}/{prop.details.balconies || 0}</span></span>
-                     )}
-                  </div>
-                  
-                  {/* Characteristics - Row 2 */}
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-400 mb-1">
                      {prop.building?.type && (
                         <span>Тип: <span className="text-gray-300 font-medium">{prop.building.type}</span></span>
-                     )}
-                     {prop.details?.year && prop.details.year > 0 && (
-                        <span>Рік: <span className="text-gray-300 font-medium">{prop.details.year}</span></span>
-                     )}
-                     {prop.building?.repairYear && prop.building.repairYear > 0 && (
-                        <span>Ремонт: <span className="text-gray-300 font-medium">{prop.building.repairYear}</span></span>
                      )}
                      {prop.building?.heating && (
                         <span>Опалення: <span className="text-gray-300 font-medium">{prop.building.heating}</span></span>
                      )}
-                     {prop.building?.centralHeating && (
-                        <span>Центр. опалення: <span className="text-gray-300 font-medium">{prop.building.centralHeating}</span></span>
-                     )}
-                  </div>
-                  
-                  {/* Characteristics - Row 3 */}
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-400 mb-1">
                      {prop.building?.parking && (
                         <span>Паркування: <span className="text-gray-300 font-medium">{prop.building.parking}</span></span>
-                     )}
-                     {prop.building?.elevator && (
-                        <span>Ліфт: <span className="text-gray-300 font-medium">{prop.building.elevator}</span></span>
-                     )}
-                     {prop.building?.pets && (
-                        <span>Тварини: <span className="text-gray-300 font-medium">{prop.building.pets}</span></span>
-                     )}
-                     {prop.building?.access && (
-                        <span>Доступ: <span className="text-gray-300 font-medium">{prop.building.access}</span></span>
-                     )}
-                     {prop.building?.kitchen && (
-                        <span>Кухня: <span className="text-gray-300 font-medium">{prop.building.kitchen}</span></span>
-                     )}
-                  </div>
-                  
-                  {/* Characteristics - Row 4 */}
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-400">
-                     {prop.building?.certificate && (
-                        <span>Сертифікат: <span className="text-gray-300 font-medium">{prop.building.certificate}</span></span>
-                     )}
-                     {prop.building?.energyClass && (
-                        <span>Енергоклас: <span className="text-gray-300 font-medium">{prop.building.energyClass}</span></span>
-                     )}
-                     {prop.building?.energyDemand && (
-                        <span>Попит: <span className="text-gray-300 font-medium">{prop.building.energyDemand}</span></span>
                      )}
                   </div>
                </div>
