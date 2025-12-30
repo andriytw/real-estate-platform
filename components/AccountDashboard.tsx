@@ -1383,10 +1383,24 @@ const AccountDashboard: React.FC = () => {
   };
 
   // --- Handlers ---
-  const handleSaveProperty = (newProperty: Property) => {
-    setProperties([...properties, newProperty]);
-    setSelectedPropertyId(newProperty.id);
-    setIsPropertyAddModalOpen(false);
+  const handleSaveProperty = async (newProperty: Property) => {
+    try {
+      // Видалити id, щоб база даних сама згенерувала правильний UUID
+      const { id, ...propertyWithoutId } = newProperty;
+      
+      // Зберегти об'єкт в базу даних
+      const savedProperty = await propertiesService.create(propertyWithoutId);
+      console.log('✅ Property saved to database:', savedProperty.id);
+      
+      // Оновити локальний стан з об'єктом з бази (з правильним ID)
+      setProperties([...properties, savedProperty]);
+      setSelectedPropertyId(savedProperty.id);
+      setIsPropertyAddModalOpen(false);
+    } catch (error) {
+      console.error('❌ Error saving property to database:', error);
+      // Показати помилку користувачу (можна додати toast notification)
+      alert('Помилка збереження об\'єкта. Спробуйте ще раз.');
+    }
   };
 
   const handleAddInventoryRow = () => {
