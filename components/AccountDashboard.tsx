@@ -2841,7 +2841,7 @@ const AccountDashboard: React.FC = () => {
                         }
                         
                         return groups.map((group) => (
-                            <div key={group.id} className="border border-gray-700 rounded-lg overflow-hidden bg-[#16181D]">
+                            <div key={group.id} className="border border-gray-700/50 rounded overflow-hidden bg-[#16181D]">
                                 <button
                                     onClick={() => {
                                         const newExpanded = new Set(expandedMeterGroups);
@@ -2852,11 +2852,11 @@ const AccountDashboard: React.FC = () => {
                                         }
                                         setExpandedMeterGroups(newExpanded);
                                     }}
-                                    className="w-full p-4 flex justify-between items-center hover:bg-[#1C1F24] transition-colors"
+                                    className="w-full p-2 flex justify-between items-center hover:bg-[#1C1F24] transition-colors"
                                 >
-                                    <div className="flex items-center gap-3 flex-1">
-                                        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${expandedMeterGroups.has(group.id) ? 'rotate-180' : ''}`} />
-                                        <span className="font-bold text-white">{group.title}</span>
+                                    <div className="flex items-center gap-2 flex-1">
+                                        <ChevronDown className={`w-3.5 h-3.5 text-gray-500 transition-transform ${expandedMeterGroups.has(group.id) ? 'rotate-180' : ''}`} />
+                                        <span className="font-medium text-gray-300 text-sm">{group.title}</span>
                                         {group.type === 'rental' && (
                                             <span className={`px-2 py-1 rounded text-xs font-bold ${
                                                 group.status === 'complete' 
