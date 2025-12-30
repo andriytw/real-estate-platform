@@ -97,8 +97,8 @@ const TaskTypeFilters: React.FC<TaskTypeFiltersProps> = ({
         ? selectedTypes[0]
         : `${selectedTypes.length} вибрано`;
 
-    return (
-      <div className="relative px-3 py-2 border-b border-gray-800" ref={dropdownRef}>
+  return (
+    <div className="relative px-3 py-2 border-b border-gray-800 overflow-visible" ref={dropdownRef}>
         <button
           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
           className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
@@ -115,7 +115,10 @@ const TaskTypeFilters: React.FC<TaskTypeFiltersProps> = ({
         </button>
 
         {isDropdownOpen && (
-          <div className="absolute top-full left-3 right-3 mt-1 bg-[#1C1F24] border border-gray-700 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
+          <div 
+            className="absolute top-full left-3 right-3 mt-1 bg-[#1C1F24] border border-gray-700 rounded-lg shadow-xl z-[100] max-h-[500px] overflow-y-auto custom-scrollbar"
+            style={{ position: 'absolute', zIndex: 1000 }}
+          >
             {/* Clear all option */}
             <button
               onClick={() => {
@@ -133,7 +136,7 @@ const TaskTypeFilters: React.FC<TaskTypeFiltersProps> = ({
             </button>
 
             {/* Task type options */}
-            {availableTypes.map(type => {
+            {availableTypes.map((type) => {
               const isSelected = selectedTypes.includes(type);
               return (
                 <button

@@ -321,7 +321,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
 
       {/* Filters and Sorting */}
       {showInlineFilters && (
-        <>
+        <div className="overflow-visible">
           <TaskTypeFilters
             selectedTypes={selectedTaskTypes}
             onToggleType={(type) => {
@@ -343,12 +343,12 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
               setSortOrder(newSortOrder);
             }}
           />
-        </>
+        </div>
       )}
 
       {showDropdownFilters && isFilterMenuOpen && (
-        <div className="border-b border-gray-800 bg-[#111315]">
-          <div className="space-y-2">
+        <div className="border-b border-gray-800 bg-[#111315] overflow-visible">
+          <div className="space-y-2 overflow-visible">
             <TaskTypeFilters
               selectedTypes={selectedTaskTypes}
               onToggleType={(type) => {
