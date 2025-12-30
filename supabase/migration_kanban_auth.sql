@@ -165,13 +165,17 @@ CREATE INDEX IF NOT EXISTS idx_task_chat_messages_read_at ON task_chat_messages(
 -- ============================================================================
 
 -- Function to update updated_at timestamp
+-- SECURITY: Set search_path = '' to prevent SQL injection attacks
 CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER 
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
 BEGIN
   NEW.updated_at = NOW();
   RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$;
 
 -- Triggers for updated_at
 DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;

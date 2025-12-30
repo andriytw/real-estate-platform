@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Sparkles, 
   ArrowRight, 
@@ -15,7 +15,9 @@ import {
   Building,
   TrendingUp,
   CreditCard,
-  X
+  X,
+  ChevronDown,
+  Filter
 } from 'lucide-react';
 import { TaskType } from '../../types';
 
@@ -24,6 +26,7 @@ interface TaskTypeFiltersProps {
   onToggleType: (type: TaskType) => void;
   onClearAll: () => void;
   availableTypes: TaskType[];
+  variant?: 'buttons' | 'dropdown';
 }
 
 // Icon mapping for task types
@@ -59,12 +62,108 @@ const TaskTypeFilters: React.FC<TaskTypeFiltersProps> = ({
   selectedTypes,
   onToggleType,
   onClearAll,
-  availableTypes
+  availableTypes,
+  variant = 'buttons'
 }) => {
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDropdownOpen]);
+
   if (availableTypes.length === 0) {
     return null;
   }
 
+  // Dropdown variant
+  if (variant === 'dropdown') {
+    const displayText = selectedTypes.length === 0 
+      ? 'Всі типи' 
+      : selectedTypes.length === 1 
+        ? selectedTypes[0]
+        : `${selectedTypes.length} вибрано`;
+
+    return (
+      <div className="relative px-3 py-2 border-b border-gray-800" ref={dropdownRef}>
+        <button
+          onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+          className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+            selectedTypes.length > 0
+              ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+              : 'bg-[#0D0F11] text-gray-400 hover:bg-gray-800 hover:text-white border border-gray-700'
+          }`}
+        >
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <Filter className="w-4 h-4 flex-shrink-0" />
+            <span className="truncate">{displayText}</span>
+          </div>
+          <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {isDropdownOpen && (
+          <div className="absolute top-full left-3 right-3 mt-1 bg-[#1C1F24] border border-gray-700 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
+            {/* Clear all option */}
+            <button
+              onClick={() => {
+                onClearAll();
+                setIsDropdownOpen(false);
+              }}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors border-b border-gray-800 ${
+                selectedTypes.length === 0
+                  ? 'bg-emerald-500/20 text-emerald-400'
+                  : 'text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Всі типи</span>
+            </button>
+
+            {/* Task type options */}
+            {availableTypes.map(type => {
+              const isSelected = selectedTypes.includes(type);
+              return (
+                <button
+                  key={type}
+                  onClick={() => {
+                    onToggleType(type);
+                  }}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors ${
+                    isSelected
+                      ? 'bg-blue-500/20 text-blue-400'
+                      : 'text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  <div className="flex-shrink-0">
+                    {getTaskTypeIcon(type)}
+                  </div>
+                  <span className="flex-1 text-left truncate">{type}</span>
+                  {isSelected && (
+                    <div className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Buttons variant (default)
   return (
     <div className="flex items-center gap-2 flex-wrap px-3 py-2 border-b border-gray-800">
       {/* "All" button */}

@@ -112,7 +112,9 @@ export const warehouseService = {
         )
       `
       )
-      .order('created_at', { ascending: false });
+      // Show items in the same order as they were originally inserted (e.g. from OCR),
+      // so the warehouse list visually matches the recognition order.
+      .order('created_at', { ascending: true });
 
     if (warehouseId) {
       query = query.eq('warehouse_id', warehouseId);

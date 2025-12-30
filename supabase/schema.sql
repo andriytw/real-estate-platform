@@ -388,13 +388,17 @@ CREATE POLICY "Allow all operations on warehouse_invoices" ON warehouse_invoices
 CREATE POLICY "Allow all operations on warehouse_invoice_lines" ON warehouse_invoice_lines FOR ALL USING (true) WITH CHECK (true);
 
 -- Create function to update updated_at timestamp
+-- SECURITY: Set search_path = '' to prevent SQL injection attacks
 CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER 
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
 BEGIN
     NEW.updated_at = NOW();
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$;
 
 -- Create triggers to auto-update updated_at
 -- Drop existing triggers if they exist, then create new ones

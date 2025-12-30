@@ -307,6 +307,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
             }}
             onClearAll={() => setSelectedTaskTypes([])}
             availableTypes={availableTaskTypes}
+            variant="dropdown"
           />
           <ColumnSortButtons
             sortBy={sortBy}
@@ -321,7 +322,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
 
       {showDropdownFilters && isFilterMenuOpen && (
         <div className="border-b border-gray-800 bg-[#111315]">
-          <div className="p-2 space-y-2">
+          <div className="space-y-2">
             <TaskTypeFilters
               selectedTypes={selectedTaskTypes}
               onToggleType={(type) => {
@@ -333,6 +334,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
               }}
               onClearAll={() => setSelectedTaskTypes([])}
               availableTypes={availableTaskTypes}
+              variant="dropdown"
             />
             <ColumnSortButtons
               sortBy={sortBy}
