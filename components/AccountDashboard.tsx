@@ -1417,11 +1417,16 @@ const AccountDashboard: React.FC = () => {
             const nameLower = meter.name.toLowerCase();
             const initialValue = meter.initial || 'Pending';
             
-            if (nameLower.includes('електро') || nameLower.includes('electric') || nameLower.includes('strom')) {
+            // Розпізнавання стандартних назв (Electricity, Water, Gas, Heating)
+            if (nameLower === 'electricity' || nameLower.includes('electric') || nameLower.includes('електро') || nameLower.includes('strom')) {
               readings.electricity = initialValue;
-            } else if (nameLower.includes('вода') || nameLower.includes('water') || nameLower.includes('wasser')) {
+            } else if (nameLower === 'water' || nameLower.includes('вода') || nameLower.includes('wasser')) {
               readings.water = initialValue;
-            } else if (nameLower.includes('газ') || nameLower.includes('gas')) {
+            } else if (nameLower === 'gas' || nameLower.includes('газ')) {
+              readings.gas = initialValue;
+            } else if (nameLower === 'heating' || nameLower.includes('heizung') || nameLower.includes('опалення')) {
+              // Heating зазвичай пов'язаний з газом, але можна додати як окремий лічильник
+              // Поки що додаємо як gas, або можна створити окреме поле
               readings.gas = initialValue;
             }
           });

@@ -10,6 +10,13 @@ interface PropertyAddModalProps {
   propertyToEdit?: Property;
 }
 
+const METER_TYPES = [
+  { value: 'Electricity', label: 'Electricity' },
+  { value: 'Water', label: 'Water' },
+  { value: 'Gas', label: 'Gas' },
+  { value: 'Heating', label: 'Heating' }
+];
+
 const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, onSave, propertyToEdit }) => {
   // Form State
   const [formData, setFormData] = useState<Partial<Property>>({
@@ -628,7 +635,20 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
                    <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
                       {meters.map((meter, i) => (
                          <tr key={i} className="hover:bg-[#1C1F24] transition-colors">
-                            <td className="p-4"><input className="bg-transparent border-b border-gray-700 w-full text-white outline-none focus:border-emerald-500" value={meter.name} onChange={e => updateMeter(i, 'name', e.target.value)} placeholder="Електроенергія" /></td>
+                            <td className="p-4">
+                              <select 
+                                className="bg-transparent border-b border-gray-700 w-full text-white outline-none focus:border-emerald-500 cursor-pointer"
+                                value={meter.name}
+                                onChange={e => updateMeter(i, 'name', e.target.value)}
+                              >
+                                <option value="" className="bg-[#111315] text-gray-400">Виберіть тип</option>
+                                {METER_TYPES.map(type => (
+                                  <option key={type.value} value={type.value} className="bg-[#111315] text-white">
+                                    {type.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
                             <td className="p-4"><input className="bg-transparent border-b border-gray-700 w-full text-gray-400 text-sm outline-none focus:border-emerald-500" value={meter.number} onChange={e => updateMeter(i, 'number', e.target.value)} placeholder="12345" /></td>
                             <td className="p-4"><input className="bg-transparent border-b border-gray-700 w-full text-gray-300 text-sm outline-none focus:border-emerald-500" value={meter.initial} onChange={e => updateMeter(i, 'initial', e.target.value)} placeholder="0" /></td>
                             <td className="p-4"><input className="bg-transparent border-b border-gray-700 w-full text-white font-bold text-sm outline-none focus:border-emerald-500" value={meter.current} onChange={e => updateMeter(i, 'current', e.target.value)} placeholder="0" /></td>
