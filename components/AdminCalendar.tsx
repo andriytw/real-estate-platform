@@ -5,6 +5,7 @@ import { MOCK_PROPERTIES } from '../constants';
 import { CalendarEvent, TaskType, TaskStatus, Property, BookingStatus, Worker } from '../types';
 import { updateBookingStatusFromTask } from '../bookingUtils';
 import { workersService, tasksService } from '../services/supabaseService';
+import { ACCOUNTING_TASK_TYPES } from '../utils/taskColors';
 
 type ViewMode = 'month' | 'week' | 'day';
 
@@ -32,8 +33,10 @@ interface AdminCalendarProps {
 }
 
 const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpdateEvent, showLegend = true, properties, categories, onUpdateBookingStatus }) => {
-  const [currentMonthIdx, setCurrentMonthIdx] = useState(10); // November
-  const [selectedYear, setSelectedYear] = useState(2025);
+  // Initialize with current date
+  const now = new Date();
+  const [currentMonthIdx, setCurrentMonthIdx] = useState(now.getMonth());
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   
   // Use passed properties or fallback to mock
@@ -41,6 +44,10 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   
   // Use passed categories or fallback to default
   const availableTaskTypes = categories || TASK_TYPES;
+  
+  // Determine department based on categories
+  const isAccountingCalendar = categories && categories.length > 0 && 
+    categories.every(cat => ACCOUNTING_TASK_TYPES.includes(cat));
 
   // Selection States
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
@@ -316,8 +323,10 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       // Create date string for the task
       const taskDate = `${selectedYear}-${String(currentMonthIdx + 1).padStart(2, '0')}-${String(dayToAdd).padStart(2, '0')}`;
       
-      // Determine department based on task type
-      const department = TASK_TYPES.includes(newTaskType) ? 'facility' : 'accounting';
+      // Determine department based on task type and calendar type
+      const department = isAccountingCalendar 
+        ? 'accounting' 
+        : (TASK_TYPES.includes(newTaskType) ? 'facility' : 'accounting');
       
       // Create task in database
       const newTask = await tasksService.create({
@@ -328,6 +337,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         priority: 'medium',
         workerId: newTaskAssignee || undefined,
         propertyId: property.id,
+        locationText: property.title, // Add property name for display
         date: taskDate,
         time: newTaskTime,
         status: newTaskAssignee ? 'assigned' : 'pending',
@@ -673,15 +683,25 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
           {visibleDays.map(day => {
             const dayEvents = getEventsForDay(day);
             const sortedDayEvents = sortEvents(dayEvents, calendarSort);
+            
+            // Check if this is today's date
+            const today = new Date();
+            const isToday = day === today.getDate() && 
+                          currentMonthIdx === today.getMonth() && 
+                          selectedYear === today.getFullYear();
 
             return (
               <div 
                 key={day} 
                 onClick={() => setSelectedDay(day)}
                 className={`
-                  bg-[#161B22] border border-gray-800 rounded-xl p-3 flex flex-col relative group transition-all cursor-pointer
+                  bg-[#161B22] border rounded-xl p-3 flex flex-col relative group transition-all cursor-pointer
                   hover:border-gray-500 hover:bg-[#1C1F24]
                   ${viewMode === 'day' ? 'min-h-[600px]' : viewMode === 'week' ? 'h-[600px]' : 'h-[320px]'}
+                  ${isToday 
+                    ? 'border-blue-500 border-2 shadow-[0_0_0_2px_rgba(59,130,246,0.3)]' 
+                    : 'border-gray-800'
+                  }
                 `}
               >
                 {/* Day Header */}
@@ -850,7 +870,11 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                          >
                            <option value="">Unassigned</option>
                            {workers
-                             .filter(w => w.department === 'facility' || w.role === 'super_manager' || w.role === 'manager')
+                             .filter(w => 
+                               isAccountingCalendar 
+                                 ? (w.department === 'accounting' || w.role === 'super_manager' || w.role === 'manager')
+                                 : (w.department === 'facility' || w.role === 'super_manager' || w.role === 'manager')
+                             )
                              .map(worker => (
                               <option key={worker.id} value={worker.id}>
                                 {worker.name} {worker.role === 'manager' ? '(Manager)' : worker.role === 'super_manager' ? '(Super Admin)' : ''}
@@ -1151,7 +1175,11 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                               >
                                   <option value="">Unassigned</option>
                                   {workers
-                                    .filter(w => w.department === 'facility' || w.role === 'super_manager' || w.role === 'manager')
+                                    .filter(w => 
+                                      isAccountingCalendar 
+                                        ? (w.department === 'accounting' || w.role === 'super_manager' || w.role === 'manager')
+                                        : (w.department === 'facility' || w.role === 'super_manager' || w.role === 'manager')
+                                    )
                                     .map(worker => (
                                       <option key={worker.id} value={worker.id}>
                                         {worker.name} {worker.role === 'manager' ? '(Manager)' : worker.role === 'super_manager' ? '(Super Admin)' : ''}

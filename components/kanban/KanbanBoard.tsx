@@ -70,6 +70,19 @@ const KanbanBoard: React.FC = () => {
     };
   }, []);
 
+  // Listen for task updates from calendar
+  useEffect(() => {
+    const handleTaskUpdated = () => {
+      console.log('🔄 Task updated event received, reloading board data...');
+      loadBoardData();
+    };
+
+    window.addEventListener('taskUpdated', handleTaskUpdated);
+    return () => {
+      window.removeEventListener('taskUpdated', handleTaskUpdated);
+    };
+  }, []);
+
   // Save custom columns to localStorage
   useEffect(() => {
     localStorage.setItem('kanban_custom_columns', JSON.stringify(customColumns));

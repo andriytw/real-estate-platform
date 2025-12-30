@@ -1286,6 +1286,72 @@ const AccountDashboard: React.FC = () => {
     };
   }, [worker]);
 
+  // Load Accounting tasks from database
+  useEffect(() => {
+    const loadAccountingTasks = async () => {
+      try {
+        console.log('🔄 Loading Accounting tasks from database...');
+        console.log('👤 Current user:', worker?.id, worker?.role, worker?.department);
+        
+        // Build filters based on user role
+        const filters: any = {
+          department: 'accounting'
+        };
+        
+        // If user is a manager or worker (not super_manager), filter by their ID
+        if (worker?.role === 'manager' || worker?.role === 'worker') {
+          filters.workerId = worker.id;
+        }
+        // For super_manager, don't filter by workerId - show all accounting tasks
+        
+        const tasks = await tasksService.getAll(filters);
+        console.log('✅ Loaded Accounting tasks:', tasks.length);
+        console.log('📋 Tasks:', tasks.map(t => ({ id: t.id, title: t.title, workerId: t.workerId, department: t.department })));
+        
+        setAccountingEvents(tasks);
+      } catch (error) {
+        console.error('❌ Error loading Accounting tasks:', error);
+        // Keep INITIAL_ACCOUNTING_EVENTS as fallback
+      }
+    };
+    
+    if (worker) {
+      loadAccountingTasks();
+    }
+  }, [worker]);
+
+  // Listen for task updates from Kanban board for Accounting
+  useEffect(() => {
+    const handleAccountingTaskUpdated = async () => {
+      try {
+        console.log('🔄 Task updated event received, reloading Accounting tasks...');
+        
+        const filters: any = {
+          department: 'accounting'
+        };
+        
+        if (worker?.role === 'manager' || worker?.role === 'worker') {
+          filters.workerId = worker.id;
+        }
+        
+        const tasks = await tasksService.getAll(filters);
+        console.log('✅ Reloaded Accounting tasks:', tasks.length);
+        
+        setAccountingEvents(tasks);
+      } catch (error) {
+        console.error('❌ Error reloading Accounting tasks:', error);
+      }
+    };
+    
+    window.addEventListener('taskUpdated', handleAccountingTaskUpdated);
+    window.addEventListener('kanbanTaskCreated', handleAccountingTaskUpdated);
+    
+    return () => {
+      window.removeEventListener('taskUpdated', handleAccountingTaskUpdated);
+      window.removeEventListener('kanbanTaskCreated', handleAccountingTaskUpdated);
+    };
+  }, [worker]);
+
   // --- Modals ---
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<ReservationData | null>(null);

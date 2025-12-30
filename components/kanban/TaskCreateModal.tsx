@@ -129,16 +129,15 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
     try {
       setLoading(true);
       
-      // Auto-determine department based on task type if not explicitly set
+      // Auto-determine department based on task type
       let finalDepartment = department;
-      if (!finalDepartment || finalDepartment === 'facility') {
-        // If type is Facility task, ensure department is 'facility'
-        if (FACILITY_TASK_TYPES.includes(type as TaskType)) {
-          finalDepartment = 'facility';
-        } else if (ACCOUNTING_TASK_TYPES.includes(type as TaskType)) {
-          finalDepartment = 'accounting';
-        }
+      // Always determine department from task type, regardless of initial department setting
+      if (FACILITY_TASK_TYPES.includes(type as TaskType)) {
+        finalDepartment = 'facility';
+      } else if (ACCOUNTING_TASK_TYPES.includes(type as TaskType)) {
+        finalDepartment = 'accounting';
       }
+      // If type doesn't match any known types, keep the original department
       
       // Get property name if propertyId is provided
       let locationText: string | undefined = undefined;
