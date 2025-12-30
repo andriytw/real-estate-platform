@@ -71,20 +71,21 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
       allowedTypes = [...FACILITY_TASK_TYPES, ...ACCOUNTING_TASK_TYPES];
     }
 
-    // If column has tasks, show only types that exist in tasks AND match department
+    // If worker has a department, always show ALL task types for that department
+    // (not just the ones that exist in current tasks)
+    if (column.workerId && workerDepartment) {
+      return allowedTypes.sort();
+    }
+    
+    // If no worker assigned, show only types that exist in tasks
     if (column.tasks.length > 0) {
       const types = new Set<TaskType>();
       column.tasks.forEach(task => {
-        if (task.type && task.type !== 'other' && allowedTypes.includes(task.type as TaskType)) {
+        if (task.type && task.type !== 'other') {
           types.add(task.type as TaskType);
         }
       });
       return Array.from(types).sort();
-    }
-    
-    // If column is empty but worker is assigned, show all allowed task types for their department
-    if (column.workerId && workerDepartment) {
-      return allowedTypes.sort();
     }
     
     return [];
