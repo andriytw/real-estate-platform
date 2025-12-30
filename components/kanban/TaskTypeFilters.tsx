@@ -20,6 +20,7 @@ import {
   Filter
 } from 'lucide-react';
 import { TaskType } from '../../types';
+import { FACILITY_TASK_TYPES, getTaskTextColor } from '../../utils/taskColors';
 
 interface TaskTypeFiltersProps {
   selectedTypes: TaskType[];
@@ -138,6 +139,9 @@ const TaskTypeFilters: React.FC<TaskTypeFiltersProps> = ({
             {/* Task type options */}
             {availableTypes.map((type) => {
               const isSelected = selectedTypes.includes(type);
+              // Apply colors only for Facility tasks, keep gray for Accounting
+              const isFacilityTask = FACILITY_TASK_TYPES.includes(type);
+              const textColor = isFacilityTask ? getTaskTextColor(type) : 'text-gray-300';
               return (
                 <button
                   key={type}
@@ -147,7 +151,7 @@ const TaskTypeFilters: React.FC<TaskTypeFiltersProps> = ({
                   className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors ${
                     isSelected
                       ? 'bg-blue-500/20 text-blue-400'
-                      : 'text-gray-300 hover:bg-gray-700'
+                      : `${textColor} hover:bg-gray-700`
                   }`}
                 >
                   <div className="flex-shrink-0">
