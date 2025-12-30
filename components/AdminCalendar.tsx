@@ -729,7 +729,9 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                         </div>
                       )}
                       
-                      <div className={`font-semibold leading-snug text-white mb-0.5 truncate ${viewMode === 'day' ? 'text-lg' : 'text-xs'}`}>
+                      <div className={`font-semibold leading-snug mb-0.5 truncate ${viewMode === 'day' ? 'text-lg' : 'text-xs'} ${
+                        isCompleted ? 'text-gray-500 line-through' : 'text-white'
+                      }`}>
                          {event.title}
                       </div>
                       <div className="flex justify-between items-center mt-1">
@@ -913,7 +915,11 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                  <div className="flex items-center gap-3">
                     <div className={`w-3 h-3 rounded-full ${getDotColor(viewEvent.type as string)}`}></div>
                     <div>
-                       <h3 className="text-lg font-bold text-white leading-none flex items-center gap-2">
+                       <h3 className={`text-lg font-bold leading-none flex items-center gap-2 ${
+                         viewEvent.status === 'archived' || viewEvent.status === 'completed' || viewEvent.status === 'verified'
+                           ? 'text-gray-500 line-through'
+                           : 'text-white'
+                       }`}>
                          {viewEvent.title}
                          {viewEvent.status === 'archived' && <Archive className="w-4 h-4 text-gray-500" />}
                        </h3>
