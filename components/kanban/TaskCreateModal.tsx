@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { X, Calendar, Clock, User, AlertCircle, Check, Building2, Wallet } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Calendar, Clock, User, AlertCircle, Check, Building2, Wallet, ChevronDown, Sparkles, ArrowRight, ArrowLeft, FileText, FileCheck } from 'lucide-react';
 import { tasksService, workersService, propertiesService } from '../../services/supabaseService';
 import { Worker, CalendarEvent, TaskType, TaskPriority, Property } from '../../types';
-import { FACILITY_TASK_TYPES, ACCOUNTING_TASK_TYPES } from '../../utils/taskColors';
+import { FACILITY_TASK_TYPES, ACCOUNTING_TASK_TYPES, getTaskTextColor } from '../../utils/taskColors';
 import { useWorker } from '../../contexts/WorkerContext';
 
 interface TaskCreateModalProps {
@@ -32,12 +32,60 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
   const [propertyId, setPropertyId] = useState<string>('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
+  const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
+  const typeDropdownRef = useRef<HTMLDivElement>(null);
   
   // Data
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Get task type icon
+  const getTaskTypeIcon = (taskType: TaskType) => {
+    const iconMap: Record<TaskType, React.ReactNode> = {
+      'Putzen': <Sparkles className="w-4 h-4" />,
+      'Einzug': <ArrowRight className="w-4 h-4" />,
+      'Auszug': <ArrowLeft className="w-4 h-4" />,
+      'Reklamation': <AlertCircle className="w-4 h-4" />,
+      'Arbeit nach plan': <Calendar className="w-4 h-4" />,
+      'Zeit Abgabe von wohnung': <Clock className="w-4 h-4" />,
+      'Zählerstand': <FileCheck className="w-4 h-4" />,
+      'Tax Payment': <FileText className="w-4 h-4" />,
+      'Payroll': <FileText className="w-4 h-4" />,
+      'Invoice Processing': <FileText className="w-4 h-4" />,
+      'Audit': <FileText className="w-4 h-4" />,
+      'Monthly Closing': <Calendar className="w-4 h-4" />,
+      'Rent Collection': <FileText className="w-4 h-4" />,
+      'Utility Payment': <FileText className="w-4 h-4" />,
+      'Insurance': <FileText className="w-4 h-4" />,
+      'Mortgage Payment': <FileText className="w-4 h-4" />,
+      'VAT Return': <FileText className="w-4 h-4" />,
+      'Financial Report': <FileText className="w-4 h-4" />,
+      'Budget Review': <FileText className="w-4 h-4" />,
+      'Asset Depreciation': <FileText className="w-4 h-4" />,
+      'Vendor Payment': <FileText className="w-4 h-4" />,
+      'Bank Reconciliation': <FileCheck className="w-4 h-4" />
+    };
+    return iconMap[taskType] || <FileText className="w-4 h-4" />;
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (typeDropdownRef.current && !typeDropdownRef.current.contains(event.target as Node)) {
+        setIsTypeDropdownOpen(false);
+      }
+    };
+
+    if (isTypeDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isTypeDropdownOpen]);
 
   // Initialize based on role
   useEffect(() => {
@@ -209,17 +257,61 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Type *</label>
-                <select
-                  value={type}
-                  onChange={(e) => setType(e.target.value as TaskType)}
-                  className="w-full bg-[#0D0F11] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
-                  required
-                >
-                  <option value="">Select Type</option>
-                  {availableTaskTypes.map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
+                <div className="relative" ref={typeDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsTypeDropdownOpen(!isTypeDropdownOpen)}
+                    className={`w-full bg-[#0D0F11] border border-gray-700 rounded-lg px-3 py-2 text-left flex items-center justify-between focus:border-blue-500 focus:outline-none ${
+                      type 
+                        ? (FACILITY_TASK_TYPES.includes(type) ? getTaskTextColor(type) : 'text-gray-300')
+                        : 'text-gray-400'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {type && (
+                        <div className="flex-shrink-0">
+                          {getTaskTypeIcon(type)}
+                        </div>
+                      )}
+                      <span>{type || 'Select Type'}</span>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${isTypeDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isTypeDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-[#1C1F24] border border-gray-700 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto custom-scrollbar">
+                      {availableTaskTypes.map((taskType) => {
+                        // Apply colors only for Facility tasks, keep gray for Accounting
+                        const isFacilityTask = FACILITY_TASK_TYPES.includes(taskType);
+                        const textColor = isFacilityTask ? getTaskTextColor(taskType) : 'text-gray-300';
+                        const isSelected = type === taskType;
+                        return (
+                          <button
+                            key={taskType}
+                            type="button"
+                            onClick={() => {
+                              setType(taskType);
+                              setIsTypeDropdownOpen(false);
+                            }}
+                            className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors ${
+                              isSelected
+                                ? 'bg-blue-500/20 text-blue-400'
+                                : `${textColor} hover:bg-gray-700`
+                            }`}
+                          >
+                            <div className="flex-shrink-0">
+                              {getTaskTypeIcon(taskType)}
+                            </div>
+                            <span className="flex-1 text-left">{taskType}</span>
+                            {isSelected && (
+                              <Check className="w-4 h-4 flex-shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
               
               <div>
