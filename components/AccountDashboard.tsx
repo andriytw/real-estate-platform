@@ -2242,7 +2242,74 @@ const AccountDashboard: React.FC = () => {
                      <h3 className="font-bold text-white text-sm">{prop.title}</h3>
                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${prop.termStatus === 'green' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>{prop.termStatus === 'green' ? 'Active' : 'Expiring'}</span>
                   </div>
-                  <p className="text-xs text-gray-500 truncate">{prop.address}</p>
+                  <p className="text-xs text-gray-500 truncate mb-2">{prop.address}</p>
+                  
+                  {/* Characteristics - Row 1 */}
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-400 mb-1">
+                     {prop.details?.area && (
+                        <span>Площа: <span className="text-gray-300 font-medium">{prop.details.area} м²</span></span>
+                     )}
+                     {(prop.details?.rooms || prop.details?.beds) && (
+                        <span>Кімнати/Ліжка: <span className="text-gray-300 font-medium">{prop.details.rooms || 0}/{prop.details.beds || 0}</span></span>
+                     )}
+                     {(prop.details?.floor || prop.details?.buildingFloors) && (
+                        <span>Поверх: <span className="text-gray-300 font-medium">{prop.details.floor || 0}/{prop.details.buildingFloors || 0}</span></span>
+                     )}
+                     {(prop.details?.baths || prop.details?.balconies) && (
+                        <span>Ванні/Балкони: <span className="text-gray-300 font-medium">{prop.details.baths || 0}/{prop.details.balconies || 0}</span></span>
+                     )}
+                  </div>
+                  
+                  {/* Characteristics - Row 2 */}
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-400 mb-1">
+                     {prop.building?.type && (
+                        <span>Тип: <span className="text-gray-300 font-medium">{prop.building.type}</span></span>
+                     )}
+                     {prop.details?.year && prop.details.year > 0 && (
+                        <span>Рік: <span className="text-gray-300 font-medium">{prop.details.year}</span></span>
+                     )}
+                     {prop.building?.repairYear && prop.building.repairYear > 0 && (
+                        <span>Ремонт: <span className="text-gray-300 font-medium">{prop.building.repairYear}</span></span>
+                     )}
+                     {prop.building?.heating && (
+                        <span>Опалення: <span className="text-gray-300 font-medium">{prop.building.heating}</span></span>
+                     )}
+                     {prop.building?.centralHeating && (
+                        <span>Центр. опалення: <span className="text-gray-300 font-medium">{prop.building.centralHeating}</span></span>
+                     )}
+                  </div>
+                  
+                  {/* Characteristics - Row 3 */}
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-400 mb-1">
+                     {prop.building?.parking && (
+                        <span>Паркування: <span className="text-gray-300 font-medium">{prop.building.parking}</span></span>
+                     )}
+                     {prop.building?.elevator && (
+                        <span>Ліфт: <span className="text-gray-300 font-medium">{prop.building.elevator}</span></span>
+                     )}
+                     {prop.building?.pets && (
+                        <span>Тварини: <span className="text-gray-300 font-medium">{prop.building.pets}</span></span>
+                     )}
+                     {prop.building?.access && (
+                        <span>Доступ: <span className="text-gray-300 font-medium">{prop.building.access}</span></span>
+                     )}
+                     {prop.building?.kitchen && (
+                        <span>Кухня: <span className="text-gray-300 font-medium">{prop.building.kitchen}</span></span>
+                     )}
+                  </div>
+                  
+                  {/* Characteristics - Row 4 */}
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-400">
+                     {prop.building?.certificate && (
+                        <span>Сертифікат: <span className="text-gray-300 font-medium">{prop.building.certificate}</span></span>
+                     )}
+                     {prop.building?.energyClass && (
+                        <span>Енергоклас: <span className="text-gray-300 font-medium">{prop.building.energyClass}</span></span>
+                     )}
+                     {prop.building?.energyDemand && (
+                        <span>Попит: <span className="text-gray-300 font-medium">{prop.building.energyDemand}</span></span>
+                     )}
+                  </div>
                </div>
             ))}
          </div>
@@ -2293,6 +2360,39 @@ const AccountDashboard: React.FC = () => {
                         <div><span className="text-gray-500 text-xs block">Центр. Опалення</span><span className="text-white font-bold">{selectedProperty.building.centralHeating}</span></div>
                         <div><span className="text-gray-500 text-xs block">Паркування</span><span className="text-white font-bold">{selectedProperty.building.parking}</span></div>
                         <div><span className="text-gray-500 text-xs block">Енергоклас</span><span className="text-white font-bold">{selectedProperty.building.energyClass}</span></div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Rent & Owner Expenses */}
+            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold text-white">RENT & OWNER EXPENSES</h2>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                        <label className="text-xs text-gray-500 block mb-1">Mortgage (KM)</label>
+                        <div className="bg-[#111315] border border-gray-700 rounded p-3 text-lg font-bold text-white">
+                            {selectedProperty.ownerExpense?.mortgage || 0}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="text-xs text-gray-500 block mb-1">Management (BK)</label>
+                        <div className="bg-[#111315] border border-gray-700 rounded p-3 text-lg font-bold text-white">
+                            {selectedProperty.ownerExpense?.management || 0}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="text-xs text-gray-500 block mb-1">Tax/Ins (HK)</label>
+                        <div className="bg-[#111315] border border-gray-700 rounded p-3 text-lg font-bold text-white">
+                            {selectedProperty.ownerExpense?.taxIns || 0}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="text-xs text-gray-500 block mb-1">Reserve</label>
+                        <div className="bg-[#111315] border border-gray-700 rounded p-3 text-lg font-bold text-white">
+                            {selectedProperty.ownerExpense?.reserve || 0}
+                        </div>
                     </div>
                 </div>
             </section>
