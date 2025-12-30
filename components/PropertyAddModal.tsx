@@ -119,6 +119,141 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
     setMeters(meters.filter((_, i) => i !== index));
   };
 
+  // Заповнити форму даними об'єкта при редагуванні
+  useEffect(() => {
+    if (propertyToEdit && isOpen) {
+      console.log('📝 Loading property data for editing:', propertyToEdit);
+      
+      // Заповнити форму даними об'єкта
+      setFormData({
+        title: propertyToEdit.title || '',
+        address: propertyToEdit.address || '',
+        city: propertyToEdit.city || '',
+        zip: propertyToEdit.zip || '',
+        country: propertyToEdit.country || 'Ukraine',
+        description: propertyToEdit.description || '',
+        term: propertyToEdit.term || '',
+        termStatus: propertyToEdit.termStatus || 'green',
+        details: propertyToEdit.details ? {
+          // Обрізати "м²" з area, якщо воно є
+          area: String(propertyToEdit.details.area || '').replace(/\s*м²\s*/gi, '').trim(),
+          rooms: propertyToEdit.details.rooms || 0,
+          floor: propertyToEdit.details.floor || 0,
+          year: propertyToEdit.details.year || 0,
+          beds: propertyToEdit.details.beds || 0,
+          baths: propertyToEdit.details.baths || 0,
+          balconies: propertyToEdit.details.balconies || 0,
+          buildingFloors: propertyToEdit.details.buildingFloors || 0
+        } : {
+          area: '',
+          rooms: 0,
+          floor: 0,
+          year: 0,
+          beds: 0,
+          baths: 0,
+          balconies: 0,
+          buildingFloors: 0
+        },
+        building: propertyToEdit.building || {
+          type: 'Multi-family (MFH)',
+          repairYear: 0,
+          heating: 'Gas',
+          energyClass: 'C',
+          parking: 'Open Space',
+          pets: 'Allowed',
+          elevator: 'No',
+          kitchen: 'Yes',
+          access: 'No',
+          certificate: 'Consumption-based',
+          energyDemand: '120',
+          centralHeating: 'No'
+        },
+        ownerExpense: propertyToEdit.ownerExpense || {
+          mortgage: 0,
+          management: 0,
+          taxIns: 0,
+          reserve: 0
+        }
+      });
+
+      // Заповнити дати з терміну оренди
+      if (propertyToEdit.term) {
+        const termParts = propertyToEdit.term.split(' - ');
+        if (termParts.length === 2) {
+          const startDateStr = termParts[0].trim();
+          const endDateStr = termParts[1].trim();
+          
+          // Конвертувати DD.MM.YYYY в YYYY-MM-DD
+          if (startDateStr !== 'N/A' && startDateStr.includes('.')) {
+            const [day, month, year] = startDateStr.split('.');
+            if (day && month && year) {
+              setStartDate(`${year.trim()}-${month.trim().padStart(2, '0')}-${day.trim().padStart(2, '0')}`);
+            }
+          }
+          
+          if (endDateStr !== 'Indefinite' && endDateStr.includes('.')) {
+            const [day, month, year] = endDateStr.split('.');
+            if (day && month && year) {
+              setEndDate(`${year.trim()}-${month.trim().padStart(2, '0')}-${day.trim().padStart(2, '0')}`);
+            }
+          }
+        }
+      }
+
+      // Заповнити inventory
+      setInventory(propertyToEdit.inventory || []);
+
+      // Заповнити meterReadings
+      setMeters(propertyToEdit.meterReadings || []);
+    } else if (!propertyToEdit && isOpen) {
+      // Скинути форму при створенні нового об'єкта
+      setFormData({
+        title: '',
+        address: '',
+        city: '',
+        zip: '',
+        country: 'Ukraine',
+        description: '',
+        term: '',
+        termStatus: 'green',
+        details: {
+          area: '',
+          rooms: 0,
+          floor: 0,
+          year: 0,
+          beds: 0,
+          baths: 0,
+          balconies: 0,
+          buildingFloors: 0
+        },
+        building: {
+          type: 'Multi-family (MFH)',
+          repairYear: 0,
+          heating: 'Gas',
+          energyClass: 'C',
+          parking: 'Open Space',
+          pets: 'Allowed',
+          elevator: 'No',
+          kitchen: 'Yes',
+          access: 'No',
+          certificate: 'Consumption-based',
+          energyDemand: '120',
+          centralHeating: 'No'
+        },
+        ownerExpense: {
+          mortgage: 0,
+          management: 0,
+          taxIns: 0,
+          reserve: 0
+        }
+      });
+      setStartDate('');
+      setEndDate('');
+      setInventory([]);
+      setMeters([]);
+    }
+  }, [propertyToEdit, isOpen]);
+
   const handleSave = () => {
     // Format Term with German locale options for DD.MM.YYYY format
     const dateOptions: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', year: 'numeric' };
