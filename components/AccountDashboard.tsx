@@ -1388,6 +1388,42 @@ const AccountDashboard: React.FC = () => {
       // Видалити id, щоб база даних сама згенерувала правильний UUID
       const { id, ...propertyWithoutId } = newProperty;
       
+      // Конвертувати meterReadings в meterLog
+      if (newProperty.meterReadings && newProperty.meterReadings.length > 0) {
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+        
+        // Ініціалізувати readings
+        const readings = {
+          electricity: 'Pending',
+          water: 'Pending',
+          gas: 'Pending'
+        };
+        
+        // Заповнити readings на основі типів лічильників
+        newProperty.meterReadings.forEach(meter => {
+          const nameLower = meter.name.toLowerCase();
+          const initialValue = meter.initial || 'Pending';
+          
+          if (nameLower.includes('електро') || nameLower.includes('electric') || nameLower.includes('strom')) {
+            readings.electricity = initialValue;
+          } else if (nameLower.includes('вода') || nameLower.includes('water') || nameLower.includes('wasser')) {
+            readings.water = initialValue;
+          } else if (nameLower.includes('газ') || nameLower.includes('gas')) {
+            readings.gas = initialValue;
+          }
+        });
+        
+        // Створити MeterLogEntry з типом 'Initial'
+        const initialMeterLog: MeterLogEntry = {
+          date: today,
+          type: 'Initial',
+          readings: readings
+        };
+        
+        // Додати meterLog до property
+        propertyWithoutId.meterLog = [initialMeterLog];
+      }
+      
       // Зберегти об'єкт в базу даних
       const savedProperty = await propertiesService.create(propertyWithoutId);
       console.log('✅ Property saved to database:', savedProperty.id);
