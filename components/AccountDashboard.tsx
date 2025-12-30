@@ -2252,18 +2252,6 @@ const AccountDashboard: React.FC = () => {
                      {(prop.details?.rooms || prop.details?.beds) && (
                         <span>Кімнати/Ліжка: <span className="text-gray-300 font-medium">{prop.details.rooms || 0}/{prop.details.beds || 0}</span></span>
                      )}
-                     {(prop.details?.floor || prop.details?.buildingFloors) && (
-                        <span>Поверх: <span className="text-gray-300 font-medium">{prop.details.floor || 0}/{prop.details.buildingFloors || 0}</span></span>
-                     )}
-                     {prop.building?.type && (
-                        <span>Тип: <span className="text-gray-300 font-medium">{prop.building.type}</span></span>
-                     )}
-                     {prop.building?.heating && (
-                        <span>Опалення: <span className="text-gray-300 font-medium">{prop.building.heating}</span></span>
-                     )}
-                     {prop.building?.parking && (
-                        <span>Паркування: <span className="text-gray-300 font-medium">{prop.building.parking}</span></span>
-                     )}
                   </div>
                </div>
             ))}
