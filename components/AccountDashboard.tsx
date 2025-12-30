@@ -260,6 +260,7 @@ const AccountDashboard: React.FC = () => {
   const [isPropertyAddModalOpen, setIsPropertyAddModalOpen] = useState(false);
   const [propertyToEdit, setPropertyToEdit] = useState<Property | undefined>(undefined);
   const [isInventoryEditing, setIsInventoryEditing] = useState(false);
+  const [expandedMeterGroups, setExpandedMeterGroups] = useState<Set<string>>(new Set());
   const [warehouseTab, setWarehouseTab] = useState<'warehouses' | 'stock' | 'addInventory'>('warehouses');
   const [warehouseStock, setWarehouseStock] = useState<WarehouseStockItem[]>([]);
   const [isLoadingWarehouseStock, setIsLoadingWarehouseStock] = useState(false);
@@ -1388,7 +1389,72 @@ const AccountDashboard: React.FC = () => {
     try {
       if (propertyToEdit) {
         // Режим редагування - оновити існуючий об'єкт
-        const updatedProperty = await propertiesService.update(propertyToEdit.id, newProperty);
+        let propertyToUpdate: Partial<Property> = { ...newProperty };
+        
+        // Зберегти всі існуючі Check-In/Check-Out записи
+        const existingCheckInOut = (propertyToEdit.meterLog || []).filter(
+          e => e.type === 'Check-In' || e.type === 'Check-Out'
+        );
+        
+        // Конвертувати meterReadings в meterLog (якщо є нові meterReadings)
+        if (newProperty.meterReadings && newProperty.meterReadings.length > 0) {
+          const today = new Date().toISOString().split('T')[0];
+          const readings = {
+            electricity: 'Pending',
+            water: 'Pending',
+            gas: 'Pending'
+          };
+          
+          newProperty.meterReadings.forEach(meter => {
+            const nameLower = meter.name.toLowerCase();
+            const initialValue = meter.initial || 'Pending';
+            
+            if (nameLower === 'electricity' || nameLower.includes('electric') || nameLower.includes('електро') || nameLower.includes('strom')) {
+              readings.electricity = initialValue;
+            } else if (nameLower === 'water' || nameLower.includes('вода') || nameLower.includes('wasser')) {
+              readings.water = initialValue;
+            } else if (nameLower === 'gas' || nameLower.includes('газ')) {
+              readings.gas = initialValue;
+            } else if (nameLower === 'heating' || nameLower.includes('heizung') || nameLower.includes('опалення')) {
+              readings.gas = initialValue;
+            }
+          });
+          
+          // Знайти існуючий Initial запис
+          const existingInitial = propertyToEdit.meterLog?.find(e => e.type === 'Initial');
+          
+          if (existingInitial) {
+            // Оновити існуючий Initial запис
+            const updatedInitial: MeterLogEntry = {
+              ...existingInitial,
+              readings: readings
+            };
+            propertyToUpdate.meterLog = [updatedInitial, ...existingCheckInOut];
+          } else {
+            // Створити новий Initial запис, зберігаючи всі існуючі Check-In/Check-Out
+            const initialMeterLog: MeterLogEntry = {
+              date: today,
+              type: 'Initial',
+              readings: readings
+            };
+            propertyToUpdate.meterLog = [initialMeterLog, ...existingCheckInOut];
+          }
+          
+          console.log('📊 Converting meterReadings to meterLog (edit mode):', {
+            meterReadings: newProperty.meterReadings,
+            existingCheckInOutCount: existingCheckInOut.length,
+            updatedMeterLogCount: propertyToUpdate.meterLog.length,
+            meterLog: propertyToUpdate.meterLog
+          });
+        } else {
+          // Якщо немає meterReadings, зберегти існуючий meterLog
+          propertyToUpdate.meterLog = propertyToEdit.meterLog;
+        }
+        
+        // Видалити meterReadings з updates, щоб не перезаписати їх
+        delete propertyToUpdate.meterReadings;
+        
+        const updatedProperty = await propertiesService.update(propertyToEdit.id, propertyToUpdate);
         console.log('✅ Property updated in database:', updatedProperty.id);
         console.log('📊 Updated property meterLog:', updatedProperty.meterLog);
         
@@ -2265,6 +2331,83 @@ const AccountDashboard: React.FC = () => {
     return { groupedEntries, standaloneEntries };
   };
 
+  // Group meter readings by rental periods for accordion display
+  const groupMeterReadingsByRental = (
+    meterLog: MeterLogEntry[] = [], 
+    reservations: ReservationData[] = []
+  ) => {
+    const groups: Array<{
+      id: string;
+      title: string;
+      type: 'initial' | 'rental';
+      checkInDate?: string;
+      checkOutDate?: string;
+      tenantName?: string;
+      checkInReadings?: { electricity: string; water: string; gas: string };
+      checkOutReadings?: { electricity: string; water: string; gas: string };
+      usedAmount?: { electricity: string; water: string; gas: string };
+      status: 'complete' | 'pending';
+    }> = [];
+    
+    // Initial запис
+    const initial = meterLog.find(e => e.type === 'Initial');
+    if (initial) {
+      groups.push({
+        id: 'initial',
+        title: 'Початкові показники',
+        type: 'initial',
+        checkInReadings: initial.readings,
+        status: 'complete'
+      });
+    }
+    
+    // Групувати Check-In/Check-Out по bookingId
+    const checkIns = meterLog.filter(e => e.type === 'Check-In' && e.bookingId);
+    checkIns.forEach(checkIn => {
+      const checkOut = meterLog.find(
+        e => e.type === 'Check-Out' && e.bookingId === checkIn.bookingId
+      );
+      const booking = reservations.find(
+        r => r.id === checkIn.bookingId || String(r.id) === String(checkIn.bookingId)
+      );
+      
+      const tenantName = booking?.guest || booking?.firstName || 'Unknown Tenant';
+      const checkInDate = checkIn.date;
+      const checkOutDate = checkOut?.date;
+      
+      // Calculate usage
+      const calculateUsage = (inVal: string, outVal: string): string => {
+        if (!checkOut || inVal === 'Pending' || outVal === 'Pending') return '-';
+        const in = parseFloat(inVal);
+        const out = parseFloat(outVal);
+        if (isNaN(in) || isNaN(out)) return '-';
+        return (out - in).toFixed(2);
+      };
+      
+      groups.push({
+        id: `rental-${checkIn.bookingId}`,
+        title: `${tenantName} (${checkInDate}${checkOutDate ? ` - ${checkOutDate}` : ' - Ongoing'})`,
+        type: 'rental',
+        checkInDate,
+        checkOutDate,
+        tenantName,
+        checkInReadings: checkIn.readings,
+        checkOutReadings: checkOut?.readings || { electricity: 'Pending', water: 'Pending', gas: 'Pending' },
+        usedAmount: {
+          electricity: calculateUsage(checkIn.readings.electricity, checkOut?.readings.electricity || ''),
+          water: calculateUsage(checkIn.readings.water, checkOut?.readings.water || ''),
+          gas: calculateUsage(checkIn.readings.gas, checkOut?.readings.gas || '')
+        },
+        status: checkOut && 
+          checkIn.readings.electricity !== 'Pending' && 
+          checkOut.readings.electricity !== 'Pending' 
+          ? 'complete' : 'pending'
+      });
+    });
+    
+    return groups;
+  };
+
   const renderPropertiesContent = () => {
     const selectedProperty = properties.find(p => p.id === selectedPropertyId) || properties[0];
     
@@ -2676,144 +2819,156 @@ const AccountDashboard: React.FC = () => {
                 </div>
             </section>
 
-            {/* Meter Readings (History Log) */}
+            {/* Meter Readings (History Log) - Accordion */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <h2 className="text-xl font-bold text-white mb-4">Показання Лічильників (Історія)</h2>
-                <div className="overflow-hidden border border-gray-700 rounded-lg">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
-                            <tr>
-                                <th className="p-3 font-bold text-xs uppercase">Клієнт</th>
-                                <th className="p-3 font-bold text-xs uppercase">Період</th>
-                                <th className="p-3 font-bold text-xs uppercase">Check-In</th>
-                                <th className="p-3 font-bold text-xs uppercase">Check-Out</th>
-                                <th className="p-3 font-bold text-xs uppercase">Використано</th>
-                                <th className="p-3 font-bold text-xs uppercase">Статус</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                            {(() => {
-                                const meterLog = selectedProperty.meterLog || [];
-                                console.log('📊 Displaying meterLog:', {
-                                    propertyId: selectedProperty.id,
-                                    propertyTitle: selectedProperty.title,
-                                    meterLogCount: meterLog.length,
-                                    meterLog: meterLog
-                                });
-                                
-                                const { groupedEntries, standaloneEntries } = processMeterReadings(meterLog, reservations);
-                                
-                                console.log('📊 Processed meter readings:', {
-                                    groupedEntriesCount: groupedEntries.length,
-                                    standaloneEntriesCount: standaloneEntries.length,
-                                    groupedEntries: groupedEntries,
-                                    standaloneEntries: standaloneEntries
-                                });
-                                return (
-                                    <>
-                                        {/* Grouped Rental Periods */}
-                                        {groupedEntries.map((entry, idx) => (
-                                            <tr key={`grouped-${idx}`} className="hover:bg-[#1C1F24]">
-                                                <td className="p-3 font-bold text-white">{entry.customerName}</td>
-                                                <td className="p-3 text-gray-400">{entry.period}</td>
-                                                <td className="p-3">
-                                                    <div className="space-y-1">
-                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
-                                                            <Zap className="w-3 h-3 text-yellow-500" /> {entry.checkInReadings.electricity || '-'}
-                                                        </div>
-                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
-                                                            <Droplet className="w-3 h-3 text-blue-500" /> {entry.checkInReadings.water || '-'}
-                                                        </div>
-                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
-                                                            <Flame className="w-3 h-3 text-orange-500" /> {entry.checkInReadings.gas || '-'}
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="p-3">
-                                                    <div className="space-y-1">
-                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
-                                                            <Zap className="w-3 h-3 text-yellow-500" /> {entry.checkOutReadings.electricity || '-'}
-                                                        </div>
-                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
-                                                            <Droplet className="w-3 h-3 text-blue-500" /> {entry.checkOutReadings.water || '-'}
-                                                        </div>
-                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
-                                                            <Flame className="w-3 h-3 text-orange-500" /> {entry.checkOutReadings.gas || '-'}
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="p-3">
-                                                    <div className="space-y-1">
-                                                        <div className="text-emerald-400 font-mono text-xs font-bold flex items-center gap-1">
-                                                            <Zap className="w-3 h-3 text-yellow-500" /> {entry.usedAmount.electricity}
-                                                        </div>
-                                                        <div className="text-emerald-400 font-mono text-xs font-bold flex items-center gap-1">
-                                                            <Droplet className="w-3 h-3 text-blue-500" /> {entry.usedAmount.water}
-                                                        </div>
-                                                        <div className="text-emerald-400 font-mono text-xs font-bold flex items-center gap-1">
-                                                            <Flame className="w-3 h-3 text-orange-500" /> {entry.usedAmount.gas}
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="p-3">
-                                                    <span className={`px-2 py-1 rounded text-[10px] font-bold ${
-                                                        entry.status === 'complete' 
-                                                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                                                            : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                                                    }`}>
-                                                        {entry.status === 'complete' ? 'Завершено' : 'Очікується'}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        
-                                        {/* Standalone Entries (Initial, Interim) */}
-                                        {standaloneEntries.map((entry, idx) => (
-                                            <tr key={`standalone-${idx}`} className="hover:bg-[#1C1F24]">
-                                                <td className="p-3 text-gray-500">-</td>
-                                                <td className="p-3 text-gray-400">{entry.date}</td>
-                                                <td className="p-3" colSpan={2}>
-                                                    <span className={`px-2 py-0.5 rounded text-[10px] border ${
-                                                        entry.type === 'Initial' 
-                                                            ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' 
-                                                            : 'bg-gray-500/10 text-gray-400 border-gray-500/20'
-                                                    }`}>
-                                                        {entry.type}
-                                                    </span>
-                                                </td>
-                                                <td className="p-3">
-                                                    <div className="space-y-1">
-                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
-                                                            <Zap className="w-3 h-3 text-yellow-500" /> {entry.readings.electricity || '-'}
-                                                        </div>
-                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
-                                                            <Droplet className="w-3 h-3 text-blue-500" /> {entry.readings.water || '-'}
-                                                        </div>
-                                                        <div className="text-white font-mono text-xs flex items-center gap-1">
-                                                            <Flame className="w-3 h-3 text-orange-500" /> {entry.readings.gas || '-'}
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="p-3">
-                                                    <span className="px-2 py-1 rounded text-[10px] font-bold bg-gray-500/20 text-gray-400 border border-gray-500/30">
-                                                        {entry.readings.electricity === 'Pending' ? 'Очікується' : 'Завершено'}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        
-                                        {groupedEntries.length === 0 && standaloneEntries.length === 0 && (
-                                            <tr>
-                                                <td colSpan={6} className="p-4 text-center text-gray-500 text-xs">
-                                                    Історія показників пуста.
-                                                </td>
-                                            </tr>
+                <div className="space-y-2">
+                    {(() => {
+                        const meterLog = selectedProperty.meterLog || [];
+                        const groups = groupMeterReadingsByRental(meterLog, reservations);
+                        
+                        if (groups.length === 0) {
+                            return (
+                                <div className="p-8 text-center text-gray-500 text-sm border border-gray-700 rounded-lg">
+                                    Історія показників пуста.
+                                </div>
+                            );
+                        }
+                        
+                        return groups.map((group) => (
+                            <div key={group.id} className="border border-gray-700 rounded-lg overflow-hidden bg-[#16181D]">
+                                <button
+                                    onClick={() => {
+                                        const newExpanded = new Set(expandedMeterGroups);
+                                        if (newExpanded.has(group.id)) {
+                                            newExpanded.delete(group.id);
+                                        } else {
+                                            newExpanded.add(group.id);
+                                        }
+                                        setExpandedMeterGroups(newExpanded);
+                                    }}
+                                    className="w-full p-4 flex justify-between items-center hover:bg-[#1C1F24] transition-colors"
+                                >
+                                    <div className="flex items-center gap-3 flex-1">
+                                        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${expandedMeterGroups.has(group.id) ? 'rotate-180' : ''}`} />
+                                        <span className="font-bold text-white">{group.title}</span>
+                                        {group.type === 'rental' && (
+                                            <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                                group.status === 'complete' 
+                                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                                    : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                                            }`}>
+                                                {group.status === 'complete' ? 'Завершено' : 'Очікується'}
+                                            </span>
                                         )}
-                                    </>
-                                );
-                            })()}
-                        </tbody>
-                    </table>
+                                    </div>
+                                </button>
+                                
+                                {expandedMeterGroups.has(group.id) && (
+                                    <div className="p-4 border-t border-gray-700 bg-[#0D1117]">
+                                        {group.type === 'initial' ? (
+                                            // Initial readings display
+                                            <div className="space-y-3">
+                                                <div className="text-sm font-semibold text-gray-400 mb-3">Початкові показники</div>
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <Zap className="w-4 h-4 text-yellow-500" />
+                                                        <span className="text-xs text-gray-400">Electricity:</span>
+                                                        <span className="text-white font-mono font-bold">{group.checkInReadings?.electricity || '-'}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <Droplet className="w-4 h-4 text-blue-500" />
+                                                        <span className="text-xs text-gray-400">Water:</span>
+                                                        <span className="text-white font-mono font-bold">{group.checkInReadings?.water || '-'}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <Flame className="w-4 h-4 text-orange-500" />
+                                                        <span className="text-xs text-gray-400">Gas:</span>
+                                                        <span className="text-white font-mono font-bold">{group.checkInReadings?.gas || '-'}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            // Rental period display
+                                            <div className="space-y-4">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                    {/* Check-In */}
+                                                    <div>
+                                                        <div className="text-sm font-semibold text-emerald-400 mb-2">Check-In ({group.checkInDate})</div>
+                                                        <div className="space-y-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <Zap className="w-3 h-3 text-yellow-500" />
+                                                                <span className="text-xs text-gray-400">Electricity:</span>
+                                                                <span className="text-white font-mono text-sm">{group.checkInReadings?.electricity || '-'}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <Droplet className="w-3 h-3 text-blue-500" />
+                                                                <span className="text-xs text-gray-400">Water:</span>
+                                                                <span className="text-white font-mono text-sm">{group.checkInReadings?.water || '-'}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <Flame className="w-3 h-3 text-orange-500" />
+                                                                <span className="text-xs text-gray-400">Gas:</span>
+                                                                <span className="text-white font-mono text-sm">{group.checkInReadings?.gas || '-'}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {/* Check-Out */}
+                                                    <div>
+                                                        <div className="text-sm font-semibold text-red-400 mb-2">
+                                                            Check-Out {group.checkOutDate ? `(${group.checkOutDate})` : '(Ongoing)'}
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <Zap className="w-3 h-3 text-yellow-500" />
+                                                                <span className="text-xs text-gray-400">Electricity:</span>
+                                                                <span className="text-white font-mono text-sm">{group.checkOutReadings?.electricity || '-'}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <Droplet className="w-3 h-3 text-blue-500" />
+                                                                <span className="text-xs text-gray-400">Water:</span>
+                                                                <span className="text-white font-mono text-sm">{group.checkOutReadings?.water || '-'}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <Flame className="w-3 h-3 text-orange-500" />
+                                                                <span className="text-xs text-gray-400">Gas:</span>
+                                                                <span className="text-white font-mono text-sm">{group.checkOutReadings?.gas || '-'}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* Used Amount */}
+                                                {group.usedAmount && (
+                                                    <div className="pt-4 border-t border-gray-700">
+                                                        <div className="text-sm font-semibold text-emerald-400 mb-2">Використано</div>
+                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                            <div className="flex items-center gap-2">
+                                                                <Zap className="w-3 h-3 text-yellow-500" />
+                                                                <span className="text-xs text-gray-400">Electricity:</span>
+                                                                <span className="text-emerald-400 font-mono font-bold">{group.usedAmount.electricity}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <Droplet className="w-3 h-3 text-blue-500" />
+                                                                <span className="text-xs text-gray-400">Water:</span>
+                                                                <span className="text-emerald-400 font-mono font-bold">{group.usedAmount.water}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <Flame className="w-3 h-3 text-orange-500" />
+                                                                <span className="text-xs text-gray-400">Gas:</span>
+                                                                <span className="text-emerald-400 font-mono font-bold">{group.usedAmount.gas}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        ));
+                    })()}
                 </div>
             </section>
 
