@@ -727,7 +727,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                       className={`
                         relative p-2 rounded border hover:bg-opacity-80 transition-colors flex-shrink-0
                         ${getEventColor(event.type as string)}
-                        ${event.status === 'archived' || event.status === 'verified' || event.status === 'completed' ? 'opacity-50 grayscale' : ''}
+                        ${event.status === 'archived' ? 'opacity-50 grayscale' : ''}
                         ${event.status === 'done_by_worker' ? 'ring-1 ring-yellow-500' : ''}
                         ${viewMode === 'day' ? 'p-4 text-base' : ''}
                       `}

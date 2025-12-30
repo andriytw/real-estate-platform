@@ -4,6 +4,7 @@ import { tasksService, workersService, propertiesService } from '../../services/
 import { CalendarEvent, TaskStatus, Property, Worker } from '../../types';
 import { getTaskColor } from '../../utils/taskColors';
 import { createClient } from '../../utils/supabase/client';
+import { useWorker } from '../../contexts/WorkerContext';
 
 interface TaskDetailModalProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface TaskDetailModalProps {
   task: CalendarEvent | null;
   onUpdateTask: (task: CalendarEvent) => void;
   onDeleteTask?: (taskId: string) => void;
+  currentUser?: Worker | null;
 }
 
 const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
@@ -18,8 +20,13 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   onClose,
   task,
   onUpdateTask,
-  onDeleteTask
+  onDeleteTask,
+  currentUser: propCurrentUser
 }) => {
+  const { worker: contextWorker } = useWorker();
+  const currentUser = propCurrentUser || contextWorker;
+  const isWorker = currentUser?.role === 'worker';
+  
   const [property, setProperty] = useState<Property | null>(null);
   const [assignee, setAssignee] = useState<Worker | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -139,8 +146,27 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     }
   };
 
+  const getStatusColor = (status: TaskStatus): string => {
+    switch (status) {
+      case 'pending':
+        return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30';
+      case 'in_progress':
+        return 'text-blue-400 bg-blue-400/10 border-blue-400/30';
+      case 'completed':
+        return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30';
+      case 'verified':
+        return 'text-green-400 bg-green-400/10 border-green-400/30';
+      case 'done_by_worker':
+        return 'text-orange-400 bg-orange-400/10 border-orange-400/30';
+      default:
+        return 'text-gray-400 bg-gray-400/10 border-gray-400/30';
+    }
+  };
+
   const getStatusButton = (status: TaskStatus, label: string, icon: React.ReactNode) => {
     const isActive = task?.status === status;
+    const isCompleted = status === 'completed';
+    
     return (
       <button
         onClick={() => handleStatusChange(status)}
@@ -149,6 +175,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
           flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-all
           ${isActive 
             ? 'bg-blue-500/20 border-blue-500 text-blue-400 cursor-not-allowed' 
+            : isCompleted
+            ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 hover:border-emerald-400 hover:bg-emerald-500/30'
             : 'bg-[#1C1F24] border-gray-700 text-gray-300 hover:border-blue-500 hover:text-blue-400'
           }
           ${isUpdating ? 'opacity-50 cursor-not-allowed' : ''}
@@ -215,7 +243,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 Change task status to mark progress
               </p>
               <div className="flex flex-wrap gap-2">
-                {getStatusButton('in_progress', 'In Progress', <Circle className="w-3 h-3" />)}
+                {!isWorker && getStatusButton('in_progress', 'In Progress', <Circle className="w-3 h-3" />)}
                 {getStatusButton('completed', 'Mark as Done', <CheckCircle2 className="w-3 h-3" />)}
                 {getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />)}
               </div>
@@ -391,7 +419,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 ) : (
                   <Circle className="w-4 h-4 text-gray-500" />
                 )}
-                <span className="text-sm text-white capitalize">{task.status.replace('_', ' ')}</span>
+                <span className={`text-sm capitalize px-2 py-1 rounded border ${getStatusColor(task.status)}`}>
+                  {task.status.replace('_', ' ')}
+                </span>
               </div>
             </div>
           </div>

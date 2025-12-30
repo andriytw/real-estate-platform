@@ -440,6 +440,7 @@ const KanbanBoard: React.FC = () => {
             setIsTaskDetailModalOpen(false);
             setSelectedTask(null);
           }}
+          currentUser={currentUser}
         />
       )}
     </div>
