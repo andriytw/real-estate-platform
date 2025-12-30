@@ -3834,10 +3834,46 @@ const AccountDashboard: React.FC = () => {
             )}
             {expandedSections.accounting && (
               <div className="ml-4 space-y-1 border-l border-gray-700 pl-3 my-1">
-                <button onClick={() => { setActiveDepartment('accounting'); setAccountingTab('dashboard'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Dashboard</button>
-                <button onClick={() => { setActiveDepartment('accounting'); setAccountingTab('invoices'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Invoices</button>
-                <button onClick={() => { setActiveDepartment('accounting'); setAccountingTab('banking'); }} className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${activeDepartment === 'accounting' && accountingTab === 'banking' ? 'text-emerald-500 font-bold bg-emerald-500/10' : 'text-gray-500 hover:text-gray-300'}`}>Banking</button>
-                <button onClick={() => { setActiveDepartment('accounting'); setAccountingTab('calendar'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Calendar</button>
+                <button 
+                  onClick={() => { setActiveDepartment('accounting'); setAccountingTab('dashboard'); }} 
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    activeDepartment === 'accounting' && accountingTab === 'dashboard'
+                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Dashboard
+                </button>
+                <button 
+                  onClick={() => { setActiveDepartment('accounting'); setAccountingTab('invoices'); }} 
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    activeDepartment === 'accounting' && accountingTab === 'invoices'
+                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Invoices
+                </button>
+                <button 
+                  onClick={() => { setActiveDepartment('accounting'); setAccountingTab('banking'); }} 
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    activeDepartment === 'accounting' && accountingTab === 'banking'
+                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Banking
+                </button>
+                <button 
+                  onClick={() => { setActiveDepartment('accounting'); setAccountingTab('calendar'); }} 
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    activeDepartment === 'accounting' && accountingTab === 'calendar'
+                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Calendar
+                </button>
               </div>
             )}
           </div>
@@ -3851,13 +3887,76 @@ const AccountDashboard: React.FC = () => {
           )}
           {expandedSections.sales && (
               <div className="ml-4 space-y-1 border-l border-gray-700 pl-3 my-1">
-                <button onClick={() => { setActiveDepartment('sales'); setSalesTab('leads'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Leads</button>
-                <button onClick={() => { setActiveDepartment('sales'); setSalesTab('calendar'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Rent Calendar</button>
-                <button onClick={() => { setActiveDepartment('sales'); setSalesTab('offers'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Offers</button>
-                <button onClick={() => { setActiveDepartment('sales'); setSalesTab('reservations'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Reservations</button>
-                <button onClick={() => { setActiveDepartment('sales'); setSalesTab('requests'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Requests</button>
-                <button onClick={() => { setActiveDepartment('sales'); setSalesTab('chat'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">Chat</button>
-                <button onClick={() => { setActiveDepartment('sales'); setSalesTab('history'); }} className="w-full text-left px-2 py-1.5 text-xs text-gray-500 hover:text-gray-300">History</button>
+                <button 
+                  onClick={() => { setActiveDepartment('sales'); setSalesTab('leads'); }} 
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    activeDepartment === 'sales' && salesTab === 'leads'
+                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Leads
+                </button>
+                <button 
+                  onClick={() => { setActiveDepartment('sales'); setSalesTab('calendar'); }} 
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    activeDepartment === 'sales' && salesTab === 'calendar'
+                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Rent Calendar
+                </button>
+                <button 
+                  onClick={() => { setActiveDepartment('sales'); setSalesTab('offers'); }} 
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    activeDepartment === 'sales' && salesTab === 'offers'
+                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Offers
+                </button>
+                <button 
+                  onClick={() => { setActiveDepartment('sales'); setSalesTab('reservations'); }} 
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    activeDepartment === 'sales' && salesTab === 'reservations'
+                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Reservations
+                </button>
+                <button 
+                  onClick={() => { setActiveDepartment('sales'); setSalesTab('requests'); }} 
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    activeDepartment === 'sales' && salesTab === 'requests'
+                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Requests
+                </button>
+                <button 
+                  onClick={() => { setActiveDepartment('sales'); setSalesTab('chat'); }} 
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    activeDepartment === 'sales' && salesTab === 'chat'
+                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Chat
+                </button>
+                <button 
+                  onClick={() => { setActiveDepartment('sales'); setSalesTab('history'); }} 
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    activeDepartment === 'sales' && salesTab === 'history'
+                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  History
+                </button>
               </div>
           )}
 
