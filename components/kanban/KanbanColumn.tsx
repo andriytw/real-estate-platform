@@ -117,9 +117,23 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
 
     // Apply sorting
     filtered.sort((a, b) => {
+      // Спочатку сортуємо за статусом: невиконані зверху, виконані внизу
+      const aCompleted = a.status === 'completed' || a.status === 'verified' || a.status === 'archived';
+      const bCompleted = b.status === 'completed' || b.status === 'verified' || b.status === 'archived';
+      
+      if (aCompleted !== bCompleted) {
+        return aCompleted ? 1 : -1; // Невиконані спочатку
+      }
+      
+      // Потім сортуємо за датою створення (нові зверху)
+      const dateA = a.createdAt || a.date || '';
+      const dateB = b.createdAt || b.date || '';
+      if (dateA && dateB) {
+        return dateB.localeCompare(dateA); // DESC - нові зверху
+      }
+      
+      // Якщо немає дати створення, використовуємо оригінальне сортування
       if (sortBy === 'date') {
-        const dateA = a.createdAt || a.date || '';
-        const dateB = b.createdAt || b.date || '';
         const comparison = dateA.localeCompare(dateB);
         return sortOrder === 'asc' ? comparison : -comparison;
       } else {
@@ -131,12 +145,20 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
       }
     });
 
-    // Secondary sort by priority (always urgent first)
+    // Secondary sort by priority (always urgent first) - тільки для невиконаних
     filtered.sort((a, b) => {
-      const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
-      const pA = priorityOrder[a.priority || 'medium'];
-      const pB = priorityOrder[b.priority || 'medium'];
-      return pA - pB;
+      const aCompleted = a.status === 'completed' || a.status === 'verified' || a.status === 'archived';
+      const bCompleted = b.status === 'completed' || b.status === 'verified' || b.status === 'archived';
+      
+      // Пріоритет застосовуємо тільки до невиконаних завдань
+      if (!aCompleted && !bCompleted) {
+        const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+        const pA = priorityOrder[a.priority || 'medium'];
+        const pB = priorityOrder[b.priority || 'medium'];
+        return pA - pB;
+      }
+      
+      return 0;
     });
 
     return filtered;

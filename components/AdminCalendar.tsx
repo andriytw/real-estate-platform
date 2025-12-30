@@ -228,6 +228,22 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
   const sortEvents = (eventsList: CalendarEvent[], sortType: 'time' | 'type') => {
     return [...eventsList].sort((a, b) => {
+      // Спочатку сортуємо за статусом: невиконані зверху, виконані внизу
+      const aCompleted = a.status === 'completed' || a.status === 'verified' || a.status === 'archived';
+      const bCompleted = b.status === 'completed' || b.status === 'verified' || b.status === 'archived';
+      
+      if (aCompleted !== bCompleted) {
+        return aCompleted ? 1 : -1; // Невиконані спочатку
+      }
+      
+      // Потім сортуємо за датою створення (нові зверху)
+      const dateA = a.createdAt || a.date || '';
+      const dateB = b.createdAt || b.date || '';
+      if (dateA && dateB) {
+        return dateB.localeCompare(dateA); // DESC - нові зверху
+      }
+      
+      // Якщо немає дати створення, використовуємо оригінальне сортування
       if (sortType === 'time') {
         return (a.time || '').localeCompare(b.time || '');
       } else {
@@ -735,17 +751,26 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                          {event.title}
                       </div>
                       <div className="flex justify-between items-center mt-1">
-                         <div className="flex items-center gap-1">
+                         <div className="flex items-center gap-1 flex-wrap">
                             <span className="font-mono opacity-70 bg-black/20 px-1 rounded text-[10px]">{event.time}</span>
-                            {event.assignee && <User className="w-3 h-3 opacity-70" />}
+                            {(() => {
+                               const worker = event.workerId ? workers.find(w => w.id === event.workerId) : null;
+                               const workerName = event.assignee || worker?.name;
+                               return workerName ? (
+                                  <div className="flex items-center gap-1 text-[10px] text-gray-400">
+                                     <User className="w-3 h-3 opacity-70" />
+                                     <span className="truncate max-w-[100px]">{workerName}</span>
+                                  </div>
+                               ) : null;
+                            })()}
                          </div>
                          <span className="text-[10px] opacity-80 font-bold uppercase tracking-tighter">{event.type}</span>
                       </div>
                       {event.status === 'done_by_worker' && (
                           <div className="mt-1 bg-yellow-500/20 text-yellow-500 text-[10px] px-1 rounded inline-block">Awaiting Verification</div>
                       )}
-                      {viewMode === 'day' && event.description && (
-                         <p className="mt-2 text-sm opacity-70">{getReadableDescription(event.description)}</p>
+                      {event.description && (
+                         <p className="mt-1.5 text-[10px] opacity-70 line-clamp-2">{getReadableDescription(event.description)}</p>
                       )}
                     </div>
                     );
