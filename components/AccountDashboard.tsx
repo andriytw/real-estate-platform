@@ -2378,10 +2378,10 @@ const AccountDashboard: React.FC = () => {
       // Calculate usage
       const calculateUsage = (inVal: string, outVal: string): string => {
         if (!checkOut || inVal === 'Pending' || outVal === 'Pending') return '-';
-        const in = parseFloat(inVal);
-        const out = parseFloat(outVal);
-        if (isNaN(in) || isNaN(out)) return '-';
-        return (out - in).toFixed(2);
+        const checkInValue = parseFloat(inVal);
+        const checkOutValue = parseFloat(outVal);
+        if (isNaN(checkInValue) || isNaN(checkOutValue)) return '-';
+        return (checkOutValue - checkInValue).toFixed(2);
       };
       
       groups.push({
