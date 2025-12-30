@@ -258,6 +258,7 @@ const AccountDashboard: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps - only run once on mount
   const [isPropertyAddModalOpen, setIsPropertyAddModalOpen] = useState(false);
+  const [propertyToEdit, setPropertyToEdit] = useState<Property | undefined>(undefined);
   const [isInventoryEditing, setIsInventoryEditing] = useState(false);
   const [warehouseTab, setWarehouseTab] = useState<'warehouses' | 'stock' | 'addInventory'>('warehouses');
   const [warehouseStock, setWarehouseStock] = useState<WarehouseStockItem[]>([]);
@@ -1385,55 +1386,77 @@ const AccountDashboard: React.FC = () => {
   // --- Handlers ---
   const handleSaveProperty = async (newProperty: Property) => {
     try {
-      // Видалити id, щоб база даних сама згенерувала правильний UUID
-      const { id, ...propertyWithoutId } = newProperty;
-      
-      // Конвертувати meterReadings в meterLog
-      if (newProperty.meterReadings && newProperty.meterReadings.length > 0) {
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+      if (propertyToEdit) {
+        // Режим редагування - оновити існуючий об'єкт
+        const updatedProperty = await propertiesService.update(propertyToEdit.id, newProperty);
+        console.log('✅ Property updated in database:', updatedProperty.id);
+        console.log('📊 Updated property meterLog:', updatedProperty.meterLog);
         
-        // Ініціалізувати readings
-        const readings = {
-          electricity: 'Pending',
-          water: 'Pending',
-          gas: 'Pending'
-        };
+        // Оновити локальний стан
+        setProperties(prev => prev.map(p => p.id === updatedProperty.id ? updatedProperty : p));
+        setSelectedPropertyId(updatedProperty.id);
+        setPropertyToEdit(undefined);
+      } else {
+        // Режим створення - створити новий об'єкт
+        // Видалити id, щоб база даних сама згенерувала правильний UUID
+        const { id, ...propertyWithoutId } = newProperty;
         
-        // Заповнити readings на основі типів лічильників
-        newProperty.meterReadings.forEach(meter => {
-          const nameLower = meter.name.toLowerCase();
-          const initialValue = meter.initial || 'Pending';
+        // Конвертувати meterReadings в meterLog
+        if (newProperty.meterReadings && newProperty.meterReadings.length > 0) {
+          const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
           
-          if (nameLower.includes('електро') || nameLower.includes('electric') || nameLower.includes('strom')) {
-            readings.electricity = initialValue;
-          } else if (nameLower.includes('вода') || nameLower.includes('water') || nameLower.includes('wasser')) {
-            readings.water = initialValue;
-          } else if (nameLower.includes('газ') || nameLower.includes('gas')) {
-            readings.gas = initialValue;
-          }
-        });
+          // Ініціалізувати readings
+          const readings = {
+            electricity: 'Pending',
+            water: 'Pending',
+            gas: 'Pending'
+          };
+          
+          // Заповнити readings на основі типів лічильників
+          newProperty.meterReadings.forEach(meter => {
+            const nameLower = meter.name.toLowerCase();
+            const initialValue = meter.initial || 'Pending';
+            
+            if (nameLower.includes('електро') || nameLower.includes('electric') || nameLower.includes('strom')) {
+              readings.electricity = initialValue;
+            } else if (nameLower.includes('вода') || nameLower.includes('water') || nameLower.includes('wasser')) {
+              readings.water = initialValue;
+            } else if (nameLower.includes('газ') || nameLower.includes('gas')) {
+              readings.gas = initialValue;
+            }
+          });
+          
+          // Створити MeterLogEntry з типом 'Initial'
+          const initialMeterLog: MeterLogEntry = {
+            date: today,
+            type: 'Initial',
+            readings: readings
+          };
+          
+          // Додати meterLog до property
+          propertyWithoutId.meterLog = [initialMeterLog];
+          
+          console.log('📊 Converting meterReadings to meterLog:', {
+            meterReadings: newProperty.meterReadings,
+            meterLog: propertyWithoutId.meterLog
+          });
+        } else {
+          console.log('⚠️ No meterReadings to convert');
+        }
         
-        // Створити MeterLogEntry з типом 'Initial'
-        const initialMeterLog: MeterLogEntry = {
-          date: today,
-          type: 'Initial',
-          readings: readings
-        };
+        // Зберегти об'єкт в базу даних
+        const savedProperty = await propertiesService.create(propertyWithoutId);
+        console.log('✅ Property saved to database:', savedProperty.id);
+        console.log('📊 Saved property meterLog:', savedProperty.meterLog);
         
-        // Додати meterLog до property
-        propertyWithoutId.meterLog = [initialMeterLog];
+        // Оновити локальний стан з об'єктом з бази (з правильним ID)
+        setProperties([...properties, savedProperty]);
+        setSelectedPropertyId(savedProperty.id);
       }
       
-      // Зберегти об'єкт в базу даних
-      const savedProperty = await propertiesService.create(propertyWithoutId);
-      console.log('✅ Property saved to database:', savedProperty.id);
-      
-      // Оновити локальний стан з об'єктом з бази (з правильним ID)
-      setProperties([...properties, savedProperty]);
-      setSelectedPropertyId(savedProperty.id);
       setIsPropertyAddModalOpen(false);
     } catch (error) {
-      console.error('❌ Error saving property to database:', error);
+      console.error('❌ Error saving property:', error);
       // Показати помилку користувачу (можна додати toast notification)
       alert('Помилка збереження об\'єкта. Спробуйте ще раз.');
     }
@@ -2310,7 +2333,15 @@ const AccountDashboard: React.FC = () => {
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold text-white">1. Основні Дані Об'єкта</h2>
-                    <button className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"><Edit className="w-4 h-4 mr-1 inline" /> Редагувати</button>
+                    <button 
+                      onClick={() => {
+                        setPropertyToEdit(selectedProperty);
+                        setIsPropertyAddModalOpen(true);
+                      }}
+                      className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                    >
+                      <Edit className="w-4 h-4 mr-1 inline" /> Редагувати
+                    </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div className="border-r border-gray-700 pr-4">
@@ -2657,7 +2688,22 @@ const AccountDashboard: React.FC = () => {
                         </thead>
                         <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
                             {(() => {
-                                const { groupedEntries, standaloneEntries } = processMeterReadings(selectedProperty.meterLog, reservations);
+                                const meterLog = selectedProperty.meterLog || [];
+                                console.log('📊 Displaying meterLog:', {
+                                    propertyId: selectedProperty.id,
+                                    propertyTitle: selectedProperty.title,
+                                    meterLogCount: meterLog.length,
+                                    meterLog: meterLog
+                                });
+                                
+                                const { groupedEntries, standaloneEntries } = processMeterReadings(meterLog, reservations);
+                                
+                                console.log('📊 Processed meter readings:', {
+                                    groupedEntriesCount: groupedEntries.length,
+                                    standaloneEntriesCount: standaloneEntries.length,
+                                    groupedEntries: groupedEntries,
+                                    standaloneEntries: standaloneEntries
+                                });
                                 return (
                                     <>
                                         {/* Grouped Rental Periods */}
@@ -4591,7 +4637,15 @@ const AccountDashboard: React.FC = () => {
       />
       <InvoiceModal isOpen={isInvoiceModalOpen} onClose={() => { setIsInvoiceModalOpen(false); setSelectedOfferForInvoice(null); setSelectedInvoice(null); }} offer={selectedOfferForInvoice} invoice={selectedInvoice} onSave={handleSaveInvoice} />
       <OfferEditModal isOpen={isOfferEditModalOpen} onClose={() => setIsOfferEditModalOpen(false)} offer={offerToEdit} onSave={handleSaveOfferUpdate} />
-      <PropertyAddModal isOpen={isPropertyAddModalOpen} onClose={() => setIsPropertyAddModalOpen(false)} onSave={handleSaveProperty} />
+      <PropertyAddModal 
+        isOpen={isPropertyAddModalOpen} 
+        onClose={() => {
+          setIsPropertyAddModalOpen(false);
+          setPropertyToEdit(undefined);
+        }} 
+        onSave={handleSaveProperty}
+        propertyToEdit={propertyToEdit}
+      />
       <RequestModal 
         isOpen={isRequestModalOpen} 
         onClose={() => { setIsRequestModalOpen(false); setSelectedRequest(null); }} 

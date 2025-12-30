@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Camera, AreaChart, Box, PenTool, Save, Edit } from 'lucide-react';
 import { Property, InventoryItem, MeterReading } from '../types';
 
@@ -7,9 +7,10 @@ interface PropertyAddModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (property: Property) => void;
+  propertyToEdit?: Property;
 }
 
-const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, onSave }) => {
+const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, onSave, propertyToEdit }) => {
   // Form State
   const [formData, setFormData] = useState<Partial<Property>>({
     title: '',
@@ -126,7 +127,7 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
     const termString = `${formattedStart} - ${formattedEnd}`;
 
     const newProperty: Property = {
-      id: Date.now().toString(),
+      id: propertyToEdit?.id || Date.now().toString(), // Використовувати існуючий id при редагуванні
       title: formData.title || 'New Property',
       address: formData.address || '',
       city: formData.city || '',
@@ -156,10 +157,13 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
       inventory: inventory,
       meterReadings: meters,
       
+      // Зберегти meterLog при редагуванні (якщо він вже існує)
+      meterLog: propertyToEdit?.meterLog,
+      
       // Initialize empty arrays for optional fields to prevent errors
-      futurePayments: [],
-      repairRequests: [],
-      events: []
+      futurePayments: propertyToEdit?.futurePayments || [],
+      repairRequests: propertyToEdit?.repairRequests || [],
+      events: propertyToEdit?.events || []
     };
     
     onSave(newProperty);
@@ -174,7 +178,7 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
         
         {/* Header */}
         <div className="p-5 border-b border-gray-800 bg-[#161B22] flex justify-between items-center sticky top-0 z-20">
-          <h3 className="text-xl font-bold text-white">Додати Новий Об'єкт</h3>
+          <h3 className="text-xl font-bold text-white">{propertyToEdit ? 'Редагувати Об\'єкт' : 'Додати Новий Об\'єкт'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-white bg-gray-800 p-2 rounded-full transition-colors">
             <X className="w-5 h-5" />
           </button>
