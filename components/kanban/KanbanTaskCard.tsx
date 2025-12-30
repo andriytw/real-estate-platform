@@ -1,6 +1,6 @@
 import React from 'react';
 import { CalendarEvent } from '../../types';
-import { getTaskColor, getTaskBadgeColor } from '../../utils/taskColors';
+import { getTaskColor, getTaskBadgeColor, getTaskTextColor } from '../../utils/taskColors';
 import { Clock, AlertTriangle, CheckCircle2, Circle, AlertCircle, Building2, Calendar } from 'lucide-react';
 
 interface KanbanTaskCardProps {
@@ -11,6 +11,7 @@ interface KanbanTaskCardProps {
 const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
   const colorClass = getTaskColor(task.type);
   const badgeColor = getTaskBadgeColor(task.type);
+  const textColor = getTaskTextColor(task.type);
 
   // Priority Icon
   const getPriorityIcon = () => {
@@ -72,7 +73,7 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
       <h4 className={`text-sm font-medium mb-1 line-clamp-2 transition-colors ${
         isCompleted 
           ? 'text-gray-500 line-through' 
-          : 'text-white group-hover:text-blue-400'
+          : `${textColor} group-hover:opacity-80`
       }`}>
         {task.title}
       </h4>

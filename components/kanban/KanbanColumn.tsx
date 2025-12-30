@@ -7,6 +7,7 @@ import TaskCreateModal from './TaskCreateModal';
 import WorkerSelectDropdown from './WorkerSelectDropdown';
 import TaskTypeFilters from './TaskTypeFilters';
 import ColumnSortButtons from './ColumnSortButtons';
+import { FACILITY_TASK_TYPES, ACCOUNTING_TASK_TYPES } from '../../utils/taskColors';
 
 interface KanbanColumnProps {
   column: IKanbanColumn;
@@ -50,37 +51,61 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
     }
   }, [column.workerId]);
 
-  // Get available task types from column tasks, or all possible types if column is empty
+  // Get worker's department
+  const workerDepartment = useMemo(() => {
+    if (!column.workerId) return null;
+    const worker = workers.find(w => w.id === column.workerId);
+    return worker?.department || null;
+  }, [column.workerId, workers]);
+
+  // Get available task types from column tasks, filtered by department
   const availableTaskTypes = useMemo(() => {
-    // If column has tasks, show only types that exist in tasks
+    // Determine which task types are allowed based on worker's department
+    let allowedTypes: TaskType[] = [];
+    if (workerDepartment === 'facility') {
+      allowedTypes = FACILITY_TASK_TYPES;
+    } else if (workerDepartment === 'accounting') {
+      allowedTypes = ACCOUNTING_TASK_TYPES;
+    } else {
+      // If no department or unknown, show all types
+      allowedTypes = [...FACILITY_TASK_TYPES, ...ACCOUNTING_TASK_TYPES];
+    }
+
+    // If column has tasks, show only types that exist in tasks AND match department
     if (column.tasks.length > 0) {
       const types = new Set<TaskType>();
       column.tasks.forEach(task => {
-        if (task.type && task.type !== 'other') {
+        if (task.type && task.type !== 'other' && allowedTypes.includes(task.type as TaskType)) {
           types.add(task.type as TaskType);
         }
       });
       return Array.from(types).sort();
     }
     
-    // If column is empty but worker is assigned, show all possible task types
-    if (column.workerId) {
-      const allTypes: TaskType[] = [
-        'Einzug', 'Auszug', 'Putzen', 'Reklamation', 'Arbeit nach plan', 
-        'Zeit Abgabe von wohnung', 'Zählerstand',
-        'Tax Payment', 'Payroll', 'Invoice Processing', 'Audit', 'Monthly Closing',
-        'Rent Collection', 'Utility Payment', 'Insurance', 'Mortgage Payment', 'VAT Return',
-        'Financial Report', 'Budget Review', 'Asset Depreciation', 'Vendor Payment', 'Bank Reconciliation'
-      ];
-      return allTypes.sort();
+    // If column is empty but worker is assigned, show all allowed task types for their department
+    if (column.workerId && workerDepartment) {
+      return allowedTypes.sort();
     }
     
     return [];
-  }, [column.tasks, column.workerId]);
+  }, [column.tasks, column.workerId, workerDepartment]);
 
   // Filter and sort tasks
   const sortedTasks = useMemo(() => {
     let filtered = [...column.tasks];
+
+    // Filter by department: only show tasks that match worker's department
+    if (workerDepartment) {
+      const allowedTypes = workerDepartment === 'facility' 
+        ? FACILITY_TASK_TYPES 
+        : workerDepartment === 'accounting'
+        ? ACCOUNTING_TASK_TYPES
+        : [...FACILITY_TASK_TYPES, ...ACCOUNTING_TASK_TYPES];
+      
+      filtered = filtered.filter(task => 
+        task.type && allowedTypes.includes(task.type as TaskType)
+      );
+    }
 
     // Apply type filters
     if (selectedTaskTypes.length > 0) {
@@ -114,7 +139,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
     });
 
     return filtered;
-  }, [column.tasks, selectedTaskTypes, sortBy, sortOrder]);
+  }, [column.tasks, selectedTaskTypes, sortBy, sortOrder, workerDepartment]);
 
   // Handle worker assignment
   const handleWorkerSelect = (workerId: string) => {

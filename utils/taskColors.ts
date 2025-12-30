@@ -59,10 +59,16 @@ const TASK_COLORS: Record<TaskType | string, { bg: string; border: string; text:
   'other': { bg: 'bg-gray-500/10', border: 'border-gray-500', text: 'text-gray-400' }
 };
 
-// Get task color classes
+// Get task color classes (background + border + text)
 export function getTaskColor(taskType: TaskType | string): string {
   const colors = TASK_COLORS[taskType] || TASK_COLORS['other'];
   return `${colors.bg} ${colors.border} ${colors.text}`;
+}
+
+// Get only text color class for task type (used e.g. in dropdowns)
+export function getTaskTextColor(taskType: TaskType | string): string {
+  const colors = TASK_COLORS[taskType] || TASK_COLORS['other'];
+  return colors.text;
 }
 
 // Get task badge color
