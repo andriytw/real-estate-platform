@@ -349,6 +349,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         // Worker marks task as done - перехід на done_by_worker
         const updated = { ...targetEvent, status: 'done_by_worker' as TaskStatus };
         onUpdateEvent(updated);
+        window.dispatchEvent(new CustomEvent('taskUpdated'));
         // If this event is currently open in modal, update the local view state too
         if (viewEvent && viewEvent.id === eventId) {
             setViewEvent(updated);
@@ -361,6 +362,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     if (targetEvent) {
         const updated = { ...targetEvent, status: 'verified' as TaskStatus };
         onUpdateEvent(updated);
+        window.dispatchEvent(new CustomEvent('taskUpdated'));
         setViewEvent(updated);
         
         // Оновити статус броні якщо таска пов'язана з бронюванням
@@ -424,6 +426,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       const updatedEvent = { ...viewEvent, meterReadings: updatedReadings };
       setViewEvent(updatedEvent);
       onUpdateEvent(updatedEvent);
+      window.dispatchEvent(new CustomEvent('taskUpdated'));
   };
 
   const selectedDayEvents = selectedDay ? getEventsForDay(selectedDay) : [];
@@ -704,14 +707,17 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
                 {/* Events List */}
                 <div className="flex flex-col gap-2 flex-1 overflow-y-auto min-h-0 pr-1 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
-                  {sortedDayEvents.length > 0 ? sortedDayEvents.map((event) => (
+                  {sortedDayEvents.length > 0 ? sortedDayEvents.map((event) => {
+                    const isCompleted = event.status === 'completed' || event.status === 'verified' || event.status === 'archived';
+                    
+                    return (
                     <div 
                       key={event.id}
                       onClick={(e) => handleEventClick(e, event)}
                       className={`
                         relative p-2 rounded border hover:bg-opacity-80 transition-colors flex-shrink-0
                         ${getCalendarEventColor(event.type as string)}
-                        ${event.status === 'archived' ? 'opacity-50 grayscale' : ''}
+                        ${isCompleted ? 'opacity-50 grayscale' : ''}
                         ${event.status === 'done_by_worker' ? 'ring-1 ring-yellow-500' : ''}
                         ${viewMode === 'day' ? 'p-4 text-base' : ''}
                       `}
@@ -740,7 +746,8 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                          <p className="mt-2 text-sm opacity-70">{getReadableDescription(event.description)}</p>
                       )}
                     </div>
-                  )) : viewMode === 'day' && (
+                    );
+                  }) : viewMode === 'day' && (
                      <div className="flex flex-col items-center justify-center h-full text-gray-500">
                         <p>No tasks scheduled for this day.</p>
                      </div>
