@@ -261,7 +261,6 @@ const AccountDashboard: React.FC = () => {
   const [propertyToEdit, setPropertyToEdit] = useState<Property | undefined>(undefined);
   const [isInventoryEditing, setIsInventoryEditing] = useState(false);
   const [expandedMeterGroups, setExpandedMeterGroups] = useState<Set<string>>(new Set());
-  const [isMeterReadingsExpanded, setIsMeterReadingsExpanded] = useState<boolean>(true);
   const [warehouseTab, setWarehouseTab] = useState<'warehouses' | 'stock' | 'addInventory'>('warehouses');
   const [warehouseStock, setWarehouseStock] = useState<WarehouseStockItem[]>([]);
   const [isLoadingWarehouseStock, setIsLoadingWarehouseStock] = useState(false);
@@ -2825,50 +2824,6 @@ const AccountDashboard: React.FC = () => {
                 </div>
             </section>
 
-            {/* Current Meter Readings - Accordion */}
-            {selectedProperty.meterReadings && selectedProperty.meterReadings.length > 0 && (
-                <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                    <div className="border border-gray-700 rounded-lg overflow-hidden bg-[#16181D]">
-                        <button
-                            onClick={() => setIsMeterReadingsExpanded(!isMeterReadingsExpanded)}
-                            className="w-full p-4 flex justify-between items-center hover:bg-[#1C1F24] transition-colors"
-                        >
-                            <div className="flex items-center gap-3 flex-1">
-                                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isMeterReadingsExpanded ? 'rotate-180' : ''}`} />
-                                <h2 className="text-xl font-bold text-white">Показання Лічильників</h2>
-                            </div>
-                        </button>
-                        
-                        {isMeterReadingsExpanded && (
-                            <div className="p-4 border-t border-gray-700 bg-[#0D1117]">
-                                <div className="overflow-hidden border border-gray-700 rounded-lg">
-                                    <table className="w-full text-sm text-left">
-                                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
-                                            <tr>
-                                                <th className="p-3 font-bold text-xs uppercase">Назва</th>
-                                                <th className="p-3 font-bold text-xs uppercase">Номер</th>
-                                                <th className="p-3 font-bold text-xs uppercase">Початкове</th>
-                                                <th className="p-3 font-bold text-xs uppercase">Актуальне</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                                            {selectedProperty.meterReadings.map((meter, idx) => (
-                                                <tr key={idx} className="hover:bg-[#1C1F24]">
-                                                    <td className="p-3 text-white font-medium">{meter.name}</td>
-                                                    <td className="p-3 text-gray-300 font-mono text-xs">{meter.number || '-'}</td>
-                                                    <td className="p-3 text-gray-300 font-mono">{meter.initial || '-'}</td>
-                                                    <td className="p-3 text-white font-mono font-bold">{meter.current || meter.initial || '-'}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </section>
-            )}
-
             {/* Meter Readings (History Log) - Accordion */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <h2 className="text-xl font-bold text-white mb-4">Показання Лічильників (Історія)</h2>
@@ -2917,26 +2872,69 @@ const AccountDashboard: React.FC = () => {
                                 {expandedMeterGroups.has(group.id) && (
                                     <div className="p-4 border-t border-gray-700 bg-[#0D1117]">
                                         {group.type === 'initial' ? (
-                                            // Initial readings display
+                                            // Initial readings display - show all meterReadings
                                             <div className="space-y-3">
                                                 <div className="text-sm font-semibold text-gray-400 mb-3">Початкові показники</div>
-                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <Zap className="w-4 h-4 text-yellow-500" />
-                                                        <span className="text-xs text-gray-400">Electricity:</span>
-                                                        <span className="text-white font-mono font-bold">{group.checkInReadings?.electricity || '-'}</span>
+                                                {selectedProperty.meterReadings && selectedProperty.meterReadings.length > 0 ? (
+                                                    <div className="space-y-3">
+                                                        {selectedProperty.meterReadings.map((meter, idx) => {
+                                                            const nameLower = meter.name.toLowerCase();
+                                                            let icon = <Flame className="w-4 h-4 text-orange-500" />;
+                                                            if (nameLower === 'electricity' || nameLower.includes('electric') || nameLower.includes('електро') || nameLower.includes('strom')) {
+                                                                icon = <Zap className="w-4 h-4 text-yellow-500" />;
+                                                            } else if (nameLower === 'water' || nameLower.includes('вода') || nameLower.includes('wasser')) {
+                                                                icon = <Droplet className="w-4 h-4 text-blue-500" />;
+                                                            } else if (nameLower === 'gas' || nameLower.includes('газ')) {
+                                                                icon = <Flame className="w-4 h-4 text-orange-500" />;
+                                                            } else if (nameLower === 'heating' || nameLower.includes('heizung') || nameLower.includes('опалення')) {
+                                                                icon = <Flame className="w-4 h-4 text-orange-500" />;
+                                                            }
+                                                            
+                                                            return (
+                                                                <div key={idx} className="flex items-center justify-between gap-4 p-3 bg-[#16181D] rounded-lg border border-gray-700">
+                                                                    <div className="flex items-center gap-3 flex-1">
+                                                                        {icon}
+                                                                        <div className="flex flex-col">
+                                                                            <span className="text-xs text-gray-400">{meter.name}</span>
+                                                                            {meter.number && (
+                                                                                <span className="text-[10px] text-gray-500 font-mono">№ {meter.number}</span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-4">
+                                                                        <div className="text-right">
+                                                                            <span className="text-xs text-gray-400 block">Початкове</span>
+                                                                            <span className="text-white font-mono font-bold">{meter.initial || '-'}</span>
+                                                                        </div>
+                                                                        <div className="text-right">
+                                                                            <span className="text-xs text-gray-400 block">Актуальне</span>
+                                                                            <span className="text-emerald-400 font-mono font-bold">{meter.current || meter.initial || '-'}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <Droplet className="w-4 h-4 text-blue-500" />
-                                                        <span className="text-xs text-gray-400">Water:</span>
-                                                        <span className="text-white font-mono font-bold">{group.checkInReadings?.water || '-'}</span>
+                                                ) : (
+                                                    // Fallback to meterLog if meterReadings not available
+                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <Zap className="w-4 h-4 text-yellow-500" />
+                                                            <span className="text-xs text-gray-400">Electricity:</span>
+                                                            <span className="text-white font-mono font-bold">{group.checkInReadings?.electricity || '-'}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <Droplet className="w-4 h-4 text-blue-500" />
+                                                            <span className="text-xs text-gray-400">Water:</span>
+                                                            <span className="text-white font-mono font-bold">{group.checkInReadings?.water || '-'}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <Flame className="w-4 h-4 text-orange-500" />
+                                                            <span className="text-xs text-gray-400">Gas:</span>
+                                                            <span className="text-white font-mono font-bold">{group.checkInReadings?.gas || '-'}</span>
+                                                        </div>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <Flame className="w-4 h-4 text-orange-500" />
-                                                        <span className="text-xs text-gray-400">Gas:</span>
-                                                        <span className="text-white font-mono font-bold">{group.checkInReadings?.gas || '-'}</span>
-                                                    </div>
-                                                </div>
+                                                )}
                                             </div>
                                         ) : (
                                             // Rental period display
