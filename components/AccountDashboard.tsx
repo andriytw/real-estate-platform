@@ -2824,6 +2824,35 @@ const AccountDashboard: React.FC = () => {
                 </div>
             </section>
 
+            {/* Current Meter Readings */}
+            {selectedProperty.meterReadings && selectedProperty.meterReadings.length > 0 && (
+                <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
+                    <h2 className="text-xl font-bold text-white mb-4">Показання Лічильників</h2>
+                    <div className="overflow-hidden border border-gray-700 rounded-lg">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                                <tr>
+                                    <th className="p-3 font-bold text-xs uppercase">Назва</th>
+                                    <th className="p-3 font-bold text-xs uppercase">Номер</th>
+                                    <th className="p-3 font-bold text-xs uppercase">Початкове</th>
+                                    <th className="p-3 font-bold text-xs uppercase">Актуальне</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
+                                {selectedProperty.meterReadings.map((meter, idx) => (
+                                    <tr key={idx} className="hover:bg-[#1C1F24]">
+                                        <td className="p-3 text-white font-medium">{meter.name}</td>
+                                        <td className="p-3 text-gray-300 font-mono text-xs">{meter.number || '-'}</td>
+                                        <td className="p-3 text-gray-300 font-mono">{meter.initial || '-'}</td>
+                                        <td className="p-3 text-white font-mono font-bold">{meter.current || meter.initial || '-'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            )}
+
             {/* Meter Readings (History Log) - Accordion */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <h2 className="text-xl font-bold text-white mb-4">Показання Лічильників (Історія)</h2>
