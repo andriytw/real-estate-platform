@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { CalendarEvent } from '../../types';
 import { getTaskColor, getTaskBadgeColor, getTaskTextColor } from '../../utils/taskColors';
 import { Clock, AlertTriangle, CheckCircle2, Circle, AlertCircle, Building2, Calendar } from 'lucide-react';
+import { propertiesService } from '../../services/supabaseService';
 
 interface KanbanTaskCardProps {
   task: CalendarEvent;
@@ -12,6 +13,22 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
   const colorClass = getTaskColor(task.type);
   const badgeColor = getTaskBadgeColor(task.type);
   const textColor = getTaskTextColor(task.type);
+  const [propertyName, setPropertyName] = useState<string | null>(null);
+
+  // Load property name if locationText is missing but propertyId exists
+  useEffect(() => {
+    if (!task.locationText && task.propertyId) {
+      propertiesService.getById(task.propertyId)
+        .then(property => {
+          if (property) {
+            setPropertyName(property.title);
+          }
+        })
+        .catch(err => {
+          console.error('Error loading property:', err);
+        });
+    }
+  }, [task.propertyId, task.locationText]);
 
   // Priority Icon
   const getPriorityIcon = () => {
@@ -83,13 +100,7 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
         <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-2">
           <Building2 className="w-3 h-3" />
           <span className="truncate max-w-[180px]">
-            {task.locationText || 'Property #' + task.propertyId} 
-            {/* Ideally we should look up property name, but we only have ID here. 
-                Usually data is joined or we pass property name. 
-                For now, assume title contains property name or we rely on ID.
-                Or we fetch property name in parent. 
-                Actually calendar_events usually have 'title' as property name in current logic.
-            */}
+            {task.locationText || propertyName || 'Property #' + task.propertyId}
           </span>
         </div>
       )}

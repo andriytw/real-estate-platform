@@ -140,6 +140,15 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
         }
       }
       
+      // Get property name if propertyId is provided
+      let locationText: string | undefined = undefined;
+      if (propertyId) {
+        const selectedProperty = properties.find(p => p.id === propertyId);
+        if (selectedProperty) {
+          locationText = selectedProperty.title;
+        }
+      }
+
       const newTask = await tasksService.create({
         title,
         description,
@@ -148,6 +157,7 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
         priority,
         workerId: workerId || undefined, // If empty string, send undefined
         propertyId: propertyId || undefined,
+        locationText: locationText,
         date: date || undefined, // If empty, service sets to Today
         time: time || undefined,
         // Default values
