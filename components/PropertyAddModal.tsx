@@ -17,6 +17,21 @@ const METER_TYPES = [
   { value: 'Heating', label: 'Heating' }
 ];
 
+// Get unit of measurement for meter type
+const getMeterUnit = (type: string): string => {
+  const nameLower = type.toLowerCase();
+  if (nameLower === 'electricity' || nameLower.includes('electric') || nameLower.includes('електро') || nameLower.includes('strom')) {
+    return 'kWh';
+  } else if (nameLower === 'gas' || nameLower.includes('газ')) {
+    return 'm³';
+  } else if (nameLower === 'water' || nameLower.includes('вода') || nameLower.includes('wasser')) {
+    return 'm³';
+  } else if (nameLower === 'heating' || nameLower.includes('heizung') || nameLower.includes('опалення')) {
+    return 'kJ';
+  }
+  return '';
+};
+
 const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, onSave, propertyToEdit }) => {
   // Form State
   const [formData, setFormData] = useState<Partial<Property>>({
@@ -113,10 +128,10 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
 
   // Meter Handlers
   const addMeter = () => {
-    setMeters([...meters, { name: '', number: '', initial: '', current: '' }]);
+    setMeters([...meters, { name: '', number: '', initial: '', current: '', price: 0 }]);
   };
 
-  const updateMeter = (index: number, field: keyof MeterReading, value: string) => {
+  const updateMeter = (index: number, field: keyof MeterReading, value: string | number) => {
     const newMeters = [...meters];
     newMeters[index] = { ...newMeters[index], [field]: value };
     setMeters(newMeters);
@@ -625,15 +640,26 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
                 <table className="w-full text-sm text-left">
                    <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
                       <tr>
-                         <th className="p-4 font-bold text-xs uppercase tracking-wider w-[25%] text-gray-500">Назва</th>
-                         <th className="p-4 font-bold text-xs uppercase tracking-wider w-[25%] text-gray-500">Номер</th>
-                         <th className="p-4 font-bold text-xs uppercase tracking-wider w-[25%] text-gray-500">Початкове</th>
-                         <th className="p-4 font-bold text-xs uppercase tracking-wider w-[25%] text-gray-500">Кінцеве (Актуальне)</th>
+                         <th className="p-4 font-bold text-xs uppercase tracking-wider text-gray-500">Назва</th>
+                         <th className="p-4 font-bold text-xs uppercase tracking-wider text-gray-500">Номер</th>
+                         <th className="p-4 font-bold text-xs uppercase tracking-wider text-gray-500">Початкове</th>
+                         <th className="p-4 font-bold text-xs uppercase tracking-wider text-gray-500">Кінцеве</th>
+                         <th className="p-4 font-bold text-xs uppercase tracking-wider text-gray-500">Спожито</th>
+                         <th className="p-4 font-bold text-xs uppercase tracking-wider text-gray-500">Ціна</th>
+                         <th className="p-4 font-bold text-xs uppercase tracking-wider text-gray-500">Сума</th>
                          <th className="p-4 w-[10%] text-center">Дії</th>
                       </tr>
                    </thead>
                    <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                      {meters.map((meter, i) => (
+                      {meters.map((meter, i) => {
+                        const initial = parseFloat(meter.initial || '0');
+                        const current = parseFloat(meter.current || meter.initial || '0');
+                        const consumed = current - initial;
+                        const price = meter.price || 0;
+                        const total = consumed * price;
+                        const unit = getMeterUnit(meter.name);
+                        
+                        return (
                          <tr key={i} className="hover:bg-[#1C1F24] transition-colors">
                             <td className="p-4">
                               <select 
@@ -649,16 +675,61 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
                                 ))}
                               </select>
                             </td>
-                            <td className="p-4"><input className="bg-transparent border-b border-gray-700 w-full text-gray-400 text-sm outline-none focus:border-emerald-500" value={meter.number} onChange={e => updateMeter(i, 'number', e.target.value)} placeholder="12345" /></td>
-                            <td className="p-4"><input className="bg-transparent border-b border-gray-700 w-full text-gray-300 text-sm outline-none focus:border-emerald-500" value={meter.initial} onChange={e => updateMeter(i, 'initial', e.target.value)} placeholder="0" /></td>
-                            <td className="p-4"><input className="bg-transparent border-b border-gray-700 w-full text-white font-bold text-sm outline-none focus:border-emerald-500" value={meter.current} onChange={e => updateMeter(i, 'current', e.target.value)} placeholder="0" /></td>
+                            <td className="p-4">
+                              <input 
+                                className="bg-transparent border-b border-gray-700 w-full text-gray-400 text-sm outline-none focus:border-emerald-500" 
+                                value={meter.number} 
+                                onChange={e => updateMeter(i, 'number', e.target.value)} 
+                                placeholder="12345" 
+                              />
+                            </td>
+                            <td className="p-4">
+                              <input 
+                                className="bg-transparent border-b border-gray-700 w-full text-gray-300 text-sm outline-none focus:border-emerald-500" 
+                                value={meter.initial} 
+                                onChange={e => updateMeter(i, 'initial', e.target.value)} 
+                                placeholder="0" 
+                              />
+                            </td>
+                            <td className="p-4">
+                              <input 
+                                className="bg-transparent border-b border-gray-700 w-full text-white font-bold text-sm outline-none focus:border-emerald-500" 
+                                value={meter.current} 
+                                onChange={e => updateMeter(i, 'current', e.target.value)} 
+                                placeholder="0" 
+                              />
+                            </td>
+                            <td className="p-4">
+                              <span className="text-gray-300 font-mono text-sm">
+                                {isNaN(consumed) ? '-' : consumed.toFixed(2)}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  className="bg-transparent border-b border-gray-700 w-20 text-white text-sm outline-none focus:border-emerald-500"
+                                  value={price || ''}
+                                  onChange={e => updateMeter(i, 'price', parseFloat(e.target.value) || 0)}
+                                  placeholder="0.00"
+                                />
+                                <span className="text-gray-500 text-xs">{unit}</span>
+                              </div>
+                            </td>
+                            <td className="p-4">
+                              <span className="text-emerald-400 font-mono text-sm font-bold">
+                                {isNaN(total) || total <= 0 ? '-' : `€${total.toFixed(2)}`}
+                              </span>
+                            </td>
                             <td className="p-4 text-center">
                                <button onClick={() => removeMeter(i)} className="text-red-500 hover:text-red-400 p-1">
                                   <Trash2 className="w-4 h-4"/>
                                </button>
                             </td>
                          </tr>
-                      ))}
+                        );
+                      })}
                    </tbody>
                 </table>
              </div>

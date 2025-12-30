@@ -27,7 +27,8 @@ export interface MeterReading {
   name: string;
   number: string;
   initial: string; // Value at start
-  current: string; // Value from latest check
+  current: string; // Value from latest check (Кінцеве)
+  price?: number; // Price per unit (Ціна за одиницю)
   lastReadDate?: string;
 }
 

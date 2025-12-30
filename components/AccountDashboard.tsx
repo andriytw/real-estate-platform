@@ -2336,6 +2336,21 @@ const AccountDashboard: React.FC = () => {
     return { groupedEntries, standaloneEntries };
   };
 
+  // Get unit of measurement for meter type
+  const getMeterUnit = (type: string): string => {
+    const nameLower = type.toLowerCase();
+    if (nameLower === 'electricity' || nameLower.includes('electric') || nameLower.includes('електро') || nameLower.includes('strom')) {
+      return 'kWh';
+    } else if (nameLower === 'gas' || nameLower.includes('газ')) {
+      return 'm³';
+    } else if (nameLower === 'water' || nameLower.includes('вода') || nameLower.includes('wasser')) {
+      return 'm³';
+    } else if (nameLower === 'heating' || nameLower.includes('heizung') || nameLower.includes('опалення')) {
+      return 'kJ';
+    }
+    return '';
+  };
+
   // Group meter readings by rental periods for accordion display
   const groupMeterReadingsByRental = (
     meterLog: MeterLogEntry[] = [], 
@@ -2882,7 +2897,10 @@ const AccountDashboard: React.FC = () => {
                                                                     <th className="p-1.5 text-left text-[10px] font-bold text-gray-400 uppercase">Тип</th>
                                                                     <th className="p-1.5 text-left text-[10px] font-bold text-gray-400 uppercase">Номер</th>
                                                                     <th className="p-1.5 text-right text-[10px] font-bold text-gray-400 uppercase">Початкове</th>
-                                                                    <th className="p-1.5 text-right text-[10px] font-bold text-gray-400 uppercase">Актуальне</th>
+                                                                    <th className="p-1.5 text-right text-[10px] font-bold text-gray-400 uppercase">Кінцеве</th>
+                                                                    <th className="p-1.5 text-right text-[10px] font-bold text-gray-400 uppercase">Спожито</th>
+                                                                    <th className="p-1.5 text-right text-[10px] font-bold text-gray-400 uppercase">Ціна</th>
+                                                                    <th className="p-1.5 text-right text-[10px] font-bold text-gray-400 uppercase">Сума</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody className="divide-y divide-gray-700/50">
@@ -2899,6 +2917,28 @@ const AccountDashboard: React.FC = () => {
                                                                         icon = <Flame className="w-3 h-3 text-orange-500" />;
                                                                     }
                                                                     
+                                                                    const initial = parseFloat(meter.initial || '0');
+                                                                    const current = parseFloat(meter.current || meter.initial || '0');
+                                                                    const consumed = current - initial;
+                                                                    const price = meter.price || 0;
+                                                                    const total = consumed * price;
+                                                                    const unit = getMeterUnit(meter.name);
+                                                                    
+                                                                    const handlePriceChange = async (newPrice: number) => {
+                                                                        const updatedMeterReadings = selectedProperty.meterReadings?.map((m, i) => 
+                                                                            i === idx ? { ...m, price: newPrice } : m
+                                                                        ) || [];
+                                                                        
+                                                                        try {
+                                                                            const updatedProperty = await propertiesService.update(selectedProperty.id, {
+                                                                                meterReadings: updatedMeterReadings
+                                                                            });
+                                                                            setProperties(prev => prev.map(p => p.id === updatedProperty.id ? updatedProperty : p));
+                                                                        } catch (error) {
+                                                                            console.error('Error updating meter price:', error);
+                                                                        }
+                                                                    };
+                                                                    
                                                                     return (
                                                                         <tr key={idx} className="hover:bg-[#16181D]">
                                                                             <td className="p-1.5">
@@ -2914,7 +2954,28 @@ const AccountDashboard: React.FC = () => {
                                                                                 <span className="text-white font-mono text-xs font-semibold">{meter.initial || '-'}</span>
                                                                             </td>
                                                                             <td className="p-1.5 text-right">
-                                                                                <span className="text-emerald-400 font-mono text-xs font-bold">{meter.current || meter.initial || '-'}</span>
+                                                                                <span className="text-white font-mono text-xs font-semibold">{meter.current || meter.initial || '-'}</span>
+                                                                            </td>
+                                                                            <td className="p-1.5 text-right">
+                                                                                <span className="text-gray-300 font-mono text-xs">{isNaN(consumed) ? '-' : consumed.toFixed(2)}</span>
+                                                                            </td>
+                                                                            <td className="p-1.5 text-right">
+                                                                                <div className="flex items-center justify-end gap-1">
+                                                                                    <input
+                                                                                        type="number"
+                                                                                        step="0.01"
+                                                                                        className="bg-transparent border-b border-gray-700 w-16 text-right text-white text-xs outline-none focus:border-emerald-500"
+                                                                                        value={price || ''}
+                                                                                        onChange={(e) => handlePriceChange(parseFloat(e.target.value) || 0)}
+                                                                                        placeholder="0.00"
+                                                                                    />
+                                                                                    <span className="text-gray-500 text-[10px]">{unit}</span>
+                                                                                </div>
+                                                                            </td>
+                                                                            <td className="p-1.5 text-right">
+                                                                                <span className="text-emerald-400 font-mono text-xs font-bold">
+                                                                                    {isNaN(total) || total <= 0 ? '-' : `€${total.toFixed(2)}`}
+                                                                                </span>
                                                                             </td>
                                                                         </tr>
                                                                     );
