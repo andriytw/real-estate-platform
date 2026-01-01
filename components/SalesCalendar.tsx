@@ -124,8 +124,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   
   // Drag Selection State
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState<{roomId: string, dayIndex: number} | null>(null);
-  const [dragEnd, setDragEnd] = useState<{roomId: string, dayIndex: number} | null>(null);
+  const [dragStart, setDragStart] = useState<{roomId: string, date: Date} | null>(null);
+  const [dragEnd, setDragEnd] = useState<{roomId: string, date: Date} | null>(null);
   const lastMonthSwitchRef = useRef<number>(0); // Для debounce перемикання місяця
 
   // Add Booking Modal State
@@ -382,8 +382,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   const handleMouseDown = (roomId: string, dayIndex: number) => {
     setIsDragging(true);
-    setDragStart({ roomId, dayIndex });
-    setDragEnd({ roomId, dayIndex });
+    const date = getDateFromIndex(dayIndex);
+    setDragStart({ roomId, date });
+    setDragEnd({ roomId, date });
   };
 
   const handleMouseEnter = (roomId: string, dayIndex: number) => {
@@ -399,17 +400,11 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         newDate.setMonth(newDate.getMonth() + 1);
         newDate.setDate(1);
         setCurrentDate(newDate);
-        // Оновити dragStart та dragEnd з новими dayIndex відносно нового місяця
-        // dragStart має вказувати на день 1 нового місяця (dayIndex = 0)
-        // dragEnd має вказувати на день, який відповідає dayIndex - NUM_DAYS
+        // Обчислити абсолютну дату для нового dayIndex відносно нового місяця
+        // НЕ змінювати dragStart - він залишається на початковій даті
         setTimeout(() => {
-          // dragStart завжди починається з дня 1 нового місяця
-          const newStartIndex = 0;
-          const newEndIndex = dayIndex - NUM_DAYS;
-          setDragStart({ roomId, dayIndex: newStartIndex });
-          if (newEndIndex >= 0 && newEndIndex < NUM_DAYS) {
-            setDragEnd({ roomId, dayIndex: newEndIndex });
-          }
+          const newEndDate = getDateFromIndex(dayIndex - NUM_DAYS);
+          setDragEnd({ roomId, date: newEndDate });
         }, 50);
         return; // Не встановлювати dragEnd тут, оскільки це буде зроблено в setTimeout
       } else if (dayIndex < 0 && (now - lastMonthSwitchRef.current) > DEBOUNCE_DELAY) {
@@ -419,34 +414,26 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         newDate.setMonth(newDate.getMonth() - 1);
         newDate.setDate(1);
         setCurrentDate(newDate);
-        // Оновити dragStart та dragEnd з новими dayIndex відносно нового місяця
-        // dragStart має вказувати на останній день попереднього місяця
-        // dragEnd має вказувати на день, який відповідає NUM_DAYS + dayIndex
+        // Обчислити абсолютну дату для нового dayIndex відносно нового місяця
+        // НЕ змінювати dragStart - він залишається на початковій даті
         setTimeout(() => {
-          // dragStart вказує на останній день попереднього місяця (NUM_DAYS - 1)
-          const newStartIndex = NUM_DAYS - 1;
-          const newEndIndex = NUM_DAYS + dayIndex;
-          setDragStart({ roomId, dayIndex: newStartIndex });
-          if (newEndIndex >= 0 && newEndIndex < NUM_DAYS) {
-            setDragEnd({ roomId, dayIndex: newEndIndex });
-          }
+          const newEndDate = getDateFromIndex(NUM_DAYS + dayIndex);
+          setDragEnd({ roomId, date: newEndDate });
         }, 50);
         return; // Не встановлювати dragEnd тут, оскільки це буде зроблено в setTimeout
       }
       
-      // Якщо не перемикаємо місяць, просто оновити dragEnd
-      setDragEnd({ roomId, dayIndex });
+      // Якщо не перемикаємо місяць, просто оновити dragEnd з абсолютною датою
+      const endDate = getDateFromIndex(dayIndex);
+      setDragEnd({ roomId, date: endDate });
     }
   };
 
   const handleMouseUp = () => {
     if (isDragging && dragStart && dragEnd) {
-      // Open Modal
-      const startIndex = Math.min(dragStart.dayIndex, dragEnd.dayIndex);
-      const endIndex = Math.max(dragStart.dayIndex, dragEnd.dayIndex);
-      const startD = getDateFromIndex(startIndex);
-      // Кінцева дата тепер відповідає останньому виділеному дню (інклюзивно)
-      const endD = getDateFromIndex(endIndex);
+      // Використовувати абсолютні дати з dragStart і dragEnd
+      const startD = dragStart.date < dragEnd.date ? dragStart.date : dragEnd.date;
+      const endD = dragStart.date > dragEnd.date ? dragStart.date : dragEnd.date;
 
       // RESET and then SET
       resetForm();
@@ -701,7 +688,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
             className="flex-1 overflow-x-auto overflow-y-auto relative bg-[#0D1117]" 
             ref={scrollContainerRef}
             onMouseMove={(e) => {
-              if (isDragging && dragStart) {
+              if (isDragging && dragStart && dragEnd) {
                 const container = scrollContainerRef.current;
                 if (!container) return;
                 
@@ -720,6 +707,11 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                     newDate.setMonth(newDate.getMonth() + 1);
                     newDate.setDate(1);
                     setCurrentDate(newDate);
+                    // Оновити dragEnd з новою датою (останній день нового місяця в межах вікна)
+                    setTimeout(() => {
+                      const newEndDate = getDateFromIndex(NUM_DAYS - 1);
+                      setDragEnd({ roomId: dragStart.roomId, date: newEndDate });
+                    }, 50);
                   }
                 }
                 // Перевірка, чи курсор зліва від першого дня
@@ -732,6 +724,11 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                     newDate.setMonth(newDate.getMonth() - 1);
                     newDate.setDate(1);
                     setCurrentDate(newDate);
+                    // Оновити dragEnd з новою датою (перший день попереднього місяця в межах вікна)
+                    setTimeout(() => {
+                      const newEndDate = getDateFromIndex(0);
+                      setDragEnd({ roomId: dragStart.roomId, date: newEndDate });
+                    }, 50);
                   }
                 }
               }
@@ -759,9 +756,39 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                         <div key={room.id} className="h-16 border-b border-gray-800 relative flex bg-[#111315]/50 hover:bg-[#161B22]/50 transition-colors">
                             {/* Grid Lines & Cells for Selection */}
                             {Array.from({ length: NUM_DAYS }).map((_, i) => {
-                                const isSelected = isDragging && dragStart?.roomId === room.id && 
-                                                   i >= Math.min(dragStart.dayIndex, dragEnd!.dayIndex) &&
-                                                   i <= Math.max(dragStart.dayIndex, dragEnd!.dayIndex);
+                                const cellDate = getDateFromIndex(i);
+                                let isSelected = false;
+                                
+                                if (isDragging && dragStart && dragEnd && dragStart.roomId === room.id) {
+                                    const startDate = dragStart.date;
+                                    const endDate = dragEnd.date;
+                                    const minDate = startDate < endDate ? startDate : endDate;
+                                    const maxDate = startDate > endDate ? startDate : endDate;
+                                    
+                                    // Варіант А: Кожен місяць показує тільки свою частину виділення
+                                    // Якщо minDate в попередньому місяці, то в поточному місяці виділення починається з першого дня
+                                    // Якщо maxDate в наступному місяці, то в поточному місяці виділення закінчується останнім днем
+                                    const cellDateStr = formatDateISO(cellDate);
+                                    const minDateStr = formatDateISO(minDate);
+                                    const maxDateStr = formatDateISO(maxDate);
+                                    
+                                    // Визначити межі поточного місяця
+                                    const currentMonthStart = new Date(currentDate);
+                                    currentMonthStart.setDate(1);
+                                    const currentMonthEnd = new Date(currentDate);
+                                    currentMonthEnd.setMonth(currentMonthEnd.getMonth() + 1);
+                                    currentMonthEnd.setDate(0); // Останній день поточного місяця
+                                    
+                                    const currentMonthStartStr = formatDateISO(currentMonthStart);
+                                    const currentMonthEndStr = formatDateISO(currentMonthEnd);
+                                    
+                                    // Визначити фактичні межі виділення в поточному місяці
+                                    const effectiveMinDate = minDateStr < currentMonthStartStr ? currentMonthStartStr : minDateStr;
+                                    const effectiveMaxDate = maxDateStr > currentMonthEndStr ? currentMonthEndStr : maxDateStr;
+                                    
+                                    isSelected = cellDateStr >= effectiveMinDate && cellDateStr <= effectiveMaxDate;
+                                }
+                                
                                 return (
                                     <div 
                                         key={i} 
