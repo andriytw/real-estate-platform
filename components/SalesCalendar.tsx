@@ -920,8 +920,12 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
          
          {/* Left Sidebar (Rooms) */}
          <div className="w-56 flex-shrink-0 border-r border-gray-800 bg-[#161B22] z-20 flex flex-col">
-            <div className="h-16 border-b border-gray-800 flex items-center px-4 font-bold text-white bg-[#1C1F24]">
-                Properties ({filteredRooms.length})
+            <div className="sticky top-0 z-30 flex flex-col">
+                <div className="h-16 border-b border-gray-800 flex items-center px-4 font-bold text-white bg-[#1C1F24]">
+                    Properties ({filteredRooms.length})
+                </div>
+                {/* Empty row to align with month names row */}
+                <div className="h-7 border-b border-gray-800 bg-[#111315]"></div>
             </div>
             <div className="overflow-y-auto flex-1 scrollbar-hide">
                 {filteredRooms.map(room => (
@@ -940,14 +944,16 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
          >
             <div className="min-w-max">
                 
-                {/* Month Names Row */}
-                <div className="sticky top-0 z-20 flex border-b border-gray-800 bg-[#111315] h-7">
-                    {monthNamesRow}
-                </div>
-                
-                {/* Dates Header */}
-                <div className="sticky top-7 z-10 flex border-b border-gray-800 shadow-md bg-[#161B22]">
-                    {daysHeader}
+                {/* Combined Month Names and Dates Header */}
+                <div className="sticky top-0 z-20 flex flex-col">
+                    {/* Month Names Row */}
+                    <div className="flex border-b border-gray-800 bg-[#111315] h-7">
+                        {monthNamesRow}
+                    </div>
+                    {/* Dates Header */}
+                    <div className="flex border-b border-gray-800 shadow-md bg-[#161B22] h-20">
+                        {daysHeader}
+                    </div>
                 </div>
 
                 {/* Booking Grid Rows */}
