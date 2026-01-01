@@ -381,34 +381,81 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   // --- Drag Handlers ---
   
   const getDateFromIndex = (index: number) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:383',message:'getDateFromIndex entry',data:{index,extraDaysPrevMonth,extraDaysNextMonth,NUM_DAYS,currentDate:currentDate.toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    
     // Якщо індекс в межах додаткових днів попереднього місяця
-    if (index < 0 && extraDaysPrevMonth > 0) {
+    if (index < 0 && extraDaysPrevMonth > 0 && Math.abs(index) <= extraDaysPrevMonth) {
       const prevMonthDate = new Date(currentDate);
       prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
       const daysInPrevMonth = new Date(prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1, 0).getDate();
-      prevMonthDate.setDate(daysInPrevMonth + index + 1);
-      return prevMonthDate;
+      // index негативний: -1 = останній день, -2 = передостанній, тощо
+      // calculatedDate = daysInPrevMonth + index + 1
+      // Для index = -1: calculatedDate = daysInPrevMonth + (-1) + 1 = daysInPrevMonth (останній день)
+      // Для index = -2: calculatedDate = daysInPrevMonth + (-2) + 1 = daysInPrevMonth - 1 (передостанній)
+      const calculatedDate = daysInPrevMonth + index + 1;
+      // Перевірка валідності: дата повинна бути в межах [1, daysInPrevMonth]
+      if (calculatedDate >= 1 && calculatedDate <= daysInPrevMonth) {
+        prevMonthDate.setDate(calculatedDate);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:389',message:'getDateFromIndex prev month calc',data:{index,daysInPrevMonth,calculatedDate,resultDate:prevMonthDate.toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        
+        return prevMonthDate;
+      }
     }
     
     // Якщо індекс в межах поточного місяця
     if (index >= 0 && index < NUM_DAYS) {
       const d = new Date(currentDate);
       d.setDate(d.getDate() + index);
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:396',message:'getDateFromIndex current month',data:{index,resultDate:d.toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      
       return d;
     }
     
     // Якщо індекс в межах додаткових днів наступного місяця
-    if (index >= NUM_DAYS && extraDaysNextMonth > 0) {
+    if (index >= NUM_DAYS && extraDaysNextMonth > 0 && (index - NUM_DAYS) < extraDaysNextMonth) {
       const nextMonthDate = new Date(currentDate);
       nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
       nextMonthDate.setDate(1);
-      nextMonthDate.setDate(index - NUM_DAYS + 1);
-      return nextMonthDate;
+      const dayInNextMonth = index - NUM_DAYS + 1;
+      const daysInNextMonth = new Date(nextMonthDate.getFullYear(), nextMonthDate.getMonth() + 1, 0).getDate();
+      // Перевірка валідності: день повинен бути в межах [1, daysInNextMonth]
+      if (dayInNextMonth >= 1 && dayInNextMonth <= daysInNextMonth) {
+        nextMonthDate.setDate(dayInNextMonth);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:405',message:'getDateFromIndex next month calc',data:{index,NUM_DAYS,dayInNextMonth,resultDate:nextMonthDate.toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        
+        return nextMonthDate;
+      }
     }
     
-    // Fallback
+    // Fallback - тільки для індексів в межах поточного місяця, якщо інші умови не спрацювали
+    // Це може статися, якщо extraDaysPrevMonth або extraDaysNextMonth = 0, але індекс виходить за межі
     const d = new Date(currentDate);
-    d.setDate(d.getDate() + index);
+    const daysInCurrentMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
+    const calculatedDay = 1 + index; // currentDate встановлений на 1-ше число
+    
+    // Перевірка валідності: день повинен бути в межах [1, daysInCurrentMonth]
+    if (calculatedDay >= 1 && calculatedDay <= daysInCurrentMonth) {
+      d.setDate(calculatedDay);
+    } else {
+      // Якщо день виходить за межі, використати крайній день місяця
+      d.setDate(calculatedDay < 1 ? 1 : daysInCurrentMonth);
+    }
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:411',message:'getDateFromIndex fallback',data:{index,calculatedDay,daysInCurrentMonth,resultDate:d.toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+    
     return d;
   };
 
@@ -421,55 +468,88 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   const handleMouseEnter = (roomId: string, dayIndex: number) => {
     if (isDragging && dragStart && dragStart.roomId === roomId) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:422',message:'handleMouseEnter entry',data:{roomId,dayIndex,extraDaysNextMonth,extraDaysPrevMonth,NUM_DAYS},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+      
       // Поступове додавання днів замість миттєвого перемикання місяця
       
       // Якщо тягнемо вправо за межі поточного вікна
       if (dayIndex >= NUM_DAYS) {
+        // dayIndex вже є реальним індексом (>= NUM_DAYS означає наступний місяць)
         const extraDaysNeeded = dayIndex - NUM_DAYS + 1;
         // Оновити кількість днів наступного місяця (максимум 15 днів)
         if (extraDaysNeeded > extraDaysNextMonth) {
-          setExtraDaysNextMonth(Math.min(extraDaysNeeded, 15));
+          const newValue = Math.min(extraDaysNeeded, 15);
+          setExtraDaysNextMonth(newValue);
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:430',message:'handleMouseEnter expanding next month',data:{dayIndex,extraDaysNeeded,oldValue:extraDaysNextMonth,newValue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+          // #endregion
         }
         
         // Обчислити абсолютну дату для dragEnd на основі наступного місяця
-        const nextMonthDate = new Date(currentDate);
-        nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
-        nextMonthDate.setDate(1);
-        const newEndDate = new Date(nextMonthDate);
-        newEndDate.setDate(dayIndex - NUM_DAYS + 1);
+        // Використати getDateFromIndex для коректного обчислення дати
+        const newEndDate = getDateFromIndex(dayIndex);
         setDragEnd({ roomId, date: newEndDate });
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:440',message:'handleMouseEnter next month date set',data:{dayIndex,calculatedDay:dayIndex - NUM_DAYS + 1,newEndDate:newEndDate.toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
+        
         return;
       }
       
       // Якщо тягнемо вліво за межі поточного вікна
       if (dayIndex < 0) {
+        // dayIndex вже є реальним індексом (може бути негативним)
+        // extraDaysNeeded - це скільки днів потрібно показати від початку попереднього місяця
         const extraDaysNeeded = Math.abs(dayIndex);
         // Оновити кількість днів попереднього місяця (максимум 15 днів)
         if (extraDaysNeeded > extraDaysPrevMonth) {
-          setExtraDaysPrevMonth(Math.min(extraDaysNeeded, 15));
+          const newValue = Math.min(extraDaysNeeded, 15);
+          setExtraDaysPrevMonth(newValue);
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:448',message:'handleMouseEnter expanding prev month',data:{dayIndex,extraDaysNeeded,oldValue:extraDaysPrevMonth,newValue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+          // #endregion
         }
         
         // Обчислити абсолютну дату для dragEnd на основі попереднього місяця
-        const prevMonthDate = new Date(currentDate);
-        prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
-        const daysInPrevMonth = new Date(prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1, 0).getDate();
-        const newEndDate = new Date(prevMonthDate);
-        newEndDate.setDate(daysInPrevMonth + dayIndex + 1);
+        // Використати getDateFromIndex для коректного обчислення дати
+        const newEndDate = getDateFromIndex(dayIndex);
         setDragEnd({ roomId, date: newEndDate });
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:457',message:'handleMouseEnter prev month date set',data:{dayIndex,newEndDate:newEndDate.toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
+        
         return;
       }
       
       // Якщо в межах поточного вікна, просто оновити dragEnd
       const endDate = getDateFromIndex(dayIndex);
       setDragEnd({ roomId, date: endDate });
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:463',message:'handleMouseEnter within current month',data:{dayIndex,endDate:endDate.toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
     }
   };
 
   const handleMouseUp = () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:468',message:'handleMouseUp entry',data:{isDragging,hasDragStart:!!dragStart,hasDragEnd:!!dragEnd,extraDaysNextMonth,extraDaysPrevMonth},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+    // #endregion
+    
     if (isDragging && dragStart && dragEnd) {
       // Використовувати абсолютні дати з dragStart і dragEnd
       const startD = dragStart.date < dragEnd.date ? dragStart.date : dragEnd.date;
       const endD = dragStart.date > dragEnd.date ? dragStart.date : dragEnd.date;
+
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:472',message:'handleMouseUp date selection',data:{dragStartDate:dragStart.date.toISOString(),dragEndDate:dragEnd.date.toISOString(),finalStart:startD.toISOString(),finalEnd:endD.toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+      // #endregion
 
       // RESET and then SET
       resetForm();
@@ -485,6 +565,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     // Скинути додаткові дні після завершення виділення
     setExtraDaysNextMonth(0);
     setExtraDaysPrevMonth(0);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:486',message:'handleMouseUp reset extra days',data:{extraDaysNextMonth,extraDaysPrevMonth},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})}).catch(()=>{});
+    // #endregion
     
     setIsDragging(false);
     setDragStart(null);
@@ -831,6 +915,13 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 // Обчислити реальний індекс з урахуванням додаткових днів
                                 const realIndex = i - extraDaysPrevMonth;
                                 const cellDate = getDateFromIndex(realIndex);
+                                
+                                // #region agent log
+                                if (i === 0 || i === extraDaysPrevMonth || i === extraDaysPrevMonth + NUM_DAYS - 1 || i === getTotalDays() - 1) {
+                                  fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:832',message:'render cell index calc',data:{i,extraDaysPrevMonth,realIndex,cellDate:cellDate.toISOString(),totalDays:getTotalDays()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+                                }
+                                // #endregion
+                                
                                 let isSelected = false;
                                 
                                 if (isDragging && dragStart && dragEnd && dragStart.roomId === room.id) {
@@ -881,9 +972,16 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 const endDate = parseDate(booking.end);
                                 
                                 // Обчислити offset з урахуванням додаткових днів попереднього місяця
-                                const startOffset = dateDiffInDays(currentDate, startDate) + extraDaysPrevMonth;
+                                const baseOffset = dateDiffInDays(currentDate, startDate);
+                                const startOffset = baseOffset + extraDaysPrevMonth;
                                 const nights = dateDiffInDays(startDate, endDate); // кількість ночей
                                 const totalDays = getTotalDays();
+                                
+                                // #region agent log
+                                if (booking.id === allBookings[0]?.id) {
+                                  fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:884',message:'booking offset calc',data:{bookingId:booking.id,startDate:booking.start,endDate:booking.end,baseOffset,extraDaysPrevMonth,startOffset,nights,totalDays},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+                                }
+                                // #endregion
 
                                 // Перевірка, чи резервація перетинається з поточним вікном (включаючи додаткові дні)
                                 // Резервація повністю поза вікном, якщо:
