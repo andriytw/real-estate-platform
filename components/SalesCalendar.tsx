@@ -837,7 +837,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
           <div 
             key={`month-${monthStartIndex}`} 
             style={{ width: `${monthWidth}px`, minWidth: `${monthWidth}px` }}
-            className={`flex items-center justify-center ${monthColor} font-bold text-[10px] uppercase border-r border-gray-800`}
+            className={`flex items-center justify-center ${monthColor} font-bold text-[9px] uppercase border-r border-gray-800`}
           >
             {monthName}
           </div>
@@ -920,7 +920,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
          
          {/* Left Sidebar (Rooms) */}
          <div className="w-56 flex-shrink-0 border-r border-gray-800 bg-[#161B22] z-20 flex flex-col">
-            <div className="sticky top-0 z-30 h-[92px] border-b border-gray-800 flex items-center px-4 font-bold text-white bg-[#1C1F24]">
+            <div className="sticky top-0 z-30 h-16 border-b border-gray-800 flex items-center px-4 font-bold text-white bg-[#1C1F24]">
                 Properties ({filteredRooms.length})
             </div>
             <div className="overflow-y-auto flex-1 scrollbar-hide">
@@ -943,7 +943,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                 {/* Combined Month Names and Dates Header */}
                 <div className="sticky top-0 z-20 flex flex-col">
                     {/* Month Names Row */}
-                    <div className="flex border-b border-gray-800 bg-[#111315] h-7">
+                    <div className="flex border-b border-gray-800 bg-[#111315] h-5">
                         {monthNamesRow}
                     </div>
                     {/* Dates Header */}
