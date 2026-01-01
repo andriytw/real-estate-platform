@@ -400,12 +400,13 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         newDate.setDate(1);
         setCurrentDate(newDate);
         // Оновити dragStart та dragEnd з новими dayIndex відносно нового місяця
+        // dragStart має вказувати на день 1 нового місяця (dayIndex = 0)
+        // dragEnd має вказувати на день, який відповідає dayIndex - NUM_DAYS
         setTimeout(() => {
-          const newStartIndex = dragStart.dayIndex - NUM_DAYS;
+          // dragStart завжди починається з дня 1 нового місяця
+          const newStartIndex = 0;
           const newEndIndex = dayIndex - NUM_DAYS;
-          if (newStartIndex >= 0 && newStartIndex < NUM_DAYS) {
-            setDragStart({ roomId, dayIndex: newStartIndex });
-          }
+          setDragStart({ roomId, dayIndex: newStartIndex });
           if (newEndIndex >= 0 && newEndIndex < NUM_DAYS) {
             setDragEnd({ roomId, dayIndex: newEndIndex });
           }
@@ -419,12 +420,13 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         newDate.setDate(1);
         setCurrentDate(newDate);
         // Оновити dragStart та dragEnd з новими dayIndex відносно нового місяця
+        // dragStart має вказувати на останній день попереднього місяця
+        // dragEnd має вказувати на день, який відповідає NUM_DAYS + dayIndex
         setTimeout(() => {
-          const newStartIndex = dragStart.dayIndex + NUM_DAYS;
+          // dragStart вказує на останній день попереднього місяця (NUM_DAYS - 1)
+          const newStartIndex = NUM_DAYS - 1;
           const newEndIndex = NUM_DAYS + dayIndex;
-          if (newStartIndex >= 0 && newStartIndex < NUM_DAYS) {
-            setDragStart({ roomId, dayIndex: newStartIndex });
-          }
+          setDragStart({ roomId, dayIndex: newStartIndex });
           if (newEndIndex >= 0 && newEndIndex < NUM_DAYS) {
             setDragEnd({ roomId, dayIndex: newEndIndex });
           }
