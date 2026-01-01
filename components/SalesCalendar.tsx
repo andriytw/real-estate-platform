@@ -614,6 +614,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   // Month Names Row Generation
   const monthNamesRow = [];
+  const monthBoundaries: number[] = [0]; // Зберігаємо індекси початку кожного місяця
   let currentMonth = null;
   let monthStartIndex = 0;
   let monthName = '';
@@ -635,7 +636,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
           <div 
             key={`month-${monthStartIndex}`} 
             style={{ width: `${monthWidth}px`, minWidth: `${monthWidth}px` }}
-            className={`flex items-center justify-center ${monthColor} font-bold text-[11px] uppercase border-r border-gray-800`}
+            className={`flex items-center justify-center ${monthColor} font-bold text-[12px] uppercase border-r border-gray-800 bg-gray-900/30`}
           >
             {monthName}
           </div>
@@ -645,6 +646,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       currentMonth = monthKey;
       monthStartIndex = i;
       monthName = date.toLocaleDateString('en-US', { month: 'long' }).toUpperCase();
+      monthBoundaries.push(i); // Додати індекс початку нового місяця
     }
   }
   
@@ -658,12 +660,15 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       <div 
         key={`month-${monthStartIndex}`} 
         style={{ width: `${monthWidth}px`, minWidth: `${monthWidth}px` }}
-        className={`flex items-center justify-center ${monthColor} font-bold text-[11px] uppercase border-r border-gray-800`}
+        className={`flex items-center justify-center ${monthColor} font-bold text-[12px] uppercase border-r border-gray-800 bg-gray-900/30`}
       >
         {monthName}
       </div>
     );
   }
+  
+  // Додати останній індекс як кінець останнього місяця
+  monthBoundaries.push(totalDays);
 
   return (
     <div className="h-full flex flex-col bg-[#111315] overflow-hidden select-none">
@@ -755,10 +760,23 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                 {/* Booking Grid Rows */}
                 <div className="relative">
                     
+                    {/* Month Boundary Lines */}
+                    {monthBoundaries.map((boundaryIndex, idx) => {
+                      if (idx === 0) return null; // Пропускаємо перший індекс (0)
+                      const left = boundaryIndex * DAY_WIDTH;
+                      return (
+                        <div
+                          key={`month-boundary-${boundaryIndex}`}
+                          className="absolute top-0 bottom-0 w-px bg-gray-700/60 z-0 pointer-events-none"
+                          style={{ left: `${left}px` }}
+                        />
+                      );
+                    })}
+                    
                     {/* Today Line */}
                     {todayOffsetDays >= 0 && todayOffsetDays < totalDays && (
                         <div 
-                            className="absolute top-0 bottom-0 w-0.5 bg-red-500/50 z-0 pointer-events-none"
+                            className="absolute top-0 bottom-0 w-0.5 bg-red-500/50 z-1 pointer-events-none"
                             style={{ left: `${(todayOffsetDays * DAY_WIDTH) + (DAY_WIDTH / 2)}px` }}
                         />
                     )}
