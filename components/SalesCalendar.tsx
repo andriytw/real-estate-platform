@@ -920,12 +920,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
          
          {/* Left Sidebar (Rooms) */}
          <div className="w-56 flex-shrink-0 border-r border-gray-800 bg-[#161B22] z-20 flex flex-col">
-            <div className="sticky top-0 z-30 flex flex-col">
-                <div className="h-16 border-b border-gray-800 flex items-center px-4 font-bold text-white bg-[#1C1F24]">
-                    Properties ({filteredRooms.length})
-                </div>
-                {/* Empty row to align with month names row */}
-                <div className="h-7 border-b border-gray-800 bg-[#111315]"></div>
+            <div className="sticky top-0 z-30 h-[92px] border-b border-gray-800 flex items-center px-4 font-bold text-white bg-[#1C1F24]">
+                Properties ({filteredRooms.length})
             </div>
             <div className="overflow-y-auto flex-1 scrollbar-hide">
                 {filteredRooms.map(room => (
