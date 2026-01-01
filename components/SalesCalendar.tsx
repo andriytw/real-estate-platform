@@ -126,6 +126,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{roomId: string, dayIndex: number} | null>(null);
   const [dragEnd, setDragEnd] = useState<{roomId: string, dayIndex: number} | null>(null);
+  const lastMonthSwitchRef = useRef<number>(0); // Для debounce перемикання місяця
 
   // Add Booking Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -387,6 +388,51 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   const handleMouseEnter = (roomId: string, dayIndex: number) => {
     if (isDragging && dragStart && dragStart.roomId === roomId) {
+      // Автоматичне перемикання місяця при перетягуванні за межі вікна
+      const now = Date.now();
+      const DEBOUNCE_DELAY = 300; // Затримка 300мс для уникнення занадто частого перемикання
+      
+      if (dayIndex >= NUM_DAYS && (now - lastMonthSwitchRef.current) > DEBOUNCE_DELAY) {
+        // Перетягування вправо за межі вікна - перейти на наступний місяць
+        lastMonthSwitchRef.current = now;
+        const newDate = new Date(currentDate);
+        newDate.setMonth(newDate.getMonth() + 1);
+        newDate.setDate(1);
+        setCurrentDate(newDate);
+        // Оновити dragStart та dragEnd з новими dayIndex відносно нового місяця
+        setTimeout(() => {
+          const newStartIndex = dragStart.dayIndex - NUM_DAYS;
+          const newEndIndex = dayIndex - NUM_DAYS;
+          if (newStartIndex >= 0 && newStartIndex < NUM_DAYS) {
+            setDragStart({ roomId, dayIndex: newStartIndex });
+          }
+          if (newEndIndex >= 0 && newEndIndex < NUM_DAYS) {
+            setDragEnd({ roomId, dayIndex: newEndIndex });
+          }
+        }, 50);
+        return; // Не встановлювати dragEnd тут, оскільки це буде зроблено в setTimeout
+      } else if (dayIndex < 0 && (now - lastMonthSwitchRef.current) > DEBOUNCE_DELAY) {
+        // Перетягування вліво за межі вікна - перейти на попередній місяць
+        lastMonthSwitchRef.current = now;
+        const newDate = new Date(currentDate);
+        newDate.setMonth(newDate.getMonth() - 1);
+        newDate.setDate(1);
+        setCurrentDate(newDate);
+        // Оновити dragStart та dragEnd з новими dayIndex відносно нового місяця
+        setTimeout(() => {
+          const newStartIndex = dragStart.dayIndex + NUM_DAYS;
+          const newEndIndex = NUM_DAYS + dayIndex;
+          if (newStartIndex >= 0 && newStartIndex < NUM_DAYS) {
+            setDragStart({ roomId, dayIndex: newStartIndex });
+          }
+          if (newEndIndex >= 0 && newEndIndex < NUM_DAYS) {
+            setDragEnd({ roomId, dayIndex: newEndIndex });
+          }
+        }, 50);
+        return; // Не встановлювати dragEnd тут, оскільки це буде зроблено в setTimeout
+      }
+      
+      // Якщо не перемикаємо місяць, просто оновити dragEnd
       setDragEnd({ roomId, dayIndex });
     }
   };
@@ -649,7 +695,46 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
          </div>
 
          {/* Calendar Scroll Area */}
-         <div className="flex-1 overflow-x-auto overflow-y-auto relative bg-[#0D1117]" ref={scrollContainerRef}>
+         <div 
+            className="flex-1 overflow-x-auto overflow-y-auto relative bg-[#0D1117]" 
+            ref={scrollContainerRef}
+            onMouseMove={(e) => {
+              if (isDragging && dragStart) {
+                const container = scrollContainerRef.current;
+                if (!container) return;
+                
+                const rect = container.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const scrollLeft = container.scrollLeft;
+                const totalWidth = NUM_DAYS * DAY_WIDTH;
+                
+                // Перевірка, чи курсор справа від останнього дня
+                if (mouseX + scrollLeft > totalWidth - DAY_WIDTH) {
+                  const now = Date.now();
+                  const DEBOUNCE_DELAY = 300;
+                  if ((now - lastMonthSwitchRef.current) > DEBOUNCE_DELAY) {
+                    lastMonthSwitchRef.current = now;
+                    const newDate = new Date(currentDate);
+                    newDate.setMonth(newDate.getMonth() + 1);
+                    newDate.setDate(1);
+                    setCurrentDate(newDate);
+                  }
+                }
+                // Перевірка, чи курсор зліва від першого дня
+                else if (mouseX + scrollLeft < DAY_WIDTH) {
+                  const now = Date.now();
+                  const DEBOUNCE_DELAY = 300;
+                  if ((now - lastMonthSwitchRef.current) > DEBOUNCE_DELAY) {
+                    lastMonthSwitchRef.current = now;
+                    const newDate = new Date(currentDate);
+                    newDate.setMonth(newDate.getMonth() - 1);
+                    newDate.setDate(1);
+                    setCurrentDate(newDate);
+                  }
+                }
+              }
+            }}
+         >
             <div className="min-w-max">
                 
                 {/* Dates Header */}
@@ -693,15 +778,33 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 const startOffset = dateDiffInDays(currentDate, startDate);
                                 const nights = dateDiffInDays(startDate, endDate); // кількість ночей
 
+                                // Перевірка, чи резервація перетинається з поточним вікном
+                                // Резервація повністю поза вікном, якщо:
+                                // - вона закінчується до початку вікна (startOffset + nights < 0)
+                                // - або починається після кінця вікна (startOffset >= NUM_DAYS)
                                 if (nights <= 0 || (startOffset + nights) < 0 || startOffset >= NUM_DAYS) return null;
 
                                 // Візуально показуємо з дня заїзду до дня виїзду (включно),
                                 // тобто додаємо одну клітинку для дня виїзду.
                                 const totalDays = nights + 1;
-                                // Початок: 60% відступу від лівого краю першого дня
-                                const left = startOffset * DAY_WIDTH + DAY_WIDTH * 0.6;
-                                // Ширина: totalDays - 1 (повні дні) - 0.3 (відступ справа на 30% останнього дня)
-                                const width = (totalDays - 1.3) * DAY_WIDTH;
+                                
+                                // Обчислення позиції та ширини для часткового відображення
+                                let left: number;
+                                let width: number;
+                                
+                                if (startOffset < 0) {
+                                    // Резервація починається до початку вікна, але закінчується всередині
+                                    left = 0;
+                                    width = (startOffset + totalDays - 0.3) * DAY_WIDTH;
+                                } else if (startOffset + totalDays > NUM_DAYS) {
+                                    // Резервація починається всередині вікна, але закінчується після кінця
+                                    left = startOffset * DAY_WIDTH + DAY_WIDTH * 0.6;
+                                    width = (NUM_DAYS - startOffset - 0.3) * DAY_WIDTH;
+                                } else {
+                                    // Резервація повністю в межах вікна
+                                    left = startOffset * DAY_WIDTH + DAY_WIDTH * 0.6;
+                                    width = (totalDays - 1.3) * DAY_WIDTH;
+                                }
                                 
                                 return (
                                     <div 
