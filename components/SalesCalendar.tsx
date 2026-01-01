@@ -728,11 +728,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     const prevMonthDate = new Date(currentDate);
     prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
     const daysInPrevMonth = new Date(prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1, 0).getDate();
-    const prevMonthName = prevMonthDate.toLocaleDateString('en-US', { month: 'long' });
-    // Показувати назву місяця над днями 12-16 (якщо вони є в діапазоні)
-    const startDayForMonthName = Math.max(0, Math.min(12, extraDaysPrevMonth - 5));
-    const endDayForMonthName = Math.min(extraDaysPrevMonth - 1, 16);
-    const middleDayPrev = Math.floor((startDayForMonthName + endDayForMonthName) / 2);
     
     for (let i = extraDaysPrevMonth - 1; i >= 0; i--) {
       const dayDate = new Date(prevMonthDate);
@@ -740,20 +735,15 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       const dayNum = dayDate.getDate();
       const dayName = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
       const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6;
-      // Показувати назву місяця над середнім днем в діапазоні 12-16
-      const showMonthName = i >= startDayForMonthName && i <= endDayForMonthName && i === middleDayPrev;
       
       daysHeader.push(
         <div 
           key={`prev-${i}`} 
           className={`
-            w-[48px] min-w-[48px] flex flex-col items-center justify-center border-r border-gray-800 h-20 text-xs select-none
+            w-[48px] min-w-[48px] flex flex-col items-center justify-center border-r border-gray-800 h-16 text-xs select-none
             ${isWeekend ? 'bg-[#1C1F24] text-gray-500' : 'bg-[#16181D] text-gray-400'}
           `}
         >
-          {showMonthName && (
-            <span className="text-[9px] text-gray-500 font-bold uppercase mb-0.5">{prevMonthName}</span>
-          )}
           <span className="uppercase text-[10px]">{dayName.slice(0, 2)}</span>
           <span className="text-sm">{dayNum}</span>
         </div>
@@ -763,31 +753,21 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   
   // Дні поточного місяця
   const tempDate = new Date(currentDate);
-  const currentMonthName = tempDate.toLocaleDateString('en-US', { month: 'long' });
-  // Показувати назву місяця над днями 12-16 (індекси 11-15, оскільки i починається з 0)
-  const startDayForMonthName = Math.min(11, NUM_DAYS - 1);
-  const endDayForMonthName = Math.min(15, NUM_DAYS - 1);
-  const middleDayCurrent = Math.floor((startDayForMonthName + endDayForMonthName) / 2);
   
   for (let i = 0; i < NUM_DAYS; i++) {
     const dayNum = tempDate.getDate();
     const dayName = tempDate.toLocaleDateString('en-US', { weekday: 'short' });
     const isToday = tempDate.getTime() === TODAY.getTime();
     const isWeekend = tempDate.getDay() === 0 || tempDate.getDay() === 6;
-    // Показувати назву місяця над середнім днем в діапазоні 12-16 (індекси 11-15)
-    const showMonthName = i >= startDayForMonthName && i <= endDayForMonthName && i === middleDayCurrent;
 
     daysHeader.push(
         <div 
             key={i} 
             className={`
-                w-[48px] min-w-[48px] flex flex-col items-center justify-center border-r border-gray-800 h-20 text-xs select-none
+                w-[48px] min-w-[48px] flex flex-col items-center justify-center border-r border-gray-800 h-16 text-xs select-none
                 ${isToday ? 'bg-emerald-500/10 text-emerald-500 font-bold border-b-2 border-b-emerald-500' : isWeekend ? 'bg-[#1C1F24] text-gray-500' : 'bg-[#16181D] text-gray-400'}
             `}
         >
-            {showMonthName && (
-              <span className="text-[9px] text-emerald-400 font-bold uppercase mb-0.5">{currentMonthName}</span>
-            )}
             <span className="uppercase text-[10px]">{dayName.slice(0, 2)}</span>
             <span className="text-sm">{dayNum}</span>
         </div>
@@ -800,11 +780,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     const nextMonthDate = new Date(currentDate);
     nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
     nextMonthDate.setDate(1);
-    const nextMonthName = nextMonthDate.toLocaleDateString('en-US', { month: 'long' });
-    // Показувати назву місяця над днями 12-16 (якщо вони є в діапазоні)
-    const startDayForMonthName = Math.min(11, extraDaysNextMonth - 1);
-    const endDayForMonthName = Math.min(15, extraDaysNextMonth - 1);
-    const middleDayNext = Math.floor((startDayForMonthName + endDayForMonthName) / 2);
     
     for (let i = 0; i < extraDaysNextMonth; i++) {
       const dayDate = new Date(nextMonthDate);
@@ -812,20 +787,15 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       const dayNum = dayDate.getDate();
       const dayName = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
       const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6;
-      // Показувати назву місяця над середнім днем в діапазоні 12-16
-      const showMonthName = i >= startDayForMonthName && i <= endDayForMonthName && i === middleDayNext;
       
       daysHeader.push(
         <div 
           key={`next-${i}`} 
           className={`
-            w-[48px] min-w-[48px] flex flex-col items-center justify-center border-r border-gray-800 h-20 text-xs select-none
+            w-[48px] min-w-[48px] flex flex-col items-center justify-center border-r border-gray-800 h-16 text-xs select-none
             ${isWeekend ? 'bg-[#1C1F24] text-gray-500' : 'bg-[#16181D] text-gray-400'}
           `}
         >
-          {showMonthName && (
-            <span className="text-[9px] text-blue-400 font-bold uppercase mb-0.5">{nextMonthName}</span>
-          )}
           <span className="uppercase text-[10px]">{dayName.slice(0, 2)}</span>
           <span className="text-sm">{dayNum}</span>
         </div>
@@ -833,6 +803,67 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     }
   }
 
+  // Month Names Row Generation
+  const monthNamesRow = [];
+  let currentMonth = null;
+  let monthStartIndex = 0;
+  let monthName = '';
+  let monthColor = 'text-gray-400';
+  const currentMonthKey = `${currentDate.getFullYear()}-${currentDate.getMonth()}`;
+
+  // Функція для визначення кольору місяця
+  const getMonthColor = (monthKey: string, dayIndex: number): string => {
+    if (monthKey === currentMonthKey) {
+      return 'text-emerald-400';
+    } else if (dayIndex < extraDaysPrevMonth) {
+      return 'text-gray-500';
+    } else if (dayIndex >= extraDaysPrevMonth + NUM_DAYS) {
+      return 'text-blue-400';
+    }
+    return 'text-gray-400';
+  };
+
+  // Пройтися по всіх днях
+  for (let i = 0; i < getTotalDays(); i++) {
+    const realIndex = i - extraDaysPrevMonth;
+    const date = getDateFromIndex(realIndex);
+    const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
+    
+    if (currentMonth !== monthKey) {
+      // Закрити попередній місяць
+      if (currentMonth !== null) {
+        const monthWidth = (i - monthStartIndex) * DAY_WIDTH;
+        monthNamesRow.push(
+          <div 
+            key={`month-${monthStartIndex}`} 
+            style={{ width: `${monthWidth}px`, minWidth: `${monthWidth}px` }}
+            className={`flex items-center justify-center ${monthColor} font-bold text-[9px] uppercase border-r border-gray-800`}
+          >
+            {monthName}
+          </div>
+        );
+      }
+      // Почати новий місяць
+      currentMonth = monthKey;
+      monthStartIndex = i;
+      monthName = date.toLocaleDateString('en-US', { month: 'long' }).toUpperCase();
+      monthColor = getMonthColor(monthKey, i);
+    }
+  }
+  
+  // Додати останній місяць
+  if (currentMonth !== null) {
+    const monthWidth = (getTotalDays() - monthStartIndex) * DAY_WIDTH;
+    monthNamesRow.push(
+      <div 
+        key={`month-${monthStartIndex}`} 
+        style={{ width: `${monthWidth}px`, minWidth: `${monthWidth}px` }}
+        className={`flex items-center justify-center ${monthColor} font-bold text-[9px] uppercase border-r border-gray-800`}
+      >
+        {monthName}
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col bg-[#111315] overflow-hidden select-none">
@@ -909,9 +940,16 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
          >
             <div className="min-w-max">
                 
-                {/* Dates Header */}
-                <div className="sticky top-0 z-10 flex border-b border-gray-800 shadow-md bg-[#161B22]">
-                    {daysHeader}
+                {/* Combined Month Names and Dates Header */}
+                <div className="sticky top-0 z-20 flex flex-col">
+                    {/* Month Names Row */}
+                    <div className="flex border-b border-gray-800 bg-[#111315] h-5">
+                        {monthNamesRow}
+                    </div>
+                    {/* Dates Header */}
+                    <div className="flex border-b border-gray-800 shadow-md bg-[#161B22]">
+                        {daysHeader}
+                    </div>
                 </div>
 
                 {/* Booking Grid Rows */}
