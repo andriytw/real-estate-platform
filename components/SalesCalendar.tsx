@@ -127,6 +127,12 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const [dragStart, setDragStart] = useState<{roomId: string, date: Date} | null>(null);
   const [dragEnd, setDragEnd] = useState<{roomId: string, date: Date} | null>(null);
   const lastMonthSwitchRef = useRef<number>(0); // Для debounce перемикання місяця
+  
+  // Dynamic calendar expansion state
+  const [extraDaysNextMonth, setExtraDaysNextMonth] = useState(0);
+  const [extraDaysPrevMonth, setExtraDaysPrevMonth] = useState(0);
+  
+  const getTotalDays = () => NUM_DAYS + extraDaysNextMonth + extraDaysPrevMonth;
 
   // Add Booking Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -375,6 +381,32 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   // --- Drag Handlers ---
   
   const getDateFromIndex = (index: number) => {
+    // Якщо індекс в межах додаткових днів попереднього місяця
+    if (index < 0 && extraDaysPrevMonth > 0) {
+      const prevMonthDate = new Date(currentDate);
+      prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+      const daysInPrevMonth = new Date(prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1, 0).getDate();
+      prevMonthDate.setDate(daysInPrevMonth + index + 1);
+      return prevMonthDate;
+    }
+    
+    // Якщо індекс в межах поточного місяця
+    if (index >= 0 && index < NUM_DAYS) {
+      const d = new Date(currentDate);
+      d.setDate(d.getDate() + index);
+      return d;
+    }
+    
+    // Якщо індекс в межах додаткових днів наступного місяця
+    if (index >= NUM_DAYS && extraDaysNextMonth > 0) {
+      const nextMonthDate = new Date(currentDate);
+      nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
+      nextMonthDate.setDate(1);
+      nextMonthDate.setDate(index - NUM_DAYS + 1);
+      return nextMonthDate;
+    }
+    
+    // Fallback
     const d = new Date(currentDate);
     d.setDate(d.getDate() + index);
     return d;
@@ -389,41 +421,45 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   const handleMouseEnter = (roomId: string, dayIndex: number) => {
     if (isDragging && dragStart && dragStart.roomId === roomId) {
-      // Автоматичне перемикання місяця при перетягуванні за межі вікна
-      const now = Date.now();
-      const DEBOUNCE_DELAY = 300; // Затримка 300мс для уникнення занадто частого перемикання
+      // Поступове додавання днів замість миттєвого перемикання місяця
       
-      if (dayIndex >= NUM_DAYS && (now - lastMonthSwitchRef.current) > DEBOUNCE_DELAY) {
-        // Перетягування вправо за межі вікна - перейти на наступний місяць
-        lastMonthSwitchRef.current = now;
-        const newDate = new Date(currentDate);
-        newDate.setMonth(newDate.getMonth() + 1);
-        newDate.setDate(1);
-        setCurrentDate(newDate);
-        // Обчислити абсолютну дату для нового dayIndex відносно нового місяця
-        // НЕ змінювати dragStart - він залишається на початковій даті
-        setTimeout(() => {
-          const newEndDate = getDateFromIndex(dayIndex - NUM_DAYS);
-          setDragEnd({ roomId, date: newEndDate });
-        }, 50);
-        return; // Не встановлювати dragEnd тут, оскільки це буде зроблено в setTimeout
-      } else if (dayIndex < 0 && (now - lastMonthSwitchRef.current) > DEBOUNCE_DELAY) {
-        // Перетягування вліво за межі вікна - перейти на попередній місяць
-        lastMonthSwitchRef.current = now;
-        const newDate = new Date(currentDate);
-        newDate.setMonth(newDate.getMonth() - 1);
-        newDate.setDate(1);
-        setCurrentDate(newDate);
-        // Обчислити абсолютну дату для нового dayIndex відносно нового місяця
-        // НЕ змінювати dragStart - він залишається на початковій даті
-        setTimeout(() => {
-          const newEndDate = getDateFromIndex(NUM_DAYS + dayIndex);
-          setDragEnd({ roomId, date: newEndDate });
-        }, 50);
-        return; // Не встановлювати dragEnd тут, оскільки це буде зроблено в setTimeout
+      // Якщо тягнемо вправо за межі поточного вікна
+      if (dayIndex >= NUM_DAYS) {
+        const extraDaysNeeded = dayIndex - NUM_DAYS + 1;
+        // Оновити кількість днів наступного місяця (максимум 15 днів)
+        if (extraDaysNeeded > extraDaysNextMonth) {
+          setExtraDaysNextMonth(Math.min(extraDaysNeeded, 15));
+        }
+        
+        // Обчислити абсолютну дату для dragEnd на основі наступного місяця
+        const nextMonthDate = new Date(currentDate);
+        nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
+        nextMonthDate.setDate(1);
+        const newEndDate = new Date(nextMonthDate);
+        newEndDate.setDate(dayIndex - NUM_DAYS + 1);
+        setDragEnd({ roomId, date: newEndDate });
+        return;
       }
       
-      // Якщо не перемикаємо місяць, просто оновити dragEnd з абсолютною датою
+      // Якщо тягнемо вліво за межі поточного вікна
+      if (dayIndex < 0) {
+        const extraDaysNeeded = Math.abs(dayIndex);
+        // Оновити кількість днів попереднього місяця (максимум 15 днів)
+        if (extraDaysNeeded > extraDaysPrevMonth) {
+          setExtraDaysPrevMonth(Math.min(extraDaysNeeded, 15));
+        }
+        
+        // Обчислити абсолютну дату для dragEnd на основі попереднього місяця
+        const prevMonthDate = new Date(currentDate);
+        prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+        const daysInPrevMonth = new Date(prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1, 0).getDate();
+        const newEndDate = new Date(prevMonthDate);
+        newEndDate.setDate(daysInPrevMonth + dayIndex + 1);
+        setDragEnd({ roomId, date: newEndDate });
+        return;
+      }
+      
+      // Якщо в межах поточного вікна, просто оновити dragEnd
       const endDate = getDateFromIndex(dayIndex);
       setDragEnd({ roomId, date: endDate });
     }
@@ -445,6 +481,11 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       }));
       setIsAddModalOpen(true);
     }
+    
+    // Скинути додаткові дні після завершення виділення
+    setExtraDaysNextMonth(0);
+    setExtraDaysPrevMonth(0);
+    
     setIsDragging(false);
     setDragStart(null);
     setDragEnd(null);
@@ -593,26 +634,103 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   // Days Header Generation
   const daysHeader = [];
+  
+  // Додати дні попереднього місяця, якщо потрібно
+  if (extraDaysPrevMonth > 0) {
+    const prevMonthDate = new Date(currentDate);
+    prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+    const daysInPrevMonth = new Date(prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1, 0).getDate();
+    const prevMonthName = prevMonthDate.toLocaleDateString('en-US', { month: 'long' });
+    const middleDayPrev = Math.floor(extraDaysPrevMonth / 2);
+    
+    for (let i = extraDaysPrevMonth - 1; i >= 0; i--) {
+      const dayDate = new Date(prevMonthDate);
+      dayDate.setDate(daysInPrevMonth - i);
+      const dayNum = dayDate.getDate();
+      const dayName = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
+      const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6;
+      const showMonthName = i === middleDayPrev;
+      
+      daysHeader.push(
+        <div 
+          key={`prev-${i}`} 
+          className={`
+            w-[48px] min-w-[48px] flex flex-col items-center justify-center border-r border-gray-800 h-20 text-xs select-none
+            ${isWeekend ? 'bg-[#1C1F24] text-gray-500' : 'bg-[#16181D] text-gray-400'}
+          `}
+        >
+          {showMonthName && (
+            <span className="text-[9px] text-gray-500 font-bold uppercase mb-0.5">{prevMonthName}</span>
+          )}
+          <span className="uppercase text-[10px]">{dayName.slice(0, 2)}</span>
+          <span className="text-sm">{dayNum}</span>
+        </div>
+      );
+    }
+  }
+  
+  // Дні поточного місяця
   const tempDate = new Date(currentDate);
+  const currentMonthName = tempDate.toLocaleDateString('en-US', { month: 'long' });
+  const middleDayCurrent = Math.floor(NUM_DAYS / 2);
+  
   for (let i = 0; i < NUM_DAYS; i++) {
     const dayNum = tempDate.getDate();
     const dayName = tempDate.toLocaleDateString('en-US', { weekday: 'short' });
     const isToday = tempDate.getTime() === TODAY.getTime();
     const isWeekend = tempDate.getDay() === 0 || tempDate.getDay() === 6;
+    const showMonthName = i === middleDayCurrent;
 
     daysHeader.push(
         <div 
             key={i} 
             className={`
-                w-[48px] min-w-[48px] flex flex-col items-center justify-center border-r border-gray-800 h-16 text-xs select-none
+                w-[48px] min-w-[48px] flex flex-col items-center justify-center border-r border-gray-800 h-20 text-xs select-none
                 ${isToday ? 'bg-emerald-500/10 text-emerald-500 font-bold border-b-2 border-b-emerald-500' : isWeekend ? 'bg-[#1C1F24] text-gray-500' : 'bg-[#16181D] text-gray-400'}
             `}
         >
+            {showMonthName && (
+              <span className="text-[9px] text-emerald-400 font-bold uppercase mb-0.5">{currentMonthName}</span>
+            )}
             <span className="uppercase text-[10px]">{dayName.slice(0, 2)}</span>
             <span className="text-sm">{dayNum}</span>
         </div>
     );
     tempDate.setDate(tempDate.getDate() + 1);
+  }
+  
+  // Додати дні наступного місяця, якщо потрібно
+  if (extraDaysNextMonth > 0) {
+    const nextMonthDate = new Date(currentDate);
+    nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
+    nextMonthDate.setDate(1);
+    const nextMonthName = nextMonthDate.toLocaleDateString('en-US', { month: 'long' });
+    const middleDayNext = Math.floor(extraDaysNextMonth / 2);
+    
+    for (let i = 0; i < extraDaysNextMonth; i++) {
+      const dayDate = new Date(nextMonthDate);
+      dayDate.setDate(i + 1);
+      const dayNum = dayDate.getDate();
+      const dayName = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
+      const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6;
+      const showMonthName = i === middleDayNext;
+      
+      daysHeader.push(
+        <div 
+          key={`next-${i}`} 
+          className={`
+            w-[48px] min-w-[48px] flex flex-col items-center justify-center border-r border-gray-800 h-20 text-xs select-none
+            ${isWeekend ? 'bg-[#1C1F24] text-gray-500' : 'bg-[#16181D] text-gray-400'}
+          `}
+        >
+          {showMonthName && (
+            <span className="text-[9px] text-blue-400 font-bold uppercase mb-0.5">{nextMonthName}</span>
+          )}
+          <span className="uppercase text-[10px]">{dayName.slice(0, 2)}</span>
+          <span className="text-sm">{dayNum}</span>
+        </div>
+      );
+    }
   }
 
   return (
@@ -687,52 +805,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
          <div 
             className="flex-1 overflow-x-auto overflow-y-auto relative bg-[#0D1117]" 
             ref={scrollContainerRef}
-            onMouseMove={(e) => {
-              if (isDragging && dragStart && dragEnd) {
-                const container = scrollContainerRef.current;
-                if (!container) return;
-                
-                const rect = container.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const scrollLeft = container.scrollLeft;
-                const totalWidth = NUM_DAYS * DAY_WIDTH;
-                
-                // Перевірка, чи курсор справа від останнього дня
-                if (mouseX + scrollLeft > totalWidth - DAY_WIDTH) {
-                  const now = Date.now();
-                  const DEBOUNCE_DELAY = 300;
-                  if ((now - lastMonthSwitchRef.current) > DEBOUNCE_DELAY) {
-                    lastMonthSwitchRef.current = now;
-                    const newDate = new Date(currentDate);
-                    newDate.setMonth(newDate.getMonth() + 1);
-                    newDate.setDate(1);
-                    setCurrentDate(newDate);
-                    // Оновити dragEnd з новою датою (останній день нового місяця в межах вікна)
-                    setTimeout(() => {
-                      const newEndDate = getDateFromIndex(NUM_DAYS - 1);
-                      setDragEnd({ roomId: dragStart.roomId, date: newEndDate });
-                    }, 50);
-                  }
-                }
-                // Перевірка, чи курсор зліва від першого дня
-                else if (mouseX + scrollLeft < DAY_WIDTH) {
-                  const now = Date.now();
-                  const DEBOUNCE_DELAY = 300;
-                  if ((now - lastMonthSwitchRef.current) > DEBOUNCE_DELAY) {
-                    lastMonthSwitchRef.current = now;
-                    const newDate = new Date(currentDate);
-                    newDate.setMonth(newDate.getMonth() - 1);
-                    newDate.setDate(1);
-                    setCurrentDate(newDate);
-                    // Оновити dragEnd з новою датою (перший день попереднього місяця в межах вікна)
-                    setTimeout(() => {
-                      const newEndDate = getDateFromIndex(0);
-                      setDragEnd({ roomId: dragStart.roomId, date: newEndDate });
-                    }, 50);
-                  }
-                }
-              }
-            }}
          >
             <div className="min-w-max">
                 
@@ -745,18 +817,20 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                 <div className="relative">
                     
                     {/* Today Line */}
-                    {todayOffsetDays >= 0 && todayOffsetDays < NUM_DAYS && (
+                    {todayOffsetDays >= -extraDaysPrevMonth && todayOffsetDays < NUM_DAYS + extraDaysNextMonth && (
                         <div 
                             className="absolute top-0 bottom-0 w-0.5 bg-red-500/50 z-0 pointer-events-none"
-                            style={{ left: `${(todayOffsetDays * DAY_WIDTH) + (DAY_WIDTH / 2)}px` }}
+                            style={{ left: `${((todayOffsetDays + extraDaysPrevMonth) * DAY_WIDTH) + (DAY_WIDTH / 2)}px` }}
                         />
                     )}
 
                     {filteredRooms.map(room => (
                         <div key={room.id} className="h-16 border-b border-gray-800 relative flex bg-[#111315]/50 hover:bg-[#161B22]/50 transition-colors">
                             {/* Grid Lines & Cells for Selection */}
-                            {Array.from({ length: NUM_DAYS }).map((_, i) => {
-                                const cellDate = getDateFromIndex(i);
+                            {Array.from({ length: getTotalDays() }).map((_, i) => {
+                                // Обчислити реальний індекс з урахуванням додаткових днів
+                                const realIndex = i - extraDaysPrevMonth;
+                                const cellDate = getDateFromIndex(realIndex);
                                 let isSelected = false;
                                 
                                 if (isDragging && dragStart && dragEnd && dragStart.roomId === room.id) {
@@ -766,25 +840,26 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                     const maxDate = startDate > endDate ? startDate : endDate;
                                     
                                     // Варіант А: Кожен місяць показує тільки свою частину виділення
-                                    // Якщо minDate в попередньому місяці, то в поточному місяці виділення починається з першого дня
-                                    // Якщо maxDate в наступному місяці, то в поточному місяці виділення закінчується останнім днем
                                     const cellDateStr = formatDateISO(cellDate);
                                     const minDateStr = formatDateISO(minDate);
                                     const maxDateStr = formatDateISO(maxDate);
                                     
-                                    // Визначити межі поточного місяця
-                                    const currentMonthStart = new Date(currentDate);
-                                    currentMonthStart.setDate(1);
-                                    const currentMonthEnd = new Date(currentDate);
-                                    currentMonthEnd.setMonth(currentMonthEnd.getMonth() + 1);
-                                    currentMonthEnd.setDate(0); // Останній день поточного місяця
+                                    // Визначити, до якого місяця належить поточна клітинка
+                                    const cellMonth = cellDate.getMonth();
+                                    const cellYear = cellDate.getFullYear();
+                                    const currentMonth = currentDate.getMonth();
+                                    const currentYear = currentDate.getFullYear();
                                     
-                                    const currentMonthStartStr = formatDateISO(currentMonthStart);
-                                    const currentMonthEndStr = formatDateISO(currentMonthEnd);
+                                    // Визначити межі місяця, до якого належить клітинка
+                                    const cellMonthStart = new Date(cellYear, cellMonth, 1);
+                                    const cellMonthEnd = new Date(cellYear, cellMonth + 1, 0);
                                     
-                                    // Визначити фактичні межі виділення в поточному місяці
-                                    const effectiveMinDate = minDateStr < currentMonthStartStr ? currentMonthStartStr : minDateStr;
-                                    const effectiveMaxDate = maxDateStr > currentMonthEndStr ? currentMonthEndStr : maxDateStr;
+                                    const cellMonthStartStr = formatDateISO(cellMonthStart);
+                                    const cellMonthEndStr = formatDateISO(cellMonthEnd);
+                                    
+                                    // Визначити фактичні межі виділення в місяці клітинки
+                                    const effectiveMinDate = minDateStr < cellMonthStartStr ? cellMonthStartStr : minDateStr;
+                                    const effectiveMaxDate = maxDateStr > cellMonthEndStr ? cellMonthEndStr : maxDateStr;
                                     
                                     isSelected = cellDateStr >= effectiveMinDate && cellDateStr <= effectiveMaxDate;
                                 }
@@ -792,8 +867,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 return (
                                     <div 
                                         key={i} 
-                                        onMouseDown={() => handleMouseDown(room.id, i)}
-                                        onMouseEnter={() => handleMouseEnter(room.id, i)}
+                                        onMouseDown={() => handleMouseDown(room.id, realIndex)}
+                                        onMouseEnter={() => handleMouseEnter(room.id, realIndex)}
                                         onMouseUp={handleMouseUp}
                                         className={`w-[48px] min-w-[48px] border-r border-gray-800/50 h-full cursor-pointer ${isSelected ? 'bg-blue-500/30' : ''}`} 
                                     />
@@ -804,18 +879,22 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                             {allBookings.filter(b => b.roomId === room.id).map(booking => {
                                 const startDate = parseDate(booking.start);
                                 const endDate = parseDate(booking.end);
-                                const startOffset = dateDiffInDays(currentDate, startDate);
+                                
+                                // Обчислити offset з урахуванням додаткових днів попереднього місяця
+                                const startOffset = dateDiffInDays(currentDate, startDate) + extraDaysPrevMonth;
                                 const nights = dateDiffInDays(startDate, endDate); // кількість ночей
+                                const totalDays = getTotalDays();
 
-                                // Перевірка, чи резервація перетинається з поточним вікном
+                                // Перевірка, чи резервація перетинається з поточним вікном (включаючи додаткові дні)
                                 // Резервація повністю поза вікном, якщо:
                                 // - вона закінчується до початку вікна (startOffset + nights < 0)
-                                // - або починається після кінця вікна (startOffset >= NUM_DAYS)
-                                if (nights <= 0 || (startOffset + nights) < 0 || startOffset >= NUM_DAYS) return null;
+                                // - або починається після кінця вікна (startOffset >= totalDays)
+                                if (nights <= 0 || (startOffset + nights) < 0 || startOffset >= totalDays) return null;
 
                                 // Візуально показуємо з дня заїзду до дня виїзду (включно),
                                 // тобто додаємо одну клітинку для дня виїзду.
-                                const totalDays = nights + 1;
+                                const bookingTotalDays = nights + 1;
+                                const viewTotalDays = getTotalDays();
                                 
                                 // Обчислення позиції та ширини для часткового відображення
                                 let left: number;
@@ -824,15 +903,15 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 if (startOffset < 0) {
                                     // Резервація починається до початку вікна, але закінчується всередині
                                     left = 0;
-                                    width = (startOffset + totalDays - 0.3) * DAY_WIDTH;
-                                } else if (startOffset + totalDays > NUM_DAYS) {
+                                    width = (startOffset + bookingTotalDays - 0.3) * DAY_WIDTH;
+                                } else if (startOffset + bookingTotalDays > viewTotalDays) {
                                     // Резервація починається всередині вікна, але закінчується після кінця
                                     left = startOffset * DAY_WIDTH + DAY_WIDTH * 0.6;
-                                    width = (NUM_DAYS - startOffset - 0.3) * DAY_WIDTH;
+                                    width = (viewTotalDays - startOffset - 0.3) * DAY_WIDTH;
                                 } else {
                                     // Резервація повністю в межах вікна
                                     left = startOffset * DAY_WIDTH + DAY_WIDTH * 0.6;
-                                    width = (totalDays - 1.3) * DAY_WIDTH;
+                                    width = (bookingTotalDays - 1.3) * DAY_WIDTH;
                                 }
                                 
                                 return (
