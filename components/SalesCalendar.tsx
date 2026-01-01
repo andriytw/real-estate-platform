@@ -424,14 +424,15 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       const nextMonthDate = new Date(currentDate);
       nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
       nextMonthDate.setDate(1);
-      const dayInNextMonth = index - NUM_DAYS + 1;
+      // Обмежити dayInNextMonth до extraDaysNextMonth, щоб завжди показувати перші дні наступного місяця
+      const dayInNextMonth = Math.min(index - NUM_DAYS + 1, extraDaysNextMonth);
       const daysInNextMonth = new Date(nextMonthDate.getFullYear(), nextMonthDate.getMonth() + 1, 0).getDate();
       // Перевірка валідності: день повинен бути в межах [1, daysInNextMonth]
       if (dayInNextMonth >= 1 && dayInNextMonth <= daysInNextMonth) {
         nextMonthDate.setDate(dayInNextMonth);
         
         // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:405',message:'getDateFromIndex next month calc',data:{index,NUM_DAYS,dayInNextMonth,resultDate:nextMonthDate.toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:405',message:'getDateFromIndex next month calc',data:{index,NUM_DAYS,dayInNextMonth,extraDaysNextMonth,resultDate:nextMonthDate.toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
         // #endregion
         
         return nextMonthDate;
@@ -489,12 +490,15 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         }
         
         // Обчислити абсолютну дату для dragEnd на основі наступного місяця
-        // Використати getDateFromIndex для коректного обчислення дати
-        const newEndDate = getDateFromIndex(dayIndex);
-        setDragEnd({ roomId, date: newEndDate });
+        // Обмежити обчислення дати до перших днів наступного місяця
+        const dayInNextMonth = Math.min(dayIndex - NUM_DAYS + 1, extraDaysNextMonth);
+        const nextMonthDate = new Date(currentDate);
+        nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
+        nextMonthDate.setDate(dayInNextMonth);
+        setDragEnd({ roomId, date: nextMonthDate });
         
         // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:440',message:'handleMouseEnter next month date set',data:{dayIndex,calculatedDay:dayIndex - NUM_DAYS + 1,newEndDate:newEndDate.toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SalesCalendar.tsx:440',message:'handleMouseEnter next month date set',data:{dayIndex,dayInNextMonth,extraDaysNextMonth,newEndDate:nextMonthDate.toISOString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
         // #endregion
         
         return;
@@ -725,7 +729,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
     const daysInPrevMonth = new Date(prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1, 0).getDate();
     const prevMonthName = prevMonthDate.toLocaleDateString('en-US', { month: 'long' });
-    const middleDayPrev = Math.floor(extraDaysPrevMonth / 2);
+    // Показувати назву місяця над днями 12-16 (якщо вони є в діапазоні)
+    const startDayForMonthName = Math.max(0, Math.min(12, extraDaysPrevMonth - 5));
+    const endDayForMonthName = Math.min(extraDaysPrevMonth - 1, 16);
+    const middleDayPrev = Math.floor((startDayForMonthName + endDayForMonthName) / 2);
     
     for (let i = extraDaysPrevMonth - 1; i >= 0; i--) {
       const dayDate = new Date(prevMonthDate);
@@ -733,7 +740,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       const dayNum = dayDate.getDate();
       const dayName = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
       const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6;
-      const showMonthName = i === middleDayPrev;
+      // Показувати назву місяця над середнім днем в діапазоні 12-16
+      const showMonthName = i >= startDayForMonthName && i <= endDayForMonthName && i === middleDayPrev;
       
       daysHeader.push(
         <div 
@@ -756,14 +764,18 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   // Дні поточного місяця
   const tempDate = new Date(currentDate);
   const currentMonthName = tempDate.toLocaleDateString('en-US', { month: 'long' });
-  const middleDayCurrent = Math.floor(NUM_DAYS / 2);
+  // Показувати назву місяця над днями 12-16 (індекси 11-15, оскільки i починається з 0)
+  const startDayForMonthName = Math.min(11, NUM_DAYS - 1);
+  const endDayForMonthName = Math.min(15, NUM_DAYS - 1);
+  const middleDayCurrent = Math.floor((startDayForMonthName + endDayForMonthName) / 2);
   
   for (let i = 0; i < NUM_DAYS; i++) {
     const dayNum = tempDate.getDate();
     const dayName = tempDate.toLocaleDateString('en-US', { weekday: 'short' });
     const isToday = tempDate.getTime() === TODAY.getTime();
     const isWeekend = tempDate.getDay() === 0 || tempDate.getDay() === 6;
-    const showMonthName = i === middleDayCurrent;
+    // Показувати назву місяця над середнім днем в діапазоні 12-16 (індекси 11-15)
+    const showMonthName = i >= startDayForMonthName && i <= endDayForMonthName && i === middleDayCurrent;
 
     daysHeader.push(
         <div 
@@ -789,7 +801,12 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
     nextMonthDate.setDate(1);
     const nextMonthName = nextMonthDate.toLocaleDateString('en-US', { month: 'long' });
-    const middleDayNext = Math.floor(extraDaysNextMonth / 2);
+    // Показувати назву місяця над днями 12-16 (якщо вони є в діапазоні)
+    // Оскільки це перші дні наступного місяця, i відповідає дню місяця (1, 2, 3...)
+    // Потрібно показати над днями 12-16 місяця, тобто коли i = 11, 12, 13, 14, 15
+    const startDayForMonthName = Math.min(11, extraDaysNextMonth - 1);
+    const endDayForMonthName = Math.min(15, extraDaysNextMonth - 1);
+    const middleDayNext = Math.floor((startDayForMonthName + endDayForMonthName) / 2);
     
     for (let i = 0; i < extraDaysNextMonth; i++) {
       const dayDate = new Date(nextMonthDate);
@@ -797,7 +814,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       const dayNum = dayDate.getDate();
       const dayName = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
       const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6;
-      const showMonthName = i === middleDayNext;
+      // Показувати назву місяця над середнім днем в діапазоні 12-16 (коли dayNum = 12-16)
+      // Але оскільки i починається з 0, а dayNum = i + 1, то перевіряємо i в діапазоні 11-15
+      const showMonthName = i >= startDayForMonthName && i <= endDayForMonthName && i === middleDayNext;
       
       daysHeader.push(
         <div 
