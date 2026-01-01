@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { RequestData, Property } from '../types';
-import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar } from 'lucide-react';
 import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus } from '../types';
 import BookingDetailsModal from './BookingDetailsModal';
 import BookingStatsTiles from './BookingStatsTiles';
@@ -122,6 +122,13 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const [totalDays, setTotalDays] = useState(NUM_DAYS);
   const [cityFilter, setCityFilter] = useState('ALL');
   const [hoveredBooking, setHoveredBooking] = useState<{booking: Booking, x: number, y: number} | null>(null);
+  
+  // Додати state для поточного видимого місяця
+  const [currentVisibleMonth, setCurrentVisibleMonth] = useState(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
   
   // Drag Selection State
   const [isDragging, setIsDragging] = useState(false);
@@ -378,15 +385,77 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     return () => container.removeEventListener('scroll', handleScroll);
   }, [totalDays]);
 
+  // Функція для переходу до сьогодні
+  const scrollToToday = () => {
+    const todayOffset = dateDiffInDays(startDate, TODAY);
+    if (scrollContainerRef.current) {
+      if (todayOffset >= 0 && todayOffset < totalDays) {
+        const scrollLeft = todayOffset * DAY_WIDTH - scrollContainerRef.current.clientWidth / 2 + DAY_WIDTH / 2;
+        scrollContainerRef.current.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+      } else if (todayOffset < 0) {
+        // Сьогодні в минулому - додати дні на початок
+        const daysToAdd = Math.abs(todayOffset) + 30;
+        setTotalDays(prev => prev + daysToAdd);
+        setTimeout(() => {
+          if (scrollContainerRef.current) {
+            const newTodayOffset = dateDiffInDays(startDate, TODAY) + daysToAdd;
+            const scrollLeft = newTodayOffset * DAY_WIDTH - scrollContainerRef.current.clientWidth / 2 + DAY_WIDTH / 2;
+            scrollContainerRef.current.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+          }
+        }, 50);
+      } else {
+        // Сьогодні в майбутньому - додати дні в кінець
+        const daysNeeded = todayOffset - totalDays + 30;
+        setTotalDays(prev => prev + daysNeeded);
+        setTimeout(() => {
+          if (scrollContainerRef.current) {
+            const scrollLeft = todayOffset * DAY_WIDTH - scrollContainerRef.current.clientWidth / 2 + DAY_WIDTH / 2;
+            scrollContainerRef.current.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+          }
+        }, 50);
+      }
+    }
+  };
+
   // Функція для навігації до конкретного місяця
   const scrollToMonth = (offset: number) => {
-    const targetDate = new Date(startDate);
-    targetDate.setMonth(targetDate.getMonth() + offset);
-    const offsetDays = dateDiffInDays(startDate, targetDate);
+    // Використовувати поточний видимий місяць як базу
+    const targetMonth = new Date(currentVisibleMonth);
+    targetMonth.setMonth(targetMonth.getMonth() + offset);
+    targetMonth.setDate(1); // Початок місяця
+    targetMonth.setHours(0, 0, 0, 0);
     
-    if (scrollContainerRef.current && offsetDays >= 0 && offsetDays < totalDays) {
-      const scrollPos = offsetDays * DAY_WIDTH;
-      scrollContainerRef.current.scrollLeft = scrollPos;
+    // Знайти індекс першого дня цього місяця
+    const targetOffsetDays = dateDiffInDays(startDate, targetMonth);
+    
+    if (scrollContainerRef.current) {
+      if (targetOffsetDays >= 0 && targetOffsetDays < totalDays) {
+        // Місяць вже в межах завантажених днів - прокрутити до початку місяця
+        const scrollPos = targetOffsetDays * DAY_WIDTH;
+        scrollContainerRef.current.scrollTo({ left: scrollPos, behavior: 'smooth' });
+        setCurrentVisibleMonth(targetMonth);
+      } else if (targetOffsetDays < 0) {
+        // Місяць в минулому - додати дні на початок
+        const daysToAdd = Math.abs(targetOffsetDays) + 30;
+        setTotalDays(prev => prev + daysToAdd);
+        setTimeout(() => {
+          if (scrollContainerRef.current) {
+            const newTargetOffsetDays = dateDiffInDays(startDate, targetMonth) + daysToAdd;
+            scrollContainerRef.current.scrollTo({ left: newTargetOffsetDays * DAY_WIDTH, behavior: 'smooth' });
+            setCurrentVisibleMonth(targetMonth);
+          }
+        }, 50);
+      } else {
+        // Місяць в майбутньому - додати дні в кінець
+        const daysNeeded = targetOffsetDays - totalDays + 30;
+        setTotalDays(prev => prev + daysNeeded);
+        setTimeout(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTo({ left: targetOffsetDays * DAY_WIDTH, behavior: 'smooth' });
+            setCurrentVisibleMonth(targetMonth);
+          }
+        }, 50);
+      }
     }
   };
 
@@ -403,6 +472,35 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     date.setDate(date.getDate() + index);
     return date;
   };
+
+  // Відстежувати поточний видимий місяць на основі прокрутки
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    
+    const handleScroll = () => {
+      const scrollLeft = container.scrollLeft;
+      // Обчислити, який день зараз видимий в центрі екрану
+      const centerDayIndex = Math.floor(scrollLeft / DAY_WIDTH) + Math.floor(container.clientWidth / (2 * DAY_WIDTH));
+      if (centerDayIndex >= 0 && centerDayIndex < totalDays) {
+        const centerDate = getDateFromIndex(centerDayIndex);
+        // Оновити поточний місяць, якщо він змінився
+        const newMonth = new Date(centerDate.getFullYear(), centerDate.getMonth(), 1);
+        setCurrentVisibleMonth(prev => {
+          if (prev.getTime() !== newMonth.getTime()) {
+            return newMonth;
+          }
+          return prev;
+        });
+      }
+    };
+    
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    // Викликати одразу для встановлення початкового значення
+    handleScroll();
+    
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [totalDays, startDate]);
 
   const handleMouseDown = (roomId: string, dayIndex: number) => {
     setIsDragging(true);
@@ -673,12 +771,36 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       <div className="p-4 border-b border-gray-800 bg-[#161B22] flex flex-col md:flex-row justify-between items-center gap-4">
          <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold text-white">Availability Calendar</h2>
+            
+            {/* Today Button */}
+            <button 
+                onClick={scrollToToday}
+                className="flex items-center gap-2 bg-[#0D1117] hover:bg-[#161B22] border border-gray-700 text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                title="Go to today"
+            >
+                <Calendar className="w-4 h-4" />
+                <span>Today</span>
+            </button>
+            
+            {/* Month Navigation */}
             <div className="flex items-center bg-[#0D1117] rounded-lg border border-gray-700 p-1">
-                <button onClick={() => scrollToMonth(-1)} className="p-1.5 hover:text-white text-gray-400 transition-colors"><ChevronLeft className="w-5 h-5" /></button>
+                <button 
+                    onClick={() => scrollToMonth(-1)} 
+                    className="p-1.5 hover:text-white text-gray-400 transition-colors"
+                    title="Previous month"
+                >
+                    <ChevronLeft className="w-5 h-5" />
+                </button>
                 <span className="px-4 font-bold text-white text-sm min-w-[140px] text-center">
-                    {TODAY.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    {currentVisibleMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                 </span>
-                <button onClick={() => scrollToMonth(1)} className="p-1.5 hover:text-white text-gray-400 transition-colors"><ChevronRight className="w-5 h-5" /></button>
+                <button 
+                    onClick={() => scrollToMonth(1)} 
+                    className="p-1.5 hover:text-white text-gray-400 transition-colors"
+                    title="Next month"
+                >
+                    <ChevronRight className="w-5 h-5" />
+                </button>
             </div>
          </div>
 
