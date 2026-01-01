@@ -629,14 +629,12 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       // Закрити попередній місяць
       if (currentMonth !== null) {
         const monthWidth = (i - monthStartIndex) * DAY_WIDTH;
-        const isCurrentMonth = monthKey === todayMonthKey;
-        const monthColor = isCurrentMonth ? 'text-emerald-400' : 'text-gray-400';
         
         monthNamesRow.push(
           <div 
             key={`month-${monthStartIndex}`} 
             style={{ width: `${monthWidth}px`, minWidth: `${monthWidth}px` }}
-            className={`flex items-center justify-center ${monthColor} font-bold text-[12px] uppercase border-r border-gray-800 bg-gray-900/30`}
+            className={`flex items-center justify-center text-emerald-400 font-bold text-[12px] uppercase border-r border-gray-800 bg-gray-900/30`}
           >
             {monthName}
           </div>
@@ -653,14 +651,12 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   // Додати останній місяць
   if (currentMonth !== null) {
     const monthWidth = (totalDays - monthStartIndex) * DAY_WIDTH;
-    const isCurrentMonth = currentMonth === todayMonthKey;
-    const monthColor = isCurrentMonth ? 'text-emerald-400' : 'text-gray-400';
     
     monthNamesRow.push(
       <div 
         key={`month-${monthStartIndex}`} 
         style={{ width: `${monthWidth}px`, minWidth: `${monthWidth}px` }}
-        className={`flex items-center justify-center ${monthColor} font-bold text-[12px] uppercase border-r border-gray-800 bg-gray-900/30`}
+        className={`flex items-center justify-center text-emerald-400 font-bold text-[12px] uppercase border-r border-gray-800 bg-gray-900/30`}
       >
         {monthName}
       </div>
@@ -767,7 +763,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                       return (
                         <div
                           key={`month-boundary-${boundaryIndex}`}
-                          className="absolute top-0 bottom-0 w-px bg-gray-700/60 z-0 pointer-events-none"
+                          className="absolute top-0 bottom-0 w-[1.5px] bg-gray-600/70 z-0 pointer-events-none"
                           style={{ left: `${left}px` }}
                         />
                       );
