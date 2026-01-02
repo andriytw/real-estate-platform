@@ -1239,9 +1239,18 @@ const AccountDashboard: React.FC = () => {
         
         const tasks = await tasksService.getAll(filters);
         console.log('✅ Loaded Facility tasks:', tasks.length);
-        console.log('📋 Tasks:', tasks.map(t => ({ id: t.id, title: t.title, workerId: t.workerId, department: t.department })));
         
-        setAdminEvents(tasks);
+        // Filter out tasks with invalid UUID format (temporary IDs)
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const validTasks = tasks.filter(t => uuidRegex.test(t.id));
+        
+        if (validTasks.length !== tasks.length) {
+            console.warn(`⚠️ Filtered out ${tasks.length - validTasks.length} tasks with invalid IDs`);
+        }
+        
+        console.log('📋 Valid tasks:', validTasks.map(t => ({ id: t.id, title: t.title, workerId: t.workerId, department: t.department })));
+        
+        setAdminEvents(validTasks);
       } catch (error) {
         console.error('❌ Error loading Facility tasks:', error);
         // Keep INITIAL_ADMIN_EVENTS as fallback
@@ -2168,13 +2177,8 @@ const AccountDashboard: React.FC = () => {
                         console.log('✅ Created Facility task in database:', savedTask.id, savedTask.title);
                     } catch (error) {
                         console.error('❌ Error creating Facility task in database:', error);
-                        // Додати в локальний стан навіть якщо не вдалося зберегти в БД
-                        savedTasks.push({
-                            ...task,
-                            status: 'open' as TaskStatus,
-                            assignee: undefined,
-                            assignedWorkerId: undefined
-                        });
+                        // Не додавати в локальний стан, якщо не вдалося зберегти в БД
+                        // Це запобігає використанню невалідних ID
                     }
                 }
                 

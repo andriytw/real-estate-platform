@@ -1,4 +1,4 @@
-import { BookingStatus } from './types';
+import { BookingStatus, CalendarEvent } from './types';
 
 /**
  * Отримує клас кольору для бронювання на основі статусу
@@ -119,38 +119,40 @@ export function canCreateInvoice(status: BookingStatus | string): boolean {
  * @param propertyName - Назва нерухомості (опціонально, якщо не передано, використовується roomId)
  * @returns Масив CalendarEvent для Einzug та Auszug
  */
-export function createFacilityTasksForBooking(booking: any, propertyName?: string): Array<{ id: string; title: string; propertyId: string; bookingId: string | number; unitId?: string; time: string; type: 'Einzug' | 'Auszug'; day: number; date: string; description: string; status: 'open'; meterReadings: { electricity: string; water: string; gas: string } }> {
+export function createFacilityTasksForBooking(booking: any, propertyName?: string): Array<Omit<CalendarEvent, 'id'>> {
   const getDay = (dateStr: string) => parseInt(dateStr.split('-')[2], 10);
   const propertyAddress = propertyName || booking.address || booking.roomId || 'Unknown Property';
   
-  const checkInTask = {
-    id: `auto-task-${Date.now()}-1`,
+  const checkInTask: Omit<CalendarEvent, 'id'> = {
     title: `${propertyAddress} - Einzug`,
     propertyId: booking.roomId,
     bookingId: booking.id,
     unitId: booking.unit,
     time: booking.checkInTime || '15:00',
+    isAllDay: false,
     type: 'Einzug' as const,
     day: getDay(booking.start),
     date: booking.start,
     description: `Auto-generated: Move-in for ${booking.guest}. Please record meter readings.`,
     status: 'open' as const,
-    meterReadings: { electricity: '', water: '', gas: '' }
+    meterReadings: { electricity: '', water: '', gas: '' },
+    department: 'facility'
   };
   
-  const checkOutTask = {
-    id: `auto-task-${Date.now()}-2`,
+  const checkOutTask: Omit<CalendarEvent, 'id'> = {
     title: `${propertyAddress} - Auszug`,
     propertyId: booking.roomId,
     bookingId: booking.id,
     unitId: booking.unit,
     time: booking.checkOutTime || '11:00',
+    isAllDay: false,
     type: 'Auszug' as const,
     day: getDay(booking.end),
     date: booking.end,
     description: `Auto-generated: Move-out for ${booking.guest}. Please record meter readings.`,
     status: 'open' as const,
-    meterReadings: { electricity: '', water: '', gas: '' }
+    meterReadings: { electricity: '', water: '', gas: '' },
+    department: 'facility'
   };
   
   return [checkInTask, checkOutTask];

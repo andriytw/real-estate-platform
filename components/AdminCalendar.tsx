@@ -1219,6 +1219,40 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                       // #endregion
                                       
                                       try {
+                                          // Validate UUID format
+                                          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                                          if (!uuidRegex.test(viewEvent.id)) {
+                                              // If ID is not a valid UUID, try to find the task in database by other fields
+                                              console.warn('⚠️ Task ID is not a valid UUID, attempting to find task in database:', viewEvent.id);
+                                              const allTasks = await tasksService.getAll();
+                                              const foundTask = allTasks.find(t => 
+                                                  t.propertyId === viewEvent.propertyId &&
+                                                  t.bookingId === viewEvent.bookingId &&
+                                                  t.type === viewEvent.type &&
+                                                  t.date === viewEvent.date
+                                              );
+                                              
+                                              if (!foundTask) {
+                                                  throw new Error('Task not found in database. Please refresh the page.');
+                                              }
+                                              
+                                              // Update found task
+                                              const updated = await tasksService.update(foundTask.id, {
+                                                  workerId: newWorkerId,
+                                                  status: newStatus
+                                              });
+                                              
+                                              // Update local state with correct ID
+                                              setViewEvent(updated);
+                                              onUpdateEvent(updated);
+                                              
+                                              // #region agent log
+                                              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:1092',message:'Task updated in DB (found by search)',data:{taskId:updated.id,taskType:updated.type,bookingId:updated.bookingId,workerId:updated.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                                              // #endregion
+                                              
+                                              return;
+                                          }
+                                          
                                           // Update in database
                                           const updated = await tasksService.update(viewEvent.id, {
                                               workerId: newWorkerId,
