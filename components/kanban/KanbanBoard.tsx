@@ -123,11 +123,23 @@ const KanbanBoard: React.FC = () => {
   const columns = useMemo(() => {
     const cols: IKanbanColumn[] = [];
 
-    // 1. Super Admin / Inbox Column (завжди видима)
+    // 1. Super Admin / Inbox Column (тільки для завдань без департаменту або призначених Super Admin)
     const adminWorker = workers.find(w => w.role === 'super_manager');
-    const adminTasks = tasks.filter(t => 
-      !t.workerId || (adminWorker && t.workerId === adminWorker.id)
+    
+    // Розділити непризначені завдання по департаментах
+    const unassignedTasks = tasks.filter(t => !t.workerId);
+    const facilityUnassigned = unassignedTasks.filter(t => t.department === 'facility');
+    const accountingUnassigned = unassignedTasks.filter(t => t.department === 'accounting');
+    const otherUnassigned = unassignedTasks.filter(t => 
+      !t.department || (t.department !== 'facility' && t.department !== 'accounting')
     );
+    
+    // Super Admin Inbox: тільки призначені Super Admin АБО непризначені без департаменту
+    // НЕ включати завдання, призначені іншим працівникам (навіть виконані)
+    const adminTasks = [
+      ...tasks.filter(t => adminWorker && t.workerId === adminWorker.id),
+      ...otherUnassigned
+    ];
     
     cols.push({
       id: 'admin-inbox',
@@ -167,12 +179,30 @@ const KanbanBoard: React.FC = () => {
       // Визначити тип колонки
       const columnType = worker.role === 'manager' ? 'manager' : 'worker';
       
+      // Для менеджера: показати призначені йому + непризначені його департаменту
+      // Для працівника: показати ВСІ призначені йому (включно з виконаними)
+      let columnTasks: CalendarEvent[] = [];
+      if (worker.role === 'manager') {
+        // Менеджер бачить: призначені йому + непризначені його департаменту
+        const assignedToManager = tasks.filter(t => t.workerId === worker.id);
+        const unassignedInDepartment = worker.department === 'facility' 
+          ? facilityUnassigned 
+          : worker.department === 'accounting' 
+          ? accountingUnassigned 
+          : [];
+        columnTasks = [...assignedToManager, ...unassignedInDepartment];
+      } else {
+        // Працівник бачить ВСІ призначені йому завдання (включно з виконаними)
+        // Це важливо - виконані завдання мають залишатися в колонці працівника
+        columnTasks = tasks.filter(t => t.workerId === worker.id);
+      }
+      
       cols.push({
         id: customCol.id,
         title: worker.name,
         type: columnType,
         workerId: worker.id,
-        tasks: tasks.filter(t => t.workerId === worker.id)
+        tasks: columnTasks
       });
     });
 

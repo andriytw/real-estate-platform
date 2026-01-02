@@ -1211,11 +1211,12 @@ const AccountDashboard: React.FC = () => {
           department: 'facility'
         };
         
-        // If user is a manager or worker (not super_manager), filter by their ID
-        if (worker?.role === 'manager' || worker?.role === 'worker') {
+        // ЗМІНА: Менеджери та Super Admin бачать ВСІ завдання Facility
+        // Тільки працівники бачать тільки призначені їм завдання
+        if (worker?.role === 'worker') {
           filters.workerId = worker.id;
         }
-        // For super_manager, don't filter by workerId - show all facility tasks
+        // Для manager та super_manager - не фільтруємо по workerId, показуємо всі завдання Facility
         
         const tasks = await tasksService.getAll(filters);
         console.log('✅ Loaded Facility tasks:', tasks.length);
