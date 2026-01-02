@@ -394,27 +394,7 @@ const AccountDashboard: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leads.length]); // Only depend on length, not the array itself
 
-  const [offers, setOffers] = useState<OfferData[]>([
-      { 
-        id: '101', 
-        clientName: 'TechCorp GmbH', 
-        propertyId: 'B2', 
-        internalCompany: 'Wonowo', 
-        price: '€2400', 
-        dates: '2025-11-25 to 2025-12-05', 
-        status: 'Sent', 
-        createdAt: 'Nov 20, 2025, 10:00 AM',
-        guests: '4 Guests',
-        email: 'info@techcorp.de',
-        phone: '+49 30 555000',
-        address: 'Tech Allee 1, 10115 Berlin',
-        checkInTime: '15:00',
-        checkOutTime: '11:00',
-        guestList: [{firstName: 'Mark', lastName: 'Z'}, {firstName: 'Elon', lastName: 'M'}],
-        comments: 'Requires projector in living room.',
-        unit: 'B2.Berl.H22'
-      }
-  ]);
+  const [offers, setOffers] = useState<OfferData[]>([]);
 
   const [reservations, setReservations] = useState<ReservationData[]>([]);
   const [invoices, setInvoices] = useState<InvoiceData[]>([]);
