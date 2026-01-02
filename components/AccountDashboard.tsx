@@ -2141,8 +2141,58 @@ const AccountDashboard: React.FC = () => {
   
   const handleSaveInvoice = async (invoice: InvoiceData) => {
       // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2116',message:'handleSaveInvoice called',data:{invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource,status:invoice.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      console.log('💾 handleSaveInvoice called with:', { invoiceId: invoice.id, invoiceNumber: invoice.invoiceNumber, bookingId: invoice.bookingId, bookingIdType: typeof invoice.bookingId, offerIdSource: invoice.offerIdSource, offerIdSourceType: typeof invoice.offerIdSource, status: invoice.status });
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2142',message:'handleSaveInvoice called',data:{invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber,bookingId:invoice.bookingId,bookingIdType:typeof invoice.bookingId,offerIdSource:invoice.offerIdSource,offerIdSourceType:typeof invoice.offerIdSource,status:invoice.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
       // #endregion
+      
+      // CRITICAL FIX: If bookingId is missing but offerIdSource exists, try to find the reservation
+      if (!invoice.bookingId && invoice.offerIdSource) {
+          // Try to find reservation by offerIdSource
+          const reservationByOfferId = reservations.find(r => {
+              // Try exact match
+              if (r.id === invoice.offerIdSource) return true;
+              // Try string comparison
+              if (String(r.id) === String(invoice.offerIdSource)) return true;
+              // Try UUID comparison
+              const rIdStr = String(r.id);
+              const offerIdStr = String(invoice.offerIdSource);
+              return rIdStr.toLowerCase() === offerIdStr.toLowerCase();
+          });
+          
+          if (reservationByOfferId) {
+              invoice.bookingId = reservationByOfferId.id;
+              // #region agent log
+              console.log('✅ Found reservation by offerIdSource, setting bookingId:', invoice.bookingId);
+              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2155',message:'Found reservation by offerIdSource, setting bookingId',data:{bookingId:invoice.bookingId,bookingIdType:typeof invoice.bookingId,offerIdSource:invoice.offerIdSource,reservationId:reservationByOfferId.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+              // #endregion
+          } else {
+              // Try to find reservation by matching offer's propertyId and dates
+              const linkedOffer = offers.find(o => {
+                  if (o.id === invoice.offerIdSource) return true;
+                  if (String(o.id) === String(invoice.offerIdSource)) return true;
+                  const oIdStr = String(o.id);
+                  const offerIdStr = String(invoice.offerIdSource);
+                  return oIdStr.toLowerCase() === offerIdStr.toLowerCase();
+              });
+              
+              if (linkedOffer) {
+                  const [offerStart] = linkedOffer.dates.split(' to ');
+                  const reservationByPropertyAndDate = reservations.find(r => {
+                      if (r.roomId !== linkedOffer.propertyId) return false;
+                      return r.start === offerStart || String(r.start) === String(offerStart);
+                  });
+                  
+                  if (reservationByPropertyAndDate) {
+                      invoice.bookingId = reservationByPropertyAndDate.id;
+                      // #region agent log
+                      console.log('✅ Found reservation by property and date, setting bookingId:', invoice.bookingId);
+                      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2175',message:'Found reservation by property and date, setting bookingId',data:{bookingId:invoice.bookingId,bookingIdType:typeof invoice.bookingId,offerIdSource:invoice.offerIdSource,reservationId:reservationByPropertyAndDate.id,propertyId:linkedOffer.propertyId,offerStart},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                      // #endregion
+                  }
+              }
+          }
+      }
+      
       try {
         // Check if offerIdSource exists and needs to be saved to Supabase
         if (invoice.offerIdSource) {
@@ -2298,20 +2348,26 @@ const AccountDashboard: React.FC = () => {
     
     const newStatus = invoice.status === 'Paid' ? 'Unpaid' : 'Paid';
     // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2098',message:'Toggling invoice status',data:{invoiceId,oldStatus:invoice.status,newStatus,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    console.log('🔄 toggleInvoiceStatus called:', { invoiceId, oldStatus: invoice.status, newStatus, bookingId: invoice.bookingId, offerIdSource: invoice.offerIdSource });
+    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2286',message:'Toggling invoice status',data:{invoiceId,oldStatus:invoice.status,newStatus,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
     // #endregion
     
     try {
       // Update invoice status in Supabase
       const updatedInvoice = await invoicesService.update(invoiceId, { status: newStatus });
       // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2102',message:'Invoice status updated in Supabase',data:{invoiceId,newStatus},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      console.log('✅ Invoice status updated in Supabase:', { invoiceId, newStatus });
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2292',message:'Invoice status updated in Supabase',data:{invoiceId,newStatus},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
       // #endregion
       
       // Оновити статус інвойсу в локальному стані
       setInvoices(prev => prev.map(inv => inv.id === invoiceId ? updatedInvoice : inv));
       
-      if (newStatus === 'Paid') {
+      // CRITICAL FIX: Check if tasks need to be created even if invoice is already Paid
+      // If invoice is already Paid, we should still check and create tasks if they don't exist
+      const shouldCreateTasks = newStatus === 'Paid' || (invoice.status === 'Paid' && newStatus === 'Unpaid');
+      
+      if (shouldCreateTasks && newStatus === 'Paid') {
           // Знайти пов'язану резервацію через bookingId або offerIdSource
           let linkedBooking: ReservationData | undefined;
           
