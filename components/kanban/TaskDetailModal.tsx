@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, Clock, User, CheckCircle2, Circle, Building2, Wrench, Check, Image as ImageIcon, FileVideo } from 'lucide-react';
+import { X, Calendar, Clock, User, CheckCircle2, Circle, Building2, Wrench, Check, Image as ImageIcon, FileVideo, Zap, Droplets, Flame, ClipboardList } from 'lucide-react';
 import { tasksService, workersService, propertiesService } from '../../services/supabaseService';
 import { CalendarEvent, TaskStatus, Property, Worker } from '../../types';
 import { getTaskColor } from '../../utils/taskColors';
@@ -97,6 +97,18 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       window.dispatchEvent(new CustomEvent('taskUpdated'));
     } catch (error) {
       console.error('Error updating checklist:', error);
+    }
+  };
+
+  const handleMeterReadingChange = async (field: 'electricity' | 'water' | 'gas', value: string) => {
+    if (!task) return;
+    try {
+      const updatedReadings = { ...task.meterReadings, [field]: value };
+      const updatedTask = await tasksService.update(task.id, { meterReadings: updatedReadings });
+      onUpdateTask(updatedTask);
+      window.dispatchEvent(new CustomEvent('taskUpdated'));
+    } catch (error) {
+      console.error('Error updating meter readings:', error);
     }
   };
 
@@ -342,6 +354,57 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            )}
+
+            {/* Meter Readings Checklist (Only for Einzug/Auszug/Zählerstand) - Only for workers */}
+            {isWorker && (task.type === 'Einzug' || task.type === 'Auszug' || task.type === 'Zählerstand') && (
+              <div>
+                <h3 className="text-xs font-semibold text-gray-400 mb-2 flex items-center gap-2">
+                  <ClipboardList className="w-4 h-4 text-emerald-500" />
+                  Checklist: Meter Readings
+                </h3>
+                <div className="bg-[#1C1F24] rounded-lg p-3 border border-gray-800 space-y-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 flex items-center gap-1">
+                      <Zap className="w-3 h-3 text-yellow-500" /> Electricity (kWh)
+                    </label>
+                    <input 
+                      type="text" 
+                      className="w-full bg-[#0D1117] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                      placeholder="e.g. 12345"
+                      disabled={task.status === 'archived' || task.status === 'verified'}
+                      value={task.meterReadings?.electricity || ''}
+                      onChange={(e) => handleMeterReadingChange('electricity', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 flex items-center gap-1">
+                      <Droplets className="w-3 h-3 text-blue-500" /> Water (m³)
+                    </label>
+                    <input 
+                      type="text" 
+                      className="w-full bg-[#0D1117] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                      placeholder="e.g. 543"
+                      disabled={task.status === 'archived' || task.status === 'verified'}
+                      value={task.meterReadings?.water || ''}
+                      onChange={(e) => handleMeterReadingChange('water', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 flex items-center gap-1">
+                      <Flame className="w-3 h-3 text-orange-500" /> Gas (m³)
+                    </label>
+                    <input 
+                      type="text" 
+                      className="w-full bg-[#0D1117] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                      placeholder="e.g. 890"
+                      disabled={task.status === 'archived' || task.status === 'verified'}
+                      value={task.meterReadings?.gas || ''}
+                      onChange={(e) => handleMeterReadingChange('gas', e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
             )}

@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, ChevronDown, Calendar as CalendarIcon, X, Check, Building, Clock, CheckCircle2, MoreHorizontal, User, AlignLeft, Tag, LayoutGrid, List, Filter, Paperclip, Send, Image as ImageIcon, FileText, Mail, ClipboardList, Loader, CheckSquare, ArrowUpDown, Layers, Archive, History, ShieldCheck, Hammer, Zap, Droplets, Flame } from 'lucide-react';
+import { Plus, ChevronDown, Calendar as CalendarIcon, X, Check, Building, Clock, CheckCircle2, MoreHorizontal, User, AlignLeft, Tag, LayoutGrid, List, Filter, Paperclip, Send, Image as ImageIcon, FileText, Mail, ClipboardList, Loader, CheckSquare, ArrowUpDown, Layers, Archive, History, ShieldCheck, Hammer } from 'lucide-react';
 import { MOCK_PROPERTIES } from '../constants';
 import { CalendarEvent, TaskType, TaskStatus, Property, BookingStatus, Worker } from '../types';
 import { updateBookingStatusFromTask } from '../bookingUtils';
@@ -434,15 +434,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       };
       setTaskMessages([...taskMessages, newMsg]);
     }
-  };
-
-  const handleMeterReadingChange = (field: 'electricity' | 'water' | 'gas', value: string) => {
-      if (!viewEvent) return;
-      const updatedReadings = { ...viewEvent.meterReadings, [field]: value };
-      const updatedEvent = { ...viewEvent, meterReadings: updatedReadings };
-      setViewEvent(updatedEvent);
-      onUpdateEvent(updatedEvent);
-      window.dispatchEvent(new CustomEvent('taskUpdated'));
   };
 
   const selectedDayEvents = selectedDay ? getEventsForDay(selectedDay) : [];
@@ -963,57 +954,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                   <div className="w-1/3 border-r border-gray-700 p-6 overflow-y-auto bg-[#161B22]">
                      <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-6">Task Details</h4>
                      
-                     {/* --- METER READING CHECKLIST (Only for Einzug/Auszug/Zählerstand) --- */}
-                     {(viewEvent.type === 'Einzug' || viewEvent.type === 'Auszug' || viewEvent.type === 'Zählerstand') && (
-                        <div className="mb-6 bg-[#0D1117] border border-gray-700 rounded-lg p-4 shadow-inner">
-                           <h5 className="text-xs font-bold text-white mb-3 flex items-center gap-2">
-                              <ClipboardList className="w-4 h-4 text-emerald-500" />
-                              Checklist: Meter Readings
-                           </h5>
-                           <div className="space-y-3">
-                              <div>
-                                 <label className="text-[10px] font-bold text-gray-500 mb-1 flex items-center gap-1">
-                                    <Zap className="w-3 h-3 text-yellow-500" /> Electricity (kWh)
-                                 </label>
-                                 <input 
-                                    type="text" 
-                                    className="w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:border-emerald-500 focus:outline-none disabled:opacity-50"
-                                    placeholder="e.g. 12345"
-                                    disabled={viewEvent.status === 'archived'}
-                                    value={viewEvent.meterReadings?.electricity || ''}
-                                    onChange={(e) => handleMeterReadingChange('electricity', e.target.value)}
-                                 />
-                              </div>
-                              <div>
-                                 <label className="text-[10px] font-bold text-gray-500 mb-1 flex items-center gap-1">
-                                    <Droplets className="w-3 h-3 text-blue-500" /> Water (m³)
-                                 </label>
-                                 <input 
-                                    type="text" 
-                                    className="w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:border-emerald-500 focus:outline-none disabled:opacity-50"
-                                    placeholder="e.g. 543"
-                                    disabled={viewEvent.status === 'archived'}
-                                    value={viewEvent.meterReadings?.water || ''}
-                                    onChange={(e) => handleMeterReadingChange('water', e.target.value)}
-                                 />
-                              </div>
-                              <div>
-                                 <label className="text-[10px] font-bold text-gray-500 mb-1 flex items-center gap-1">
-                                    <Flame className="w-3 h-3 text-orange-500" /> Gas (m³)
-                                 </label>
-                                 <input 
-                                    type="text" 
-                                    className="w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:border-emerald-500 focus:outline-none disabled:opacity-50"
-                                    placeholder="e.g. 890"
-                                    disabled={viewEvent.status === 'archived'}
-                                    value={viewEvent.meterReadings?.gas || ''}
-                                    onChange={(e) => handleMeterReadingChange('gas', e.target.value)}
-                                 />
-                              </div>
-                           </div>
-                        </div>
-                     )}
-
                      {/* --- INVENTORY LIST FOR TRANSFER TASKS --- */}
                      {(() => {
                        try {
