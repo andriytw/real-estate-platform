@@ -1060,6 +1060,10 @@ export const tasksService = {
   },
 
   async update(id: string, updates: Partial<CalendarEvent>): Promise<CalendarEvent> {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1062',message:'tasksService.update called',data:{taskId:id,updates:{workerId:updates.workerId,status:updates.status,bookingId:updates.bookingId}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+    
     const dbData = transformCalendarEventToDB(updates as CalendarEvent);
     // Remove undefined fields to avoid overwriting with null if not intended
     Object.keys(dbData).forEach(key => dbData[key] === undefined && delete dbData[key]);
@@ -1072,7 +1076,13 @@ export const tasksService = {
       .single();
     
     if (error) throw error;
-    return transformCalendarEventFromDB(data);
+    
+    // #region agent log
+    const result = transformCalendarEventFromDB(data);
+    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1075',message:'tasksService.update completed',data:{taskId:result.id,taskType:result.type,bookingId:result.bookingId,workerId:result.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+    
+    return result;
   },
 
   async delete(id: string): Promise<void> {
@@ -1842,6 +1852,7 @@ function transformCalendarEventFromDB(db: any): CalendarEvent {
     hasUnreadMessage: db.has_unread_message || false,
     status: db.status,
     meterReadings: db.meter_readings,
+    workflowSteps: db.workflow_steps || undefined,
     // Kanban fields
     priority: db.priority || 'medium',
     isIssue: db.is_issue || false,
@@ -1872,6 +1883,7 @@ function transformCalendarEventToDB(event: CalendarEvent): any {
     has_unread_message: event.hasUnreadMessage,
     status: event.status,
     meter_readings: event.meterReadings,
+    workflow_steps: event.workflowSteps,
     // Kanban fields
     priority: event.priority,
     is_issue: event.isIssue,
@@ -1883,3 +1895,98 @@ function transformCalendarEventToDB(event: CalendarEvent): any {
     location_text: event.locationText,
   };
 }
+
+// ==================== FILE UPLOAD FOR EINZUG/AUSZUG ====================
+export const fileUploadService = {
+  /**
+   * Upload file to Supabase Storage for Einzug/Auszug tasks
+   * @param file - File to upload
+   * @param propertyId - Property ID where check-in/check-out happens
+   * @param taskType - 'Einzug' or 'Auszug'
+   * @param date - Date of check-in/check-out (format: DD.MM.YYYY)
+   * @param companyName - Company/tenant name
+   * @param stepNumber - Step number (1, 2, or 3)
+   * @param stepName - Step name (e.g., 'keys', 'before_photos', 'meter_readings')
+   * @returns Public URL of uploaded file
+   */
+  async uploadTaskFile(
+    file: File,
+    propertyId: string,
+    taskType: 'Einzug' | 'Auszug',
+    date: string, // Format: DD.MM.YYYY
+    companyName: string,
+    stepNumber: number,
+    stepName: string
+  ): Promise<string> {
+    const bucket = 'property-files';
+    const folderName = `${date} - ${companyName}`;
+    const stepFolder = `step${stepNumber}_${stepName}`;
+    const filePath = `${propertyId}/${taskType}/${folderName}/${stepFolder}/${Date.now()}-${file.name}`;
+
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (error) {
+      console.error('Error uploading file:', error);
+      throw error;
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(filePath);
+
+    return urlData.publicUrl;
+  },
+
+  /**
+   * List files in a property's Einzug/Auszug folder
+   * @param propertyId - Property ID
+   * @param taskType - 'Einzug' or 'Auszug'
+   * @param folderName - Folder name (e.g., '07.01.2026 - Сотісо')
+   * @returns Array of file paths
+   */
+  async listTaskFiles(
+    propertyId: string,
+    taskType: 'Einzug' | 'Auszug',
+    folderName?: string
+  ): Promise<string[]> {
+    const bucket = 'property-files';
+    let path = `${propertyId}/${taskType}`;
+    if (folderName) {
+      path += `/${folderName}`;
+    }
+
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .list(path, {
+        limit: 100,
+        offset: 0,
+        sortBy: { column: 'created_at', order: 'desc' }
+      });
+
+    if (error) {
+      console.error('Error listing files:', error);
+      throw error;
+    }
+
+    return data.map(file => `${path}/${file.name}`);
+  },
+
+  /**
+   * Get public URL for a file
+   * @param filePath - Full path to file in storage
+   * @returns Public URL
+   */
+  getPublicUrl(filePath: string): string {
+    const bucket = 'property-files';
+    const { data } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(filePath);
+    return data.publicUrl;
+  }
+};

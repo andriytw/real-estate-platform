@@ -429,6 +429,21 @@ export type TaskStatus = 'open' | 'assigned' | 'done_by_worker' | 'verified' | '
 
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 
+export interface TaskWorkflowStep {
+  stepNumber: number;
+  stepName: string;
+  completed: boolean;
+  photos: string[];
+  videos: string[];
+  comment?: string;
+  meterReadings?: {
+    electricity: string;
+    water: string;
+    gas: string;
+  };
+  completedAt?: string;
+}
+
 export interface CalendarEvent {
   id: string;
   title: string; 
@@ -461,6 +476,7 @@ export interface CalendarEvent {
   checklist?: Array<{text: string; checked: boolean}>;
   locationText?: string;
   createdAt?: string; // Date when task was created (for sorting), optional for backward compatibility
+  workflowSteps?: TaskWorkflowStep[]; // Step-by-step workflow data for Einzug/Auszug tasks
 }
 
 export interface TaskWorkflow {

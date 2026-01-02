@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame } from 'lucide-react';
+import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 import AdminCalendar from './AdminCalendar';
 import AdminMessages from './AdminMessages';
@@ -111,6 +111,32 @@ const AccountDashboard: React.FC = () => {
   const [properties, setProperties] = useState<Property[]>([]);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
   const [isLoadingProperties, setIsLoadingProperties] = useState(true);
+  const [selectedDocumentFolder, setSelectedDocumentFolder] = useState<string>('Договори');
+  const [einzugAuszugTasks, setEinzugAuszugTasks] = useState<CalendarEvent[]>([]);
+
+  // Load Einzug/Auszug tasks for selected property
+  useEffect(() => {
+    const loadEinzugAuszugTasks = async () => {
+      if (!selectedPropertyId) {
+        setEinzugAuszugTasks([]);
+        return;
+      }
+
+      try {
+        const allTasks = await tasksService.getAll();
+        const propertyTasks = allTasks.filter(
+          task => task.propertyId === selectedPropertyId && 
+                  (task.type === 'Einzug' || task.type === 'Auszug')
+        );
+        setEinzugAuszugTasks(propertyTasks);
+      } catch (error) {
+        console.error('Error loading Einzug/Auszug tasks:', error);
+        setEinzugAuszugTasks([]);
+      }
+    };
+
+    loadEinzugAuszugTasks();
+  }, [selectedPropertyId]);
 
   // Load properties from Supabase
   useEffect(() => {
@@ -3453,29 +3479,180 @@ const AccountDashboard: React.FC = () => {
                     <h2 className="text-xl font-bold text-white">8. Документи</h2>
                     <button className="text-gray-400 text-xs hover:text-white">Редагувати</button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-[300px]">
-                    <div className="border border-gray-700 rounded-lg bg-[#16181D] p-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-[400px]">
+                    <div className="border border-gray-700 rounded-lg bg-[#16181D] p-4 overflow-y-auto">
                         <h4 className="text-sm font-bold text-white mb-2 border-b border-gray-700 pb-2">Навігація</h4>
                         <ul className="space-y-1 text-sm text-gray-400">
-                            <li className="flex items-center gap-2 p-1.5 bg-[#1C1F24] rounded text-emerald-500 font-bold"><FolderOpen className="w-4 h-4"/> Договори (3)</li>
-                            <li className="flex items-center gap-2 p-1.5 hover:bg-[#1C1F24] rounded transition-colors ml-4"><Folder className="w-4 h-4 text-yellow-500"/> Актуальний (1)</li>
-                            <li className="flex items-center gap-2 p-1.5 hover:bg-[#1C1F24] rounded transition-colors"><Folder className="w-4 h-4 text-yellow-500"/> Рахунки (15)</li>
+                            <li 
+                                onClick={() => setSelectedDocumentFolder('Договори')}
+                                className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition-colors ${
+                                    selectedDocumentFolder === 'Договори' 
+                                        ? 'bg-[#1C1F24] text-emerald-500 font-bold' 
+                                        : 'hover:bg-[#1C1F24]'
+                                }`}
+                            >
+                                <FolderOpen className="w-4 h-4"/> Договори (3)
+                            </li>
+                            <li 
+                                onClick={() => setSelectedDocumentFolder('Актуальний')}
+                                className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition-colors ml-4 ${
+                                    selectedDocumentFolder === 'Актуальний' 
+                                        ? 'bg-[#1C1F24] text-emerald-500 font-bold' 
+                                        : 'hover:bg-[#1C1F24]'
+                                }`}
+                            >
+                                <Folder className="w-4 h-4 text-yellow-500"/> Актуальний (1)
+                            </li>
+                            <li 
+                                onClick={() => setSelectedDocumentFolder('Рахунки')}
+                                className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition-colors ${
+                                    selectedDocumentFolder === 'Рахунки' 
+                                        ? 'bg-[#1C1F24] text-emerald-500 font-bold' 
+                                        : 'hover:bg-[#1C1F24]'
+                                }`}
+                            >
+                                <Folder className="w-4 h-4 text-yellow-500"/> Рахунки (15)
+                            </li>
+                            
+                            {/* Einzug Folder */}
+                            {einzugAuszugTasks.filter(t => t.type === 'Einzug').length > 0 && (
+                                <li className="mt-2">
+                                    <div className="flex items-center gap-2 p-1.5 text-emerald-500 font-bold">
+                                        <FolderOpen className="w-4 h-4"/> Einzug ({einzugAuszugTasks.filter(t => t.type === 'Einzug').length})
+                                    </div>
+                                    <ul className="ml-4 space-y-1 mt-1">
+                                        {einzugAuszugTasks
+                                            .filter(t => t.type === 'Einzug')
+                                            .map(task => {
+                                                const date = task.date ? (() => {
+                                                    const d = new Date(task.date);
+                                                    const day = d.getDate().toString().padStart(2, '0');
+                                                    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+                                                    const year = d.getFullYear();
+                                                    return `${day}.${month}.${year}`;
+                                                })() : '';
+                                                // Get company name from booking or property
+                                                const folderName = task.bookingId 
+                                                    ? `${date} - ${task.title.split(' - ')[1] || 'Unknown'}`
+                                                    : `${date} - ${selectedProperty?.address || 'Unknown'}`;
+                                                
+                                                return (
+                                                    <li
+                                                        key={task.id}
+                                                        onClick={() => setSelectedDocumentFolder(`Einzug-${task.id}`)}
+                                                        className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition-colors ${
+                                                            selectedDocumentFolder === `Einzug-${task.id}`
+                                                                ? 'bg-[#1C1F24] text-emerald-400 font-bold'
+                                                                : 'hover:bg-[#1C1F24] text-gray-400'
+                                                        }`}
+                                                    >
+                                                        <Folder className="w-3 h-3 text-yellow-500"/> {folderName}
+                                                    </li>
+                                                );
+                                            })}
+                                    </ul>
+                                </li>
+                            )}
+
+                            {/* Auszug Folder */}
+                            {einzugAuszugTasks.filter(t => t.type === 'Auszug').length > 0 && (
+                                <li className="mt-2">
+                                    <div className="flex items-center gap-2 p-1.5 text-emerald-500 font-bold">
+                                        <FolderOpen className="w-4 h-4"/> Auszug ({einzugAuszugTasks.filter(t => t.type === 'Auszug').length})
+                                    </div>
+                                    <ul className="ml-4 space-y-1 mt-1">
+                                        {einzugAuszugTasks
+                                            .filter(t => t.type === 'Auszug')
+                                            .map(task => {
+                                                const date = task.date ? (() => {
+                                                    const d = new Date(task.date);
+                                                    const day = d.getDate().toString().padStart(2, '0');
+                                                    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+                                                    const year = d.getFullYear();
+                                                    return `${day}.${month}.${year}`;
+                                                })() : '';
+                                                const folderName = task.bookingId 
+                                                    ? `${date} - ${task.title.split(' - ')[1] || 'Unknown'}`
+                                                    : `${date} - ${selectedProperty?.address || 'Unknown'}`;
+                                                
+                                                return (
+                                                    <li
+                                                        key={task.id}
+                                                        onClick={() => setSelectedDocumentFolder(`Auszug-${task.id}`)}
+                                                        className={`flex items-center gap-2 p-1.5 rounded cursor-pointer transition-colors ${
+                                                            selectedDocumentFolder === `Auszug-${task.id}`
+                                                                ? 'bg-[#1C1F24] text-emerald-400 font-bold'
+                                                                : 'hover:bg-[#1C1F24] text-gray-400'
+                                                        }`}
+                                                    >
+                                                        <Folder className="w-3 h-3 text-yellow-500"/> {folderName}
+                                                    </li>
+                                                );
+                                            })}
+                                    </ul>
+                                </li>
+                            )}
                         </ul>
                     </div>
-                    <div className="border border-gray-700 rounded-lg bg-[#16181D] p-4">
+                    <div className="border border-gray-700 rounded-lg bg-[#16181D] p-4 overflow-y-auto">
                         <div className="flex justify-between items-center mb-2 border-b border-gray-700 pb-2">
-                            <h4 className="text-sm font-bold text-white">Файли в "Договори"</h4>
+                            <h4 className="text-sm font-bold text-white">
+                                {selectedDocumentFolder.startsWith('Einzug-') || selectedDocumentFolder.startsWith('Auszug-') 
+                                    ? `Файли в "${selectedDocumentFolder.split('-')[0]}"`
+                                    : `Файли в "${selectedDocumentFolder}"`}
+                            </h4>
                             <button className="text-emerald-500 hover:text-emerald-400"><Upload className="w-4 h-4"/></button>
                         </div>
                         <ul className="space-y-2 text-sm">
-                            <li className="flex justify-between items-center p-2 bg-[#1C1F24] rounded border border-gray-700">
-                                <span className="flex items-center gap-2 text-white"><FileIcon className="w-4 h-4 text-red-500"/> Договір_Іванов.pdf</span>
-                                <span className="text-xs text-gray-500">1.2 MB</span>
-                            </li>
-                            <li className="flex justify-between items-center p-2 hover:bg-[#1C1F24] rounded transition-colors">
-                                <span className="flex items-center gap-2 text-gray-300"><FileIcon className="w-4 h-4 text-red-500"/> Акт_Прийому.pdf</span>
-                                <span className="text-xs text-gray-500">0.8 MB</span>
-                            </li>
+                            {(selectedDocumentFolder.startsWith('Einzug-') || selectedDocumentFolder.startsWith('Auszug-')) ? (
+                                (() => {
+                                    const taskId = selectedDocumentFolder.split('-')[1];
+                                    const task = einzugAuszugTasks.find(t => t.id === taskId);
+                                    if (!task || !task.workflowSteps) {
+                                        return <li className="text-gray-500 text-center py-4">Немає файлів</li>;
+                                    }
+                                    
+                                    // Collect all files from workflow steps
+                                    const allFiles: Array<{url: string; step: number; stepName: string; isVideo: boolean}> = [];
+                                    task.workflowSteps.forEach(step => {
+                                        step.photos.forEach(url => allFiles.push({url, step: step.stepNumber, stepName: step.stepName, isVideo: false}));
+                                        step.videos.forEach(url => allFiles.push({url, step: step.stepNumber, stepName: step.stepName, isVideo: true}));
+                                    });
+
+                                    if (allFiles.length === 0) {
+                                        return <li className="text-gray-500 text-center py-4">Немає файлів</li>;
+                                    }
+
+                                    return allFiles.map((file, idx) => (
+                                        <li key={idx} className="flex justify-between items-center p-2 bg-[#1C1F24] rounded border border-gray-700 hover:bg-[#23262b] transition-colors">
+                                            <a 
+                                                href={file.url} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                className="flex items-center gap-2 text-white hover:text-emerald-400 transition-colors"
+                                            >
+                                                {file.isVideo ? (
+                                                    <Video className="w-4 h-4 text-blue-500" />
+                                                ) : (
+                                                    <FileIcon className="w-4 h-4 text-red-500" />
+                                                )}
+                                                <span className="text-xs">Крок {file.step}: {file.stepName}</span>
+                                            </a>
+                                        </li>
+                                    ));
+                                })()
+                            ) : (
+                                <>
+                                    <li className="flex justify-between items-center p-2 bg-[#1C1F24] rounded border border-gray-700">
+                                        <span className="flex items-center gap-2 text-white"><FileIcon className="w-4 h-4 text-red-500"/> Договір_Іванов.pdf</span>
+                                        <span className="text-xs text-gray-500">1.2 MB</span>
+                                    </li>
+                                    <li className="flex justify-between items-center p-2 hover:bg-[#1C1F24] rounded transition-colors">
+                                        <span className="flex items-center gap-2 text-gray-300"><FileIcon className="w-4 h-4 text-red-500"/> Акт_Прийому.pdf</span>
+                                        <span className="text-xs text-gray-500">0.8 MB</span>
+                                    </li>
+                                </>
+                            )}
                         </ul>
                     </div>
                 </div>

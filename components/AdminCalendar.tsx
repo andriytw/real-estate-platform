@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, ChevronDown, Calendar as CalendarIcon, X, Check, Building, Clock, CheckCircle2, MoreHorizontal, User, AlignLeft, Tag, LayoutGrid, List, Filter, Paperclip, Send, Image as ImageIcon, FileText, Mail, ClipboardList, Loader, CheckSquare, ArrowUpDown, Layers, Archive, History, ShieldCheck, Hammer } from 'lucide-react';
+import { Plus, ChevronDown, Calendar as CalendarIcon, X, Check, Building, Clock, CheckCircle2, MoreHorizontal, User, AlignLeft, Tag, LayoutGrid, List, Filter, Paperclip, Send, Image as ImageIcon, FileText, Mail, ClipboardList, Loader, CheckSquare, ArrowUpDown, Layers, Archive, History, ShieldCheck, Hammer, Video } from 'lucide-react';
 import { MOCK_PROPERTIES } from '../constants';
 import { CalendarEvent, TaskType, TaskStatus, Property, BookingStatus, Worker } from '../types';
 import { updateBookingStatusFromTask } from '../bookingUtils';
@@ -1064,6 +1064,133 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                        </div>
                      )}
 
+                     {/* --- WORKFLOW STEPS FOR EINZUG/AUSZUG --- */}
+                     {viewEvent.workflowSteps && viewEvent.workflowSteps.length > 0 && (viewEvent.type === 'Einzug' || viewEvent.type === 'Auszug') && (
+                       <div className="mb-6 bg-[#0D1117] border border-gray-700 rounded-lg p-4">
+                         <h5 className="text-xs font-bold text-white mb-4 flex items-center gap-2">
+                           <ClipboardList className="w-4 h-4 text-emerald-500" />
+                           Workflow Steps ({viewEvent.type})
+                         </h5>
+                         <div className="space-y-4">
+                           {viewEvent.workflowSteps.map((step, stepIdx) => (
+                             <div key={stepIdx} className="border border-gray-800 rounded-lg p-3 bg-[#161B22]">
+                               <div className="flex items-center justify-between mb-2">
+                                 <div className="flex items-center gap-2">
+                                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                                     step.completed 
+                                       ? 'bg-emerald-600 text-white' 
+                                       : 'bg-gray-700 text-gray-400'
+                                   }`}>
+                                     {step.completed ? <CheckSquare className="w-4 h-4" /> : step.stepNumber}
+                                   </div>
+                                   <span className="text-sm font-bold text-white">{step.stepName}</span>
+                                 </div>
+                                 {step.completedAt && (
+                                   <span className="text-xs text-gray-500">
+                                     {new Date(step.completedAt).toLocaleString('uk-UA', { 
+                                       day: '2-digit', 
+                                       month: '2-digit', 
+                                       year: 'numeric',
+                                       hour: '2-digit',
+                                       minute: '2-digit'
+                                     })}
+                                   </span>
+                                 )}
+                               </div>
+
+                               {/* Photos */}
+                               {step.photos.length > 0 && (
+                                 <div className="mb-2">
+                                   <label className="text-xs text-gray-500 mb-1 block">Photos:</label>
+                                   <div className="grid grid-cols-3 gap-2">
+                                     {step.photos.map((url, photoIdx) => (
+                                       <a
+                                         key={photoIdx}
+                                         href={url}
+                                         target="_blank"
+                                         rel="noreferrer"
+                                         className="block group"
+                                       >
+                                         <div className="aspect-square bg-black/40 rounded-lg overflow-hidden border border-gray-800 group-hover:border-blue-500 transition-colors">
+                                           <img
+                                             src={url}
+                                             alt={`Step ${step.stepNumber} photo ${photoIdx + 1}`}
+                                             className="w-full h-full object-cover"
+                                             onError={(e) => {
+                                               (e.target as HTMLImageElement).style.display = 'none';
+                                             }}
+                                           />
+                                         </div>
+                                       </a>
+                                     ))}
+                                   </div>
+                                 </div>
+                               )}
+
+                               {/* Videos */}
+                               {step.videos.length > 0 && (
+                                 <div className="mb-2">
+                                   <label className="text-xs text-gray-500 mb-1 block">Videos:</label>
+                                   <div className="grid grid-cols-3 gap-2">
+                                     {step.videos.map((url, videoIdx) => (
+                                       <a
+                                         key={videoIdx}
+                                         href={url}
+                                         target="_blank"
+                                         rel="noreferrer"
+                                         className="block group"
+                                       >
+                                         <div className="aspect-square bg-black/40 rounded-lg overflow-hidden border border-gray-800 group-hover:border-blue-500 transition-colors flex items-center justify-center">
+                                           <Video className="w-6 h-6 text-blue-500" />
+                                         </div>
+                                       </a>
+                                     ))}
+                                   </div>
+                                 </div>
+                               )}
+
+                               {/* Meter Readings */}
+                               {step.meterReadings && (
+                                 <div className="mb-2">
+                                   <label className="text-xs text-gray-500 mb-1 block">Meter Readings:</label>
+                                   <div className="grid grid-cols-3 gap-2 text-xs">
+                                     {step.meterReadings.electricity && (
+                                       <div className="bg-[#0D1117] p-2 rounded border border-gray-800">
+                                         <div className="text-gray-500">Electricity</div>
+                                         <div className="text-white font-bold">{step.meterReadings.electricity} kWh</div>
+                                       </div>
+                                     )}
+                                     {step.meterReadings.water && (
+                                       <div className="bg-[#0D1117] p-2 rounded border border-gray-800">
+                                         <div className="text-gray-500">Water</div>
+                                         <div className="text-white font-bold">{step.meterReadings.water} m³</div>
+                                       </div>
+                                     )}
+                                     {step.meterReadings.gas && (
+                                       <div className="bg-[#0D1117] p-2 rounded border border-gray-800">
+                                         <div className="text-gray-500">Gas</div>
+                                         <div className="text-white font-bold">{step.meterReadings.gas} m³</div>
+                                       </div>
+                                     )}
+                                   </div>
+                                 </div>
+                               )}
+
+                               {/* Comment */}
+                               {step.comment && (
+                                 <div className="mb-2">
+                                   <label className="text-xs text-gray-500 mb-1 block">Comment:</label>
+                                   <p className="text-sm text-gray-300 bg-[#0D1117] p-2 rounded border border-gray-800">
+                                     {step.comment}
+                                   </p>
+                                 </div>
+                               )}
+                             </div>
+                           ))}
+                         </div>
+                       </div>
+                     )}
+
                      <div className={`space-y-6 ${viewEvent.status === 'archived' ? 'opacity-60' : ''}`}>
                         <div>
                            <label className="text-xs text-gray-500 font-medium block mb-1">Date & Time</label>
@@ -1087,12 +1214,20 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                       // Оновити статус: якщо призначається працівник і статус open/pending → assigned
                                       const newStatus = (newWorkerId && (viewEvent.status === 'open' || viewEvent.status === 'pending')) ? 'assigned' : viewEvent.status;
                                       
+                                      // #region agent log
+                                      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:1084',message:'Assigning worker to task',data:{taskId:viewEvent.id,taskType:viewEvent.type,bookingId:viewEvent.bookingId,newWorkerId,currentWorkerId:viewEvent.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                                      // #endregion
+                                      
                                       try {
                                           // Update in database
                                           const updated = await tasksService.update(viewEvent.id, {
                                               workerId: newWorkerId,
                                               status: newStatus
                                           });
+                                          
+                                          // #region agent log
+                                          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:1092',message:'Task updated in DB',data:{taskId:updated.id,taskType:updated.type,bookingId:updated.bookingId,workerId:updated.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                                          // #endregion
                                           
                                           // Find worker name for display
                                           const worker = workers.find(w => w.id === newWorkerId);
@@ -1101,6 +1236,10 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                               assignee: worker?.name,
                                               assignedWorkerId: newWorkerId
                                           };
+                                          
+                                          // #region agent log
+                                          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:1105',message:'Calling onUpdateEvent',data:{taskId:updatedWithName.id,taskType:updatedWithName.type,bookingId:updatedWithName.bookingId,workerId:updatedWithName.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                                          // #endregion
                                           
                                           onUpdateEvent(updatedWithName);
                                           setViewEvent(updatedWithName);
