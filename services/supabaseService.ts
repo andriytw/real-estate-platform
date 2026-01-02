@@ -1367,13 +1367,21 @@ export const invoicesService = {
 
   async create(invoice: Omit<InvoiceData, 'id'>): Promise<InvoiceData> {
     const dbData = transformInvoiceToDB(invoice);
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1368',message:'invoicesService.create called',data:{invoiceNumber:invoice.invoiceNumber,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource,dbData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     const { data, error } = await supabase
       .from('invoices')
       .insert([dbData])
       .select()
       .single();
     
-    if (error) throw error;
+    if (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1376',message:'Error inserting invoice to Supabase',data:{error:error.message,errorCode:error.code,errorDetails:error.details,errorHint:error.hint,dbData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      throw error;
+    }
     return transformInvoiceFromDB(data);
   },
 
@@ -1753,6 +1761,14 @@ function transformInvoiceFromDB(db: any): InvoiceData {
 }
 
 function transformInvoiceToDB(invoice: InvoiceData): any {
+  // Convert bookingId and offerIdSource to UUID format if they exist
+  // If they are numbers or invalid UUIDs, set to null to avoid foreign key errors
+  const isValidUUID = (str: string | number | undefined): boolean => {
+    if (!str) return false;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(String(str));
+  };
+  
   return {
     invoice_number: invoice.invoiceNumber,
     date: invoice.date,
@@ -1765,8 +1781,8 @@ function transformInvoiceToDB(invoice: InvoiceData): any {
     tax_amount: invoice.taxAmount,
     total_gross: invoice.totalGross,
     status: invoice.status,
-    offer_id: invoice.offerIdSource,
-    booking_id: invoice.bookingId,
+    offer_id: invoice.offerIdSource && isValidUUID(invoice.offerIdSource) ? invoice.offerIdSource : null,
+    booking_id: invoice.bookingId && isValidUUID(invoice.bookingId) ? invoice.bookingId : null,
   };
 }
 

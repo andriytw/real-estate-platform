@@ -2085,12 +2085,14 @@ const AccountDashboard: React.FC = () => {
           // #region agent log
           fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2060',message:'Updating existing invoice in Supabase',data:{invoiceId:invoice.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
           // #endregion
-          savedInvoice = await invoicesService.update(invoice.id, invoice);
+          savedInvoice = await invoicesService.update(String(invoice.id), invoice);
         } else {
           // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2064',message:'Creating new invoice in Supabase',data:{invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2064',message:'Creating new invoice in Supabase',data:{invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
           // #endregion
-          savedInvoice = await invoicesService.create(invoice);
+          // Remove id before creating (database will generate UUID)
+          const { id, ...invoiceWithoutId } = invoice;
+          savedInvoice = await invoicesService.create(invoiceWithoutId);
         }
         
         // #region agent log
@@ -2130,12 +2132,15 @@ const AccountDashboard: React.FC = () => {
         setSelectedInvoice(null);
         setActiveDepartment('accounting');
         setAccountingTab('invoices');
-      } catch (error) {
+      } catch (error: any) {
         // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2095',message:'Error saving invoice to Supabase',data:{error:String(error),invoiceId:invoice.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        const errorDetails = error?.message || error?.code || String(error);
+        const errorData = error?.details || error?.hint || error;
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2095',message:'Error saving invoice to Supabase',data:{error:errorDetails,errorCode:error?.code,errorMessage:error?.message,errorDetails:errorData,invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
         console.error('Error saving invoice:', error);
-        alert('Failed to save invoice. Please try again.');
+        const errorMessage = error?.message || error?.code || 'Unknown error';
+        alert(`Failed to save invoice: ${errorMessage}. Please try again.`);
       }
   };
 
