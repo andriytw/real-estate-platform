@@ -1219,7 +1219,11 @@ const AccountDashboard: React.FC = () => {
         
         const tasks = await tasksService.getAll(filters);
         console.log('✅ Loaded Facility tasks:', tasks.length);
-        console.log('📋 All tasks:', tasks.map(t => ({ id: t.id, title: t.title, workerId: t.workerId, department: t.department, bookingId: t.bookingId })));
+        console.log('📋 All tasks:', tasks.map(t => ({ id: t.id, title: t.title, workerId: t.workerId, department: t.department, bookingId: t.bookingId, bookingIdType: typeof t.bookingId, type: t.type })));
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1240',message:'Loaded Facility tasks from database',data:{tasksCount:tasks.length,tasks:tasks.map(t=>({id:t.id,type:t.type,bookingId:t.bookingId,bookingIdType:typeof t.bookingId,title:t.title,workerId:t.workerId,department:t.department})),filters},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
+        // #endregion
         
         // Filter out ONLY tasks with temporary "auto-task-*" IDs
         // These should not exist in database, but if they do, filter them out
@@ -2282,22 +2286,58 @@ const AccountDashboard: React.FC = () => {
           // #endregion
           
           if (invoice.bookingId) {
-              linkedBooking = reservations.find(r => r.id === invoice.bookingId || String(r.id) === String(invoice.bookingId));
+              // Enhanced booking search - try multiple matching strategies
+              linkedBooking = reservations.find(r => {
+                // Try exact match
+                if (r.id === invoice.bookingId) return true;
+                // Try string comparison
+                if (String(r.id) === String(invoice.bookingId)) return true;
+                // Try UUID comparison (both as strings, case-insensitive)
+                const rIdStr = String(r.id);
+                const bookingIdStr = String(invoice.bookingId);
+                return rIdStr.toLowerCase() === bookingIdStr.toLowerCase();
+              });
+              
               // #region agent log
-              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2114',message:'Searched for booking by bookingId',data:{bookingId:invoice.bookingId,found:!!linkedBooking,linkedBookingId:linkedBooking?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2284',message:'Searched for booking by bookingId',data:{bookingId:invoice.bookingId,bookingIdType:typeof invoice.bookingId,reservationsCount:reservations.length,reservationIds:reservations.map(r=>({id:r.id,idType:typeof r.id})),found:!!linkedBooking,linkedBookingId:linkedBooking?.id,linkedBookingIdType:typeof linkedBooking?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
               // #endregion
           }
           
           if (!linkedBooking) {
-              const linkedOffer = offers.find(o => o.id === invoice.offerIdSource || o.id === String(invoice.offerIdSource));
+              // Enhanced offer search - try multiple matching strategies
+              const linkedOffer = offers.find(o => {
+                // Try exact match
+                if (o.id === invoice.offerIdSource) return true;
+                // Try string comparison
+                if (String(o.id) === String(invoice.offerIdSource)) return true;
+                // Try UUID comparison (both as strings)
+                const oIdStr = String(o.id);
+                const offerIdStr = String(invoice.offerIdSource);
+                return oIdStr.toLowerCase() === offerIdStr.toLowerCase();
+              });
+              
               // #region agent log
-              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2120',message:'Searched for offer by offerIdSource',data:{offerIdSource:invoice.offerIdSource,found:!!linkedOffer,linkedOfferId:linkedOffer?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2292',message:'Searched for offer by offerIdSource',data:{offerIdSource:invoice.offerIdSource,offerIdSourceType:typeof invoice.offerIdSource,offersCount:offers.length,offerIds:offers.map(o=>({id:o.id,idType:typeof o.id})),found:!!linkedOffer,linkedOfferId:linkedOffer?.id,linkedOfferIdType:typeof linkedOffer?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
               // #endregion
+              
               if (linkedOffer) {
                   // Конвертувати offer в booking для створення тасок
                   const [start, end] = linkedOffer.dates.split(' to ');
+                  
+                  // Fix: Use offer.id directly if it's a valid UUID, don't convert to number
+                  const isValidUUID = (str: string | number | undefined): boolean => {
+                    if (!str) return false;
+                    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                    return uuidRegex.test(String(str));
+                  };
+                  
+                  // Use the offer's ID directly (preserve UUID if it's a UUID, or use as-is)
+                  const bookingId = isValidUUID(linkedOffer.id) 
+                    ? linkedOffer.id 
+                    : (typeof linkedOffer.id === 'number' ? linkedOffer.id : String(linkedOffer.id));
+                  
                   linkedBooking = {
-                      id: Number(linkedOffer.id) || Date.now(),
+                      id: bookingId as any, // Allow both UUID and number
                       roomId: linkedOffer.propertyId,
                       start: start,
                       end: end || start,
@@ -2320,8 +2360,13 @@ const AccountDashboard: React.FC = () => {
                       channel: 'Direct',
                       type: 'GUEST'
                   };
+                  
                   // #region agent log
-                  fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2142',message:'Created linkedBooking from offer',data:{linkedBookingId:linkedBooking.id,roomId:linkedBooking.roomId,start:linkedBooking.start,end:linkedBooking.end},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                  fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2325',message:'Created linkedBooking from offer',data:{linkedBookingId:linkedBooking.id,linkedBookingIdType:typeof linkedBooking.id,roomId:linkedBooking.roomId,start:linkedBooking.start,end:linkedBooking.end,isUUID:isValidUUID(linkedBooking.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+                  // #endregion
+              } else {
+                  // #region agent log
+                  fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2328',message:'Offer not found in local state',data:{offerIdSource:invoice.offerIdSource,offerIdSourceType:typeof invoice.offerIdSource,offersCount:offers.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
                   // #endregion
               }
           }
@@ -2337,15 +2382,24 @@ const AccountDashboard: React.FC = () => {
               });
               
               // Перевірити чи вже існують таски для цього бронювання
-              const existingTasks = adminEvents.filter(e => 
-                  e.bookingId === linkedBooking!.id || 
-                  String(e.bookingId) === String(linkedBooking!.id)
-              );
+              // Enhanced task search - try multiple matching strategies
+              const existingTasks = adminEvents.filter(e => {
+                if (!e.bookingId) return false;
+                // Try exact match
+                if (e.bookingId === linkedBooking!.id) return true;
+                // Try string comparison
+                if (String(e.bookingId) === String(linkedBooking!.id)) return true;
+                // Try UUID comparison (both as strings, case-insensitive)
+                const eBookingIdStr = String(e.bookingId);
+                const linkedBookingIdStr = String(linkedBooking!.id);
+                return eBookingIdStr.toLowerCase() === linkedBookingIdStr.toLowerCase();
+              });
+              
               const hasEinzugTask = existingTasks.some(e => e.type === 'Einzug');
               const hasAuszugTask = existingTasks.some(e => e.type === 'Auszug');
               
               // #region agent log
-              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2162',message:'Checking for existing tasks',data:{linkedBookingId:linkedBooking.id,existingTasksCount:existingTasks.length,hasEinzugTask,hasAuszugTask},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2340',message:'Checking for existing tasks',data:{linkedBookingId:linkedBooking.id,linkedBookingIdType:typeof linkedBooking.id,adminEventsCount:adminEvents.length,existingTasksCount:existingTasks.length,existingTaskBookingIds:existingTasks.map(t=>({id:t.id,bookingId:t.bookingId,bookingIdType:typeof t.bookingId,type:t.type})),hasEinzugTask,hasAuszugTask},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
               // #endregion
               
               // Створити Facility tasks тільки якщо вони ще не існують
@@ -2359,6 +2413,11 @@ const AccountDashboard: React.FC = () => {
                   // #endregion
                   
                   const tasks = createFacilityTasksForBooking(linkedBooking, propertyName);
+                  
+                  // #region agent log
+                  fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2357',message:'Created tasks from createFacilityTasksForBooking',data:{totalTasks:tasks.length,tasks:tasks.map(t=>({type:t.type,bookingId:t.bookingId,bookingIdType:typeof t.bookingId,propertyId:t.propertyId,title:t.title})),linkedBookingId:linkedBooking.id,linkedBookingIdType:typeof linkedBooking.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{});
+                  // #endregion
+                  
                   // Фільтрувати таски які вже існують
                   const newTasks = tasks.filter(task => 
                       (task.type === 'Einzug' && !hasEinzugTask) ||
@@ -2366,7 +2425,7 @@ const AccountDashboard: React.FC = () => {
                   );
                   
                   // #region agent log
-                  fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2177',message:'Filtered new tasks to create',data:{totalTasks:tasks.length,newTasksCount:newTasks.length,newTaskTypes:newTasks.map(t=>t.type)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                  fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2365',message:'Filtered new tasks to create',data:{totalTasks:tasks.length,newTasksCount:newTasks.length,newTaskTypes:newTasks.map(t=>t.type),newTaskBookingIds:newTasks.map(t=>({type:t.type,bookingId:t.bookingId,bookingIdType:typeof t.bookingId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
                   // #endregion
                   
                   // Зберегти завдання в базу даних
@@ -2385,9 +2444,9 @@ const AccountDashboard: React.FC = () => {
                           const savedTask = await tasksService.create(taskToSave);
                           savedTasks.push(savedTask);
                           // #region agent log
-                          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2192',message:'Created Facility task in database',data:{taskId:savedTask.id,taskTitle:savedTask.title,taskType:savedTask.type,bookingId:savedTask.bookingId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2375',message:'Created Facility task in database',data:{taskId:savedTask.id,taskTitle:savedTask.title,taskType:savedTask.type,bookingId:savedTask.bookingId,bookingIdType:typeof savedTask.bookingId,propertyId:savedTask.propertyId,department:savedTask.department,status:savedTask.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
                           // #endregion
-                          console.log('✅ Created Facility task in database:', savedTask.id, savedTask.title);
+                          console.log('✅ Created Facility task in database:', savedTask.id, savedTask.title, 'bookingId:', savedTask.bookingId);
                       } catch (error) {
                           // #region agent log
                           fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2196',message:'Error creating Facility task in database',data:{error:String(error),taskType:task.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
