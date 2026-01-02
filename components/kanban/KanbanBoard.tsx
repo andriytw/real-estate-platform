@@ -95,7 +95,16 @@ const KanbanBoard: React.FC = () => {
         tasksService.getAll(), // Fetch all tasks, then filter locally for columns
         workersService.getAll()
       ]);
-      setTasks(tasksData);
+      
+      // Filter out tasks with invalid UUID format (temporary IDs)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const validTasks = tasksData.filter(t => uuidRegex.test(t.id));
+      
+      if (validTasks.length !== tasksData.length) {
+        console.warn(`⚠️ Filtered out ${tasksData.length - validTasks.length} tasks with invalid IDs from Kanban board`);
+      }
+      
+      setTasks(validTasks);
       setWorkers(workersData);
     } catch (error) {
       console.error('Error loading board:', error);
@@ -215,6 +224,51 @@ const KanbanBoard: React.FC = () => {
 
     // API Call
     try {
+        // Validate UUID format
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(draggableId)) {
+            // If ID is not a valid UUID, try to find the task in database by other fields
+            console.warn('⚠️ Task ID is not a valid UUID, attempting to find task in database:', draggableId);
+            const task = tasks.find(t => t.id === draggableId);
+            if (!task) {
+                console.error('❌ Task not found in local state:', draggableId);
+                loadBoardData(); // Reload to get fresh data
+                return;
+            }
+            
+            // Try to find task in database by other fields
+            const allTasks = await tasksService.getAll();
+            const foundTask = allTasks.find(t => 
+                t.propertyId === task.propertyId &&
+                t.bookingId === task.bookingId &&
+                t.type === task.type &&
+                t.date === task.date &&
+                t.title === task.title
+            );
+            
+            if (!foundTask) {
+                console.error('❌ Task not found in database. Please refresh the page.');
+                loadBoardData(); // Reload to get fresh data
+                return;
+            }
+            
+            // Update found task with correct UUID
+            await tasksService.update(foundTask.id, { 
+                workerId: newWorkerId,
+                status: 'assigned'
+            });
+            
+            // Update local state with correct ID
+            setTasks(prev => prev.map(t => 
+                t.id === draggableId 
+                    ? { ...t, id: foundTask.id, workerId: newWorkerId, status: 'assigned' }
+                    : t
+            ));
+            
+            return;
+        }
+        
+        // Normal update with valid UUID
         await tasksService.update(draggableId, { 
             workerId: newWorkerId,
             status: 'assigned' // Reset status to assigned when re-assigning
@@ -280,7 +334,13 @@ const KanbanBoard: React.FC = () => {
       const tasksToMove = column.tasks;
       tasksToMove.forEach(async (task) => {
         try {
-          await tasksService.update(task.id, { workerId: undefined });
+          // Validate UUID before updating
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (uuidRegex.test(task.id)) {
+            await tasksService.update(task.id, { workerId: undefined });
+          } else {
+            console.warn('⚠️ Skipping task with invalid UUID:', task.id);
+          }
         } catch (error) {
           console.error('Error moving task to inbox:', error);
         }

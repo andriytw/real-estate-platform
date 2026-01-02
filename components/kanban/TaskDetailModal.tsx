@@ -75,11 +75,20 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
     try {
       setIsUpdating(true);
+      // Validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(task.id)) {
+        console.error('❌ Task ID is not a valid UUID:', task.id);
+        alert('Помилка: ID завдання невалідний. Будь ласка, оновіть сторінку.');
+        return;
+      }
+      
       const updatedTask = await tasksService.update(task.id, { status: newStatus });
       onUpdateTask(updatedTask);
       window.dispatchEvent(new CustomEvent('taskUpdated'));
     } catch (error) {
       console.error('Error updating task status:', error);
+      alert('Помилка оновлення статусу завдання. Спробуйте ще раз.');
     } finally {
       setIsUpdating(false);
     }
@@ -87,6 +96,15 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
   const handleChecklistToggle = async (index: number) => {
     if (!task) return;
+    
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(task.id)) {
+      console.error('❌ Task ID is not a valid UUID:', task.id);
+      alert('Помилка: ID завдання невалідний. Будь ласка, оновіть сторінку.');
+      return;
+    }
+    
     try {
       const updated = checklist.map((item, i) =>
         i === index ? { ...item, checked: !item.checked } : item
@@ -97,11 +115,21 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       window.dispatchEvent(new CustomEvent('taskUpdated'));
     } catch (error) {
       console.error('Error updating checklist:', error);
+      alert('Помилка оновлення чеклисту. Спробуйте ще раз.');
     }
   };
 
   const handleMeterReadingChange = async (field: 'electricity' | 'water' | 'gas', value: string) => {
     if (!task) return;
+    
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(task.id)) {
+      console.error('❌ Task ID is not a valid UUID:', task.id);
+      alert('Помилка: ID завдання невалідний. Будь ласка, оновіть сторінку.');
+      return;
+    }
+    
     try {
       const updatedReadings = { ...task.meterReadings, [field]: value };
       const updatedTask = await tasksService.update(task.id, { meterReadings: updatedReadings });
@@ -109,6 +137,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       window.dispatchEvent(new CustomEvent('taskUpdated'));
     } catch (error) {
       console.error('Error updating meter readings:', error);
+      alert('Помилка оновлення лічильників. Спробуйте ще раз.');
     }
   };
 
@@ -145,6 +174,14 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       }
 
       if (uploadedUrls.length > 0) {
+        // Validate UUID format
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(task.id)) {
+          console.error('❌ Task ID is not a valid UUID:', task.id);
+          alert('Помилка: ID завдання невалідний. Будь ласка, оновіть сторінку.');
+          return;
+        }
+        
         const updatedImages = [...(task.images || []), ...uploadedUrls];
         const updatedTask = await tasksService.update(task.id, { images: updatedImages });
         setMedia(updatedImages);
