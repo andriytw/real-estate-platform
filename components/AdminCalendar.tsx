@@ -1244,15 +1244,24 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                                   throw new Error('Task not found in database. Please refresh the page.');
                                               }
                                               
-                                              // Update found task
+                                              // Update found task - preserve date and day to prevent loss
                                               const updated = await tasksService.update(foundTask.id, {
                                                   workerId: newWorkerId,
-                                                  status: newStatus
+                                                  status: newStatus,
+                                                  date: viewEvent.date,
+                                                  day: viewEvent.day
                                               });
                                               
+                                              // Ensure date and day are preserved in the returned object
+                                              const updatedWithDate = {
+                                                  ...updated,
+                                                  date: updated.date || viewEvent.date,
+                                                  day: updated.day !== undefined ? updated.day : viewEvent.day
+                                              };
+                                              
                                               // Update local state with correct ID
-                                              setViewEvent(updated);
-                                              onUpdateEvent(updated);
+                                              setViewEvent(updatedWithDate);
+                                              onUpdateEvent(updatedWithDate);
                                               
                                               // #region agent log
                                               fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:1092',message:'Task updated in DB (found by search)',data:{taskId:updated.id,taskType:updated.type,bookingId:updated.bookingId,workerId:updated.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
@@ -1261,22 +1270,27 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                               return;
                                           }
                                           
-                                          // Update in database
+                                          // Update in database - preserve date and day to prevent loss
                                           const updated = await tasksService.update(viewEvent.id, {
                                               workerId: newWorkerId,
-                                              status: newStatus
+                                              status: newStatus,
+                                              date: viewEvent.date,
+                                              day: viewEvent.day
                                           });
                                           
                                           // #region agent log
-                                          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:1092',message:'Task updated in DB',data:{taskId:updated.id,taskType:updated.type,bookingId:updated.bookingId,workerId:updated.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                                          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:1092',message:'Task updated in DB',data:{taskId:updated.id,taskType:updated.type,bookingId:updated.bookingId,workerId:updated.workerId,date:updated.date,day:updated.day},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
                                           // #endregion
                                           
                                           // Find worker name for display
                                           const worker = workers.find(w => w.id === newWorkerId);
+                                          // Ensure date and day are preserved (fallback to viewEvent if missing from DB response)
                                           const updatedWithName = {
                                               ...updated,
                                               assignee: worker?.name,
-                                              assignedWorkerId: newWorkerId
+                                              assignedWorkerId: newWorkerId,
+                                              date: updated.date || viewEvent.date,
+                                              day: updated.day !== undefined ? updated.day : viewEvent.day
                                           };
                                           
                                           // #region agent log
