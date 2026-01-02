@@ -116,11 +116,12 @@ export function canCreateInvoice(status: BookingStatus | string): boolean {
 /**
  * Створює Facility tasks для бронювання при оплаті
  * @param booking - Бронювання для якого створюються таски
+ * @param propertyName - Назва нерухомості (опціонально, якщо не передано, використовується roomId)
  * @returns Масив CalendarEvent для Einzug та Auszug
  */
-export function createFacilityTasksForBooking(booking: any): Array<{ id: string; title: string; propertyId: string; bookingId: string | number; unitId?: string; time: string; type: 'Einzug' | 'Auszug'; day: number; date: string; description: string; status: 'open'; meterReadings: { electricity: string; water: string; gas: string } }> {
+export function createFacilityTasksForBooking(booking: any, propertyName?: string): Array<{ id: string; title: string; propertyId: string; bookingId: string | number; unitId?: string; time: string; type: 'Einzug' | 'Auszug'; day: number; date: string; description: string; status: 'open'; meterReadings: { electricity: string; water: string; gas: string } }> {
   const getDay = (dateStr: string) => parseInt(dateStr.split('-')[2], 10);
-  const propertyAddress = booking.roomId || 'Unknown Property';
+  const propertyAddress = propertyName || booking.address || booking.roomId || 'Unknown Property';
   
   const checkInTask = {
     id: `auto-task-${Date.now()}-1`,

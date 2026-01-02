@@ -2027,115 +2027,142 @@ const AccountDashboard: React.FC = () => {
       setAccountingTab('invoices');
   };
 
-  const toggleInvoiceStatus = (invoiceId: string) => {
-    setInvoices(prev => prev.map(inv => {
-        if (inv.id === invoiceId) {
-            const newStatus = inv.status === 'Paid' ? 'Unpaid' : 'Paid';
-            if (newStatus === 'Paid') {
-                // Знайти пов'язану резервацію через bookingId або offerIdSource
-                let linkedBooking: ReservationData | undefined;
+  const toggleInvoiceStatus = async (invoiceId: string) => {
+    const invoice = invoices.find(inv => inv.id === invoiceId);
+    if (!invoice) return;
+    
+    const newStatus = invoice.status === 'Paid' ? 'Unpaid' : 'Paid';
+    
+    // Оновити статус інвойсу
+    setInvoices(prev => prev.map(inv => inv.id === invoiceId ? { ...inv, status: newStatus } : inv));
+    
+    if (newStatus === 'Paid') {
+        // Знайти пов'язану резервацію через bookingId або offerIdSource
+        let linkedBooking: ReservationData | undefined;
+        
+        if (invoice.bookingId) {
+            linkedBooking = reservations.find(r => r.id === invoice.bookingId || String(r.id) === String(invoice.bookingId));
+        }
+        
+        if (!linkedBooking) {
+            const linkedOffer = offers.find(o => o.id === invoice.offerIdSource || o.id === String(invoice.offerIdSource));
+            if (linkedOffer) {
+                // Конвертувати offer в booking для створення тасок
+                const [start, end] = linkedOffer.dates.split(' to ');
+                linkedBooking = {
+                    id: Number(linkedOffer.id) || Date.now(),
+                    roomId: linkedOffer.propertyId,
+                    start: start,
+                    end: end || start,
+                    guest: linkedOffer.clientName,
+                    status: BookingStatus.OFFER_SENT,
+                    color: '',
+                    checkInTime: linkedOffer.checkInTime || '15:00',
+                    checkOutTime: linkedOffer.checkOutTime || '11:00',
+                    price: linkedOffer.price,
+                    balance: '0.00 EUR',
+                    guests: linkedOffer.guests || '-',
+                    unit: linkedOffer.unit || '-',
+                    comments: linkedOffer.comments || '',
+                    paymentAccount: 'Pending',
+                    company: 'N/A',
+                    ratePlan: 'Standard',
+                    guarantee: '-',
+                    cancellationPolicy: '-',
+                    noShowPolicy: '-',
+                    channel: 'Direct',
+                    type: 'GUEST'
+                };
+            }
+        }
+        
+        if (linkedBooking) {
+            // Оновити статус броні на paid та колір
+            updateReservationInDB(linkedBooking.id, { 
+                status: BookingStatus.PAID, 
+                color: getBookingStyle(BookingStatus.PAID) 
+            });
+            
+            // Перевірити чи вже існують таски для цього бронювання
+            const existingTasks = adminEvents.filter(e => 
+                e.bookingId === linkedBooking!.id || 
+                String(e.bookingId) === String(linkedBooking!.id)
+            );
+            const hasEinzugTask = existingTasks.some(e => e.type === 'Einzug');
+            const hasAuszugTask = existingTasks.some(e => e.type === 'Auszug');
+            
+            // Створити Facility tasks тільки якщо вони ще не існують
+            if (!hasEinzugTask || !hasAuszugTask) {
+                // Отримати назву нерухомості
+                const property = properties.find(p => p.id === linkedBooking.roomId || String(p.id) === String(linkedBooking.roomId));
+                const propertyName = property?.title || property?.address || linkedBooking.address || linkedBooking.roomId;
                 
-                if (inv.bookingId) {
-                    linkedBooking = reservations.find(r => r.id === inv.bookingId || String(r.id) === String(inv.bookingId));
-                }
+                const tasks = createFacilityTasksForBooking(linkedBooking, propertyName);
+                // Фільтрувати таски які вже існують
+                const newTasks = tasks.filter(task => 
+                    (task.type === 'Einzug' && !hasEinzugTask) ||
+                    (task.type === 'Auszug' && !hasAuszugTask)
+                );
                 
-                if (!linkedBooking) {
-                const linkedOffer = offers.find(o => o.id === inv.offerIdSource || o.id === String(inv.offerIdSource));
-                if (linkedOffer) {
-                        // Конвертувати offer в booking для створення тасок
-                        const [start, end] = linkedOffer.dates.split(' to ');
-                        linkedBooking = {
-                            id: Number(linkedOffer.id) || Date.now(),
-                            roomId: linkedOffer.propertyId,
-                            start: start,
-                            end: end || start,
-                            guest: linkedOffer.clientName,
-                            status: BookingStatus.OFFER_SENT,
-                            color: '',
-                            checkInTime: linkedOffer.checkInTime || '15:00',
-                            checkOutTime: linkedOffer.checkOutTime || '11:00',
-                            price: linkedOffer.price,
-                            balance: '0.00 EUR',
-                            guests: linkedOffer.guests || '-',
-                            unit: linkedOffer.unit || '-',
-                            comments: linkedOffer.comments || '',
-                            paymentAccount: 'Pending',
-                            company: 'N/A',
-                            ratePlan: 'Standard',
-                            guarantee: '-',
-                            cancellationPolicy: '-',
-                            noShowPolicy: '-',
-                            channel: 'Direct',
-                            type: 'GUEST'
+                // Зберегти завдання в базу даних
+                const savedTasks: CalendarEvent[] = [];
+                for (const task of newTasks) {
+                    try {
+                        // Створити завдання в базі даних
+                        const taskToSave: Omit<CalendarEvent, 'id'> = {
+                            ...task,
+                            status: 'open' as TaskStatus,
+                            department: 'facility',
+                            assignee: undefined,
+                            assignedWorkerId: undefined,
+                            workerId: undefined
                         };
-                    }
-                }
-                
-                if (linkedBooking) {
-                    // Оновити статус броні на paid та колір
-                    updateReservationInDB(linkedBooking.id, { 
-                        status: BookingStatus.PAID, 
-                        color: getBookingStyle(BookingStatus.PAID) 
-                    });
-                    
-                    // Перевірити чи вже існують таски для цього бронювання
-                    const existingTasks = adminEvents.filter(e => 
-                        e.bookingId === linkedBooking!.id || 
-                        String(e.bookingId) === String(linkedBooking!.id)
-                    );
-                    const hasEinzugTask = existingTasks.some(e => e.type === 'Einzug');
-                    const hasAuszugTask = existingTasks.some(e => e.type === 'Auszug');
-                    
-                    // Створити Facility tasks тільки якщо вони ще не існують
-                    if (!hasEinzugTask || !hasAuszugTask) {
-                        const tasks = createFacilityTasksForBooking(linkedBooking);
-                        // Фільтрувати таски які вже існують
-                        const newTasks = tasks.filter(task => 
-                            (task.type === 'Einzug' && !hasEinzugTask) ||
-                            (task.type === 'Auszug' && !hasAuszugTask)
-                        );
-                        // Конвертувати tasks в CalendarEvent з правильним статусом
-                        const calendarEvents: CalendarEvent[] = newTasks.map(task => ({
+                        const savedTask = await tasksService.create(taskToSave);
+                        savedTasks.push(savedTask);
+                        console.log('✅ Created Facility task in database:', savedTask.id, savedTask.title);
+                    } catch (error) {
+                        console.error('❌ Error creating Facility task in database:', error);
+                        // Додати в локальний стан навіть якщо не вдалося зберегти в БД
+                        savedTasks.push({
                             ...task,
                             status: 'open' as TaskStatus,
                             assignee: undefined,
                             assignedWorkerId: undefined
-                        }));
-                        if (calendarEvents.length > 0) {
-                            setAdminEvents(prevEvents => [...prevEvents, ...calendarEvents]);
-                        }
-                    }
-                    
-                    // Оновити meter log в property
-                    setProperties(prevProps => prevProps.map(prop => {
-                        if (prop.id === linkedBooking!.roomId) {
-                            const newLogs: MeterLogEntry[] = [
-                                { date: linkedBooking!.start, type: 'Check-In', bookingId: linkedBooking!.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } },
-                                { date: linkedBooking!.end, type: 'Check-Out', bookingId: linkedBooking!.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } }
-                            ];
-                            const updatedLog = [...(prop.meterLog || []), ...newLogs];
-                            return { ...prop, meterLog: updatedLog };
-                        }
-                        return prop;
-                    }));
-                }
-            } else {
-                // Якщо статус змінюється на Unpaid, повернути статус броні на invoiced та колір
-                if (inv.bookingId) {
-                    const bookingId = inv.bookingId;
-                    const reservation = reservations.find(r => r.id === bookingId || String(r.id) === String(bookingId));
-                    if (reservation) {
-                        updateReservationInDB(reservation.id, { 
-                            status: BookingStatus.INVOICED, 
-                            color: getBookingStyle(BookingStatus.INVOICED) 
                         });
                     }
                 }
+                
+                if (savedTasks.length > 0) {
+                    setAdminEvents(prevEvents => [...prevEvents, ...savedTasks]);
+                }
             }
-            return { ...inv, status: newStatus };
+            
+            // Оновити meter log в property
+            setProperties(prevProps => prevProps.map(prop => {
+                if (prop.id === linkedBooking!.roomId) {
+                    const newLogs: MeterLogEntry[] = [
+                        { date: linkedBooking!.start, type: 'Check-In', bookingId: linkedBooking!.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } },
+                        { date: linkedBooking!.end, type: 'Check-Out', bookingId: linkedBooking!.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } }
+                    ];
+                    const updatedLog = [...(prop.meterLog || []), ...newLogs];
+                    return { ...prop, meterLog: updatedLog };
+                }
+                return prop;
+            }));
         }
-        return inv;
-    }));
+    } else {
+        // Якщо статус змінюється на Unpaid, повернути статус броні на invoiced та колір
+        if (invoice.bookingId) {
+            const bookingId = invoice.bookingId;
+            const reservation = reservations.find(r => r.id === bookingId || String(r.id) === String(bookingId));
+            if (reservation) {
+                updateReservationInDB(reservation.id, { 
+                    status: BookingStatus.INVOICED, 
+                    color: getBookingStyle(BookingStatus.INVOICED) 
+                });
+            }
+        }
+    }
   };
 
   const handleAdminEventAdd = (event: CalendarEvent) => {

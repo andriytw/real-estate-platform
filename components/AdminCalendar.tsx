@@ -963,26 +963,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                   <div className="w-1/3 border-r border-gray-700 p-6 overflow-y-auto bg-[#161B22]">
                      <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-6">Task Details</h4>
                      
-                     {/* --- ACTION AREA FOR WORKER (SIMULATION) --- */}
-                     {(viewEvent.status === 'open' || viewEvent.status === 'assigned') && (
-                        <div className="mb-6 bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-                           <div className="flex items-center gap-2 text-blue-500 mb-2">
-                              <Hammer className="w-5 h-5" />
-                              <span className="font-bold text-sm">Worker Action</span>
-                           </div>
-                           <p className="text-xs text-gray-300 mb-4">
-                              Simulate the worker marking this task as completed on their mobile app.
-                           </p>
-                           <button 
-                              onClick={() => markTaskAsReview(viewEvent.id)}
-                              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-md text-xs flex items-center justify-center gap-2 transition-colors"
-                           >
-                              <Check className="w-4 h-4" />
-                              Mark as Done
-                           </button>
-                        </div>
-                     )}
-
                      {/* --- METER READING CHECKLIST (Only for Einzug/Auszug/Zählerstand) --- */}
                      {(viewEvent.type === 'Einzug' || viewEvent.type === 'Auszug' || viewEvent.type === 'Zählerstand') && (
                         <div className="mb-6 bg-[#0D1117] border border-gray-700 rounded-lg p-4 shadow-inner">
@@ -1410,20 +1390,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
                       {/* Actions Right */}
                       <div className="flex items-center gap-1">
-                         {event.status !== 'archived' && event.status !== 'verified' && event.status !== 'completed' && (
-                             <button 
-                                className={`
-                                   p-2 rounded-lg transition-colors
-                                   ${event.status === 'done_by_worker' 
-                                     ? 'text-yellow-500 bg-yellow-500/10 hover:bg-yellow-500/20' 
-                                     : 'text-gray-600 hover:text-emerald-500 hover:bg-emerald-500/10'}
-                                `}
-                                title={event.status === 'done_by_worker' ? "Waiting for verification" : "Mark as Done (Worker Action)"}
-                                onClick={(e) => { e.stopPropagation(); markTaskAsReview(event.id); }}
-                             >
-                                {event.status === 'done_by_worker' ? <History className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
-                             </button>
-                         )}
                          {(event.status === 'archived' || event.status === 'verified' || event.status === 'completed') && (
                              <Archive className="w-5 h-5 text-gray-600" />
                          )}
