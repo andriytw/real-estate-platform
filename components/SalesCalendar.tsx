@@ -878,7 +878,12 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                 {filteredRooms.map(room => (
                     <div key={room.id} className="h-16 border-b border-gray-800 flex flex-col justify-center px-4 hover:bg-[#1C1F24] transition-colors group relative">
                         <span className="text-sm font-bold text-white truncate">{room.name}</span>
-                        <span className="text-xs text-gray-500 truncate">{room.city}</span>
+                        {room.details && (
+                            <span className="text-xs text-gray-500 truncate">{room.details}</span>
+                        )}
+                        {room.city && (
+                            <span className="text-xs text-gray-400 truncate">{room.city}</span>
+                        )}
                     </div>
                 ))}
             </div>
