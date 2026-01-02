@@ -14,7 +14,7 @@ import RequestModal from './RequestModal';
 import BankingDashboard from './BankingDashboard';
 import KanbanBoard from './kanban/KanbanBoard';
 import UserManagement from './admin/UserManagement';
-import { propertiesService, tasksService, workersService, warehouseService, bookingsService, WarehouseStockItem } from '../services/supabaseService';
+import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, WarehouseStockItem } from '../services/supabaseService';
 import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking } from '../types';
 import { MOCK_PROPERTIES } from '../constants';
 import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
@@ -1267,6 +1267,28 @@ const AccountDashboard: React.FC = () => {
     };
   }, [worker]);
 
+  // Load invoices from database
+  useEffect(() => {
+    const loadInvoices = async () => {
+      try {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1255',message:'Loading invoices from Supabase',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        const loadedInvoices = await invoicesService.getAll();
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1258',message:'Loaded invoices from Supabase',data:{count:loadedInvoices.length,invoiceIds:loadedInvoices.map(i=>i.id),invoiceNumbers:loadedInvoices.map(i=>i.invoiceNumber)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        setInvoices(loadedInvoices);
+      } catch (error) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1263',message:'Error loading invoices from Supabase',data:{error:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        console.error('Error loading invoices:', error);
+      }
+    };
+    loadInvoices();
+  }, []);
+
   // Listen for task updates from Kanban board
   useEffect(() => {
     const handleTaskUpdated = async () => {
@@ -2051,167 +2073,47 @@ const AccountDashboard: React.FC = () => {
       setIsInvoiceModalOpen(true);
   };
   
-  const handleSaveInvoice = (invoice: InvoiceData) => {
-      const exists = invoices.some(inv => inv.id === invoice.id);
-      if (exists) {
-         setInvoices(prev => prev.map(inv => inv.id === invoice.id ? invoice : inv));
-      } else {
-         setInvoices(prev => [invoice, ...prev]);
-      }
-      
-      // Оновити статус Offer на 'Invoiced' замість видалення (для збереження історії)
-      if (invoice.offerIdSource) {
-          setOffers(prev => prev.map(o => 
-              o.id === invoice.offerIdSource || String(o.id) === String(invoice.offerIdSource)
-                  ? { ...o, status: 'Invoiced' }
-                  : o
-          ));
-      }
-      
-      // Оновити статус резервації на invoiced та колір якщо є bookingId
-      if (invoice.bookingId) {
-          const bookingId = invoice.bookingId;
-          const reservation = reservations.find(r => r.id === bookingId || String(r.id) === String(bookingId));
-          if (reservation) {
-              updateReservationInDB(reservation.id, { 
-                  status: BookingStatus.INVOICED, 
-                  color: getBookingStyle(BookingStatus.INVOICED) 
-              });
-          }
-      }
-      
-      setIsInvoiceModalOpen(false);
-      setSelectedOfferForInvoice(null);
-      setSelectedInvoice(null);
-      setActiveDepartment('accounting');
-      setAccountingTab('invoices');
-  };
-
-  const toggleInvoiceStatus = async (invoiceId: string) => {
-    const invoice = invoices.find(inv => inv.id === invoiceId);
-    if (!invoice) return;
-    
-    const newStatus = invoice.status === 'Paid' ? 'Unpaid' : 'Paid';
-    
-    // Оновити статус інвойсу
-    setInvoices(prev => prev.map(inv => inv.id === invoiceId ? { ...inv, status: newStatus } : inv));
-    
-    if (newStatus === 'Paid') {
-        // Знайти пов'язану резервацію через bookingId або offerIdSource
-        let linkedBooking: ReservationData | undefined;
+  const handleSaveInvoice = async (invoice: InvoiceData) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2054',message:'handleSaveInvoice called',data:{invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource,status:invoice.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      try {
+        const exists = invoices.some(inv => inv.id === invoice.id);
+        let savedInvoice: InvoiceData;
         
-        if (invoice.bookingId) {
-            linkedBooking = reservations.find(r => r.id === invoice.bookingId || String(r.id) === String(invoice.bookingId));
+        if (exists) {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2060',message:'Updating existing invoice in Supabase',data:{invoiceId:invoice.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
+          savedInvoice = await invoicesService.update(invoice.id, invoice);
+        } else {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2064',message:'Creating new invoice in Supabase',data:{invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
+          savedInvoice = await invoicesService.create(invoice);
         }
         
-        if (!linkedBooking) {
-            const linkedOffer = offers.find(o => o.id === invoice.offerIdSource || o.id === String(invoice.offerIdSource));
-            if (linkedOffer) {
-                // Конвертувати offer в booking для створення тасок
-                const [start, end] = linkedOffer.dates.split(' to ');
-                linkedBooking = {
-                    id: Number(linkedOffer.id) || Date.now(),
-                    roomId: linkedOffer.propertyId,
-                    start: start,
-                    end: end || start,
-                    guest: linkedOffer.clientName,
-                    status: BookingStatus.OFFER_SENT,
-                    color: '',
-                    checkInTime: linkedOffer.checkInTime || '15:00',
-                    checkOutTime: linkedOffer.checkOutTime || '11:00',
-                    price: linkedOffer.price,
-                    balance: '0.00 EUR',
-                    guests: linkedOffer.guests || '-',
-                    unit: linkedOffer.unit || '-',
-                    comments: linkedOffer.comments || '',
-                    paymentAccount: 'Pending',
-                    company: 'N/A',
-                    ratePlan: 'Standard',
-                    guarantee: '-',
-                    cancellationPolicy: '-',
-                    noShowPolicy: '-',
-                    channel: 'Direct',
-                    type: 'GUEST'
-                };
-            }
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2069',message:'Invoice saved to Supabase successfully',data:{invoiceId:savedInvoice.id,invoiceNumber:savedInvoice.invoiceNumber,bookingId:savedInvoice.bookingId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        
+        // Update local state
+        if (exists) {
+           setInvoices(prev => prev.map(inv => inv.id === savedInvoice.id ? savedInvoice : inv));
+        } else {
+           setInvoices(prev => [savedInvoice, ...prev]);
         }
         
-        if (linkedBooking) {
-            // Оновити статус броні на paid та колір
-            updateReservationInDB(linkedBooking.id, { 
-                status: BookingStatus.PAID, 
-                color: getBookingStyle(BookingStatus.PAID) 
-            });
-            
-            // Перевірити чи вже існують таски для цього бронювання
-            const existingTasks = adminEvents.filter(e => 
-                e.bookingId === linkedBooking!.id || 
-                String(e.bookingId) === String(linkedBooking!.id)
-            );
-            const hasEinzugTask = existingTasks.some(e => e.type === 'Einzug');
-            const hasAuszugTask = existingTasks.some(e => e.type === 'Auszug');
-            
-            // Створити Facility tasks тільки якщо вони ще не існують
-            if (!hasEinzugTask || !hasAuszugTask) {
-                // Отримати назву нерухомості
-                const property = properties.find(p => p.id === linkedBooking.roomId || String(p.id) === String(linkedBooking.roomId));
-                const propertyName = property?.title || property?.address || linkedBooking.address || linkedBooking.roomId;
-                
-                const tasks = createFacilityTasksForBooking(linkedBooking, propertyName);
-                // Фільтрувати таски які вже існують
-                const newTasks = tasks.filter(task => 
-                    (task.type === 'Einzug' && !hasEinzugTask) ||
-                    (task.type === 'Auszug' && !hasAuszugTask)
-                );
-                
-                // Зберегти завдання в базу даних
-                const savedTasks: CalendarEvent[] = [];
-                for (const task of newTasks) {
-                    try {
-                        // Створити завдання в базі даних
-                        const taskToSave: Omit<CalendarEvent, 'id'> = {
-                            ...task,
-                            status: 'open' as TaskStatus,
-                            department: 'facility',
-                            assignee: undefined,
-                            assignedWorkerId: undefined,
-                            workerId: undefined
-                        };
-                        const savedTask = await tasksService.create(taskToSave);
-                        savedTasks.push(savedTask);
-                        console.log('✅ Created Facility task in database:', savedTask.id, savedTask.title);
-                    } catch (error) {
-                        console.error('❌ Error creating Facility task in database:', error);
-                        // Не додавати в локальний стан, якщо не вдалося зберегти в БД
-                        // Це запобігає використанню невалідних ID
-                    }
-                }
-                
-                if (savedTasks.length > 0) {
-                    setAdminEvents(prevEvents => [...prevEvents, ...savedTasks]);
-                    // Notify other components and reload tasks from database
-                    window.dispatchEvent(new CustomEvent('taskUpdated'));
-                    console.log('✅ Created and added', savedTasks.length, 'Facility tasks to calendar');
-                } else {
-                    console.warn('⚠️ No tasks were created. Check if tasks already exist or if there was an error.');
-                }
-            }
-            
-            // Оновити meter log в property
-            setProperties(prevProps => prevProps.map(prop => {
-                if (prop.id === linkedBooking!.roomId) {
-                    const newLogs: MeterLogEntry[] = [
-                        { date: linkedBooking!.start, type: 'Check-In', bookingId: linkedBooking!.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } },
-                        { date: linkedBooking!.end, type: 'Check-Out', bookingId: linkedBooking!.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } }
-                    ];
-                    const updatedLog = [...(prop.meterLog || []), ...newLogs];
-                    return { ...prop, meterLog: updatedLog };
-                }
-                return prop;
-            }));
+        // Оновити статус Offer на 'Invoiced' замість видалення (для збереження історії)
+        if (invoice.offerIdSource) {
+            setOffers(prev => prev.map(o => 
+                o.id === invoice.offerIdSource || String(o.id) === String(invoice.offerIdSource)
+                    ? { ...o, status: 'Invoiced' }
+                    : o
+            ));
         }
-    } else {
-        // Якщо статус змінюється на Unpaid, повернути статус броні на invoiced та колір
+        
+        // Оновити статус резервації на invoiced та колір якщо є bookingId
         if (invoice.bookingId) {
             const bookingId = invoice.bookingId;
             const reservation = reservations.find(r => r.id === bookingId || String(r.id) === String(bookingId));
@@ -2222,6 +2124,227 @@ const AccountDashboard: React.FC = () => {
                 });
             }
         }
+        
+        setIsInvoiceModalOpen(false);
+        setSelectedOfferForInvoice(null);
+        setSelectedInvoice(null);
+        setActiveDepartment('accounting');
+        setAccountingTab('invoices');
+      } catch (error) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2095',message:'Error saving invoice to Supabase',data:{error:String(error),invoiceId:invoice.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        console.error('Error saving invoice:', error);
+        alert('Failed to save invoice. Please try again.');
+      }
+  };
+
+  const toggleInvoiceStatus = async (invoiceId: string) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2090',message:'toggleInvoiceStatus called',data:{invoiceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+    const invoice = invoices.find(inv => inv.id === invoiceId);
+    if (!invoice) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2093',message:'Invoice not found in local state',data:{invoiceId,invoiceCount:invoices.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      return;
+    }
+    
+    const newStatus = invoice.status === 'Paid' ? 'Unpaid' : 'Paid';
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2098',message:'Toggling invoice status',data:{invoiceId,oldStatus:invoice.status,newStatus,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+    
+    try {
+      // Update invoice status in Supabase
+      const updatedInvoice = await invoicesService.update(invoiceId, { status: newStatus });
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2102',message:'Invoice status updated in Supabase',data:{invoiceId,newStatus},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      
+      // Оновити статус інвойсу в локальному стані
+      setInvoices(prev => prev.map(inv => inv.id === invoiceId ? updatedInvoice : inv));
+      
+      if (newStatus === 'Paid') {
+          // Знайти пов'язану резервацію через bookingId або offerIdSource
+          let linkedBooking: ReservationData | undefined;
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2110',message:'Looking for linked booking',data:{bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource,reservationsCount:reservations.length,offersCount:offers.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+          
+          if (invoice.bookingId) {
+              linkedBooking = reservations.find(r => r.id === invoice.bookingId || String(r.id) === String(invoice.bookingId));
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2114',message:'Searched for booking by bookingId',data:{bookingId:invoice.bookingId,found:!!linkedBooking,linkedBookingId:linkedBooking?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+              // #endregion
+          }
+          
+          if (!linkedBooking) {
+              const linkedOffer = offers.find(o => o.id === invoice.offerIdSource || o.id === String(invoice.offerIdSource));
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2120',message:'Searched for offer by offerIdSource',data:{offerIdSource:invoice.offerIdSource,found:!!linkedOffer,linkedOfferId:linkedOffer?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+              // #endregion
+              if (linkedOffer) {
+                  // Конвертувати offer в booking для створення тасок
+                  const [start, end] = linkedOffer.dates.split(' to ');
+                  linkedBooking = {
+                      id: Number(linkedOffer.id) || Date.now(),
+                      roomId: linkedOffer.propertyId,
+                      start: start,
+                      end: end || start,
+                      guest: linkedOffer.clientName,
+                      status: BookingStatus.OFFER_SENT,
+                      color: '',
+                      checkInTime: linkedOffer.checkInTime || '15:00',
+                      checkOutTime: linkedOffer.checkOutTime || '11:00',
+                      price: linkedOffer.price,
+                      balance: '0.00 EUR',
+                      guests: linkedOffer.guests || '-',
+                      unit: linkedOffer.unit || '-',
+                      comments: linkedOffer.comments || '',
+                      paymentAccount: 'Pending',
+                      company: 'N/A',
+                      ratePlan: 'Standard',
+                      guarantee: '-',
+                      cancellationPolicy: '-',
+                      noShowPolicy: '-',
+                      channel: 'Direct',
+                      type: 'GUEST'
+                  };
+                  // #region agent log
+                  fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2142',message:'Created linkedBooking from offer',data:{linkedBookingId:linkedBooking.id,roomId:linkedBooking.roomId,start:linkedBooking.start,end:linkedBooking.end},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+                  // #endregion
+              }
+          }
+          
+          if (linkedBooking) {
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2148',message:'Linked booking found, updating status and creating tasks',data:{linkedBookingId:linkedBooking.id,roomId:linkedBooking.roomId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+              // #endregion
+              // Оновити статус броні на paid та колір
+              updateReservationInDB(linkedBooking.id, { 
+                  status: BookingStatus.PAID, 
+                  color: getBookingStyle(BookingStatus.PAID) 
+              });
+              
+              // Перевірити чи вже існують таски для цього бронювання
+              const existingTasks = adminEvents.filter(e => 
+                  e.bookingId === linkedBooking!.id || 
+                  String(e.bookingId) === String(linkedBooking!.id)
+              );
+              const hasEinzugTask = existingTasks.some(e => e.type === 'Einzug');
+              const hasAuszugTask = existingTasks.some(e => e.type === 'Auszug');
+              
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2162',message:'Checking for existing tasks',data:{linkedBookingId:linkedBooking.id,existingTasksCount:existingTasks.length,hasEinzugTask,hasAuszugTask},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+              // #endregion
+              
+              // Створити Facility tasks тільки якщо вони ще не існують
+              if (!hasEinzugTask || !hasAuszugTask) {
+                  // Отримати назву нерухомості
+                  const property = properties.find(p => p.id === linkedBooking.roomId || String(p.id) === String(linkedBooking.roomId));
+                  const propertyName = property?.title || property?.address || linkedBooking.address || linkedBooking.roomId;
+                  
+                  // #region agent log
+                  fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2169',message:'Creating facility tasks',data:{linkedBookingId:linkedBooking.id,propertyName,roomId:linkedBooking.roomId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                  // #endregion
+                  
+                  const tasks = createFacilityTasksForBooking(linkedBooking, propertyName);
+                  // Фільтрувати таски які вже існують
+                  const newTasks = tasks.filter(task => 
+                      (task.type === 'Einzug' && !hasEinzugTask) ||
+                      (task.type === 'Auszug' && !hasAuszugTask)
+                  );
+                  
+                  // #region agent log
+                  fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2177',message:'Filtered new tasks to create',data:{totalTasks:tasks.length,newTasksCount:newTasks.length,newTaskTypes:newTasks.map(t=>t.type)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                  // #endregion
+                  
+                  // Зберегти завдання в базу даних
+                  const savedTasks: CalendarEvent[] = [];
+                  for (const task of newTasks) {
+                      try {
+                          // Створити завдання в базі даних
+                          const taskToSave: Omit<CalendarEvent, 'id'> = {
+                              ...task,
+                              status: 'open' as TaskStatus,
+                              department: 'facility',
+                              assignee: undefined,
+                              assignedWorkerId: undefined,
+                              workerId: undefined
+                          };
+                          const savedTask = await tasksService.create(taskToSave);
+                          savedTasks.push(savedTask);
+                          // #region agent log
+                          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2192',message:'Created Facility task in database',data:{taskId:savedTask.id,taskTitle:savedTask.title,taskType:savedTask.type,bookingId:savedTask.bookingId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                          // #endregion
+                          console.log('✅ Created Facility task in database:', savedTask.id, savedTask.title);
+                      } catch (error) {
+                          // #region agent log
+                          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2196',message:'Error creating Facility task in database',data:{error:String(error),taskType:task.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                          // #endregion
+                          console.error('❌ Error creating Facility task in database:', error);
+                      }
+                  }
+                  
+                  if (savedTasks.length > 0) {
+                      setAdminEvents(prevEvents => [...prevEvents, ...savedTasks]);
+                      // Notify other components and reload tasks from database
+                      window.dispatchEvent(new CustomEvent('taskUpdated'));
+                      // #region agent log
+                      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2204',message:'Tasks created and taskUpdated event dispatched',data:{savedTasksCount:savedTasks.length,taskIds:savedTasks.map(t=>t.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                      // #endregion
+                      console.log('✅ Created and added', savedTasks.length, 'Facility tasks to calendar');
+                  } else {
+                      // #region agent log
+                      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2207',message:'No tasks were created',data:{hasEinzugTask,hasAuszugTask,newTasksCount:newTasks.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                      // #endregion
+                      console.warn('⚠️ No tasks were created. Check if tasks already exist or if there was an error.');
+                  }
+              } else {
+                  // #region agent log
+                  fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2211',message:'Tasks already exist, skipping creation',data:{hasEinzugTask,hasAuszugTask},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                  // #endregion
+              }
+              
+              // Оновити meter log в property
+              setProperties(prevProps => prevProps.map(prop => {
+                  if (prop.id === linkedBooking!.roomId) {
+                      const newLogs: MeterLogEntry[] = [
+                          { date: linkedBooking!.start, type: 'Check-In', bookingId: linkedBooking!.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } },
+                          { date: linkedBooking!.end, type: 'Check-Out', bookingId: linkedBooking!.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } }
+                      ];
+                      const updatedLog = [...(prop.meterLog || []), ...newLogs];
+                      return { ...prop, meterLog: updatedLog };
+                  }
+                  return prop;
+              }));
+          } else {
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2223',message:'No linked booking found',data:{bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+              // #endregion
+          }
+      } else {
+          // Якщо статус змінюється на Unpaid, повернути статус броні на invoiced та колір
+          if (invoice.bookingId) {
+              const bookingId = invoice.bookingId;
+              const reservation = reservations.find(r => r.id === bookingId || String(r.id) === String(bookingId));
+              if (reservation) {
+                  updateReservationInDB(reservation.id, { 
+                      status: BookingStatus.INVOICED, 
+                      color: getBookingStyle(BookingStatus.INVOICED) 
+                  });
+              }
+          }
+      }
+    } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2238',message:'Error updating invoice status in Supabase',data:{error:String(error),invoiceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      console.error('Error updating invoice status:', error);
+      alert('Failed to update invoice status. Please try again.');
     }
   };
 
