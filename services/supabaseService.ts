@@ -1889,7 +1889,7 @@ function transformCalendarEventToDB(event: CalendarEvent): any {
   const bookingIdValue = event.bookingId || null;
   const propertyIdValue = event.propertyId || null;
   
-  return {
+  const result: any = {
     title: event.title,
     property_id: propertyIdValue,
     booking_id: bookingIdValue,
@@ -1905,7 +1905,6 @@ function transformCalendarEventToDB(event: CalendarEvent): any {
     has_unread_message: event.hasUnreadMessage || false,
     status: event.status || 'open',
     meter_readings: event.meterReadings || null,
-    workflow_steps: event.workflowSteps || null,
     // Kanban fields
     priority: event.priority || null,
     is_issue: event.isIssue || false,
@@ -1916,6 +1915,14 @@ function transformCalendarEventToDB(event: CalendarEvent): any {
     checklist: event.checklist || null,
     location_text: event.locationText || null,
   };
+  
+  // Only include workflow_steps if it exists and the column exists in DB
+  // This prevents errors if migration hasn't been run yet
+  if (event.workflowSteps !== undefined && event.workflowSteps !== null) {
+    result.workflow_steps = event.workflowSteps;
+  }
+  
+  return result;
 }
 
 // ==================== FILE UPLOAD FOR EINZUG/AUSZUG ====================
