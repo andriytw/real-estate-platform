@@ -14,7 +14,7 @@ import RequestModal from './RequestModal';
 import BankingDashboard from './BankingDashboard';
 import KanbanBoard from './kanban/KanbanBoard';
 import UserManagement from './admin/UserManagement';
-import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, WarehouseStockItem } from '../services/supabaseService';
+import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, WarehouseStockItem } from '../services/supabaseService';
 import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking } from '../types';
 import { MOCK_PROPERTIES } from '../constants';
 import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
@@ -1289,6 +1289,19 @@ const AccountDashboard: React.FC = () => {
     loadInvoices();
   }, []);
 
+  // Load offers from database
+  useEffect(() => {
+    const loadOffers = async () => {
+      try {
+        const loadedOffers = await offersService.getAll();
+        setOffers(loadedOffers);
+      } catch (error) {
+        console.error('Error loading offers:', error);
+      }
+    };
+    loadOffers();
+  }, []);
+
   // Listen for task updates from Kanban board
   useEffect(() => {
     const handleTaskUpdated = async () => {
@@ -1659,9 +1672,20 @@ const AccountDashboard: React.FC = () => {
     setProperties(updatedProperties);
   };
 
-  const handleSaveOffer = (newOffer: OfferData) => {
-      setOffers([newOffer, ...offers]);
-      setSalesTab('offers');
+  const handleSaveOffer = async (newOffer: OfferData) => {
+      try {
+        // Remove id before creating (database will generate UUID)
+        const { id, ...offerWithoutId } = newOffer;
+        const savedOffer = await offersService.create(offerWithoutId);
+        setOffers([savedOffer, ...offers]);
+        setSalesTab('offers');
+      } catch (error) {
+        console.error('Error saving offer:', error);
+        alert('Failed to save offer. Please try again.');
+        // Still update local state for UI responsiveness
+        setOffers([newOffer, ...offers]);
+        setSalesTab('offers');
+      }
   };
 
   // Load reservations from database on mount
@@ -1962,13 +1986,42 @@ const AccountDashboard: React.FC = () => {
       }
   };
 
-  const handleSaveOfferUpdate = (updatedOffer: OfferData) => {
-      setOffers(prev => prev.map(o => o.id === updatedOffer.id ? updatedOffer : o));
-      const mappedBooking = mapOfferToBooking(updatedOffer);
-      setSelectedReservation(mappedBooking);
-      setOfferToEdit(updatedOffer);
-      setIsOfferEditModalOpen(false);
-      setIsManageModalOpen(true);
+  const handleSaveOfferUpdate = async (updatedOffer: OfferData) => {
+      try {
+        // Check if offer has a valid UUID (exists in database)
+        const isValidUUID = (str: string | number | undefined): boolean => {
+          if (!str) return false;
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          return uuidRegex.test(String(str));
+        };
+
+        let savedOffer: OfferData;
+        if (isValidUUID(updatedOffer.id)) {
+          // Update existing offer in Supabase
+          savedOffer = await offersService.update(String(updatedOffer.id), updatedOffer);
+        } else {
+          // Create new offer in Supabase
+          const { id, ...offerWithoutId } = updatedOffer;
+          savedOffer = await offersService.create(offerWithoutId);
+        }
+        
+        setOffers(prev => prev.map(o => o.id === updatedOffer.id ? savedOffer : o));
+        const mappedBooking = mapOfferToBooking(savedOffer);
+        setSelectedReservation(mappedBooking);
+        setOfferToEdit(savedOffer);
+        setIsOfferEditModalOpen(false);
+        setIsManageModalOpen(true);
+      } catch (error) {
+        console.error('Error saving offer update:', error);
+        alert('Failed to save offer. Please try again.');
+        // Still update local state for UI responsiveness
+        setOffers(prev => prev.map(o => o.id === updatedOffer.id ? updatedOffer : o));
+        const mappedBooking = mapOfferToBooking(updatedOffer);
+        setSelectedReservation(mappedBooking);
+        setOfferToEdit(updatedOffer);
+        setIsOfferEditModalOpen(false);
+        setIsManageModalOpen(true);
+      }
   };
 
   const handleConvertToOffer = async (status: 'Draft' | 'Sent', internalCompany: string, email: string) => {
@@ -2075,20 +2128,69 @@ const AccountDashboard: React.FC = () => {
   
   const handleSaveInvoice = async (invoice: InvoiceData) => {
       // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2054',message:'handleSaveInvoice called',data:{invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource,status:invoice.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2116',message:'handleSaveInvoice called',data:{invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource,status:invoice.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
       // #endregion
       try {
+        // Check if offerIdSource exists and needs to be saved to Supabase
+        if (invoice.offerIdSource) {
+          const isValidUUID = (str: string | number | undefined): boolean => {
+            if (!str) return false;
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            return uuidRegex.test(String(str));
+          };
+
+          // Check if offerIdSource is a valid UUID (exists in database)
+          if (!isValidUUID(invoice.offerIdSource)) {
+            // Find the offer in local state
+            const localOffer = offers.find(o => 
+              o.id === invoice.offerIdSource || 
+              String(o.id) === String(invoice.offerIdSource)
+            );
+
+            if (localOffer) {
+              // Save the offer to Supabase
+              const { id, ...offerWithoutId } = localOffer;
+              const savedOffer = await offersService.create(offerWithoutId);
+              
+              // Update local offers state
+              setOffers(prev => prev.map(o => 
+                o.id === localOffer.id ? savedOffer : o
+              ));
+              
+              // Update invoice.offerIdSource with the new UUID
+              invoice.offerIdSource = savedOffer.id;
+            } else {
+              // Offer not found in local state, set to null to avoid foreign key error
+              invoice.offerIdSource = undefined;
+            }
+          } else {
+            // Valid UUID, check if it exists in Supabase
+            try {
+              const allOffers = await offersService.getAll();
+              const offerExists = allOffers.some(o => o.id === invoice.offerIdSource);
+              if (!offerExists) {
+                // Offer doesn't exist in Supabase, set to null
+                invoice.offerIdSource = undefined;
+              }
+            } catch (error) {
+              console.error('Error checking offer existence:', error);
+              // On error, set to null to avoid foreign key error
+              invoice.offerIdSource = undefined;
+            }
+          }
+        }
+
         const exists = invoices.some(inv => inv.id === invoice.id);
         let savedInvoice: InvoiceData;
         
         if (exists) {
           // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2060',message:'Updating existing invoice in Supabase',data:{invoiceId:invoice.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2160',message:'Updating existing invoice in Supabase',data:{invoiceId:invoice.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
           // #endregion
           savedInvoice = await invoicesService.update(String(invoice.id), invoice);
         } else {
           // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2064',message:'Creating new invoice in Supabase',data:{invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2166',message:'Creating new invoice in Supabase',data:{invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
           // #endregion
           // Remove id before creating (database will generate UUID)
           const { id, ...invoiceWithoutId } = invoice;
