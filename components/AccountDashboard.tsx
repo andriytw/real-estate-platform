@@ -1239,7 +1239,7 @@ const AccountDashboard: React.FC = () => {
         
         const tasks = await tasksService.getAll(filters);
         console.log('✅ Loaded Facility tasks:', tasks.length);
-        console.log('📋 All tasks:', tasks.map(t => ({ id: t.id, title: t.title, workerId: t.workerId, department: t.department })));
+        console.log('📋 All tasks:', tasks.map(t => ({ id: t.id, title: t.title, workerId: t.workerId, department: t.department, bookingId: t.bookingId })));
         
         // Filter out ONLY tasks with temporary "auto-task-*" IDs
         // These should not exist in database, but if they do, filter them out
@@ -1274,6 +1274,17 @@ const AccountDashboard: React.FC = () => {
     if (worker) {
       loadFacilityTasks();
     }
+    
+    // Listen for task updates to reload tasks
+    const handleTaskUpdated = () => {
+      console.log('🔄 Task updated event received, reloading Facility tasks...');
+      loadFacilityTasks();
+    };
+    
+    window.addEventListener('taskUpdated', handleTaskUpdated);
+    return () => {
+      window.removeEventListener('taskUpdated', handleTaskUpdated);
+    };
   }, [worker]);
 
   // Listen for task updates from Kanban board
@@ -2198,6 +2209,11 @@ const AccountDashboard: React.FC = () => {
                 
                 if (savedTasks.length > 0) {
                     setAdminEvents(prevEvents => [...prevEvents, ...savedTasks]);
+                    // Notify other components and reload tasks from database
+                    window.dispatchEvent(new CustomEvent('taskUpdated'));
+                    console.log('✅ Created and added', savedTasks.length, 'Facility tasks to calendar');
+                } else {
+                    console.warn('⚠️ No tasks were created. Check if tasks already exist or if there was an error.');
                 }
             }
             
