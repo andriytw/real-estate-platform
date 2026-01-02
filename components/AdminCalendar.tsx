@@ -217,23 +217,11 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         monthMatch = eventMonth === currentMonthIdx;
         yearMatch = eventYear === selectedYear;
         
-        // Diagnostic logging for debugging
-        if (day === 2 && eventMonth === 0 && eventYear === 2026) {
-          console.log('🔍 getEventsForDay debug:', {
-            day,
-            eventTitle: e.title,
-            eventDate: e.date,
-            eventDay,
-            eventMonth,
-            eventYear,
-            currentMonthIdx,
-            selectedYear,
-            dayMatch,
-            monthMatch,
-            yearMatch,
-            status: e.status
-          });
+        // #region agent log
+        if (e.type === 'Einzug' || e.type === 'Auszug') {
+          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:216',message:'H4: getEventsForDay filtering',data:{day,eventId:e.id,eventTitle:e.title,eventDate:e.date,eventDay,eventMonth,eventYear,currentMonthIdx,selectedYear,dayMatch,monthMatch,yearMatch,filterTask,eventType:e.type,matches:dayMatch && monthMatch && yearMatch && (filterTask === 'All' || e.type === filterTask)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
         }
+        // #endregion
       } else {
         // Legacy events without full date: fall back to day only, assume current month/year
         dayMatch = e.day === day;

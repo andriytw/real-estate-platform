@@ -1203,6 +1203,11 @@ const AccountDashboard: React.FC = () => {
   useEffect(() => {
     const loadFacilityTasks = async () => {
       try {
+        // #region agent log
+        const adminEventsBeforeLoad = adminEvents.map(e => ({id: e.id, title: e.title, date: e.date, day: e.day, workerId: e.workerId}));
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1204',message:'H1: loadFacilityTasks ENTRY',data:{adminEventsCountBefore:adminEvents.length,adminEventIdsBefore:adminEvents.map(e=>e.id),adminEventsBefore:adminEventsBeforeLoad,workerRole:worker?.role,workerId:worker?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        
         console.log('🔄 Loading Facility tasks from database...');
         console.log('👤 Current user:', worker?.id, worker?.role, worker?.department);
         
@@ -1218,7 +1223,16 @@ const AccountDashboard: React.FC = () => {
         }
         // Для manager та super_manager - не фільтруємо по workerId, показуємо всі завдання Facility
         
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1221',message:'H1: BEFORE tasksService.getAll',data:{filters},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        
         const tasks = await tasksService.getAll(filters);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1221',message:'H1-H5: AFTER tasksService.getAll',data:{tasksCount:tasks.length,tasks:tasks.map(t=>({id:t.id,title:t.title,date:t.date,day:t.day,workerId:t.workerId,status:t.status})),adminEventIdsBefore:adminEvents.map(e=>e.id),tasksIdsFromDB:tasks.map(t=>t.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        
         console.log('✅ Loaded Facility tasks:', tasks.length);
         console.log('📋 All tasks:', tasks.map(t => ({ 
           id: t.id, 
@@ -1232,10 +1246,6 @@ const AccountDashboard: React.FC = () => {
           date: t.date,
           day: t.day
         })));
-        
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1240',message:'Loaded Facility tasks from database',data:{tasksCount:tasks.length,tasks:tasks.map(t=>({id:t.id,type:t.type,bookingId:t.bookingId,bookingIdType:typeof t.bookingId,title:t.title,workerId:t.workerId,department:t.department,status:t.status,date:t.date,day:t.day})),filters},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
-        // #endregion
         
         // Filter out ONLY tasks with temporary "auto-task-*" IDs
         // These should not exist in database, but if they do, filter them out
@@ -1254,12 +1264,20 @@ const AccountDashboard: React.FC = () => {
             console.warn(`⚠️ Filtered out ${tasks.length - validTasks.length} tasks with temporary auto-task-* IDs`);
         }
         
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1257',message:'H1: BEFORE setAdminEvents (replacing state)',data:{validTasksCount:validTasks.length,validTaskIds:validTasks.map(t=>t.id),adminEventsCountBefore:adminEvents.length,adminEventIdsBefore:adminEvents.map(e=>e.id),tasksLost:adminEvents.filter(e=>!validTasks.find(t=>t.id===e.id)).map(e=>({id:e.id,title:e.title,date:e.date}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        
         console.log('📋 Tasks after filtering:', validTasks.length);
         if (validTasks.length > 0) {
             console.log('📋 Task IDs:', validTasks.map(t => t.id));
         }
         
         setAdminEvents(validTasks);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1262',message:'H1: AFTER setAdminEvents (state replaced)',data:{validTasksCount:validTasks.length,validTaskIds:validTasks.map(t=>t.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
       } catch (error) {
         console.error('❌ Error loading Facility tasks:', error);
         // Don't use INITIAL_ADMIN_EVENTS as fallback - they have invalid IDs too
@@ -1275,12 +1293,18 @@ const AccountDashboard: React.FC = () => {
     // NOTE: We use a debounce to prevent multiple rapid reloads
     let reloadTimeout: NodeJS.Timeout | null = null;
     const handleTaskUpdated = () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1277',message:'H1: handleTaskUpdated called',data:{adminEventsCount:adminEvents.length,adminEventIds:adminEvents.map(e=>e.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
       console.log('🔄 Task updated event received, will reload Facility tasks in 500ms...');
       // Debounce reload to prevent race conditions when multiple updates happen quickly
       if (reloadTimeout) {
         clearTimeout(reloadTimeout);
       }
       reloadTimeout = setTimeout(() => {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1284',message:'H1: Executing debounced loadFacilityTasks',data:{adminEventsCountBeforeReload:adminEvents.length,adminEventIdsBeforeReload:adminEvents.map(e=>e.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
         console.log('🔄 Reloading Facility tasks...');
         loadFacilityTasks();
       }, 500);
@@ -2654,32 +2678,56 @@ const AccountDashboard: React.FC = () => {
 
   const handleAdminEventUpdate = async (updatedEvent: CalendarEvent) => {
       // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2172',message:'handleAdminEventUpdate called',data:{taskId:updatedEvent.id,taskType:updatedEvent.type,bookingId:updatedEvent.bookingId,workerId:updatedEvent.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2655',message:'H1-H5: handleAdminEventUpdate ENTRY',data:{taskId:updatedEvent.id,taskType:updatedEvent.type,bookingId:updatedEvent.bookingId,workerId:updatedEvent.workerId,date:updatedEvent.date,day:updatedEvent.day,status:updatedEvent.status,adminEventsCount:adminEvents.length,existingTaskInState:adminEvents.find(e=>e.id===updatedEvent.id)?true:false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
       // #endregion
       
       // #region agent log
-      const allTasksWithSameBooking = adminEvents.filter(e => e.bookingId === updatedEvent.bookingId && e.id !== updatedEvent.id);
-      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2172',message:'Tasks with same bookingId',data:{bookingId:updatedEvent.bookingId,otherTasks:allTasksWithSameBooking.map(t=>({id:t.id,type:t.type,workerId:t.workerId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      const taskBeforeUpdate = adminEvents.find(e => e.id === updatedEvent.id);
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2660',message:'H2: Task state BEFORE local update',data:{taskId:updatedEvent.id,dateBefore:taskBeforeUpdate?.date,dayBefore:taskBeforeUpdate?.day,workerIdBefore:taskBeforeUpdate?.workerId,dateAfter:updatedEvent.date,dayAfter:updatedEvent.day,workerIdAfter:updatedEvent.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
       // #endregion
       
       // CRITICAL: Update local state FIRST to prevent task disappearing from calendar
       // This ensures the task remains visible immediately, even before DB update completes
-      setAdminEvents(prev => prev.map(ev => {
-        // Only update the exact task that was changed
-        if (ev.id === updatedEvent.id) {
-          return updatedEvent;
-        }
-        // Do NOT modify other tasks, even if they have the same bookingId
-        return ev;
-      }));
+      setAdminEvents(prev => {
+        // #region agent log
+        const prevCount = prev.length;
+        const taskExists = prev.find(e => e.id === updatedEvent.id);
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2667',message:'H1: BEFORE setAdminEvents local update',data:{prevCount,taskExists:!!taskExists,taskId:updatedEvent.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        
+        const updated = prev.map(ev => {
+          // Only update the exact task that was changed
+          if (ev.id === updatedEvent.id) {
+            return updatedEvent;
+          }
+          // Do NOT modify other tasks, even if they have the same bookingId
+          return ev;
+        });
+        
+        // #region agent log
+        const afterCount = updated.length;
+        const taskAfterUpdate = updated.find(e => e.id === updatedEvent.id);
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2674',message:'H1: AFTER setAdminEvents local update',data:{afterCount,taskAfterUpdate:!!taskAfterUpdate,taskId:updatedEvent.id,date:taskAfterUpdate?.date,day:taskAfterUpdate?.day},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        
+        return updated;
+      });
       
       try {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2676',message:'H3: BEFORE DB update',data:{taskId:updatedEvent.id,date:updatedEvent.date,day:updatedEvent.day,workerId:updatedEvent.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+          // #endregion
+          
           // Update in database
-          await tasksService.update(updatedEvent.id, updatedEvent);
+          const savedTask = await tasksService.update(updatedEvent.id, updatedEvent);
           console.log('✅ Task updated in database:', updatedEvent.id);
           
           // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2175',message:'Task updated in DB, dispatching taskUpdated',data:{taskId:updatedEvent.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2678',message:'H3: AFTER DB update',data:{taskId:savedTask.id,dateFromDB:savedTask.date,dayFromDB:savedTask.day,workerIdFromDB:savedTask.workerId,dateBeforeUpdate:updatedEvent.date,dayBeforeUpdate:updatedEvent.day},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+          // #endregion
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2681',message:'H1: Dispatching taskUpdated event',data:{taskId:updatedEvent.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
           // #endregion
           
           // Notify other components (Kanban) about task update
@@ -2687,6 +2735,9 @@ const AccountDashboard: React.FC = () => {
           // The local state is already updated above, and Kanban will reload on its own
           window.dispatchEvent(new CustomEvent('taskUpdated'));
       } catch (error: any) {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2690',message:'H3: ERROR in DB update',data:{taskId:updatedEvent.id,error:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+          // #endregion
           console.error('❌ Error updating task in database:', error);
           // Revert local state if DB update fails (optional - you may want to keep optimistic update)
           // For now, we keep the optimistic update for better UX
