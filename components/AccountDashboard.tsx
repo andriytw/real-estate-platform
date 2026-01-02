@@ -1272,14 +1272,26 @@ const AccountDashboard: React.FC = () => {
     }
     
     // Listen for task updates to reload tasks
+    // NOTE: We use a debounce to prevent multiple rapid reloads
+    let reloadTimeout: NodeJS.Timeout | null = null;
     const handleTaskUpdated = () => {
-      console.log('🔄 Task updated event received, reloading Facility tasks...');
-      loadFacilityTasks();
+      console.log('🔄 Task updated event received, will reload Facility tasks in 500ms...');
+      // Debounce reload to prevent race conditions when multiple updates happen quickly
+      if (reloadTimeout) {
+        clearTimeout(reloadTimeout);
+      }
+      reloadTimeout = setTimeout(() => {
+        console.log('🔄 Reloading Facility tasks...');
+        loadFacilityTasks();
+      }, 500);
     };
     
     window.addEventListener('taskUpdated', handleTaskUpdated);
     return () => {
       window.removeEventListener('taskUpdated', handleTaskUpdated);
+      if (reloadTimeout) {
+        clearTimeout(reloadTimeout);
+      }
     };
   }, [worker]);
 
@@ -2650,6 +2662,17 @@ const AccountDashboard: React.FC = () => {
       fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2172',message:'Tasks with same bookingId',data:{bookingId:updatedEvent.bookingId,otherTasks:allTasksWithSameBooking.map(t=>({id:t.id,type:t.type,workerId:t.workerId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
       // #endregion
       
+      // CRITICAL: Update local state FIRST to prevent task disappearing from calendar
+      // This ensures the task remains visible immediately, even before DB update completes
+      setAdminEvents(prev => prev.map(ev => {
+        // Only update the exact task that was changed
+        if (ev.id === updatedEvent.id) {
+          return updatedEvent;
+        }
+        // Do NOT modify other tasks, even if they have the same bookingId
+        return ev;
+      }));
+      
       try {
           // Update in database
           await tasksService.update(updatedEvent.id, updatedEvent);
@@ -2660,29 +2683,14 @@ const AccountDashboard: React.FC = () => {
           // #endregion
           
           // Notify other components (Kanban) about task update
+          // NOTE: We do NOT reload tasks here to prevent race condition
+          // The local state is already updated above, and Kanban will reload on its own
           window.dispatchEvent(new CustomEvent('taskUpdated'));
       } catch (error: any) {
           console.error('❌ Error updating task in database:', error);
-          // Continue with local update even if DB update fails
+          // Revert local state if DB update fails (optional - you may want to keep optimistic update)
+          // For now, we keep the optimistic update for better UX
       }
-      
-      // Update local state - IMPORTANT: Only update the specific task, NOT other tasks with same bookingId
-      // #region agent log
-      const prevState = adminEvents;
-      const updatedState = prevState.map(ev => ev.id === updatedEvent.id ? updatedEvent : ev);
-      const changedTasks = updatedState.filter((ev, idx) => ev.workerId !== prevState[idx]?.workerId);
-      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2186',message:'Updating local state',data:{changedTasks:changedTasks.map(t=>({id:t.id,type:t.type,workerId:t.workerId,bookingId:t.bookingId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-      
-      // CRITICAL: Only update the specific task by ID, do NOT update other tasks with same bookingId
-      setAdminEvents(prev => prev.map(ev => {
-        // Only update the exact task that was changed
-        if (ev.id === updatedEvent.id) {
-          return updatedEvent;
-        }
-        // Do NOT modify other tasks, even if they have the same bookingId
-        return ev;
-      }));
       
       // Оновити статус броні якщо таска верифікована та пов'язана з бронюванням
       if (updatedEvent.status === 'verified' && updatedEvent.bookingId) {
