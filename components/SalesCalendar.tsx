@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { RequestData, Property } from '../types';
-import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar, Search } from 'lucide-react';
 import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus } from '../types';
 import BookingDetailsModal from './BookingDetailsModal';
 import BookingStatsTiles from './BookingStatsTiles';
@@ -121,6 +121,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   });
   const [totalDays, setTotalDays] = useState(NUM_DAYS);
   const [cityFilter, setCityFilter] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
   const [hoveredBooking, setHoveredBooking] = useState<{booking: Booking, x: number, y: number} | null>(null);
   
   // Додати state для поточного видимого місяця
@@ -349,9 +350,20 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     ...Array.from(new Set(roomsFromProperties.map((r) => r.city).filter(Boolean))).sort(),
   ];
 
-  const filteredRooms = roomsFromProperties.filter(
-    (r) => cityFilter === 'ALL' || r.city === cityFilter
-  );
+  const filteredRooms = React.useMemo(() => {
+    return roomsFromProperties.filter((r) => {
+      // City filter
+      const matchesCity = cityFilter === 'ALL' || r.city === cityFilter;
+      
+      // Search filter (case-insensitive, partial match)
+      const matchesSearch = searchQuery === '' || 
+        r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (r.details && r.details.toLowerCase().includes(searchQuery.toLowerCase()));
+      
+      return matchesCity && matchesSearch;
+    });
+  }, [roomsFromProperties, cityFilter, searchQuery]);
 
   const getRoomNameById = (roomId: string | undefined | null) => {
     if (!roomId) return '';
@@ -843,8 +855,24 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
          
          {/* Left Sidebar (Rooms) */}
          <div className="w-56 flex-shrink-0 border-r border-gray-800 bg-[#161B22] z-20 flex flex-col">
-            <div className="sticky top-0 z-30 h-[76px] border-b border-gray-800 flex items-center px-4 font-bold text-white bg-[#1C1F24]">
-                Properties ({filteredRooms.length})
+            <div className="sticky top-0 z-30 h-[76px] border-b border-gray-800 bg-[#1C1F24] flex flex-col justify-center px-4">
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search properties..."
+                        className="w-full pl-10 pr-3 py-2 bg-[#0D1117] border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                    />
+                </div>
+                <div className="mt-1 text-xs text-gray-400">
+                    {filteredRooms.length === 0 ? (
+                        <span className="text-red-400">No results</span>
+                    ) : (
+                        <span>{filteredRooms.length} {filteredRooms.length === 1 ? 'property' : 'properties'}</span>
+                    )}
+                </div>
             </div>
             <div className="overflow-y-auto flex-1 scrollbar-hide">
                 {filteredRooms.map(room => (
