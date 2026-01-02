@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Save, FileText, Download, Edit2, Check } from 'lucide-react';
-import { OfferData, InvoiceData, CompanyDetails } from '../types';
+import { OfferData, InvoiceData, CompanyDetails, ReservationData } from '../types';
 import { INTERNAL_COMPANIES_DATA } from '../constants';
 
 interface InvoiceModalProps {
@@ -10,9 +10,11 @@ interface InvoiceModalProps {
   offer?: OfferData | null;
   invoice?: InvoiceData | null;
   onSave: (invoice: InvoiceData) => void;
+  reservations?: ReservationData[];
+  offers?: OfferData[];
 }
 
-const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, invoice, onSave }) => {
+const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, invoice, onSave, reservations = [], offers = [] }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [invoiceData, setInvoiceData] = useState<Partial<InvoiceData>>({
     invoiceNumber: '',
@@ -93,12 +95,40 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
             // #endregion
         }
         
-        // Якщо bookingId все ще undefined, спробувати знайти за clientName/dates
-        // (fallback для старих даних)
+        // Якщо bookingId все ще undefined, спробувати знайти reservation за propertyId та dates
+        if (!bookingId && reservations && reservations.length > 0) {
+            // Try to find reservation by matching offer's propertyId and dates
+            if ('propertyId' in offer && offer.propertyId && 'dates' in offer && offer.dates) {
+                const [offerStart] = offer.dates.split(' to ');
+                const matchingReservation = reservations.find(r => {
+                    // Match by propertyId (roomId)
+                    if (r.roomId !== offer.propertyId && String(r.roomId) !== String(offer.propertyId)) {
+                        return false;
+                    }
+                    // Match by start date
+                    return r.start === offerStart || String(r.start) === String(offerStart);
+                });
+                
+                if (matchingReservation) {
+                    bookingId = matchingReservation.id;
+                    // #region agent log
+                    console.log('✅ InvoiceModal: Found reservation by propertyId and dates, setting bookingId:', bookingId);
+                    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceModal.tsx:103',message:'Found reservation by propertyId and dates, setting bookingId',data:{bookingId,bookingIdType:typeof bookingId,offerId:offer.id,offerPropertyId:offer.propertyId,offerStart,reservationId:matchingReservation.id,reservationRoomId:matchingReservation.roomId,reservationStart:matchingReservation.start},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'INVOICE_CREATE'})}).catch(()=>{});
+                    // #endregion
+                } else {
+                    // #region agent log
+                    console.warn('⚠️ InvoiceModal: No matching reservation found by propertyId and dates', { offerPropertyId: offer.propertyId, offerStart, reservationsCount: reservations.length });
+                    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceModal.tsx:111',message:'No matching reservation found by propertyId and dates',data:{offerId:offer.id,offerPropertyId:offer.propertyId,offerStart,reservationsCount:reservations.length,reservationPropertyIds:reservations.map(r=>({id:r.id,roomId:r.roomId,start:r.start}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'INVOICE_CREATE'})}).catch(()=>{});
+                    // #endregion
+                }
+            }
+        }
+        
+        // Final check: if bookingId is still undefined, log error
         if (!bookingId) {
             // #region agent log
-            console.error('❌ InvoiceModal: bookingId is undefined after all checks!', { offerId: offer.id, offerType: typeof offer, hasRoomId: 'roomId' in offer, hasStart: 'start' in offer, hasPropertyId: 'propertyId' in offer, hasDates: 'dates' in offer });
-            fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceModal.tsx:90',message:'❌ CRITICAL: bookingId is undefined after all checks',data:{offerId:offer.id,offerIdType:typeof offer.id,hasRoomId:'roomId' in offer,hasStart:'start' in offer,hasPropertyId:'propertyId' in offer,hasDates:'dates' in offer,offerKeys:Object.keys(offer)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'INVOICE_CREATE'})}).catch(()=>{});
+            console.error('❌ InvoiceModal: bookingId is undefined after all checks!', { offerId: offer.id, offerType: typeof offer, hasRoomId: 'roomId' in offer, hasStart: 'start' in offer, hasPropertyId: 'propertyId' in offer, hasDates: 'dates' in offer, reservationsAvailable: reservations?.length || 0 });
+            fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceModal.tsx:120',message:'❌ CRITICAL: bookingId is undefined after all checks',data:{offerId:offer.id,offerIdType:typeof offer.id,hasRoomId:'roomId' in offer,hasStart:'start' in offer,hasPropertyId:'propertyId' in offer,hasDates:'dates' in offer,offerKeys:Object.keys(offer),reservationsAvailable:reservations?.length || 0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'INVOICE_CREATE'})}).catch(()=>{});
             // #endregion
         }
 
