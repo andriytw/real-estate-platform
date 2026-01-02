@@ -282,10 +282,13 @@ const KanbanBoard: React.FC = () => {
                 return;
             }
             
-            // Update found task with correct UUID
+            // Update found task with correct UUID - preserve date and day
+            const taskToUpdate = tasks.find(t => t.id === draggableId);
             await tasksService.update(foundTask.id, { 
                 workerId: newWorkerId,
-                status: 'assigned'
+                status: 'assigned',
+                date: taskToUpdate?.date,
+                day: taskToUpdate?.day
             });
             
             // Update local state with correct ID
@@ -298,10 +301,13 @@ const KanbanBoard: React.FC = () => {
             return;
         }
         
-        // Normal update with valid UUID
+        // Normal update with valid UUID - preserve date and day
+        const taskToUpdate = tasks.find(t => t.id === draggableId);
         await tasksService.update(draggableId, { 
             workerId: newWorkerId,
-            status: 'assigned' // Reset status to assigned when re-assigning
+            status: 'assigned', // Reset status to assigned when re-assigning
+            date: taskToUpdate?.date,
+            day: taskToUpdate?.day
         });
     } catch (error) {
         console.error('Failed to move task:', error);
