@@ -1233,6 +1233,10 @@ const AccountDashboard: React.FC = () => {
       try {
         console.log('🔄 Task updated event received, reloading Facility tasks...');
         
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1232',message:'handleTaskUpdated called',data:{workerRole:worker?.role,workerId:worker?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        
         // Build filters based on user role
         const filters: any = {
           department: 'facility'
@@ -1245,6 +1249,18 @@ const AccountDashboard: React.FC = () => {
         
         const tasks = await tasksService.getAll(filters);
         console.log('✅ Reloaded Facility tasks:', tasks.length);
+        
+        // #region agent log
+        const tasksByBooking = tasks.reduce((acc: any, t) => {
+          if (t.bookingId) {
+            const key = String(t.bookingId);
+            if (!acc[key]) acc[key] = [];
+            acc[key].push({id:t.id,type:t.type,workerId:t.workerId});
+          }
+          return acc;
+        }, {});
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1246',message:'Tasks loaded from DB',data:{totalTasks:tasks.length,tasksByBooking},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
         
         // Перевірити, чи є transfer tasks, які стали completed/verified і потребують виконання
         for (const task of tasks) {
@@ -1272,6 +1288,10 @@ const AccountDashboard: React.FC = () => {
             }
           }
         }
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1276',message:'Setting adminEvents state',data:{tasksCount:tasks.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         
         setAdminEvents(tasks);
       } catch (error) {
@@ -2170,10 +2190,23 @@ const AccountDashboard: React.FC = () => {
   };
 
   const handleAdminEventUpdate = async (updatedEvent: CalendarEvent) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2172',message:'handleAdminEventUpdate called',data:{taskId:updatedEvent.id,taskType:updatedEvent.type,bookingId:updatedEvent.bookingId,workerId:updatedEvent.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      
+      // #region agent log
+      const allTasksWithSameBooking = adminEvents.filter(e => e.bookingId === updatedEvent.bookingId && e.id !== updatedEvent.id);
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2172',message:'Tasks with same bookingId',data:{bookingId:updatedEvent.bookingId,otherTasks:allTasksWithSameBooking.map(t=>({id:t.id,type:t.type,workerId:t.workerId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      
       try {
           // Update in database
           await tasksService.update(updatedEvent.id, updatedEvent);
           console.log('✅ Task updated in database:', updatedEvent.id);
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2175',message:'Task updated in DB, dispatching taskUpdated',data:{taskId:updatedEvent.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
           
           // Notify other components (Kanban) about task update
           window.dispatchEvent(new CustomEvent('taskUpdated'));
@@ -2182,8 +2215,23 @@ const AccountDashboard: React.FC = () => {
           // Continue with local update even if DB update fails
       }
       
-      // Update local state
-      setAdminEvents(prev => prev.map(ev => ev.id === updatedEvent.id ? updatedEvent : ev));
+      // Update local state - IMPORTANT: Only update the specific task, NOT other tasks with same bookingId
+      // #region agent log
+      const prevState = adminEvents;
+      const updatedState = prevState.map(ev => ev.id === updatedEvent.id ? updatedEvent : ev);
+      const changedTasks = updatedState.filter((ev, idx) => ev.workerId !== prevState[idx]?.workerId);
+      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2186',message:'Updating local state',data:{changedTasks:changedTasks.map(t=>({id:t.id,type:t.type,workerId:t.workerId,bookingId:t.bookingId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      
+      // CRITICAL: Only update the specific task by ID, do NOT update other tasks with same bookingId
+      setAdminEvents(prev => prev.map(ev => {
+        // Only update the exact task that was changed
+        if (ev.id === updatedEvent.id) {
+          return updatedEvent;
+        }
+        // Do NOT modify other tasks, even if they have the same bookingId
+        return ev;
+      }));
       
       // Оновити статус броні якщо таска верифікована та пов'язана з бронюванням
       if (updatedEvent.status === 'verified' && updatedEvent.bookingId) {
