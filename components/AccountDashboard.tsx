@@ -418,7 +418,7 @@ const AccountDashboard: React.FC = () => {
 
   const [reservations, setReservations] = useState<ReservationData[]>([]);
   const [invoices, setInvoices] = useState<InvoiceData[]>([]);
-  const [adminEvents, setAdminEvents] = useState<CalendarEvent[]>(INITIAL_ADMIN_EVENTS);
+  const [adminEvents, setAdminEvents] = useState<CalendarEvent[]>([]);
   const [accountingEvents, setAccountingEvents] = useState<CalendarEvent[]>(INITIAL_ACCOUNTING_EVENTS);
 
   // Cleanup object URL for uploaded inventory preview
@@ -1239,21 +1239,35 @@ const AccountDashboard: React.FC = () => {
         
         const tasks = await tasksService.getAll(filters);
         console.log('✅ Loaded Facility tasks:', tasks.length);
+        console.log('📋 All tasks:', tasks.map(t => ({ id: t.id, title: t.title, workerId: t.workerId, department: t.department })));
         
-        // Filter out tasks with invalid UUID format (temporary IDs)
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const validTasks = tasks.filter(t => uuidRegex.test(t.id));
+        // Filter out ONLY tasks with temporary "auto-task-*" IDs
+        // These should not exist in database, but if they do, filter them out
+        const autoTaskPattern = /^auto-task-/i;
+        const validTasks = tasks.filter(t => {
+            // Filter out auto-task-* IDs (these are temporary and should not exist in DB)
+            if (autoTaskPattern.test(t.id)) {
+                console.warn(`⚠️ Filtering out task with temporary ID: ${t.id} - ${t.title}`);
+                return false;
+            }
+            // Keep all other IDs (UUIDs and legacy IDs)
+            return true;
+        });
         
         if (validTasks.length !== tasks.length) {
-            console.warn(`⚠️ Filtered out ${tasks.length - validTasks.length} tasks with invalid IDs`);
+            console.warn(`⚠️ Filtered out ${tasks.length - validTasks.length} tasks with temporary auto-task-* IDs`);
         }
         
-        console.log('📋 Valid tasks:', validTasks.map(t => ({ id: t.id, title: t.title, workerId: t.workerId, department: t.department })));
+        console.log('📋 Tasks after filtering:', validTasks.length);
+        if (validTasks.length > 0) {
+            console.log('📋 Task IDs:', validTasks.map(t => t.id));
+        }
         
         setAdminEvents(validTasks);
       } catch (error) {
         console.error('❌ Error loading Facility tasks:', error);
-        // Keep INITIAL_ADMIN_EVENTS as fallback
+        // Don't use INITIAL_ADMIN_EVENTS as fallback - they have invalid IDs too
+        setAdminEvents([]);
       }
     };
     
