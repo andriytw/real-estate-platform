@@ -1250,6 +1250,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         isOpen={!!selectedBooking}
         onClose={() => setSelectedBooking(null)}
         booking={selectedBooking}
+        onDeleteReservation={onDeleteReservation ? (id) => {
+          onDeleteReservation(id);
+          setSelectedBooking(null);
+        } : undefined}
         // Calendar view is read-only for offers logic usually, or we can add it if needed. 
         // For now, let's keep it simple as per request: the "Manage" view needs the actions.
       />

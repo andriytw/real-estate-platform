@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { X, Briefcase, Euro, CreditCard, Mail, Phone, MapPin, User, FileText, Send, Save, Building2, ChevronDown, FilePlus2, Download, Edit3 } from 'lucide-react';
+import { X, Briefcase, Euro, CreditCard, Mail, Phone, MapPin, User, FileText, Send, Save, Building2, ChevronDown, FilePlus2, Download, Edit3, Trash2 } from 'lucide-react';
 import { Booking, OfferData, BookingStatus } from '../types';
 import { ROOMS } from '../constants';
 import { canSendOffer, canCreateInvoice } from '../bookingUtils';
@@ -14,9 +14,10 @@ interface BookingDetailsModalProps {
   onEdit?: () => void; // New Edit Callback
   onSendOffer?: () => void; // New callback for sending offer
   onUpdateBookingStatus?: (bookingId: number, newStatus: BookingStatus) => void; // New callback for updating status
+  onDeleteReservation?: (id: number) => void; // Delete reservation callback
 }
 
-const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClose, booking, onConvertToOffer, onCreateInvoice, onEdit, onSendOffer, onUpdateBookingStatus }) => {
+const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClose, booking, onConvertToOffer, onCreateInvoice, onEdit, onSendOffer, onUpdateBookingStatus, onDeleteReservation }) => {
   const [isEmailPromptOpen, setIsEmailPromptOpen] = useState(false);
   const [selectedInternalCompany, setSelectedInternalCompany] = useState('Sotiso');
   const [clientEmailInput, setClientEmailInput] = useState('');
@@ -75,6 +76,19 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
 
   const handleDownloadPdf = () => {
       alert("Downloading Offer PDF...");
+  };
+
+  const handleDeleteReservation = () => {
+    if (!onDeleteReservation || !booking) return;
+    
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this reservation? This action cannot be undone."
+    );
+    
+    if (confirmed) {
+      onDeleteReservation(booking.id);
+      onClose();
+    }
   };
 
   // If Email Prompt is Open (Nested Modal)
@@ -366,7 +380,16 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
 
             </div>
 
-            <div className="p-5 border-t border-gray-800 bg-[#161B22] flex justify-end">
+            <div className="p-5 border-t border-gray-800 bg-[#161B22] flex justify-end gap-3">
+                {onDeleteReservation && (
+                    <button 
+                        onClick={handleDeleteReservation}
+                        className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                        Delete Reservation
+                    </button>
+                )}
                 <button onClick={onClose} className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-bold transition-colors">
                     Close
                 </button>
