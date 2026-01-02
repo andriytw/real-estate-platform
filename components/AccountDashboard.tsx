@@ -1220,10 +1220,21 @@ const AccountDashboard: React.FC = () => {
         
         const tasks = await tasksService.getAll(filters);
         console.log('✅ Loaded Facility tasks:', tasks.length);
-        console.log('📋 All tasks:', tasks.map(t => ({ id: t.id, title: t.title, workerId: t.workerId, department: t.department, bookingId: t.bookingId, bookingIdType: typeof t.bookingId, type: t.type })));
+        console.log('📋 All tasks:', tasks.map(t => ({ 
+          id: t.id, 
+          title: t.title, 
+          workerId: t.workerId, 
+          department: t.department, 
+          bookingId: t.bookingId, 
+          bookingIdType: typeof t.bookingId, 
+          type: t.type,
+          status: t.status,
+          date: t.date,
+          day: t.day
+        })));
         
         // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1240',message:'Loaded Facility tasks from database',data:{tasksCount:tasks.length,tasks:tasks.map(t=>({id:t.id,type:t.type,bookingId:t.bookingId,bookingIdType:typeof t.bookingId,title:t.title,workerId:t.workerId,department:t.department})),filters},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1240',message:'Loaded Facility tasks from database',data:{tasksCount:tasks.length,tasks:tasks.map(t=>({id:t.id,type:t.type,bookingId:t.bookingId,bookingIdType:typeof t.bookingId,title:t.title,workerId:t.workerId,department:t.department,status:t.status,date:t.date,day:t.day})),filters},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
         // #endregion
         
         // Filter out ONLY tasks with temporary "auto-task-*" IDs

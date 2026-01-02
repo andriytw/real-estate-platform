@@ -216,13 +216,33 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         dayMatch = eventDay === day;
         monthMatch = eventMonth === currentMonthIdx;
         yearMatch = eventYear === selectedYear;
+        
+        // Diagnostic logging for debugging
+        if (day === 2 && eventMonth === 0 && eventYear === 2026) {
+          console.log('🔍 getEventsForDay debug:', {
+            day,
+            eventTitle: e.title,
+            eventDate: e.date,
+            eventDay,
+            eventMonth,
+            eventYear,
+            currentMonthIdx,
+            selectedYear,
+            dayMatch,
+            monthMatch,
+            yearMatch,
+            status: e.status
+          });
+        }
       } else {
         // Legacy events without full date: fall back to day only, assume current month/year
         dayMatch = e.day === day;
       }
 
       const filterMatch = filterTask === 'All' || e.type === filterTask;
-      return dayMatch && monthMatch && yearMatch && filterMatch;
+      const matches = dayMatch && monthMatch && yearMatch && filterMatch;
+      
+      return matches;
     });
   };
 

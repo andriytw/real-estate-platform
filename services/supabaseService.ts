@@ -1019,9 +1019,9 @@ export const tasksService = {
     }
 
     if (filters?.workerId) {
-      // Для manager/worker: показувати завдання призначені їм АБО verified/archived завдання (які мають бути видимі всім)
-      // Використовуємо or() для включення завдань з правильним worker_id, без worker_id, або verified/archived завдання
-      query = query.or(`worker_id.eq.${filters.workerId},worker_id.is.null,status.eq.verified,status.eq.archived`);
+      // Для manager/worker: показувати завдання призначені їм АБО verified/archived/completed завдання (які мають бути видимі всім)
+      // Використовуємо or() для включення завдань з правильним worker_id, без worker_id, або verified/archived/completed завдання
+      query = query.or(`worker_id.eq.${filters.workerId},worker_id.is.null,status.eq.verified,status.eq.archived,status.eq.completed`);
     }
 
     if (filters?.managerId) {
