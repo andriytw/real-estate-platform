@@ -1883,32 +1883,38 @@ function transformCalendarEventFromDB(db: any): CalendarEvent {
 }
 
 function transformCalendarEventToDB(event: CalendarEvent): any {
+  // Explicitly convert undefined to null for UUID fields to avoid Supabase errors
+  const workerIdValue = (event.workerId || event.assignedWorkerId) || null;
+  const managerIdValue = event.managerId || null;
+  const bookingIdValue = event.bookingId || null;
+  const propertyIdValue = event.propertyId || null;
+  
   return {
     title: event.title,
-    property_id: event.propertyId,
-    booking_id: event.bookingId,
-    unit_id: event.unitId,
-    time: event.time,
-    is_all_day: event.isAllDay,
+    property_id: propertyIdValue,
+    booking_id: bookingIdValue,
+    unit_id: event.unitId || null,
+    time: event.time || null,
+    is_all_day: event.isAllDay || false,
     type: event.type,
-    day: event.day,
-    date: event.date,
-    description: event.description,
-    assignee: event.assignee,
-    assigned_worker_id: event.workerId || event.assignedWorkerId, // legacy support
-    has_unread_message: event.hasUnreadMessage,
-    status: event.status,
-    meter_readings: event.meterReadings,
-    workflow_steps: event.workflowSteps,
+    day: event.day || null,
+    date: event.date || null,
+    description: event.description || null,
+    assignee: event.assignee || null,
+    assigned_worker_id: workerIdValue, // legacy support
+    has_unread_message: event.hasUnreadMessage || false,
+    status: event.status || 'open',
+    meter_readings: event.meterReadings || null,
+    workflow_steps: event.workflowSteps || null,
     // Kanban fields
-    priority: event.priority,
-    is_issue: event.isIssue,
-    manager_id: event.managerId,
-    worker_id: event.workerId || event.assignedWorkerId,
+    priority: event.priority || null,
+    is_issue: event.isIssue || false,
+    manager_id: managerIdValue,
+    worker_id: workerIdValue, // Explicitly null instead of undefined
     department: event.department,
-    images: event.images,
-    checklist: event.checklist,
-    location_text: event.locationText,
+    images: event.images || null,
+    checklist: event.checklist || null,
+    location_text: event.locationText || null,
   };
 }
 

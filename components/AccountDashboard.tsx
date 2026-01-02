@@ -2537,9 +2537,24 @@ const AccountDashboard: React.FC = () => {
                           fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2375',message:'Created Facility task in database',data:{taskId:savedTask.id,taskTitle:savedTask.title,taskType:savedTask.type,bookingId:savedTask.bookingId,bookingIdType:typeof savedTask.bookingId,propertyId:savedTask.propertyId,department:savedTask.department,status:savedTask.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
                           // #endregion
                           console.log('✅ Created Facility task in database:', savedTask.id, savedTask.title, 'bookingId:', savedTask.bookingId);
-                      } catch (error) {
+                      } catch (error: any) {
                           // #region agent log
-                          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2196',message:'Error creating Facility task in database',data:{error:String(error),taskType:task.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                          console.error('❌ Full error details:', error);
+                          console.error('❌ Error message:', error?.message);
+                          console.error('❌ Error code:', error?.code);
+                          console.error('❌ Error details:', error?.details);
+                          console.error('❌ Error hint:', error?.hint);
+                          console.error('❌ Task data that failed:', {
+                              type: task.type,
+                              title: task.title,
+                              bookingId: task.bookingId,
+                              propertyId: task.propertyId,
+                              department: task.department,
+                              workerId: task.workerId,
+                              date: task.date,
+                              status: task.status
+                          });
+                          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2540',message:'Error creating Facility task in database',data:{error:String(error),errorMessage:error?.message,errorCode:error?.code,errorDetails:error?.details,errorHint:error?.hint,taskType:task.type,taskTitle:task.title,bookingId:task.bookingId,bookingIdType:typeof task.bookingId,propertyId:task.propertyId,propertyIdType:typeof task.propertyId,workerId:task.workerId,date:task.date,status:task.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
                           // #endregion
                           console.error('❌ Error creating Facility task in database:', error);
                       }
