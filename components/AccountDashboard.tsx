@@ -14,8 +14,8 @@ import RequestModal from './RequestModal';
 import BankingDashboard from './BankingDashboard';
 import KanbanBoard from './kanban/KanbanBoard';
 import UserManagement from './admin/UserManagement';
-import { propertiesService, tasksService, workersService, warehouseService, WarehouseStockItem } from '../services/supabaseService';
-import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse } from '../types';
+import { propertiesService, tasksService, workersService, warehouseService, bookingsService, WarehouseStockItem } from '../services/supabaseService';
+import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking } from '../types';
 import { MOCK_PROPERTIES } from '../constants';
 import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 
@@ -1582,10 +1582,78 @@ const AccountDashboard: React.FC = () => {
       setSalesTab('offers');
   };
 
-  const handleSaveReservation = (reservation: ReservationData) => {
-      setReservations(prev => [reservation, ...prev]);
-      // Якщо резервація створена з Request, помітити Request як processed
-      if (selectedRequest) {
+  // Load reservations from database on mount
+  useEffect(() => {
+    const loadReservations = async () => {
+      try {
+        const bookings = await bookingsService.getAll();
+        // Transform Booking[] to ReservationData[]
+        // Note: Booking.id from DB is UUID (string), but ReservationData.id is number
+        // We'll keep UUID as string for now and handle conversion where needed
+        const reservationsData: ReservationData[] = bookings.map(booking => ({
+          ...booking,
+          id: booking.id as any // Allow both string and number for compatibility
+        })) as ReservationData[];
+        setReservations(reservationsData);
+      } catch (error) {
+        console.error('Error loading reservations:', error);
+      }
+    };
+    
+    loadReservations();
+  }, []);
+
+  const handleSaveReservation = async (reservation: ReservationData) => {
+      try {
+        // Convert ReservationData to Booking format for database
+        const bookingToSave: Omit<Booking, 'id'> = {
+          roomId: reservation.roomId,
+          start: reservation.start,
+          end: reservation.end,
+          guest: reservation.guest,
+          color: reservation.color || '#3b82f6',
+          checkInTime: reservation.checkInTime,
+          checkOutTime: reservation.checkOutTime,
+          status: reservation.status || 'reserved',
+          price: reservation.price,
+          balance: reservation.balance,
+          guests: reservation.guests,
+          unit: reservation.unit,
+          comments: reservation.comments,
+          paymentAccount: reservation.paymentAccount,
+          company: reservation.company,
+          ratePlan: reservation.ratePlan,
+          guarantee: reservation.guarantee,
+          cancellationPolicy: reservation.cancellationPolicy,
+          noShowPolicy: reservation.noShowPolicy,
+          channel: reservation.channel,
+          type: reservation.type || 'GUEST',
+          address: reservation.address,
+          phone: reservation.phone,
+          email: reservation.email,
+          pricePerNight: reservation.pricePerNight,
+          taxRate: reservation.taxRate,
+          totalGross: reservation.totalGross,
+          guestList: reservation.guestList,
+          clientType: reservation.clientType,
+          firstName: reservation.firstName,
+          lastName: reservation.lastName,
+          companyName: reservation.companyName,
+          internalCompany: reservation.internalCompany,
+        };
+        
+        const savedBooking = await bookingsService.create(bookingToSave);
+        
+        // Update local state with saved booking (which has UUID id)
+        const newReservation: ReservationData = {
+          ...savedBooking,
+          id: savedBooking.id as any // Keep UUID as string for compatibility
+        } as ReservationData;
+        
+        setReservations(prev => [newReservation, ...prev]);
+        
+        // Якщо резервація створена з Request, помітити Request як processed
+        if (selectedRequest) {
           setRequests(prev => prev.map(req => 
               req.id === selectedRequest.id 
                   ? { ...req, status: 'processed' as const, processedAt: new Date().toISOString() }
@@ -1593,7 +1661,7 @@ const AccountDashboard: React.FC = () => {
           ));
           setSelectedRequest(null);
           // Request already has a lead created, so skip lead creation
-      } else {
+        } else {
           // Create lead from reservation if it doesn't exist
           const isCompany = reservation.clientType === 'Company' || !!reservation.companyName;
           const name = isCompany 
@@ -1623,7 +1691,38 @@ const AccountDashboard: React.FC = () => {
                   setLeads(prev => [...prev, newLead].sort((a, b) => a.name.localeCompare(b.name)));
               }
           }
+        }
+      } catch (error) {
+        console.error('Error saving reservation:', error);
+        alert('Failed to save reservation. Please try again.');
       }
+  };
+
+  // Helper function to update reservation in database and local state
+  const updateReservationInDB = async (reservationId: number | string, updates: Partial<ReservationData>) => {
+    try {
+      const reservation = reservations.find(r => r.id === reservationId);
+      if (!reservation) {
+        console.error('Reservation not found for update:', reservationId);
+        return;
+      }
+      
+      const bookingId = typeof reservation.id === 'string' ? reservation.id : reservationId.toString();
+      const updatedBooking = await bookingsService.update(bookingId, updates as Partial<Booking>);
+      
+      // Update local state
+      setReservations(prev => prev.map(r => 
+        r.id === reservationId
+          ? { ...r, ...updates, id: updatedBooking.id as any }
+          : r
+      ));
+    } catch (error) {
+      console.error('Error updating reservation in database:', error);
+      // Still update local state for UI responsiveness
+      setReservations(prev => prev.map(r => 
+        r.id === reservationId ? { ...r, ...updates } : r
+      ));
+    }
   };
 
   const handleAddRequest = (request: RequestData) => {
@@ -1699,8 +1798,24 @@ const AccountDashboard: React.FC = () => {
     setLeads(prev => [...prev, newLead].sort((a, b) => a.name.localeCompare(b.name)));
   };
 
-  const handleDeleteReservation = (id: number) => {
-      setReservations(prev => prev.filter(r => r.id !== id));
+  const handleDeleteReservation = async (id: number | string) => {
+      try {
+        // Find reservation to get the UUID if id is number
+        const reservation = reservations.find(r => r.id === id);
+        if (!reservation) {
+          console.error('Reservation not found:', id);
+          return;
+        }
+        
+        // Use the reservation's id (which might be UUID string or number)
+        const bookingId = typeof reservation.id === 'string' ? reservation.id : id.toString();
+        
+        await bookingsService.delete(bookingId);
+        setReservations(prev => prev.filter(r => r.id !== id));
+      } catch (error) {
+        console.error('Error deleting reservation:', error);
+        alert('Failed to delete reservation. Please try again.');
+      }
   };
 
   const openManageModal = (reservation: ReservationData) => {
@@ -1774,7 +1889,7 @@ const AccountDashboard: React.FC = () => {
       setIsManageModalOpen(true);
   };
 
-  const handleConvertToOffer = (status: 'Draft' | 'Sent', internalCompany: string, email: string) => {
+  const handleConvertToOffer = async (status: 'Draft' | 'Sent', internalCompany: string, email: string) => {
       if (!selectedReservation) return;
       const newOffer: OfferData = {
           id: String(selectedReservation.id), // Використовуємо id резервації для правильного зв'язку
@@ -1798,16 +1913,12 @@ const AccountDashboard: React.FC = () => {
       setOffers(prev => [newOffer, ...prev]);
       // Оновити статус резервації на offer_sent або offer_prepared
       const newStatus = status === 'Sent' ? BookingStatus.OFFER_SENT : BookingStatus.OFFER_PREPARED;
-      setReservations(prev => prev.map(r => 
-          r.id === selectedReservation.id
-              ? { ...r, status: newStatus }
-              : r
-      ));
+      await updateReservationInDB(selectedReservation.id, { status: newStatus });
       closeManageModals();
       setSalesTab('offers');
   };
   
-  const handleSendOffer = () => {
+  const handleSendOffer = async () => {
       if (!selectedReservation) return;
       
       // Створити Offer об'єкт з даних резервації
@@ -1835,11 +1946,10 @@ const AccountDashboard: React.FC = () => {
       setOffers(prev => [newOffer, ...prev]);
       
       // Оновити статус резервації на offer_sent та колір
-      setReservations(prev => prev.map(r => 
-          r.id === selectedReservation.id
-              ? { ...r, status: BookingStatus.OFFER_SENT, color: getBookingStyle(BookingStatus.OFFER_SENT) }
-              : r
-      ));
+      await updateReservationInDB(selectedReservation.id, { 
+        status: BookingStatus.OFFER_SENT, 
+        color: getBookingStyle(BookingStatus.OFFER_SENT) 
+      });
       
     closeManageModals();
       // Переключитись на вкладку Offers
@@ -1900,11 +2010,14 @@ const AccountDashboard: React.FC = () => {
       
       // Оновити статус резервації на invoiced та колір якщо є bookingId
       if (invoice.bookingId) {
-          setReservations(prev => prev.map(r => 
-              r.id === invoice.bookingId || String(r.id) === String(invoice.bookingId)
-                  ? { ...r, status: BookingStatus.INVOICED, color: getBookingStyle(BookingStatus.INVOICED) }
-                  : r
-          ));
+          const bookingId = invoice.bookingId;
+          const reservation = reservations.find(r => r.id === bookingId || String(r.id) === String(bookingId));
+          if (reservation) {
+              updateReservationInDB(reservation.id, { 
+                  status: BookingStatus.INVOICED, 
+                  color: getBookingStyle(BookingStatus.INVOICED) 
+              });
+          }
       }
       
       setIsInvoiceModalOpen(false);
@@ -1960,11 +2073,10 @@ const AccountDashboard: React.FC = () => {
                 
                 if (linkedBooking) {
                     // Оновити статус броні на paid та колір
-                    setReservations(prev => prev.map(r => 
-                        r.id === linkedBooking!.id
-                            ? { ...r, status: BookingStatus.PAID, color: getBookingStyle(BookingStatus.PAID) }
-                            : r
-                    ));
+                    updateReservationInDB(linkedBooking.id, { 
+                        status: BookingStatus.PAID, 
+                        color: getBookingStyle(BookingStatus.PAID) 
+                    });
                     
                     // Перевірити чи вже існують таски для цього бронювання
                     const existingTasks = adminEvents.filter(e => 
@@ -2010,11 +2122,14 @@ const AccountDashboard: React.FC = () => {
             } else {
                 // Якщо статус змінюється на Unpaid, повернути статус броні на invoiced та колір
                 if (inv.bookingId) {
-                    setReservations(prev => prev.map(r => 
-                        r.id === inv.bookingId || String(r.id) === String(inv.bookingId)
-                            ? { ...r, status: BookingStatus.INVOICED, color: getBookingStyle(BookingStatus.INVOICED) }
-                            : r
-                    ));
+                    const bookingId = inv.bookingId;
+                    const reservation = reservations.find(r => r.id === bookingId || String(r.id) === String(bookingId));
+                    if (reservation) {
+                        updateReservationInDB(reservation.id, { 
+                            status: BookingStatus.INVOICED, 
+                            color: getBookingStyle(BookingStatus.INVOICED) 
+                        });
+                    }
                 }
             }
             return { ...inv, status: newStatus };
@@ -2047,11 +2162,11 @@ const AccountDashboard: React.FC = () => {
       if (updatedEvent.status === 'verified' && updatedEvent.bookingId) {
           const newBookingStatus = updateBookingStatusFromTask(updatedEvent);
           if (newBookingStatus) {
-              setReservations(prev => prev.map(r => 
-                  r.id === updatedEvent.bookingId || String(r.id) === String(updatedEvent.bookingId)
-                      ? { ...r, status: newBookingStatus }
-                      : r
-              ));
+              const bookingId = updatedEvent.bookingId;
+              const reservation = reservations.find(r => r.id === bookingId || String(r.id) === String(bookingId));
+              if (reservation) {
+                  updateReservationInDB(reservation.id, { status: newBookingStatus });
+              }
           }
           
           // При верифікації Einzug - оновити Property з даними орендаря
@@ -3391,12 +3506,11 @@ const AccountDashboard: React.FC = () => {
           onUpdateEvent={handleAdminEventUpdate}
           showLegend={true}
           properties={properties}
-          onUpdateBookingStatus={(bookingId, newStatus) => {
-            setReservations(prev => prev.map(r => 
-              r.id === bookingId || String(r.id) === String(bookingId)
-                ? { ...r, status: newStatus }
-                : r
-            ));
+          onUpdateBookingStatus={async (bookingId, newStatus) => {
+            const reservation = reservations.find(r => r.id === bookingId || String(r.id) === String(bookingId));
+            if (reservation) {
+              await updateReservationInDB(reservation.id, { status: newStatus });
+            }
           }}
         />
       );
@@ -4903,12 +5017,11 @@ const AccountDashboard: React.FC = () => {
           onCreateInvoice={handleCreateInvoiceClick} 
           onEdit={viewingOffer ? handleEditOfferClick : undefined}
           onSendOffer={!viewingOffer ? handleSendOffer : undefined}
-          onUpdateBookingStatus={(bookingId, newStatus) => {
-              setReservations(prev => prev.map(r => 
-                  r.id === bookingId
-                      ? { ...r, status: newStatus }
-                      : r
-              ));
+          onUpdateBookingStatus={async (bookingId, newStatus) => {
+              const reservation = reservations.find(r => r.id === bookingId);
+              if (reservation) {
+                await updateReservationInDB(reservation.id, { status: newStatus });
+              }
           }}
       />
       <InvoiceModal isOpen={isInvoiceModalOpen} onClose={() => { setIsInvoiceModalOpen(false); setSelectedOfferForInvoice(null); setSelectedInvoice(null); }} offer={selectedOfferForInvoice} invoice={selectedInvoice} onSave={handleSaveInvoice} />
