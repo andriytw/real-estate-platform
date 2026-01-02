@@ -1297,9 +1297,18 @@ const AccountDashboard: React.FC = () => {
   useEffect(() => {
     const loadOffers = async () => {
       try {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1297',message:'Loading offers from Supabase',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
         const loadedOffers = await offersService.getAll();
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1301',message:'Loaded offers from Supabase',data:{count:loadedOffers.length,offerIds:loadedOffers.map(o=>({id:o.id,idType:typeof o.id,clientName:o.clientName,propertyId:o.propertyId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
         setOffers(loadedOffers);
       } catch (error) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1305',message:'Error loading offers from Supabase',data:{error:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
         console.error('Error loading offers:', error);
       }
     };
@@ -2163,9 +2172,34 @@ const AccountDashboard: React.FC = () => {
               
               // Update invoice.offerIdSource with the new UUID
               invoice.offerIdSource = savedOffer.id;
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2174',message:'Saved offer to Supabase and updated invoice.offerIdSource',data:{oldOfferId:localOffer.id,newOfferId:savedOffer.id,newOfferIdType:typeof savedOffer.id,invoiceOfferIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+              // #endregion
+              
+              // IMPORTANT: Also update invoice.bookingId if it was pointing to the offer.id
+              // This ensures that when invoice is marked as Paid, we can find the booking
+              if (!invoice.bookingId || invoice.bookingId === localOffer.id || String(invoice.bookingId) === String(localOffer.id)) {
+                // Try to find the actual booking/reservation for this offer
+                const relatedReservation = reservations.find(r => {
+                  // Check if reservation matches offer by property and dates
+                  if (r.roomId !== localOffer.propertyId) return false;
+                  const [offerStart] = localOffer.dates.split(' to ');
+                  return r.start === offerStart || String(r.start) === String(offerStart);
+                });
+                
+                if (relatedReservation) {
+                  invoice.bookingId = relatedReservation.id;
+                  // #region agent log
+                  fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2187',message:'Found related reservation and updated invoice.bookingId',data:{reservationId:relatedReservation.id,reservationIdType:typeof relatedReservation.id,invoiceBookingId:invoice.bookingId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                  // #endregion
+                }
+              }
             } else {
               // Offer not found in local state, set to null to avoid foreign key error
               invoice.offerIdSource = undefined;
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2195',message:'Offer not found in local state, setting offerIdSource to undefined',data:{invoiceOfferIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+              // #endregion
             }
           } else {
             // Valid UUID, check if it exists in Supabase
@@ -2460,14 +2494,16 @@ const AccountDashboard: React.FC = () => {
                       // Notify other components and reload tasks from database
                       window.dispatchEvent(new CustomEvent('taskUpdated'));
                       // #region agent log
-                      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2204',message:'Tasks created and taskUpdated event dispatched',data:{savedTasksCount:savedTasks.length,taskIds:savedTasks.map(t=>t.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2458',message:'✅ SUCCESS: Tasks created and taskUpdated event dispatched',data:{savedTasksCount:savedTasks.length,taskIds:savedTasks.map(t=>t.id),taskDetails:savedTasks.map(t=>({id:t.id,type:t.type,bookingId:t.bookingId,bookingIdType:typeof t.bookingId,title:t.title,propertyId:t.propertyId,department:t.department})),linkedBookingId:linkedBooking.id,linkedBookingIdType:typeof linkedBooking.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'SUCCESS'})}).catch(()=>{});
                       // #endregion
                       console.log('✅ Created and added', savedTasks.length, 'Facility tasks to calendar');
+                      console.log('✅ Task details:', savedTasks.map(t => ({ id: t.id, type: t.type, bookingId: t.bookingId, title: t.title })));
                   } else {
                       // #region agent log
-                      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2207',message:'No tasks were created',data:{hasEinzugTask,hasAuszugTask,newTasksCount:newTasks.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+                      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2465',message:'⚠️ WARNING: No tasks were created',data:{hasEinzugTask,hasAuszugTask,newTasksCount:newTasks.length,linkedBookingId:linkedBooking.id,linkedBookingIdType:typeof linkedBooking.id,totalTasksFromFunction:tasks.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
                       // #endregion
                       console.warn('⚠️ No tasks were created. Check if tasks already exist or if there was an error.');
+                      console.warn('hasEinzugTask:', hasEinzugTask, 'hasAuszugTask:', hasAuszugTask, 'newTasksCount:', newTasks.length);
                   }
               } else {
                   // #region agent log
@@ -2489,8 +2525,11 @@ const AccountDashboard: React.FC = () => {
               }));
           } else {
               // #region agent log
-              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2223',message:'No linked booking found',data:{bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2430',message:'❌ CRITICAL: No linked booking found - tasks will NOT be created',data:{bookingId:invoice.bookingId,bookingIdType:typeof invoice.bookingId,offerIdSource:invoice.offerIdSource,offerIdSourceType:typeof invoice.offerIdSource,reservationsCount:reservations.length,offersCount:offers.length,reservationIds:reservations.map(r=>({id:r.id,idType:typeof r.id})),offerIds:offers.map(o=>({id:o.id,idType:typeof o.id})),invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'CRITICAL'})}).catch(()=>{});
               // #endregion
+              console.error('❌ CRITICAL: No linked booking found for invoice:', invoice.invoiceNumber, 'bookingId:', invoice.bookingId, 'offerIdSource:', invoice.offerIdSource);
+              console.error('Available reservations:', reservations.map(r => ({ id: r.id, idType: typeof r.id })));
+              console.error('Available offers:', offers.map(o => ({ id: o.id, idType: typeof o.id })));
           }
       } else {
           // Якщо статус змінюється на Unpaid, повернути статус броні на invoiced та колір
