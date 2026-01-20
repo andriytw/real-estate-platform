@@ -1,0 +1,19 @@
+Ваш SSH ключ створено! 
+
+Скопіюйте цей ключ і додайте на GitHub:
+
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICW8Cvj/yztnij7NJ5//z5GArf3N1nC0AbLoxzu44dBA andriy.tw@gmail.com
+
+ІНСТРУКЦІЯ:
+
+1. Відкрийте: https://github.com/settings/keys
+2. Натисніть "New SSH key"
+3. Title: "MacBook" (або назва вашого комп'ютера)
+4. Key: вставте ключ вище
+5. Натисніть "Add SSH key"
+
+Після цього виконайте в терміналі:
+  git remote set-url origin git@github.com:andriytw/real-estate-platform.git
+  git push origin main
+
+Після цього GitHub Desktop також працюватиме!
