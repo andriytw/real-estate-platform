@@ -2085,6 +2085,20 @@ const AccountDashboard: React.FC = () => {
       }
   };
 
+  const handleDeleteOffer = async (offerId: string) => {
+      if (!confirm('Are you sure you want to delete this offer? This action cannot be undone.')) {
+          return;
+      }
+
+      try {
+          await offersService.delete(offerId);
+          setOffers(prev => prev.filter(o => o.id !== offerId));
+      } catch (error) {
+          console.error('Error deleting offer:', error);
+          alert('Failed to delete offer. Please try again.');
+      }
+  };
+
   const handleConvertToOffer = async (status: 'Draft' | 'Sent', internalCompany: string, email: string) => {
       if (!selectedReservation) return;
       try {
@@ -4879,6 +4893,13 @@ const AccountDashboard: React.FC = () => {
                                                 {isInvoiced && (
                                                     <span className="px-3 py-1.5 text-gray-500 text-xs">Invoice Created</span>
                                                 )}
+                                                <button 
+                                                    onClick={() => handleDeleteOffer(offer.id)}
+                                                    className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded text-xs font-bold transition-colors"
+                                                    title="Delete offer"
+                                                >
+                                                    Delete
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>

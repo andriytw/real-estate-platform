@@ -1370,6 +1370,15 @@ export const offersService = {
     
     if (error) throw error;
     return transformOfferFromDB(data);
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('offers')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
   }
 };
 
