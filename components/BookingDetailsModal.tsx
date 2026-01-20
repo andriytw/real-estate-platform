@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { X, Briefcase, Euro, CreditCard, Mail, Phone, MapPin, User, FileText, Send, Save, Building2, ChevronDown, FilePlus2, Download, Edit3, Trash2 } from 'lucide-react';
+import { X, Briefcase, Euro, CreditCard, Mail, Phone, MapPin, User, FileText, Send, Save, Building2, ChevronDown, FilePlus2, Download, Edit3, Trash2, Copy, Check } from 'lucide-react';
 import { Booking, OfferData, BookingStatus } from '../types';
 import { ROOMS } from '../constants';
 import { canSendOffer, canCreateInvoice } from '../bookingUtils';
@@ -21,6 +21,8 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
   const [isEmailPromptOpen, setIsEmailPromptOpen] = useState(false);
   const [selectedInternalCompany, setSelectedInternalCompany] = useState('Sotiso');
   const [clientEmailInput, setClientEmailInput] = useState('');
+  const [copiedBookingNo, setCopiedBookingNo] = useState(false);
+  const [copiedInternalId, setCopiedInternalId] = useState(false);
   
   if (!isOpen || !booking) return null;
 
@@ -148,10 +150,28 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
                 {/* Top Row: Status & Main Info */}
                 <div className="flex flex-col md:flex-row gap-6">
                     <div className="flex-1 space-y-4">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-wrap">
                             <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${booking.color.replace('bg-', 'text-').replace('600', '400')} bg-white/5 border border-white/10`}>
                                 {booking.status}
                             </span>
+                            
+                            {/* Booking Number */}
+                            {booking.bookingNo && (
+                                <div className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                    <span className="font-mono">{booking.bookingNo}</span>
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(booking.bookingNo || '');
+                                            setCopiedBookingNo(true);
+                                            setTimeout(() => setCopiedBookingNo(false), 2000);
+                                        }}
+                                        className="hover:text-emerald-300 transition-colors"
+                                        title="Copy booking number"
+                                    >
+                                        {copiedBookingNo ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                    </button>
+                                </div>
+                            )}
                             
                             {/* Internal Company Badge */}
                             {booking.internalCompany && (
@@ -284,6 +304,37 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
                         </div>
                     </div>
                 )}
+
+                {/* Internal ID Section */}
+                <div className="bg-[#111315] border border-gray-800 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <span className="text-xs text-gray-500 block mb-1">Internal ID</span>
+                            <span className="text-sm font-mono text-gray-400">{String(booking.id)}</span>
+                        </div>
+                        <button
+                            onClick={() => {
+                                navigator.clipboard.writeText(String(booking.id));
+                                setCopiedInternalId(true);
+                                setTimeout(() => setCopiedInternalId(false), 2000);
+                            }}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors text-xs"
+                            title="Copy Internal ID"
+                        >
+                            {copiedInternalId ? (
+                                <>
+                                    <Check className="w-3 h-3" />
+                                    <span>Copied</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Copy className="w-3 h-3" />
+                                    <span>Copy</span>
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
 
                 {/* Three Column Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">

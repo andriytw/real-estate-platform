@@ -1654,12 +1654,14 @@ function transformBookingFromDB(db: any): Booking {
     lastName: db.last_name,
     companyName: db.company_name,
     internalCompany: db.internal_company,
+    bookingNo: db.booking_no,
+    companyId: db.company_id,
     createdAt: db.created_at,
   };
 }
 
 function transformBookingToDB(booking: Booking): any {
-  return {
+  const result: any = {
     room_id: booking.roomId,
     property_id: booking.propertyId,
     start_date: booking.start,
@@ -1695,6 +1697,13 @@ function transformBookingToDB(booking: Booking): any {
     company_name: booking.companyName,
     internal_company: booking.internalCompany,
   };
+  
+  // Only include company_id if provided (let DB trigger handle booking_no)
+  if (booking.companyId !== undefined) {
+    result.company_id = booking.companyId;
+  }
+  
+  return result;
 }
 
 function transformOfferFromDB(db: any): OfferData {

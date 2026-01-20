@@ -2087,69 +2087,82 @@ const AccountDashboard: React.FC = () => {
 
   const handleConvertToOffer = async (status: 'Draft' | 'Sent', internalCompany: string, email: string) => {
       if (!selectedReservation) return;
-      const newOffer: OfferData = {
-          id: String(selectedReservation.id), // Використовуємо id резервації для правильного зв'язку
-          clientName: selectedReservation.guest,
-          propertyId: selectedReservation.roomId, 
-          internalCompany: internalCompany,
-          price: selectedReservation.totalGross || selectedReservation.price,
-          dates: `${selectedReservation.start} to ${selectedReservation.end}`,
-          status: status,
-          createdAt: new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }),
-          guests: selectedReservation.guests,
-          email: email || selectedReservation.email,
-          phone: selectedReservation.phone,
-          address: selectedReservation.address,
-          checkInTime: selectedReservation.checkInTime,
-          checkOutTime: selectedReservation.checkOutTime,
-          guestList: selectedReservation.guestList,
-          comments: selectedReservation.comments,
-          unit: selectedReservation.unit,
-      };
-      setOffers(prev => [newOffer, ...prev]);
-      // Оновити статус резервації на offer_sent або offer_prepared
-      const newStatus = status === 'Sent' ? BookingStatus.OFFER_SENT : BookingStatus.OFFER_PREPARED;
-      await updateReservationInDB(selectedReservation.id, { status: newStatus });
-      closeManageModals();
-      setSalesTab('offers');
+      try {
+          const offerToCreate: Omit<OfferData, 'id'> = {
+              clientName: selectedReservation.guest,
+              propertyId: selectedReservation.roomId, 
+              internalCompany: internalCompany,
+              price: selectedReservation.totalGross || selectedReservation.price,
+              dates: `${selectedReservation.start} to ${selectedReservation.end}`,
+              status: status,
+              guests: selectedReservation.guests,
+              email: email || selectedReservation.email,
+              phone: selectedReservation.phone,
+              address: selectedReservation.address,
+              checkInTime: selectedReservation.checkInTime,
+              checkOutTime: selectedReservation.checkOutTime,
+              guestList: selectedReservation.guestList,
+              comments: selectedReservation.comments,
+              unit: selectedReservation.unit,
+          };
+          
+          // Зберегти офер в БД
+          const savedOffer = await offersService.create(offerToCreate);
+          setOffers(prev => [savedOffer, ...prev]);
+          
+          // Оновити статус резервації на offer_sent або offer_prepared
+          const newStatus = status === 'Sent' ? BookingStatus.OFFER_SENT : BookingStatus.OFFER_PREPARED;
+          await updateReservationInDB(selectedReservation.id, { status: newStatus });
+          closeManageModals();
+          setSalesTab('offers');
+      } catch (error) {
+          console.error('Error creating offer:', error);
+          alert('Failed to save offer to database. Please try again.');
+      }
   };
   
   const handleSendOffer = async () => {
       if (!selectedReservation) return;
       
-      // Створити Offer об'єкт з даних резервації
-      const newOffer: OfferData = {
-          id: String(selectedReservation.id),
-          clientName: selectedReservation.guest,
-          propertyId: selectedReservation.roomId,
-          internalCompany: selectedReservation.internalCompany || 'Sotiso',
-          price: selectedReservation.price,
-          dates: `${selectedReservation.start} to ${selectedReservation.end}`,
-          status: 'Sent',
-          createdAt: new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }),
-          guests: selectedReservation.guests,
-          email: selectedReservation.email,
-          phone: selectedReservation.phone,
-          address: selectedReservation.address,
-          checkInTime: selectedReservation.checkInTime,
-          checkOutTime: selectedReservation.checkOutTime,
-          guestList: selectedReservation.guestList,
-          comments: selectedReservation.comments,
-          unit: selectedReservation.unit,
-      };
-      
-      // Додати Offer в масив offers
-      setOffers(prev => [newOffer, ...prev]);
-      
-      // Оновити статус резервації на offer_sent та колір
-      await updateReservationInDB(selectedReservation.id, { 
-        status: BookingStatus.OFFER_SENT, 
-        color: getBookingStyle(BookingStatus.OFFER_SENT) 
-      });
-      
-    closeManageModals();
-      // Переключитись на вкладку Offers
-      setSalesTab('offers');
+      try {
+          // Створити Offer об'єкт з даних резервації (без id для створення нового)
+          const offerToCreate: Omit<OfferData, 'id'> = {
+              clientName: selectedReservation.guest,
+              propertyId: selectedReservation.roomId,
+              internalCompany: selectedReservation.internalCompany || 'Sotiso',
+              price: selectedReservation.price,
+              dates: `${selectedReservation.start} to ${selectedReservation.end}`,
+              status: 'Sent',
+              guests: selectedReservation.guests,
+              email: selectedReservation.email,
+              phone: selectedReservation.phone,
+              address: selectedReservation.address,
+              checkInTime: selectedReservation.checkInTime,
+              checkOutTime: selectedReservation.checkOutTime,
+              guestList: selectedReservation.guestList,
+              comments: selectedReservation.comments,
+              unit: selectedReservation.unit,
+          };
+          
+          // Зберегти Offer в БД
+          const savedOffer = await offersService.create(offerToCreate);
+          
+          // Додати Offer в масив offers
+          setOffers(prev => [savedOffer, ...prev]);
+          
+          // Оновити статус резервації на offer_sent та колір
+          await updateReservationInDB(selectedReservation.id, { 
+            status: BookingStatus.OFFER_SENT, 
+            color: getBookingStyle(BookingStatus.OFFER_SENT) 
+          });
+          
+          closeManageModals();
+          // Переключитись на вкладку Offers
+          setSalesTab('offers');
+      } catch (error) {
+          console.error('Error creating offer:', error);
+          alert('Failed to save offer to database. Please try again.');
+      }
   };
   
   const handleCreateInvoiceClick = (offer: OfferData | ReservationData) => {
@@ -4698,7 +4711,7 @@ const AccountDashboard: React.FC = () => {
                     <table className="w-full text-sm text-left">
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
                             <tr>
-                                <th className="p-4">ID</th>
+                                <th className="p-4">Booking No.</th>
                                 <th className="p-4">Guest</th>
                                 <th className="p-4">Property</th>
                                 <th className="p-4">Dates</th>
@@ -4710,7 +4723,27 @@ const AccountDashboard: React.FC = () => {
                         <tbody className="divide-y divide-gray-800">
                             {reservations.filter(res => shouldShowInReservations(res.status)).map(res => (
                                 <tr key={res.id} className="hover:bg-[#16181D]">
-                                    <td className="p-4 text-gray-400">#{res.id}</td>
+                                    <td className="p-4">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-gray-300 font-mono text-sm">
+                                                {res.bookingNo || '—'}
+                                            </span>
+                                            {res.bookingNo && (
+                                                <button
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(res.bookingNo || '');
+                                                        // Optional: show toast notification
+                                                    }}
+                                                    className="text-gray-500 hover:text-white transition-colors"
+                                                    title="Copy booking number"
+                                                >
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                    </svg>
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
                                     <td className="p-4 font-bold">{res.guest}</td>
                                     <td className="p-4">{getPropertyNameById(res.roomId)}</td>
                                     <td className="p-4">{res.start} - {res.end}</td>

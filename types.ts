@@ -323,7 +323,9 @@ export interface Booking {
   firstName?: string;
   lastName?: string;
   companyName?: string;
-  internalCompany?: string; 
+  internalCompany?: string;
+  bookingNo?: string; // Human-readable booking number (RES-YYYY-000001)
+  companyId?: string; // UUID reference to companies table
 }
 
 export interface OfferData {
