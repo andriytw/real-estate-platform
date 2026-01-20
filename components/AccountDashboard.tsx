@@ -4783,7 +4783,7 @@ const AccountDashboard: React.FC = () => {
                     <table className="w-full text-sm text-left">
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
                             <tr>
-                                <th className="p-4">ID</th>
+                                <th className="p-4">Booking No.</th>
                                 <th className="p-4">Client</th>
                                 <th className="p-4">Property</th>
                                 <th className="p-4">Dates</th>
@@ -4798,6 +4798,17 @@ const AccountDashboard: React.FC = () => {
                                 const isDraft = offer.status === 'Draft';
                                 const isInvoiced = offer.status === 'Invoiced';
                                 
+                                // Find linked booking by matching dates, client, and property
+                                const [offerStart, offerEnd] = offer.dates.split(' to ');
+                                const linkedBooking = reservations.find(booking => {
+                                    const bookingStart = booking.start?.split('T')[0] || booking.start;
+                                    const bookingEnd = booking.end?.split('T')[0] || booking.end;
+                                    return bookingStart === offerStart && 
+                                           bookingEnd === offerEnd &&
+                                           booking.guest === offer.clientName &&
+                                           booking.roomId === offer.propertyId;
+                                });
+                                
                                 // Determine status color styling
                                 const getStatusStyle = () => {
                                     if (isDraft) return 'bg-gray-500/20 text-gray-400 border-gray-500';
@@ -4807,7 +4818,26 @@ const AccountDashboard: React.FC = () => {
                                 
                                 return (
                                     <tr key={offer.id} className={`hover:bg-[#16181D] ${isDraft || isInvoiced ? 'opacity-70' : ''}`}>
-                                        <td className="p-4 text-gray-400">#{offer.id}</td>
+                                        <td className="p-4">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-gray-300 font-mono text-sm">
+                                                    {linkedBooking?.bookingNo || '—'}
+                                                </span>
+                                                {linkedBooking?.bookingNo && (
+                                                    <button
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(linkedBooking.bookingNo || '');
+                                                        }}
+                                                        className="text-gray-500 hover:text-white transition-colors"
+                                                        title="Copy booking number"
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                        </svg>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
                                         <td className="p-4 font-bold">{offer.clientName}</td>
                                         <td className="p-4">{getPropertyNameById(offer.propertyId)}</td>
                                         <td className="p-4">{offer.dates}</td>
