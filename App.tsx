@@ -117,8 +117,8 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Check URL path for routing (early initialization)
-  useEffect(() => {
+  // Sync view with URL path - helper function
+  const syncViewWithPath = () => {
     const path = window.location.pathname;
     if (path === '/worker') {
       setCurrentView('worker');
@@ -132,7 +132,53 @@ const AppContent: React.FC = () => {
       setCurrentView('account');
     } else if (path === '/' || path === '/market') {
       setCurrentView('market');
+    } else if (path.startsWith('/property/')) {
+      // Property route - handled by property-details logic
+      // Don't change view here to avoid conflicts
     }
+  };
+
+  // Check URL path for routing (early initialization)
+  useEffect(() => {
+    syncViewWithPath();
+  }, []);
+
+  // Handle browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      console.log('🔄 App: Browser navigation detected, syncing view with path');
+      syncViewWithPath();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Handle page visibility changes (when returning to tab)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('🔄 App: Tab became visible, syncing view with path');
+        syncViewWithPath();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
+  // Handle bfcache (back/forward cache) restoration
+  useEffect(() => {
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        // Page was restored from bfcache
+        console.log('🔄 App: Page restored from bfcache, syncing view with path');
+        syncViewWithPath();
+      }
+    };
+
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
   }, []);
 
   // Check authentication and redirect
