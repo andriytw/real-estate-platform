@@ -1282,6 +1282,26 @@ export const bookingsService = {
 
   async create(booking: Omit<Booking, 'id'>): Promise<Booking> {
     const dbData = transformBookingToDB(booking);
+    
+    // If company_id is not provided, get the first company from database
+    if (!dbData.company_id) {
+      const { data: companies, error: companyError } = await supabase
+        .from('companies')
+        .select('id')
+        .limit(1)
+        .single();
+      
+      if (companyError) {
+        console.error('❌ Error fetching default company:', companyError);
+        throw new Error('No company found. Please create a company first.');
+      }
+      
+      if (companies) {
+        dbData.company_id = companies.id;
+        console.log('✅ Using default company_id:', companies.id);
+      }
+    }
+    
     const { data, error } = await supabase
       .from('bookings')
       .insert([dbData])
