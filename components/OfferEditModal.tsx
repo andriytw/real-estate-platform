@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, Calendar, User, Building2, DollarSign, Mail, Phone, MapPin, AlignLeft, Users } from 'lucide-react';
+import { X, Save, Calendar, User, Building2, DollarSign, Mail, Phone, MapPin, AlignLeft, Users, Trash2 } from 'lucide-react';
 import { OfferData } from '../types';
 import { ROOMS } from '../constants';
 
@@ -9,9 +9,10 @@ interface OfferEditModalProps {
   onClose: () => void;
   offer: OfferData | null;
   onSave: (updatedOffer: OfferData) => void;
+  onDelete?: (offerId: string) => void;
 }
 
-const OfferEditModal: React.FC<OfferEditModalProps> = ({ isOpen, onClose, offer, onSave }) => {
+const OfferEditModal: React.FC<OfferEditModalProps> = ({ isOpen, onClose, offer, onSave, onDelete }) => {
   const [formData, setFormData] = useState<OfferData | null>(null);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -199,17 +200,35 @@ const OfferEditModal: React.FC<OfferEditModalProps> = ({ isOpen, onClose, offer,
 
         </div>
 
-        <div className="p-5 border-t border-gray-800 bg-[#161B22] flex gap-3 justify-end sticky bottom-0">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
-                Cancel
-            </button>
-            <button 
-                onClick={handleSave}
-                className="px-6 py-2 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg transition-colors flex items-center gap-2"
-            >
-                <Save className="w-4 h-4" />
-                Save Changes
-            </button>
+        <div className="p-5 border-t border-gray-800 bg-[#161B22] flex gap-3 justify-between sticky bottom-0">
+            <div>
+                {onDelete && formData && (
+                    <button 
+                        onClick={() => {
+                            if (confirm('Are you sure you want to delete this offer? This action cannot be undone.')) {
+                                onDelete(formData.id);
+                                onClose();
+                            }
+                        }}
+                        className="px-6 py-2 rounded-lg text-sm font-bold bg-red-600 hover:bg-red-500 text-white shadow-lg transition-colors flex items-center gap-2"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                        Delete Offer
+                    </button>
+                )}
+            </div>
+            <div className="flex gap-3">
+                <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
+                    Cancel
+                </button>
+                <button 
+                    onClick={handleSave}
+                    className="px-6 py-2 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg transition-colors flex items-center gap-2"
+                >
+                    <Save className="w-4 h-4" />
+                    Save Changes
+                </button>
+            </div>
         </div>
 
       </div>

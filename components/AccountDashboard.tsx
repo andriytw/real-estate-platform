@@ -5829,12 +5829,12 @@ const AccountDashboard: React.FC = () => {
         </div>
       )}
 
-      <BookingDetailsModal 
-          isOpen={isManageModalOpen} 
-          onClose={closeManageModals} 
-          booking={selectedReservation} 
-          onConvertToOffer={!viewingOffer ? handleConvertToOffer : undefined} 
-          onCreateInvoice={handleCreateInvoiceClick} 
+      <BookingDetailsModal
+          isOpen={isManageModalOpen}
+          onClose={closeManageModals}
+          booking={selectedReservation}
+          onConvertToOffer={!viewingOffer ? handleConvertToOffer : undefined}
+          onCreateInvoice={handleCreateInvoiceClick}
           onEdit={viewingOffer ? handleEditOfferClick : undefined}
           onSendOffer={!viewingOffer ? handleSendOffer : undefined}
           onUpdateBookingStatus={async (bookingId, newStatus) => {
@@ -5843,9 +5843,17 @@ const AccountDashboard: React.FC = () => {
                 await updateReservationInDB(reservation.id, { status: newStatus });
               }
           }}
+          onDeleteOffer={viewingOffer ? handleDeleteOffer : undefined}
+          isViewingOffer={viewingOffer}
       />
       <InvoiceModal isOpen={isInvoiceModalOpen} onClose={() => { setIsInvoiceModalOpen(false); setSelectedOfferForInvoice(null); setSelectedInvoice(null); }} offer={selectedOfferForInvoice} invoice={selectedInvoice} onSave={handleSaveInvoice} reservations={reservations} offers={offers} />
-      <OfferEditModal isOpen={isOfferEditModalOpen} onClose={() => setIsOfferEditModalOpen(false)} offer={offerToEdit} onSave={handleSaveOfferUpdate} />
+      <OfferEditModal 
+          isOpen={isOfferEditModalOpen} 
+          onClose={() => setIsOfferEditModalOpen(false)} 
+          offer={offerToEdit} 
+          onSave={handleSaveOfferUpdate}
+          onDelete={handleDeleteOffer}
+      />
       <PropertyAddModal 
         isOpen={isPropertyAddModalOpen} 
         onClose={() => {

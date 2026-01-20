@@ -15,9 +15,11 @@ interface BookingDetailsModalProps {
   onSendOffer?: () => void; // New callback for sending offer
   onUpdateBookingStatus?: (bookingId: number, newStatus: BookingStatus) => void; // New callback for updating status
   onDeleteReservation?: (id: number) => void; // Delete reservation callback
+  onDeleteOffer?: (offerId: string) => void; // Delete offer callback
+  isViewingOffer?: boolean; // Flag to indicate if viewing an offer
 }
 
-const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClose, booking, onConvertToOffer, onCreateInvoice, onEdit, onSendOffer, onUpdateBookingStatus, onDeleteReservation }) => {
+const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClose, booking, onConvertToOffer, onCreateInvoice, onEdit, onSendOffer, onUpdateBookingStatus, onDeleteReservation, onDeleteOffer, isViewingOffer }) => {
   const [isEmailPromptOpen, setIsEmailPromptOpen] = useState(false);
   const [selectedInternalCompany, setSelectedInternalCompany] = useState('Sotiso');
   const [clientEmailInput, setClientEmailInput] = useState('');
@@ -432,7 +434,21 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
             </div>
 
             <div className="p-5 border-t border-gray-800 bg-[#161B22] flex justify-end gap-3">
-                {onDeleteReservation && (
+                {onDeleteOffer && isViewingOffer && booking && (
+                    <button 
+                        onClick={() => {
+                            if (confirm('Are you sure you want to delete this offer? This action cannot be undone.')) {
+                                onDeleteOffer(String(booking.id));
+                                onClose();
+                            }
+                        }}
+                        className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                        Delete Offer
+                    </button>
+                )}
+                {onDeleteReservation && !isViewingOffer && (
                     <button 
                         onClick={handleDeleteReservation}
                         className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
