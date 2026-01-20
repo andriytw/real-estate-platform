@@ -117,7 +117,7 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Check URL path for routing
+  // Check URL path for routing (early initialization)
   useEffect(() => {
     const path = window.location.pathname;
     if (path === '/worker') {
@@ -128,6 +128,8 @@ const AppContent: React.FC = () => {
       setCurrentView('register');
     } else if (path === '/tasks') {
       setCurrentView('tasks');
+    } else if (path === '/account' || path === '/dashboard') {
+      setCurrentView('account');
     } else if (path === '/' || path === '/market') {
       setCurrentView('market');
     }
