@@ -1584,6 +1584,7 @@ function transformPropertyFromDB(db: any): Property {
     endEnergyDemand: db.end_energy_demand || db.endEnergyDemand,
     energyEfficiencyClass: db.energy_efficiency_class || db.energyEfficiencyClass,
     parking: db.parking,
+    marketplaceUrl: db.marketplace_url,
   };
 }
 
@@ -1643,6 +1644,7 @@ function transformPropertyToDB(property: Property): any {
   if (property.endEnergyDemand !== undefined) result.end_energy_demand = property.endEnergyDemand;
   if (property.energyEfficiencyClass !== undefined) result.energy_efficiency_class = property.energyEfficiencyClass;
   if (property.parking !== undefined) result.parking = property.parking;
+  if (property.marketplaceUrl !== undefined) result.marketplace_url = property.marketplaceUrl;
   
   return result;
 }
@@ -1651,6 +1653,7 @@ function transformBookingFromDB(db: any): Booking {
   return {
     id: db.id, // UUID as string
     roomId: db.room_id,
+    propertyId: db.property_id, // UUID reference to properties table
     start: db.start_date,
     end: db.end_date,
     guest: db.guest,
@@ -1754,6 +1757,7 @@ function transformOfferFromDB(db: any): OfferData {
     guestList: db.guest_list || [],
     comments: db.comments,
     unit: db.unit,
+    clientMessage: db.client_message,
   };
 }
 
@@ -1776,6 +1780,7 @@ function transformOfferToDB(offer: OfferData): any {
     guest_list: offer.guestList,
     comments: offer.comments,
     unit: offer.unit,
+    client_message: offer.clientMessage,
   };
 }
 

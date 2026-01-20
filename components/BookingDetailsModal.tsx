@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Briefcase, Euro, CreditCard, Mail, Phone, MapPin, User, FileText, Send, Save, Building2, ChevronDown, FilePlus2, Download, Edit3, Trash2, Copy, Check } from 'lucide-react';
 import { Booking, OfferData, BookingStatus } from '../types';
 import { ROOMS } from '../constants';
@@ -9,7 +9,7 @@ interface BookingDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   booking: Booking | null;
-  onConvertToOffer?: (status: 'Draft' | 'Sent', company: string, email: string) => void;
+  onConvertToOffer?: (status: 'Draft' | 'Sent', company: string, email: string, phone: string, clientMessage: string) => void;
   onCreateInvoice?: (offer: OfferData) => void; // New Callback
   onEdit?: () => void; // New Edit Callback
   onSendOffer?: () => void; // New callback for sending offer
@@ -20,64 +20,99 @@ interface BookingDetailsModalProps {
 }
 
 const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClose, booking, onConvertToOffer, onCreateInvoice, onEdit, onSendOffer, onUpdateBookingStatus, onDeleteReservation, onDeleteOffer, isViewingOffer }) => {
-  const [isEmailPromptOpen, setIsEmailPromptOpen] = useState(false);
   const [selectedInternalCompany, setSelectedInternalCompany] = useState('Sotiso');
-  const [clientEmailInput, setClientEmailInput] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+  const [clientMessage, setClientMessage] = useState('');
   const [copiedBookingNo, setCopiedBookingNo] = useState(false);
   const [copiedInternalId, setCopiedInternalId] = useState(false);
+  const [copiedMarketplaceUrl, setCopiedMarketplaceUrl] = useState(false);
+  const [property, setProperty] = useState<any>(null);
   
-  if (!isOpen || !booking) return null;
-
   const INTERNAL_COMPANIES = ['Sotiso', 'Wonowo', 'NowFlats'];
 
-  const handleOpenEmailPrompt = () => {
-    setClientEmailInput(booking.email || '');
-    setIsEmailPromptOpen(true);
-  };
-
-  const handleSendAction = () => {
-    if (onConvertToOffer) {
-        onConvertToOffer('Sent', selectedInternalCompany, clientEmailInput);
-        setIsEmailPromptOpen(false);
+  // Fetch property for marketplace URL
+  useEffect(() => {
+    if (booking?.propertyId) {
+      import('../services/supabaseService').then(({ propertiesService }) => {
+        propertiesService.getById(booking.propertyId!).then(setProperty).catch(() => setProperty(null));
+      });
     }
-  };
+  }, [booking?.propertyId]);
+
+  // Initialize form fields when booking changes
+  useEffect(() => {
+    if (booking) {
+      setClientEmail(booking.email || '');
+      setClientPhone(booking.phone || '');
+      // Generate message template with safe fallbacks
+      const guestName = (booking.firstName && booking.lastName) 
+        ? `${booking.firstName} ${booking.lastName}`.trim()
+        : (booking.guest || 'Guest');
+      const propertyName = property?.title || booking.roomId || 'the apartment';
+      const checkInDate = booking.start 
+        ? (() => {
+            try {
+              return new Date(booking.start).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            } catch {
+              return booking.start;
+            }
+          })()
+        : '';
+      const checkOutDate = booking.end 
+        ? (() => {
+            try {
+              return new Date(booking.end).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            } catch {
+              return booking.end;
+            }
+          })()
+        : '';
+      const totalPrice = booking.totalGross || booking.price || '0.00 EUR';
+      const bookingNo = booking.bookingNo || '';
+      
+      const template = `Hello ${guestName},
+
+thank you for your interest in the apartment "${propertyName}".
+
+Your stay: ${checkInDate}${checkOutDate ? ` – ${checkOutDate}` : ''}
+${bookingNo ? `Booking number: ${bookingNo}\n` : ''}Total price: ${totalPrice}
+
+Please find the offer attached.
+
+Best regards,
+${selectedInternalCompany} Team`;
+      
+      setClientMessage(template);
+    }
+  }, [booking, property, selectedInternalCompany]);
+
+  // Update message template when company changes
+  useEffect(() => {
+    if (booking && clientMessage) {
+      const lines = clientMessage.split('\n');
+      const lastLine = lines[lines.length - 1];
+      if (lastLine.includes('Team')) {
+        lines[lines.length - 1] = `${selectedInternalCompany} Team`;
+        setClientMessage(lines.join('\n'));
+      }
+    }
+  }, [selectedInternalCompany]);
+
+  if (!isOpen || !booking) return null;
 
   const handleSaveDraft = () => {
     if (onConvertToOffer) {
-        onConvertToOffer('Draft', selectedInternalCompany, '');
-    }
-  };
-  
-  const handleCreateInvoice = () => {
-    if (onCreateInvoice) {
-        // Якщо це резервація, передати її напряму
-        if (booking && 'roomId' in booking) {
-            onCreateInvoice(booking as any);
-        } else {
-        // Construct basic OfferData from booking to pass back
-        const offerData: OfferData = {
-            id: String(booking.id),
-            clientName: booking.guest,
-            propertyId: booking.roomId,
-            internalCompany: booking.internalCompany || 'Sotiso',
-            price: booking.price,
-            dates: `${booking.start} to ${booking.end}`,
-            status: 'Sent', 
-            address: booking.address,
-            email: booking.email,
-            phone: booking.phone,
-            guests: booking.guests,
-            guestList: booking.guestList,
-            unit: booking.unit,
-            checkInTime: booking.checkInTime,
-            checkOutTime: booking.checkOutTime,
-            comments: booking.comments,
-        };
-        onCreateInvoice(offerData);
-        }
+        onConvertToOffer('Draft', selectedInternalCompany, clientEmail, clientPhone, clientMessage);
     }
   };
 
+  const handleSaveAndSend = () => {
+    if (onConvertToOffer) {
+        onConvertToOffer('Sent', selectedInternalCompany, clientEmail, clientPhone, clientMessage);
+    }
+  };
+  
   const handleDownloadPdf = () => {
       alert("Downloading Offer PDF...");
   };
@@ -95,43 +130,6 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
     }
   };
 
-  // If Email Prompt is Open (Nested Modal)
-  if (isEmailPromptOpen) {
-    return (
-        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-            <div className="bg-[#1C1F24] w-full max-w-md rounded-xl border border-gray-700 shadow-2xl flex flex-col animate-in zoom-in duration-200">
-                <div className="p-5 border-b border-gray-800 bg-[#23262b]">
-                    <h3 className="text-lg font-bold text-white">Send Offer</h3>
-                </div>
-                <div className="p-6">
-                    <label className="block text-xs font-medium text-gray-400 mb-2">Client Email</label>
-                    <input 
-                        type="email"
-                        value={clientEmailInput}
-                        onChange={(e) => setClientEmailInput(e.target.value)}
-                        className="w-full bg-[#111315] border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-emerald-500 focus:outline-none"
-                        placeholder="client@example.com"
-                    />
-                </div>
-                <div className="p-5 border-t border-gray-800 bg-[#161B22] flex gap-3 justify-end">
-                    <button 
-                        onClick={() => setIsEmailPromptOpen(false)}
-                        className="px-4 py-2 rounded-lg text-sm font-bold text-gray-400 hover:text-white hover:bg-gray-800"
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        onClick={handleSendAction}
-                        className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg flex items-center gap-2"
-                    >
-                        <Send className="w-4 h-4" />
-                        Confirm Send
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-  }
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm">
@@ -209,72 +207,19 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
                 </div>
 
                 <div className="h-px bg-gray-800"></div>
-                
-                {/* Action Buttons based on Status */}
-                    <div className="flex flex-wrap gap-4">
-                    {/* Send Offer Button - для статусів reserved та offer_prepared */}
-                    {onSendOffer && booking && canSendOffer(booking.status) && (
-                        <button 
-                            onClick={() => {
-                                if (onSendOffer) {
-                                    onSendOffer();
-                                }
-                                if (onUpdateBookingStatus) {
-                                    onUpdateBookingStatus(booking.id, BookingStatus.OFFER_SENT);
-                                }
-                            }}
-                            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-lg shadow-blue-900/20"
-                        >
-                            <Send className="w-4 h-4" /> Send Offer
-                        </button>
-                    )}
-                    
-                    {/* Create Invoice Button - для статусів offer_sent та offer_prepared */}
-                    {onCreateInvoice && booking && canCreateInvoice(booking.status) && (
-                        <button 
-                            onClick={() => {
-                                handleCreateInvoice();
-                                if (onUpdateBookingStatus) {
-                                    onUpdateBookingStatus(booking.id, BookingStatus.INVOICED);
-                                }
-                            }}
-                            className="flex-1 bg-purple-600 hover:bg-purple-500 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-lg shadow-purple-900/20"
-                        >
-                            <FilePlus2 className="w-4 h-4" /> Create Invoice
-                        </button>
-                    )}
-                    
-                    {/* Edit Offer Button - для offers */}
-                        {onEdit && (
-                            <button 
-                                onClick={onEdit}
-                                className="flex-1 bg-[#1C1F24] border border-gray-700 hover:bg-gray-800 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors"
-                            >
-                                <Edit3 className="w-4 h-4" /> Edit Offer
-                            </button>
-                        )}
-                    
-                    {/* Download PDF Button - для offers */}
-                    {onCreateInvoice && (
-                        <button 
-                            onClick={handleDownloadPdf}
-                            className="flex-1 bg-[#1C1F24] border border-gray-700 hover:bg-gray-800 text-white py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-colors"
-                        >
-                            <Download className="w-4 h-4" /> Download Offer PDF
-                        </button>
-                    )}
-                    </div>
 
                 {/* Convert to Offer Section */}
                 {onConvertToOffer && (
-                    <div className="bg-[#161B22] border border-gray-800 rounded-lg p-4 mb-4">
-                        <h4 className="text-sm font-bold text-emerald-500 mb-3 flex items-center gap-2">
+                    <div className="bg-[#161B22] border border-gray-800 rounded-lg p-6 mb-4">
+                        <h4 className="text-sm font-bold text-emerald-500 mb-4 flex items-center gap-2">
                             <Send className="w-4 h-4" /> Convert to Offer
                         </h4>
-                        <div className="flex gap-4 items-end">
-                             <div className="flex-1">
-                                <label className="block text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
-                                    <Building2 className="w-3 h-3 text-emerald-500" /> Issuing Company
+                        
+                        <div className="space-y-4">
+                            {/* Issuing Company */}
+                            <div>
+                                <label className="block text-xs font-medium text-gray-400 mb-1.5 flex items-center gap-2">
+                                    <Building2 className="w-3 h-3 text-emerald-500" /> Issuing Company <span className="text-red-400">*</span>
                                 </label>
                                 <div className="relative">
                                     <select 
@@ -286,23 +231,49 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
                                     </select>
                                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
                                 </div>
-                             </div>
-                             <div className="flex gap-2">
-                                <button 
-                                    onClick={handleSaveDraft}
-                                    className="px-4 py-2.5 rounded-lg text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-lg transition-colors flex items-center gap-2"
-                                >
-                                    <Save className="w-4 h-4" />
-                                    Save as Offer
-                                </button>
-                                <button 
-                                    onClick={handleOpenEmailPrompt}
-                                    className="px-4 py-2.5 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg transition-colors flex items-center gap-2"
-                                >
-                                    <Send className="w-4 h-4" />
-                                    Save & Send
-                                </button>
-                             </div>
+                            </div>
+
+                            {/* Recipient Email */}
+                            <div>
+                                <label className="block text-xs font-medium text-gray-400 mb-1.5 flex items-center gap-2">
+                                    <Mail className="w-3 h-3 text-emerald-500" /> Recipient Email <span className="text-red-400">*</span>
+                                </label>
+                                <input 
+                                    type="email"
+                                    value={clientEmail}
+                                    onChange={(e) => setClientEmail(e.target.value)}
+                                    className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                                    placeholder="client@example.com"
+                                />
+                            </div>
+
+                            {/* Recipient Phone */}
+                            <div>
+                                <label className="block text-xs font-medium text-gray-400 mb-1.5 flex items-center gap-2">
+                                    <Phone className="w-3 h-3 text-emerald-500" /> Recipient Phone <span className="text-gray-500 text-xs">(optional)</span>
+                                </label>
+                                <input 
+                                    type="tel"
+                                    value={clientPhone}
+                                    onChange={(e) => setClientPhone(e.target.value)}
+                                    className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                                    placeholder="+49 123 456 789"
+                                />
+                            </div>
+
+                            {/* Message to Client */}
+                            <div>
+                                <label className="block text-xs font-medium text-gray-400 mb-1.5 flex items-center gap-2">
+                                    <FileText className="w-3 h-3 text-emerald-500" /> Message to client <span className="text-red-400">*</span>
+                                </label>
+                                <textarea 
+                                    value={clientMessage}
+                                    onChange={(e) => setClientMessage(e.target.value)}
+                                    rows={10}
+                                    className="w-full bg-[#111315] border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-emerald-500 focus:outline-none resize-y font-mono"
+                                    placeholder="Enter message to client..."
+                                />
+                            </div>
                         </div>
                     </div>
                 )}
@@ -337,6 +308,59 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
                         </button>
                     </div>
                 </div>
+
+                {/* Marketplace Listing Section */}
+                {property?.marketplaceUrl && (
+                    <div className="bg-[#111315] border border-gray-800 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                                <span className="text-xs text-gray-500 block mb-1">Marketplace Listing</span>
+                                <a 
+                                    href={property.marketplaceUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-sm text-emerald-400 hover:text-emerald-300 truncate block"
+                                >
+                                    {property.marketplaceUrl}
+                                </a>
+                            </div>
+                            <div className="flex items-center gap-2 ml-3">
+                                <button
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(property.marketplaceUrl);
+                                        setCopiedMarketplaceUrl(true);
+                                        setTimeout(() => setCopiedMarketplaceUrl(false), 2000);
+                                    }}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors text-xs"
+                                    title="Copy URL"
+                                >
+                                    {copiedMarketplaceUrl ? (
+                                        <>
+                                            <Check className="w-3 h-3" />
+                                            <span>Copied</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Copy className="w-3 h-3" />
+                                            <span>Copy</span>
+                                        </>
+                                    )}
+                                </button>
+                                <a
+                                    href={property.marketplaceUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors text-xs"
+                                    title="Open in new tab"
+                                >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Three Column Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -433,33 +457,76 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
 
             </div>
 
-            <div className="p-5 border-t border-gray-800 bg-[#161B22] flex justify-end gap-3">
-                {onDeleteOffer && isViewingOffer && booking && (
-                    <button 
-                        onClick={() => {
-                            if (confirm('Are you sure you want to delete this offer? This action cannot be undone.')) {
-                                onDeleteOffer(String(booking.id));
-                                onClose();
-                            }
-                        }}
-                        className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                        Delete Offer
-                    </button>
+            <div className="p-5 border-t border-gray-800 bg-[#161B22]">
+                {/* Actions Section */}
+                {onConvertToOffer && (
+                    <div className="mb-4">
+                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Actions</h4>
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={onClose}
+                                className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-bold transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleSaveDraft}
+                                className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
+                            >
+                                <Save className="w-4 h-4" />
+                                Save as Offer
+                            </button>
+                            <button 
+                                onClick={handleSaveAndSend}
+                                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
+                            >
+                                <Send className="w-4 h-4" />
+                                Save & Send
+                            </button>
+                        </div>
+                    </div>
                 )}
-                {onDeleteReservation && !isViewingOffer && (
-                    <button 
-                        onClick={handleDeleteReservation}
-                        className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                        Delete Reservation
-                    </button>
-                )}
-                <button onClick={onClose} className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-bold transition-colors">
-                    Close
-                </button>
+
+                {/* Other Actions (Delete, Download PDF, Close) */}
+                <div className="flex justify-end gap-3">
+                    {isViewingOffer && onCreateInvoice && (
+                        <button 
+                            onClick={handleDownloadPdf}
+                            className="px-6 py-2 bg-[#1C1F24] border border-gray-700 hover:bg-gray-800 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
+                        >
+                            <Download className="w-4 h-4" />
+                            Download Offer PDF
+                        </button>
+                    )}
+                    {onDeleteOffer && isViewingOffer && booking && (
+                        <button 
+                            onClick={() => {
+                                if (confirm('Are you sure you want to delete this offer? This action cannot be undone.')) {
+                                    onDeleteOffer(String(booking.id));
+                                    onClose();
+                                }
+                            }}
+                            className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                            Delete Offer
+                        </button>
+                    )}
+                    {onDeleteReservation && !isViewingOffer && (
+                        <button 
+                            onClick={handleDeleteReservation}
+                            className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                            Delete Reservation
+                        </button>
+                    )}
+                    {!onConvertToOffer && (
+                        <button onClick={onClose} className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-bold transition-colors">
+                            Close
+                        </button>
+                    )}
+                </div>
             </div>
         </div>
     </div>

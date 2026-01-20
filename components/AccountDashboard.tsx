@@ -1522,6 +1522,10 @@ const AccountDashboard: React.FC = () => {
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<RequestData | null>(null);
 
+  // --- Toast notifications ---
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [createdOfferId, setCreatedOfferId] = useState<string | null>(null);
+
   // Stats
   const activePropertiesCount = properties.length;
   const activeTasksCount = 14; 
@@ -2099,25 +2103,29 @@ const AccountDashboard: React.FC = () => {
       }
   };
 
-  const handleConvertToOffer = async (status: 'Draft' | 'Sent', internalCompany: string, email: string) => {
+  const handleConvertToOffer = async (status: 'Draft' | 'Sent', internalCompany: string, email: string, phone: string, clientMessage: string) => {
       if (!selectedReservation) return;
       try {
+          // Use propertyId if available (UUID), otherwise fall back to roomId
+          const propertyId = selectedReservation.propertyId || selectedReservation.roomId;
+          
           const offerToCreate: Omit<OfferData, 'id'> = {
               clientName: selectedReservation.guest,
-              propertyId: selectedReservation.roomId, 
+              propertyId: propertyId, 
               internalCompany: internalCompany,
               price: selectedReservation.totalGross || selectedReservation.price,
               dates: `${selectedReservation.start} to ${selectedReservation.end}`,
               status: status,
               guests: selectedReservation.guests,
               email: email || selectedReservation.email,
-              phone: selectedReservation.phone,
+              phone: phone || selectedReservation.phone,
               address: selectedReservation.address,
               checkInTime: selectedReservation.checkInTime,
               checkOutTime: selectedReservation.checkOutTime,
               guestList: selectedReservation.guestList,
               comments: selectedReservation.comments,
               unit: selectedReservation.unit,
+              clientMessage: clientMessage,
           };
           
           // Зберегти офер в БД
@@ -2127,8 +2135,22 @@ const AccountDashboard: React.FC = () => {
           // Оновити статус резервації на offer_sent або offer_prepared
           const newStatus = status === 'Sent' ? BookingStatus.OFFER_SENT : BookingStatus.OFFER_PREPARED;
           await updateReservationInDB(selectedReservation.id, { status: newStatus });
+          
+          // Show toast notification and set created offer ID for "Open Offer" link
+          if (status === 'Sent') {
+              setToastMessage('Offer sent successfully!');
+              setCreatedOfferId(savedOffer.id);
+              setTimeout(() => {
+                  setToastMessage(null);
+              }, 5000);
+          }
+          
           closeManageModals();
-          setSalesTab('offers');
+          if (status === 'Sent') {
+              // Don't auto-redirect, let user click "Open Offer" link
+          } else {
+              setSalesTab('offers');
+          }
       } catch (error) {
           console.error('Error creating offer:', error);
           alert('Failed to save offer to database. Please try again.');
@@ -5948,6 +5970,43 @@ const AccountDashboard: React.FC = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 bg-slate-800 text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 animate-in slide-in-from-bottom-5 z-[300] border border-gray-700">
+          <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <div className="flex-1">
+            <span className="text-sm font-medium">{toastMessage}</span>
+            {createdOfferId && (
+              <button
+                onClick={() => {
+                  setSalesTab('offers');
+                  const offer = offers.find(o => o.id === createdOfferId);
+                  if (offer) {
+                    handleViewOffer(offer);
+                  }
+                  setToastMessage(null);
+                  setCreatedOfferId(null);
+                }}
+                className="ml-3 text-emerald-400 hover:text-emerald-300 text-sm font-medium underline"
+              >
+                Open Offer →
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => {
+              setToastMessage(null);
+              setCreatedOfferId(null);
+            }}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
     </div>

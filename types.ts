@@ -256,6 +256,7 @@ export interface Property {
   energyEfficiencyClass?: string;
   parking?: string;
   description?: string;
+  marketplaceUrl?: string; // Public marketplace listing URL (e.g., herorooms.de/market/{property-slug})
 }
 
 export interface FilterState {
@@ -291,6 +292,7 @@ export enum BookingStatus {
 export interface Booking {
   id: number;
   roomId: string;
+  propertyId?: string; // UUID reference to properties table
   start: string;
   end: string;
   guest: string;
@@ -346,6 +348,7 @@ export interface OfferData {
   guestList?: {firstName: string, lastName: string}[];
   comments?: string;
   unit?: string;
+  clientMessage?: string; // Client-facing message sent via email/WhatsApp
 }
 
 export interface CompanyDetails {
