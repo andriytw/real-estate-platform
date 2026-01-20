@@ -603,7 +603,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, propertyTitle, p
             </div>
             <div>
               <h3 className="text-white font-bold text-sm">
-                {chatStage === 'connected' ? agentName : 'BIM/LAF Assistant'}
+                {chatStage === 'connected' ? agentName : 'HeroRooms Assistant'}
               </h3>
               <p className="text-emerald-500 text-xs font-medium">
                 {chatStage === 'connected' ? 'Rental Manager' : 'Automated Support'}

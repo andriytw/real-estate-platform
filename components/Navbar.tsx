@@ -33,7 +33,7 @@ const Navbar: React.FC<NavbarProps> = ({ showBackButton, onBack, onBecomePartner
           className="flex items-center gap-2 text-emerald-500 cursor-pointer hover:opacity-90 transition-opacity"
         >
           <Building2 className="w-8 h-8" />
-          <span className="text-xl font-bold text-white tracking-wide">BIM/LAF</span>
+          <span className="text-xl font-bold text-white tracking-wide">HeroRooms</span>
         </div>
 
         {/* Navigation or Back Button */}

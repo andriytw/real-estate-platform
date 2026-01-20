@@ -5016,7 +5016,7 @@ const AccountDashboard: React.FC = () => {
     <div className="flex h-screen bg-[#111315] text-white overflow-hidden font-sans">
       <div className="w-64 flex-shrink-0 border-r border-gray-800 bg-[#111315] flex flex-col">
         <div className="p-6 border-b border-gray-800">
-          <h1 className="text-xl font-bold text-white flex items-center gap-2"><Building2 className="w-6 h-6 text-emerald-500" /> BIM/LAF</h1>
+          <h1 className="text-xl font-bold text-white flex items-center gap-2"><Building2 className="w-6 h-6 text-emerald-500" /> HeroRooms</h1>
         </div>
         <div className="flex-1 overflow-y-auto py-4 space-y-1 px-3">
           {/* Admin Section - Only visible to super_manager */}

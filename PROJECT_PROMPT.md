@@ -2,7 +2,7 @@
 
 ## 📋 Огляд проекту
 
-**Назва:** BIM/LAF Real Estate Management Platform  
+**Назва:** HeroRooms Real Estate Management Platform  
 **Тип:** React/Vite SPA для управління нерухомістю  
 **Deployment:** Vercel (автоматичний деплой через GitHub)  
 **Backend:** Supabase (PostgreSQL + API)  

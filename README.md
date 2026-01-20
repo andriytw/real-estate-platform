@@ -2,7 +2,7 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# BIM/LAF Real Estate Management Platform
+# HeroRooms Real Estate Management Platform
 
 Платформа для управління нерухомістю з повним функціоналом для бронювання, маркетплейсу та адміністрування.
 
