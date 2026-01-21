@@ -82,15 +82,19 @@ export function getBookingStyle(status: BookingStatus | string): string {
 
 /**
  * Перевіряє чи статус дозволяє відображати бронювання в підрозділі Reservations
- * @param status - Статус бронювання
+ * @param status - Статус бронювання або резервації
  * @returns true якщо бронювання має відображатись в Reservations
  */
 export function shouldShowInReservations(status: BookingStatus | string): boolean {
   const normalizedStatus = typeof status === 'string' ? status.toLowerCase() : status;
   
+  // Support both BookingStatus enum values and Reservation status strings
   return normalizedStatus === BookingStatus.RESERVED ||
          normalizedStatus === BookingStatus.OFFER_SENT ||
-         normalizedStatus === BookingStatus.INVOICED;
+         normalizedStatus === BookingStatus.INVOICED ||
+         normalizedStatus === 'open' ||
+         normalizedStatus === 'offered' ||
+         normalizedStatus === 'invoiced';
 }
 
 /**

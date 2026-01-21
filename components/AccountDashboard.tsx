@@ -1948,15 +1948,73 @@ const AccountDashboard: React.FC = () => {
         return;
       }
       
-      const bookingId = typeof reservation.id === 'string' ? reservation.id : reservationId.toString();
-      const updatedBooking = await bookingsService.update(bookingId, updates as Partial<Booking>);
+      // Convert ReservationData updates to Reservation format
+      const reservationIdStr = typeof reservationId === 'string' ? reservationId : reservationId.toString();
       
-      // Update local state
-      setReservations(prev => prev.map(r => 
-        r.id === reservationId
-          ? { ...r, ...updates, id: updatedBooking.id as any }
-          : r
-      ));
+      // Map ReservationData status to Reservation status
+      const reservationUpdates: Partial<Reservation> = {};
+      if (updates.status) {
+        // Map BookingStatus or string status to Reservation status
+        const statusMap: Record<string, 'open' | 'offered' | 'invoiced' | 'won' | 'lost' | 'cancelled'> = {
+          'reserved': 'open',
+          'open': 'open',
+          'offer_prepared': 'offered',
+          'offer_sent': 'offered',
+          'offered': 'offered',
+          'invoiced': 'invoiced',
+          'paid': 'won',
+          'won': 'won',
+          'completed': 'won',
+          'lost': 'lost',
+          'cancelled': 'cancelled',
+        };
+        const statusStr = String(updates.status);
+        reservationUpdates.status = statusMap[statusStr] || (statusStr as 'open' | 'offered' | 'invoiced' | 'won' | 'lost' | 'cancelled');
+      }
+      
+      // Update reservation in database using reservationsService
+      const updatedReservation = await reservationsService.update(reservationIdStr, reservationUpdates);
+      
+      // Reload reservations to get updated data
+      const reservationsData = await reservationsService.getAll();
+      const transformedReservations: ReservationData[] = reservationsData.map(res => ({
+        id: res.id as any,
+        roomId: res.propertyId,
+        propertyId: res.propertyId,
+        start: res.startDate,
+        end: res.endDate,
+        guest: res.leadLabel || `${res.clientFirstName || ''} ${res.clientLastName || ''}`.trim() || 'Guest',
+        color: getBookingStyle(res.status as any),
+        checkInTime: '15:00',
+        checkOutTime: '11:00',
+        status: res.status as any,
+        price: res.totalGross ? `${res.totalGross} EUR` : '0.00 EUR',
+        balance: '0.00 EUR',
+        guests: res.guestsCount ? `${res.guestsCount} Guests` : '1 Guest',
+        unit: 'AUTO-UNIT',
+        comments: 'Reservation',
+        paymentAccount: 'Pending',
+        company: 'N/A',
+        ratePlan: 'Standard',
+        guarantee: 'None',
+        cancellationPolicy: 'Standard',
+        noShowPolicy: 'Standard',
+        channel: 'Manual',
+        type: 'GUEST',
+        address: res.clientAddress,
+        phone: res.clientPhone,
+        email: res.clientEmail,
+        pricePerNight: res.pricePerNightNet,
+        taxRate: res.taxRate,
+        totalGross: res.totalGross?.toString(),
+        guestList: [],
+        clientType: 'Private',
+        firstName: res.clientFirstName,
+        lastName: res.clientLastName,
+        createdAt: res.createdAt,
+      })) as ReservationData[];
+      
+      setReservations(transformedReservations);
     } catch (error) {
       console.error('Error updating reservation in database:', error);
       // Still update local state for UI responsiveness
@@ -2203,9 +2261,9 @@ const AccountDashboard: React.FC = () => {
           const savedOffer = await offersService.create(offerToCreate);
           setOffers(prev => [savedOffer, ...prev]);
           
-          // Оновити статус резервації на offer_sent або offer_prepared
-          const newStatus = status === 'Sent' ? BookingStatus.OFFER_SENT : BookingStatus.OFFER_PREPARED;
-          await updateReservationInDB(selectedReservation.id, { status: newStatus });
+          // Оновити статус резервації на 'offered' when offer is created
+          // Note: Reservation status uses 'offered', not BookingStatus
+          await updateReservationInDB(selectedReservation.id, { status: 'offered' as any });
           
           // Show toast notification and set created offer ID for "Open Offer" link
           if (status === 'Sent') {
@@ -2235,9 +2293,9 @@ const AccountDashboard: React.FC = () => {
           // Створити Offer об'єкт з даних резервації (без id для створення нового)
           const offerToCreate: Omit<OfferData, 'id'> = {
               clientName: selectedReservation.guest,
-              propertyId: selectedReservation.roomId,
+              propertyId: selectedReservation.propertyId || selectedReservation.roomId,
               internalCompany: selectedReservation.internalCompany || 'Sotiso',
-              price: selectedReservation.price,
+              price: selectedReservation.totalGross || selectedReservation.price,
               dates: `${selectedReservation.start} to ${selectedReservation.end}`,
               status: 'Sent',
               guests: selectedReservation.guests,
@@ -2249,6 +2307,7 @@ const AccountDashboard: React.FC = () => {
               guestList: selectedReservation.guestList,
               comments: selectedReservation.comments,
               unit: selectedReservation.unit,
+              reservationId: selectedReservation.id as string, // Link offer to reservation
           };
           
           // Зберегти Offer в БД
@@ -2257,10 +2316,10 @@ const AccountDashboard: React.FC = () => {
           // Додати Offer в масив offers
           setOffers(prev => [savedOffer, ...prev]);
           
-          // Оновити статус резервації на offer_sent та колір
+          // Оновити статус резервації на 'offered' when offer is sent
+          // Note: Reservation status uses 'offered', not BookingStatus
           await updateReservationInDB(selectedReservation.id, { 
-            status: BookingStatus.OFFER_SENT, 
-            color: getBookingStyle(BookingStatus.OFFER_SENT) 
+            status: 'offered' as any
           });
           
           closeManageModals();
