@@ -155,7 +155,8 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
           taxAmount: Number(tax.toFixed(2)),
           totalGross: priceVal,
           status: 'Unpaid',
-          offerIdSource: 'id' in offer ? String(offer.id) : undefined,
+          offerId: 'id' in offer ? String(offer.id) : undefined, // Primary field for RPC
+          offerIdSource: 'id' in offer ? String(offer.id) : undefined, // Legacy field for backward compatibility
           bookingId: bookingId
         });
         

@@ -14,7 +14,8 @@ interface SalesCalendarProps {
   onSaveReservation?: (reservation: ReservationData) => void;
   onDeleteReservation?: (id: number) => void;
   onAddLead?: (bookingData: any) => void; // New Prop for Lead creation
-  reservations?: ReservationData[];
+  reservations?: ReservationData[]; // Holds from reservations table (dashed)
+  confirmedBookings?: Booking[]; // Confirmed bookings from bookings table (solid)
   offers?: OfferData[];
   invoices?: InvoiceData[];
   adminEvents?: CalendarEvent[];
@@ -97,6 +98,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   onDeleteReservation,
   onAddLead,
   reservations = [],
+  confirmedBookings = [],
   offers = [],
   invoices = [],
   adminEvents = [],
@@ -313,20 +315,30 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     };
   });
 
-  // Combine local bookings, reservations props, and converted offers
-  // Filter out duplicates based on ID to prevent issues
-  // Оновити кольори для reservations на основі статусу
-  const reservationsWithColors = reservations.map(r => ({
-    ...r,
-    color: getBookingStyle(r.status)
+  // Separate confirmed bookings (solid) from reservations (dashed holds)
+  // Confirmed bookings come from bookings table (created when invoice paid)
+  // Reservations come from reservations table (holds, can overlap)
+  const confirmedBookingsWithColors = confirmedBookings.map(b => ({
+    ...b,
+    color: getBookingStyle(b.status),
+    isConfirmed: true, // Flag for rendering
   }));
+  
+  const reservationsWithColors = reservations
+    .filter(r => r.status !== 'lost' && r.status !== 'won') // Don't show lost/won reservations
+    .map(r => ({
+      ...r,
+      color: getBookingStyle(r.status),
+      isReservation: true, // Flag for rendering (dashed)
+    }));
   
   const allBookings = [
     ...bookings.map(b => ({
       ...b,
       color: getBookingStyle(b.status)
     })), 
-    ...reservationsWithColors.filter(r => !bookings.some(b => b.id === r.id)),
+    ...confirmedBookingsWithColors,
+    ...reservationsWithColors.filter(r => !confirmedBookings.some(b => b.id === r.id)),
     ...offerBookings
   ];
 
@@ -1004,6 +1016,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                     width = (bookingTotalDays - 1.3) * DAY_WIDTH;
                                 }
                                 
+                                // Determine if this is a reservation (hold) or confirmed booking
+                                const isReservation = (booking as any).isReservation === true;
+                                const isConfirmed = (booking as any).isConfirmed === true || !isReservation;
+                                
                                 return (
                                     <div 
                                         key={booking.id}
@@ -1013,6 +1029,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                         className={`
                                             absolute top-2 h-12 rounded-md text-xs text-white flex px-2 shadow-lg z-10 cursor-pointer
                                             ${getBookingColor(booking.status)} ${getBookingBorderStyle(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
+                                            ${isReservation ? 'border-dashed border-2 opacity-75' : ''}
                                         `}
                                         style={{ left: `${left}px`, width: `${width}px` }}
                                     >

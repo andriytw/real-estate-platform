@@ -328,6 +328,9 @@ export interface Booking {
   internalCompany?: string;
   bookingNo?: string; // Human-readable booking number (RES-YYYY-000001)
   companyId?: string; // UUID reference to companies table
+  sourceInvoiceId?: string; // UUID reference to invoices table (confirmed booking source)
+  sourceOfferId?: string; // UUID reference to offers table
+  sourceReservationId?: string; // UUID reference to reservations table
 }
 
 export interface OfferData {
@@ -337,7 +340,7 @@ export interface OfferData {
   internalCompany: string;
   price: string;
   dates: string;
-  status: 'Draft' | 'Sent' | 'Invoiced';
+  status: 'Draft' | 'Sent' | 'Invoiced' | 'Accepted' | 'Lost' | 'Rejected' | 'Expired';
   createdAt?: string;
   guests?: string;
   email?: string;
@@ -346,9 +349,10 @@ export interface OfferData {
   checkInTime?: string;
   checkOutTime?: string;
   guestList?: {firstName: string, lastName: string}[];
-  comments?: string;
+  comments?: string; // Internal notes only
   unit?: string;
   clientMessage?: string; // Client-facing message sent via email/WhatsApp
+  reservationId?: string; // UUID reference to reservations table
 }
 
 export interface CompanyDetails {
@@ -373,8 +377,9 @@ export interface InvoiceData {
   taxAmount: number;
   totalGross: number;
   status: 'Paid' | 'Unpaid' | 'Overdue';
-  offerIdSource?: string; 
-  bookingId?: string | number; // Зв'язок з бронюванням
+  offerId?: string; // UUID reference to offers table (mandatory when created from offer)
+  offerIdSource?: string; // Legacy field, kept for backward compatibility
+  bookingId?: string | number; // Зв'язок з бронюванням (set after booking is confirmed)
 }
 
 export interface Lead {
@@ -418,6 +423,28 @@ export interface RequestData {
 }
 
 export interface ReservationData extends Booking {}
+
+// New Reservation interface (separate from Booking)
+export interface Reservation {
+  id: string; // UUID
+  propertyId: string; // UUID reference to properties table
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  status: 'open' | 'offered' | 'invoiced' | 'won' | 'lost' | 'cancelled';
+  leadLabel?: string; // Shown on calendar hold bar
+  clientFirstName?: string;
+  clientLastName?: string;
+  clientEmail?: string;
+  clientPhone?: string;
+  clientAddress?: string;
+  guestsCount?: number;
+  pricePerNightNet?: number;
+  taxRate?: number;
+  totalNights?: number;
+  totalGross?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 export type TaskType = 
   // Facility Management

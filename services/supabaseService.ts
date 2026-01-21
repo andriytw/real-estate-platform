@@ -19,6 +19,7 @@ import {
   StockMovement,
   WarehouseInvoice,
   WarehouseInvoiceLine,
+  Reservation,
 } from '../types';
 
 const supabase = createClient();
@@ -1243,6 +1244,78 @@ export const propertiesService = {
   }
 };
 
+// ==================== RESERVATIONS ====================
+export const reservationsService = {
+  async getAll(): Promise<Reservation[]> {
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    return data.map(transformReservationFromDB);
+  },
+
+  async getById(id: string): Promise<Reservation | null> {
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw error;
+    }
+    return transformReservationFromDB(data);
+  },
+
+  async getByPropertyId(propertyId: string): Promise<Reservation[]> {
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('*')
+      .eq('property_id', propertyId)
+      .order('start_date', { ascending: true });
+    
+    if (error) throw error;
+    return data.map(transformReservationFromDB);
+  },
+
+  async create(reservation: Omit<Reservation, 'id' | 'createdAt' | 'updatedAt'>): Promise<Reservation> {
+    const dbData = transformReservationToDB(reservation);
+    const { data, error } = await supabase
+      .from('reservations')
+      .insert([dbData])
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return transformReservationFromDB(data);
+  },
+
+  async update(id: string, updates: Partial<Reservation>): Promise<Reservation> {
+    const dbData = transformReservationToDB(updates as Reservation);
+    const { data, error } = await supabase
+      .from('reservations')
+      .update(dbData)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return transformReservationFromDB(data);
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('reservations')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
+  }
+};
+
 // ==================== BOOKINGS ====================
 export const bookingsService = {
   async getAll(): Promise<Booking[]> {
@@ -1688,6 +1761,9 @@ function transformBookingFromDB(db: any): Booking {
     internalCompany: db.internal_company,
     bookingNo: db.booking_no,
     companyId: db.company_id,
+    sourceInvoiceId: db.source_invoice_id,
+    sourceOfferId: db.source_offer_id,
+    sourceReservationId: db.source_reservation_id,
     createdAt: db.created_at,
   };
 }
@@ -1735,6 +1811,17 @@ function transformBookingToDB(booking: Booking): any {
     result.company_id = booking.companyId;
   }
   
+  // Source fields (for confirmed bookings)
+  if (booking.sourceInvoiceId !== undefined) {
+    result.source_invoice_id = booking.sourceInvoiceId;
+  }
+  if (booking.sourceOfferId !== undefined) {
+    result.source_offer_id = booking.sourceOfferId;
+  }
+  if (booking.sourceReservationId !== undefined) {
+    result.source_reservation_id = booking.sourceReservationId;
+  }
+  
   return result;
 }
 
@@ -1758,6 +1845,7 @@ function transformOfferFromDB(db: any): OfferData {
     comments: db.comments,
     unit: db.unit,
     clientMessage: db.client_message,
+    reservationId: db.reservation_id,
   };
 }
 
@@ -1781,6 +1869,7 @@ function transformOfferToDB(offer: OfferData): any {
     comments: offer.comments,
     unit: offer.unit,
     client_message: offer.clientMessage,
+    reservation_id: offer.reservationId,
   };
 }
 
@@ -1798,19 +1887,23 @@ function transformInvoiceFromDB(db: any): InvoiceData {
     taxAmount: parseFloat(db.tax_amount) || 0,
     totalGross: parseFloat(db.total_gross) || 0,
     status: db.status,
-    offerIdSource: db.offer_id,
+    offerId: db.offer_id, // Primary field
+    offerIdSource: db.offer_id, // Legacy field for backward compatibility
     bookingId: db.booking_id,
   };
 }
 
 function transformInvoiceToDB(invoice: InvoiceData): any {
-  // Convert bookingId and offerIdSource to UUID format if they exist
+  // Convert bookingId and offerId to UUID format if they exist
   // If they are numbers or invalid UUIDs, set to null to avoid foreign key errors
   const isValidUUID = (str: string | number | undefined): boolean => {
     if (!str) return false;
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     return uuidRegex.test(String(str));
   };
+  
+  // Prefer offerId over offerIdSource
+  const offerId = invoice.offerId || invoice.offerIdSource;
   
   return {
     invoice_number: invoice.invoiceNumber,
@@ -1824,7 +1917,7 @@ function transformInvoiceToDB(invoice: InvoiceData): any {
     tax_amount: invoice.taxAmount,
     total_gross: invoice.totalGross,
     status: invoice.status,
-    offer_id: invoice.offerIdSource && isValidUUID(invoice.offerIdSource) ? invoice.offerIdSource : null,
+    offer_id: offerId && isValidUUID(offerId) ? offerId : null,
     booking_id: invoice.bookingId && isValidUUID(invoice.bookingId) ? invoice.bookingId : null,
   };
 }
@@ -2062,3 +2155,105 @@ export const fileUploadService = {
     return data.publicUrl;
   }
 };
+
+// ==================== RESERVATION TRANSFORMS ====================
+
+function transformReservationFromDB(db: any): Reservation {
+  return {
+    id: db.id,
+    propertyId: db.property_id,
+    startDate: db.start_date,
+    endDate: db.end_date,
+    status: db.status,
+    leadLabel: db.lead_label,
+    clientFirstName: db.client_first_name,
+    clientLastName: db.client_last_name,
+    clientEmail: db.client_email,
+    clientPhone: db.client_phone,
+    clientAddress: db.client_address,
+    guestsCount: db.guests_count,
+    pricePerNightNet: db.price_per_night_net ? parseFloat(db.price_per_night_net) : undefined,
+    taxRate: db.tax_rate ? parseFloat(db.tax_rate) : undefined,
+    totalNights: db.total_nights,
+    totalGross: db.total_gross ? parseFloat(db.total_gross) : undefined,
+    createdAt: db.created_at,
+    updatedAt: db.updated_at,
+  };
+}
+
+function transformReservationToDB(reservation: Reservation): any {
+  return {
+    property_id: reservation.propertyId,
+    start_date: reservation.startDate,
+    end_date: reservation.endDate,
+    status: reservation.status,
+    lead_label: reservation.leadLabel,
+    client_first_name: reservation.clientFirstName,
+    client_last_name: reservation.clientLastName,
+    client_email: reservation.clientEmail,
+    client_phone: reservation.clientPhone,
+    client_address: reservation.clientAddress,
+    guests_count: reservation.guestsCount,
+    price_per_night_net: reservation.pricePerNightNet,
+    tax_rate: reservation.taxRate,
+    total_nights: reservation.totalNights,
+    total_gross: reservation.totalGross,
+  };
+}
+
+// ==================== RPC WRAPPER FUNCTIONS ====================
+
+/**
+ * Check if a date range overlaps with any confirmed booking
+ * @param propertyId - Property UUID
+ * @param startDate - Start date (YYYY-MM-DD)
+ * @param endDate - End date (YYYY-MM-DD)
+ * @returns true if overlaps, false otherwise
+ */
+export async function checkBookingOverlap(
+  propertyId: string,
+  startDate: string,
+  endDate: string
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc('is_booking_overlap', {
+    p_property_id: propertyId,
+    p_start_date: startDate,
+    p_end_date: endDate,
+  });
+  
+  if (error) {
+    console.error('Error checking booking overlap:', error);
+    throw error;
+  }
+  
+  return data === true;
+}
+
+/**
+ * Mark invoice as paid and confirm booking (winning flow)
+ * This is an atomic RPC that:
+ * - Sets invoice status to 'Paid'
+ * - Creates confirmed booking
+ * - Marks winning reservation/offer
+ * - Marks losing overlapping reservations/offers
+ * @param invoiceId - Invoice UUID
+ * @returns Created booking UUID
+ */
+export async function markInvoicePaidAndConfirmBooking(
+  invoiceId: string
+): Promise<string> {
+  const { data, error } = await supabase.rpc('mark_invoice_paid_and_confirm_booking', {
+    p_invoice_id: invoiceId,
+  });
+  
+  if (error) {
+    console.error('Error marking invoice paid and confirming booking:', error);
+    throw error;
+  }
+  
+  if (!data) {
+    throw new Error('RPC returned no booking ID');
+  }
+  
+  return data;
+}

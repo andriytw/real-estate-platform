@@ -14,8 +14,8 @@ import RequestModal from './RequestModal';
 import BankingDashboard from './BankingDashboard';
 import KanbanBoard from './kanban/KanbanBoard';
 import UserManagement from './admin/UserManagement';
-import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, WarehouseStockItem } from '../services/supabaseService';
-import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking } from '../types';
+import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem } from '../services/supabaseService';
+import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation } from '../types';
 import { MOCK_PROPERTIES } from '../constants';
 import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 
@@ -1754,71 +1754,141 @@ const AccountDashboard: React.FC = () => {
   };
 
   // Load reservations from database on mount
+  // Separate state for confirmed bookings (from bookings table)
+  const [confirmedBookings, setConfirmedBookings] = useState<Booking[]>([]);
+
   useEffect(() => {
     const loadReservations = async () => {
       try {
-        const bookings = await bookingsService.getAll();
-        // Transform Booking[] to ReservationData[]
-        // Note: Booking.id from DB is UUID (string), but ReservationData.id is number
-        // We'll keep UUID as string for now and handle conversion where needed
-        const reservationsData: ReservationData[] = bookings.map(booking => ({
-          ...booking,
-          id: booking.id as any // Allow both string and number for compatibility
+        // Load reservations from reservations table (holds)
+        const reservationsData = await reservationsService.getAll();
+        // Transform Reservation to ReservationData for compatibility
+        const transformedReservations: ReservationData[] = reservationsData.map(res => ({
+          id: res.id as any,
+          roomId: res.propertyId,
+          propertyId: res.propertyId,
+          start: res.startDate,
+          end: res.endDate,
+          guest: res.leadLabel || `${res.clientFirstName || ''} ${res.clientLastName || ''}`.trim() || 'Guest',
+          color: getBookingStyle(res.status as any),
+          checkInTime: '15:00',
+          checkOutTime: '11:00',
+          status: res.status as any,
+          price: res.totalGross ? `${res.totalGross} EUR` : '0.00 EUR',
+          balance: '0.00 EUR',
+          guests: res.guestsCount ? `${res.guestsCount} Guests` : '1 Guest',
+          unit: 'AUTO-UNIT',
+          comments: 'Reservation',
+          paymentAccount: 'Pending',
+          company: 'N/A',
+          ratePlan: 'Standard',
+          guarantee: 'None',
+          cancellationPolicy: 'Standard',
+          noShowPolicy: 'Standard',
+          channel: 'Manual',
+          type: 'GUEST',
+          address: res.clientAddress,
+          phone: res.clientPhone,
+          email: res.clientEmail,
+          pricePerNight: res.pricePerNightNet,
+          taxRate: res.taxRate,
+          totalGross: res.totalGross?.toString(),
+          guestList: [],
+          clientType: 'Private',
+          firstName: res.clientFirstName,
+          lastName: res.clientLastName,
+          companyName: undefined,
+          createdAt: res.createdAt,
         })) as ReservationData[];
-        setReservations(reservationsData);
+        setReservations(transformedReservations);
       } catch (error) {
         console.error('Error loading reservations:', error);
       }
     };
+
+    const loadConfirmedBookings = async () => {
+      try {
+        // Load confirmed bookings from bookings table
+        const bookings = await bookingsService.getAll();
+        setConfirmedBookings(bookings);
+      } catch (error) {
+        console.error('Error loading confirmed bookings:', error);
+      }
+    };
     
     loadReservations();
+    loadConfirmedBookings();
   }, []);
 
   const handleSaveReservation = async (reservation: ReservationData) => {
       try {
-        // Convert ReservationData to Booking format for database
-        const bookingToSave: Omit<Booking, 'id'> = {
-          roomId: reservation.roomId,
-          start: reservation.start,
-          end: reservation.end,
-          guest: reservation.guest,
-          color: reservation.color || '#3b82f6',
-          checkInTime: reservation.checkInTime,
-          checkOutTime: reservation.checkOutTime,
-          status: reservation.status || 'reserved',
-          price: reservation.price,
-          balance: reservation.balance,
-          guests: reservation.guests,
-          unit: reservation.unit,
-          comments: reservation.comments,
-          paymentAccount: reservation.paymentAccount,
-          company: reservation.company,
-          ratePlan: reservation.ratePlan,
-          guarantee: reservation.guarantee,
-          cancellationPolicy: reservation.cancellationPolicy,
-          noShowPolicy: reservation.noShowPolicy,
-          channel: reservation.channel,
-          type: reservation.type || 'GUEST',
-          address: reservation.address,
-          phone: reservation.phone,
-          email: reservation.email,
-          pricePerNight: reservation.pricePerNight,
-          taxRate: reservation.taxRate,
-          totalGross: reservation.totalGross,
-          guestList: reservation.guestList,
-          clientType: reservation.clientType,
-          firstName: reservation.firstName,
-          lastName: reservation.lastName,
-          companyName: reservation.companyName,
-          internalCompany: reservation.internalCompany,
+        // Check for overlap with confirmed bookings before creating reservation
+        const propertyId = reservation.propertyId || reservation.roomId;
+        if (propertyId) {
+          const hasOverlap = await checkBookingOverlap(propertyId, reservation.start, reservation.end);
+          if (hasOverlap) {
+            alert('This date range conflicts with a confirmed booking. Please choose different dates.');
+            return;
+          }
+        }
+
+        // Convert ReservationData to Reservation format for database
+        const reservationToSave: Omit<Reservation, 'id' | 'createdAt' | 'updatedAt'> = {
+          propertyId: reservation.propertyId || reservation.roomId,
+          startDate: reservation.start,
+          endDate: reservation.end,
+          status: 'open',
+          leadLabel: reservation.guest || `${reservation.firstName || ''} ${reservation.lastName || ''}`.trim() || reservation.companyName,
+          clientFirstName: reservation.firstName,
+          clientLastName: reservation.lastName,
+          clientEmail: reservation.email,
+          clientPhone: reservation.phone,
+          clientAddress: reservation.address,
+          guestsCount: parseInt(reservation.guests?.replace(/\D/g, '') || '1'),
+          pricePerNightNet: reservation.pricePerNight,
+          taxRate: reservation.taxRate || 19,
+          totalNights: Math.ceil((new Date(reservation.end).getTime() - new Date(reservation.start).getTime()) / (1000 * 60 * 60 * 24)),
+          totalGross: parseFloat(reservation.totalGross?.replace(/[^\d.]/g, '') || '0'),
         };
         
-        const savedBooking = await bookingsService.create(bookingToSave);
+        const savedReservation = await reservationsService.create(reservationToSave);
         
-        // Update local state with saved booking (which has UUID id)
+        // Update local state - transform Reservation back to ReservationData
         const newReservation: ReservationData = {
-          ...savedBooking,
-          id: savedBooking.id as any // Keep UUID as string for compatibility
+          id: savedReservation.id as any,
+          roomId: savedReservation.propertyId,
+          propertyId: savedReservation.propertyId,
+          start: savedReservation.startDate,
+          end: savedReservation.endDate,
+          guest: savedReservation.leadLabel || `${savedReservation.clientFirstName || ''} ${savedReservation.clientLastName || ''}`.trim() || 'Guest',
+          color: getBookingStyle(savedReservation.status as any),
+          checkInTime: '15:00',
+          checkOutTime: '11:00',
+          status: savedReservation.status as any,
+          price: savedReservation.totalGross ? `${savedReservation.totalGross} EUR` : '0.00 EUR',
+          balance: '0.00 EUR',
+          guests: savedReservation.guestsCount ? `${savedReservation.guestsCount} Guests` : '1 Guest',
+          unit: 'AUTO-UNIT',
+          comments: 'Reservation',
+          paymentAccount: 'Pending',
+          company: 'N/A',
+          ratePlan: 'Standard',
+          guarantee: 'None',
+          cancellationPolicy: 'Standard',
+          noShowPolicy: 'Standard',
+          channel: 'Manual',
+          type: 'GUEST',
+          address: savedReservation.clientAddress,
+          phone: savedReservation.clientPhone,
+          email: savedReservation.clientEmail,
+          pricePerNight: savedReservation.pricePerNightNet,
+          taxRate: savedReservation.taxRate,
+          totalGross: savedReservation.totalGross?.toString(),
+          guestList: [],
+          clientType: 'Private',
+          firstName: savedReservation.clientFirstName,
+          lastName: savedReservation.clientLastName,
+          createdAt: savedReservation.createdAt,
         } as ReservationData;
         
         setReservations(prev => [newReservation, ...prev]);
@@ -2126,6 +2196,7 @@ const AccountDashboard: React.FC = () => {
               comments: selectedReservation.comments,
               unit: selectedReservation.unit,
               clientMessage: clientMessage,
+              reservationId: selectedReservation.id as string, // Link offer to reservation
           };
           
           // Зберегти офер в БД
@@ -2450,15 +2521,84 @@ const AccountDashboard: React.FC = () => {
     // #endregion
     
     try {
-      // Update invoice status in Supabase
-      const updatedInvoice = await invoicesService.update(invoiceId, { status: newStatus });
-      // #region agent log
-      console.log('✅ Invoice status updated in Supabase:', { invoiceId, newStatus });
-      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2292',message:'Invoice status updated in Supabase',data:{invoiceId,newStatus},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-      
-      // Оновити статус інвойсу в локальному стані
-      setInvoices(prev => prev.map(inv => inv.id === invoiceId ? updatedInvoice : inv));
+      // If marking as Paid, call RPC to confirm booking and mark competing reservations as lost
+      if (newStatus === 'Paid' && invoice.status !== 'Paid') {
+        // Check if invoice has offerId (required for RPC)
+        const offerId = invoice.offerId || invoice.offerIdSource;
+        if (!offerId) {
+          alert('Invoice must be linked to an offer to mark as paid. Please create invoice from an offer.');
+          return;
+        }
+        
+        try {
+          // Call RPC: marks invoice as paid, creates confirmed booking, marks competing reservations/offers as lost
+          const bookingId = await markInvoicePaidAndConfirmBooking(invoiceId);
+          console.log('✅ Invoice marked as paid and booking confirmed:', { invoiceId, bookingId });
+          
+          // Refresh all data after RPC
+          // Reload reservations (some may be marked as lost)
+          const reservationsData = await reservationsService.getAll();
+          const transformedReservations: ReservationData[] = reservationsData.map(res => ({
+            id: res.id as any,
+            roomId: res.propertyId,
+            propertyId: res.propertyId,
+            start: res.startDate,
+            end: res.endDate,
+            guest: res.leadLabel || `${res.clientFirstName || ''} ${res.clientLastName || ''}`.trim() || 'Guest',
+            color: getBookingStyle(res.status as any),
+            checkInTime: '15:00',
+            checkOutTime: '11:00',
+            status: res.status as any,
+            price: res.totalGross ? `${res.totalGross} EUR` : '0.00 EUR',
+            balance: '0.00 EUR',
+            guests: res.guestsCount ? `${res.guestsCount} Guests` : '1 Guest',
+            unit: 'AUTO-UNIT',
+            comments: 'Reservation',
+            paymentAccount: 'Pending',
+            company: 'N/A',
+            ratePlan: 'Standard',
+            guarantee: 'None',
+            cancellationPolicy: 'Standard',
+            noShowPolicy: 'Standard',
+            channel: 'Manual',
+            type: 'GUEST',
+            address: res.clientAddress,
+            phone: res.clientPhone,
+            email: res.clientEmail,
+            pricePerNight: res.pricePerNightNet,
+            taxRate: res.taxRate,
+            totalGross: res.totalGross?.toString(),
+            guestList: [],
+            clientType: 'Private',
+            firstName: res.clientFirstName,
+            lastName: res.clientLastName,
+            createdAt: res.createdAt,
+          })) as ReservationData[];
+          setReservations(transformedReservations);
+          
+          // Reload confirmed bookings (new one was created)
+          const bookings = await bookingsService.getAll();
+          setConfirmedBookings(bookings);
+          
+          // Reload offers (some may be marked as lost)
+          const offersData = await offersService.getAll();
+          setOffers(offersData);
+          
+          // Reload invoices (status updated to Paid)
+          const invoicesData = await invoicesService.getAll();
+          setInvoices(invoicesData);
+          
+          alert('Invoice marked as paid. Confirmed booking created. Competing reservations marked as lost.');
+        } catch (rpcError: any) {
+          console.error('Error in RPC mark_invoice_paid_and_confirm_booking:', rpcError);
+          alert(`Failed to confirm booking: ${rpcError.message || 'Unknown error'}`);
+          return; // Don't update status if RPC failed
+        }
+      } else {
+        // For Unpaid or other status changes, just update normally
+        const updatedInvoice = await invoicesService.update(invoiceId, { status: newStatus });
+        setInvoices(prev => prev.map(inv => inv.id === invoiceId ? updatedInvoice : inv));
+      }
       
       // CRITICAL FIX: Check if tasks need to be created even if invoice is already Paid
       // If invoice is already Paid, we should still check and create tasks if they don't exist
@@ -5077,6 +5217,7 @@ const AccountDashboard: React.FC = () => {
           onDeleteReservation={handleDeleteReservation}
           onAddLead={handleAddLeadFromBooking}
           reservations={reservations}
+          confirmedBookings={confirmedBookings}
           offers={offers}
           invoices={invoices}
           adminEvents={adminEvents}
