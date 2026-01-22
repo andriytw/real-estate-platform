@@ -2290,6 +2290,29 @@ const AccountDashboard: React.FC = () => {
       if (!selectedReservation) return;
       
       try {
+          // Generate default client message template
+          const guestName = selectedReservation.guest || 'Guest';
+          const checkInDate = selectedReservation.start 
+            ? new Date(selectedReservation.start).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            : '';
+          const checkOutDate = selectedReservation.end 
+            ? new Date(selectedReservation.end).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            : '';
+          const totalPrice = selectedReservation.totalGross || selectedReservation.price || '0.00 EUR';
+          const internalCompany = selectedReservation.internalCompany || 'Sotiso';
+          
+          const defaultClientMessage = `Hello ${guestName},
+
+thank you for your interest in the apartment.
+
+Your stay: ${checkInDate}${checkOutDate ? ` – ${checkOutDate}` : ''}
+Total price: ${totalPrice}
+
+Please find the offer attached.
+
+Best regards,
+${internalCompany} Team`;
+          
           // Створити Offer об'єкт з даних резервації (без id для створення нового)
           const offerToCreate: Omit<OfferData, 'id'> = {
               clientName: selectedReservation.guest,
@@ -2308,6 +2331,7 @@ const AccountDashboard: React.FC = () => {
               comments: selectedReservation.comments,
               unit: selectedReservation.unit,
               reservationId: selectedReservation.id as string, // Link offer to reservation
+              clientMessage: defaultClientMessage, // Client-facing message
           };
           
           // Зберегти Offer в БД

@@ -66,9 +66,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
         const net = priceVal / (1 + taxRate);
         const tax = priceVal - net;
 
-        // Визначити bookingId - якщо це резервація, використати id напряму
+        // Визначити bookingId та offerIdSource
         // Покращена логіка для всіх випадків
         let bookingId: string | number | undefined;
+        let offerIdSource: string | undefined;
         
         // Перевірити чи це ReservationData (має roomId та start/end)
         if ('roomId' in offer && 'start' in offer) {
@@ -78,20 +79,19 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
             console.log('✅ InvoiceModal: Found reservation, using id as bookingId:', bookingId);
             fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceModal.tsx:74',message:'Found reservation, using id as bookingId',data:{bookingId,offerId:offer.id,offerIdType:typeof offer.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'INVOICE_CREATE'})}).catch(()=>{});
             // #endregion
-        } else if ('id' in offer && typeof offer.id === 'number') {
-            // Це offer з числовим id
-            bookingId = offer.id;
-            // #region agent log
-            console.log('⚠️ InvoiceModal: Using offer.id (number) as bookingId:', bookingId);
-            fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceModal.tsx:78',message:'Using offer.id (number) as bookingId',data:{bookingId,offerId:offer.id,offerIdType:typeof offer.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'INVOICE_CREATE'})}).catch(()=>{});
-            // #endregion
         } else if ('id' in offer && offer.id) {
-            // Це offer з рядковим id - спробувати конвертувати
-            const numId = Number(offer.id);
-            bookingId = !isNaN(numId) ? numId : offer.id;
+            // Це OfferData - використати id як offerIdSource (для RPC)
+            offerIdSource = String(offer.id);
+            // Також використати як bookingId для backward compatibility
+            if (typeof offer.id === 'number') {
+                bookingId = offer.id;
+            } else {
+                const numId = Number(offer.id);
+                bookingId = !isNaN(numId) ? numId : offer.id;
+            }
             // #region agent log
-            console.log('⚠️ InvoiceModal: Using offer.id (string) as bookingId:', bookingId);
-            fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceModal.tsx:83',message:'Using offer.id (string) as bookingId',data:{bookingId,offerId:offer.id,offerIdType:typeof offer.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'INVOICE_CREATE'})}).catch(()=>{});
+            console.log('✅ InvoiceModal: Using offer.id as offerIdSource:', offerIdSource);
+            fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceModal.tsx:78',message:'Using offer.id as offerIdSource',data:{bookingId,offerIdSource,offerId:offer.id,offerIdType:typeof offer.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'INVOICE_CREATE'})}).catch(()=>{});
             // #endregion
         }
         

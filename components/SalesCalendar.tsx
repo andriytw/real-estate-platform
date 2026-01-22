@@ -854,7 +854,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       {/* Stats Tiles */}
       <div className="px-4 py-4 bg-[#111315] border-b border-gray-800">
         <BookingStatsTiles
-          reservations={allBookings}
+          reservations={allBookings} // Mixed calendar data (for UI lists if needed)
+          confirmedBookings={confirmedBookings} // ✅ ONLY confirmed bookings from bookings table
           adminEvents={adminEvents}
           properties={properties}
           initialDate={TODAY}

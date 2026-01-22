@@ -3,7 +3,10 @@ import { ChevronLeft, ChevronRight, LogIn, LogOut, Sparkles, Bell } from 'lucide
 import { Booking, CalendarEvent, Property } from '../types';
 
 interface BookingStatsTilesProps {
+  // ⚠️ Mixed calendar data (reservations + offers + bookings). MUST NOT be used for operational stats
   reservations: Booking[];
+  // ✅ ONLY confirmed bookings from bookings table (created after invoice is marked as PAID)
+  confirmedBookings: Booking[];
   adminEvents: CalendarEvent[];
   properties: Property[];
   initialDate?: Date;
@@ -31,12 +34,21 @@ const formatDateDisplay = (date: Date, today: Date): string => {
 };
 
 const BookingStatsTiles: React.FC<BookingStatsTilesProps> = ({
-  reservations,
+  reservations, // Mixed calendar data - NOT used for operational stats
+  confirmedBookings = [], // ONLY confirmed bookings from bookings table (default to empty array)
   adminEvents,
   properties,
   initialDate,
   onTileClick,
 }) => {
+  // Safety guard: Filter only truly confirmed bookings
+  // Confirmed bookings have sourceInvoiceId (created by RPC when invoice paid)
+  // or status 'paid'/'invoiced' (legacy confirmed bookings)
+  const safeConfirmed = useMemo(() => {
+    return confirmedBookings.filter(
+      b => (b as any).sourceInvoiceId || (b as any).source_invoice_id || b.status === 'paid' || b.status === 'invoiced'
+    );
+  }, [confirmedBookings]);
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -75,16 +87,16 @@ const BookingStatsTiles: React.FC<BookingStatsTilesProps> = ({
     setter(newDate);
   };
 
-  // Get check-ins for a specific date
+  // Get check-ins for a specific date - ONLY from confirmed bookings
   const getCheckInsForDate = (date: Date): Booking[] => {
     const dateStr = formatDateISO(date);
-    return reservations.filter(booking => booking.start === dateStr);
+    return safeConfirmed.filter(booking => booking.start === dateStr);
   };
 
-  // Get check-outs for a specific date
+  // Get check-outs for a specific date - ONLY from confirmed bookings
   const getCheckOutsForDate = (date: Date): Booking[] => {
     const dateStr = formatDateISO(date);
-    return reservations.filter(booking => booking.end === dateStr);
+    return safeConfirmed.filter(booking => booking.end === dateStr);
   };
 
   // Get cleanings for a specific date
@@ -95,12 +107,12 @@ const BookingStatsTiles: React.FC<BookingStatsTilesProps> = ({
     );
   };
 
-  // Get check-outs in N days from a base date
+  // Get check-outs in N days from a base date - ONLY from confirmed bookings
   const getCheckOutsInDays = (baseDate: Date, days: number): Booking[] => {
     const targetDate = new Date(baseDate);
     targetDate.setDate(targetDate.getDate() + days);
     const dateStr = formatDateISO(targetDate);
-    return reservations.filter(booking => booking.end === dateStr);
+    return safeConfirmed.filter(booking => booking.end === dateStr);
   };
 
   const checkIns = getCheckInsForDate(checkInDate);
