@@ -9,6 +9,71 @@ import BookingStatsTiles from './BookingStatsTiles';
 import BookingListModal from './BookingListModal';
 import { getBookingColor, getBookingBorderStyle, getBookingStyle } from '../bookingUtils';
 
+// Types for grouped reservations
+type GroupKey = `${string}__${string}__${string}`;
+
+interface GroupedReservation {
+  unitId: string; // roomId used by calendar row
+  startDate: string;
+  endDate: string;
+  reservations: ReservationData[];
+  groupKey: GroupKey;
+  count: number;
+  isInvoicedGroup: boolean;
+  companyLabel: string | null; // company name or "Mixed"
+}
+
+const getReservationCompany = (r: ReservationData) =>
+  r.internalCompany || r.companyName || r.company || null;
+
+// Group reservations by unitId(roomId)+start+end; exclude lost/won/cancelled
+const groupReservationsByUnitAndDates = (reservations: ReservationData[]): GroupedReservation[] => {
+  const active = reservations.filter(
+    r => r.status !== 'lost' && r.status !== 'won' && r.status !== 'cancelled'
+  );
+
+  const map = new Map<GroupKey, ReservationData[]>();
+
+  for (const r of active) {
+    const unitId = r.roomId;
+    const start = r.start;
+    const end = r.end;
+    const key = `${unitId}__${start}__${end}` as GroupKey;
+    const arr = map.get(key) ?? [];
+    arr.push(r);
+    map.set(key, arr);
+  }
+
+  return Array.from(map.entries()).map(([groupKey, list]) => {
+    const sorted = [...list].sort((a, b) => {
+      const A = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const B = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return B - A;
+    });
+
+    const isInvoicedGroup = sorted.some(r => r.status === 'invoiced');
+
+    let companyLabel: string | null = null;
+    if (isInvoicedGroup) {
+      const firstCompany = getReservationCompany(sorted[0]);
+      const allSame = sorted.every(x => getReservationCompany(x) === firstCompany);
+      if (allSame && firstCompany) companyLabel = firstCompany;
+      else companyLabel = 'Mixed';
+    }
+
+    return {
+      unitId: sorted[0].roomId,
+      startDate: sorted[0].start,
+      endDate: sorted[0].end,
+      reservations: sorted,
+      groupKey,
+      count: sorted.length,
+      isInvoicedGroup,
+      companyLabel
+    };
+  });
+};
+
 interface SalesCalendarProps {
   onSaveOffer?: (offer: OfferData) => void;
   onSaveReservation?: (reservation: ReservationData) => void;
@@ -183,6 +248,23 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // Build latestOfferByReservationId map (optimized, no sorting in render loops)
+  const latestOfferByReservationId = React.useMemo(() => {
+    const map = new Map<string, OfferData>();
+    for (const offer of offers) {
+      if (!offer.reservationId) continue;
+      const resId = String(offer.reservationId);
+      const prev = map.get(resId);
+      if (!prev) map.set(resId, offer);
+      else {
+        const a = new Date(prev.createdAt ?? 0).getTime();
+        const b = new Date(offer.createdAt ?? 0).getTime();
+        if (b > a) map.set(resId, offer);
+      }
+    }
+    return map;
+  }, [offers]);
+
   // Convert Offers to Booking Objects for Visualization
   const offerBookings: Booking[] = offers.map(offer => {
     // Parse dates string "YYYY-MM-DD to YYYY-MM-DD"
@@ -318,29 +400,59 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   // Separate confirmed bookings (solid) from reservations (dashed holds)
   // Confirmed bookings come from bookings table (created when invoice paid)
   // Reservations come from reservations table (holds, can overlap)
-  const confirmedBookingsWithColors = confirmedBookings.map(b => ({
-    ...b,
-    color: getBookingStyle(b.status),
-    isConfirmed: true, // Flag for rendering
-  }));
-  
-  const reservationsWithColors = reservations
-    .filter(r => r.status !== 'lost' && r.status !== 'won') // Don't show lost/won reservations
-    .map(r => ({
-      ...r,
-      color: getBookingStyle(r.status),
-      isReservation: true, // Flag for rendering (dashed)
-    }));
-  
-  const allBookings = [
-    ...bookings.map(b => ({
-      ...b,
-      color: getBookingStyle(b.status)
-    })), 
-    ...confirmedBookingsWithColors,
-    ...reservationsWithColors.filter(r => !confirmedBookings.some(b => b.id === r.id)),
-    ...offerBookings
-  ];
+  const confirmedBookingsWithColors = React.useMemo(
+    () => confirmedBookings.map(b => ({ ...b, color: getBookingStyle(b.status), isConfirmed: true })),
+    [confirmedBookings]
+  );
+
+  // Group reservations before rendering
+  const groupedReservations = React.useMemo(
+    () => groupReservationsByUnitAndDates(reservations),
+    [reservations]
+  );
+
+  const groupedHoldItems = React.useMemo(() => {
+    return groupedReservations.map(group => {
+      const first = group.reservations[0];
+
+      // label rules (NO ids)
+      let label = `Hold (${group.count})`;
+      if (group.isInvoicedGroup && group.companyLabel) {
+        label = `${group.companyLabel} • Hold (${group.count})`;
+        if (group.companyLabel === 'Mixed') label = `Mixed • Hold (${group.count})`;
+      }
+
+      return {
+        id: `hold-${group.groupKey}`,
+        roomId: group.unitId,
+        propertyId: first.propertyId,
+        start: group.startDate,
+        end: group.endDate,
+
+        guest: label, // <-- used in UI label
+        status: BookingStatus.RESERVED, // keep as hold-like
+        color: getBookingStyle(BookingStatus.RESERVED),
+
+        checkInTime: first.checkInTime || '15:00',
+        checkOutTime: first.checkOutTime || '11:00',
+        price: first.price || '0.00 EUR',
+        balance: '0.00 EUR',
+        guests: first.guests || '1 Guest',
+
+        isReservation: true,
+        holdGroupType: 'hold_group',
+        groupData: group
+      };
+    });
+  }, [groupedReservations]);
+
+  const allBookings = React.useMemo(() => {
+    return [
+      ...confirmedBookingsWithColors,
+      ...groupedHoldItems,
+      ...offerBookings // keep only if needed by existing UI
+    ];
+  }, [confirmedBookingsWithColors, groupedHoldItems, offerBookings]);
 
   // Constants for Today (dynamic)
   const TODAY = today;
@@ -1019,7 +1131,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 
                                 // Determine if this is a reservation (hold) or confirmed booking
                                 const isReservation = (booking as any).isReservation === true;
-                                const isConfirmed = (booking as any).isConfirmed === true || !isReservation;
+                                const isGrouped = (booking as any).holdGroupType === 'hold_group';
+                                const isConfirmed = (booking as any).isConfirmed === true || (!isReservation && !isGrouped);
                                 
                                 return (
                                     <div 
@@ -1029,8 +1142,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                         onMouseLeave={() => setHoveredBooking(null)}
                                         className={`
                                             absolute top-2 h-12 rounded-md text-xs text-white flex px-2 shadow-lg z-10 cursor-pointer
-                                            ${getBookingColor(booking.status)} ${getBookingBorderStyle(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
-                                            ${isReservation ? 'border-dashed border-2 opacity-75' : ''}
+                                            ${getBookingColor(booking.status)} ${isReservation ? 'border-2 border-dashed opacity-75' : getBookingBorderStyle(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
                                         `}
                                         style={{ left: `${left}px`, width: `${width}px` }}
                                     >
@@ -1061,28 +1173,105 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
       {/* --- HOVER TOOLTIP --- */}
       {hoveredBooking && !isDragging && !selectedBooking && (
-        <div 
-            className="fixed z-[100] bg-[#1F2937] border border-gray-700 text-white p-3 rounded-lg shadow-2xl pointer-events-none min-w-[200px]"
+        (hoveredBooking.booking as any).holdGroupType === 'hold_group' ? (
+          // Grouped Hold Tooltip
+          <div 
+            className="fixed z-[100] bg-[#1F2937] border border-gray-700 text-white rounded-lg shadow-2xl pointer-events-none min-w-[320px] max-w-[400px]"
             style={{ left: hoveredBooking.x + 15, top: hoveredBooking.y + 15 }}
-        >
-            <div className="flex justify-between items-center mb-2 border-b border-gray-600 pb-2">
-                <span className="font-bold text-white">{hoveredBooking.booking.guest}</span>
-                <span className="text-xs font-bold text-emerald-400">({hoveredBooking.booking.status})</span>
-            </div>
-            <div className="text-xs text-gray-400 mb-2">
-                Property: {getRoomNameById(hoveredBooking.booking.roomId)}
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
+          >
+            <div className="p-4">
+              {/* Header */}
+              <div className="flex justify-between items-center mb-3 border-b border-gray-600 pb-2">
+                <span className="font-bold text-white">
+                  Hold ({(hoveredBooking.booking as any).groupData.count} clients)
+                </span>
+                <span className="text-xs font-bold text-blue-400">Hold</span>
+              </div>
+              
+              {/* Unit & Dates */}
+              <div className="text-xs text-gray-400 mb-3 space-y-1">
+                <div>Unit: {getRoomNameById(hoveredBooking.booking.roomId)}</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
                     <span className="text-gray-500 block">Check-in</span>
                     <span className="font-bold text-[#A855F7]">{hoveredBooking.booking.start}</span>
-                </div>
-                <div className="text-right">
+                  </div>
+                  <div className="text-right">
                     <span className="text-gray-500 block">Check-out</span>
                     <span className="font-bold text-[#3B82F6]">{hoveredBooking.booking.end}</span>
+                  </div>
                 </div>
+              </div>
+              
+              {/* Clients List */}
+              <div className="border-t border-gray-600 pt-2">
+                <div className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider">
+                  Potential Clients
+                </div>
+                <div className="max-h-[240px] overflow-y-auto space-y-2">
+                  {(hoveredBooking.booking as any).groupData.reservations.map((reservation: ReservationData) => {
+                    const latestOffer = latestOfferByReservationId.get(String(reservation.id));
+                    
+                    const clientName = reservation.firstName && reservation.lastName
+                      ? `${reservation.firstName} ${reservation.lastName}`
+                      : reservation.guest || reservation.leadLabel || 'Guest';
+                    
+                    return (
+                      <div
+                        key={reservation.id}
+                        className="p-2 bg-[#111827] rounded border border-gray-700"
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="font-semibold text-sm text-white">{clientName}</span>
+                          <span className="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300 capitalize">
+                            {reservation.status}
+                          </span>
+                        </div>
+                        {(reservation.email || reservation.phone) && (
+                          <div className="text-xs text-gray-500 space-y-0.5 mt-1">
+                            {reservation.email && <div>{reservation.email}</div>}
+                            {reservation.phone && <div>{reservation.phone}</div>}
+                          </div>
+                        )}
+                        {latestOffer && (
+                          <div className="mt-1">
+                            <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                              Offer: {latestOffer.status}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-        </div>
+          </div>
+        ) : (
+          // Single Booking/Reservation Tooltip (existing - unchanged)
+          <div 
+            className="fixed z-[100] bg-[#1F2937] border border-gray-700 text-white p-3 rounded-lg shadow-2xl pointer-events-none min-w-[200px]"
+            style={{ left: hoveredBooking.x + 15, top: hoveredBooking.y + 15 }}
+          >
+            <div className="flex justify-between items-center mb-2 border-b border-gray-600 pb-2">
+              <span className="font-bold text-white">{hoveredBooking.booking.guest}</span>
+              <span className="text-xs font-bold text-emerald-400">({hoveredBooking.booking.status})</span>
+            </div>
+            <div className="text-xs text-gray-400 mb-2">
+              Property: {getRoomNameById(hoveredBooking.booking.roomId)}
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <span className="text-gray-500 block">Check-in</span>
+                <span className="font-bold text-[#A855F7]">{hoveredBooking.booking.start}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-gray-500 block">Check-out</span>
+                <span className="font-bold text-[#3B82F6]">{hoveredBooking.booking.end}</span>
+              </div>
+            </div>
+          </div>
+        )
       )}
 
       {/* --- ADD BOOKING MODAL --- */}
