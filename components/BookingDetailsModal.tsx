@@ -218,13 +218,19 @@ ${selectedInternalCompany} Team`;
   const handleDeleteReservation = async () => {
     if (!onDeleteReservation || !booking) return;
     
-    // Get real reservation id (from reservationId field or booking.id)
-    const reservationId = (booking as any)?.reservationId ?? booking?.id;
+    // Detect reservation mode
+    const isReservation = (booking as any)?.isReservation === true;
+    
+    // Resolve the correct reservation id (prefer explicit reservationId field)
+    const reservationId = (booking as any)?.reservationId ?? (booking as any)?.id ?? booking?.id;
     
     if (!reservationId) {
       alert('No valid reservation to delete.');
       return;
     }
+    
+    // Debug logging
+    console.log('[DELETE] isReservation', isReservation, 'id', reservationId, booking);
     
     const confirmed = window.confirm("Are you sure you want to delete this reservation? This action cannot be undone.");
     
@@ -639,15 +645,18 @@ ${selectedInternalCompany} Team`;
                             Delete Offer
                         </button>
                     )}
-                    {onDeleteReservation && !isViewingOffer && (
-                        <button 
-                            onClick={handleDeleteReservation}
-                            className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
-                        >
-                            <Trash2 className="w-4 h-4" />
-                            Delete Reservation
-                        </button>
-                    )}
+                    {onDeleteReservation && !isViewingOffer && (() => {
+                        const isReservation = (booking as any)?.isReservation === true;
+                        return isReservation ? (
+                            <button 
+                                onClick={handleDeleteReservation}
+                                className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                Delete Reservation
+                            </button>
+                        ) : null;
+                    })()}
                     {!onConvertToOffer && (
                         <button onClick={onClose} className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-bold transition-colors">
                             Close

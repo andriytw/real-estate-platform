@@ -50,7 +50,7 @@ function getReservationLabel(r: ReservationData): string {
 interface SalesCalendarProps {
   onSaveOffer?: (offer: OfferData) => void;
   onSaveReservation?: (reservation: ReservationData) => void;
-  onDeleteReservation?: (id: number) => void;
+  onDeleteReservation?: (id: number | string) => Promise<void> | void;
   onAddLead?: (bookingData: any) => void; // New Prop for Lead creation
   reservations?: ReservationData[]; // Holds from reservations table (dashed)
   confirmedBookings?: Booking[]; // Confirmed bookings from bookings table (solid)
@@ -1533,11 +1533,12 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         isOpen={!!selectedBooking}
         onClose={() => setSelectedBooking(null)}
         booking={selectedBooking}
-        onDeleteReservation={onDeleteReservation ? (id: number | string) => {
-          // Convert id to number if needed (reservation.id can be string or number)
-          const numId = typeof id === 'string' ? parseInt(id, 10) : id;
-          if (!isNaN(numId) && typeof numId === 'number') {
-            onDeleteReservation(numId);
+        onDeleteReservation={onDeleteReservation ? async (id: number | string) => {
+          // Pass id as-is (can be UUID string or number)
+          // The handler in AccountDashboard will handle the conversion
+          const result = onDeleteReservation(id);
+          if (result instanceof Promise) {
+            await result;
           }
           setSelectedBooking(null);
         } : undefined}

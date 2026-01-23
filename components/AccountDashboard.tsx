@@ -1757,77 +1757,79 @@ const AccountDashboard: React.FC = () => {
   // Separate state for confirmed bookings (from bookings table)
   const [confirmedBookings, setConfirmedBookings] = useState<Booking[]>([]);
 
-  useEffect(() => {
-    const loadReservations = async () => {
-      try {
-        // Load reservations from reservations table (holds)
-        const reservationsData = await reservationsService.getAll();
-        // Transform Reservation to ReservationData for compatibility
-        const transformedReservations: ReservationData[] = reservationsData.map(res => {
-          // Build meaningful guest label (never "N/A")
-          const guestLabel = res.leadLabel 
-            || (res.clientFirstName || res.clientLastName 
-              ? `${res.clientFirstName || ''} ${res.clientLastName || ''}`.trim() 
-              : null)
-            || res.clientEmail
-            || res.clientPhone
-            || `Reservation #${res.id}`;
-          
-          return {
-            id: res.id as any,
-            roomId: res.propertyId,
-            propertyId: res.propertyId,
-            start: res.startDate,
-            end: res.endDate,
-            guest: guestLabel, // Never "N/A" or empty
-            color: getBookingStyle(res.status as any),
-            checkInTime: '15:00',
-            checkOutTime: '11:00',
-            status: res.status as any,
-            price: res.totalGross ? `${res.totalGross} EUR` : '0.00 EUR',
-            balance: '0.00 EUR',
-            guests: res.guestsCount ? `${res.guestsCount} Guests` : '1 Guest',
-            unit: 'AUTO-UNIT',
-            comments: 'Reservation',
-            paymentAccount: 'Pending',
-            company: undefined, // Don't set to 'N/A', let getReservationLabel handle it
-            ratePlan: 'Standard',
-            guarantee: 'None',
-            cancellationPolicy: 'Standard',
-            noShowPolicy: 'Standard',
-            channel: 'Manual',
-            type: 'GUEST',
-            address: res.clientAddress,
-            phone: res.clientPhone,
-            email: res.clientEmail,
-            pricePerNight: res.pricePerNightNet,
-            taxRate: res.taxRate,
-            totalGross: res.totalGross?.toString(),
-            guestList: [],
-            clientType: 'Private',
-            firstName: res.clientFirstName,
-            lastName: res.clientLastName,
-            companyName: undefined,
-            internalCompany: undefined,
-            createdAt: res.createdAt,
-          } as ReservationData;
-        });
-        setReservations(transformedReservations);
-      } catch (error) {
-        console.error('Error loading reservations:', error);
-      }
-    };
+  // Load reservations function (extracted for reuse)
+  const loadReservations = async () => {
+    try {
+      // Load reservations from reservations table (holds)
+      const reservationsData = await reservationsService.getAll();
+      // Transform Reservation to ReservationData for compatibility
+      const transformedReservations: ReservationData[] = reservationsData.map(res => {
+        // Build meaningful guest label (never "N/A")
+        const guestLabel = res.leadLabel 
+          || (res.clientFirstName || res.clientLastName 
+            ? `${res.clientFirstName || ''} ${res.clientLastName || ''}`.trim() 
+            : null)
+          || res.clientEmail
+          || res.clientPhone
+          || `Reservation #${res.id}`;
+        
+        return {
+          id: res.id as any,
+          roomId: res.propertyId,
+          propertyId: res.propertyId,
+          start: res.startDate,
+          end: res.endDate,
+          guest: guestLabel, // Never "N/A" or empty
+          color: getBookingStyle(res.status as any),
+          checkInTime: '15:00',
+          checkOutTime: '11:00',
+          status: res.status as any,
+          price: res.totalGross ? `${res.totalGross} EUR` : '0.00 EUR',
+          balance: '0.00 EUR',
+          guests: res.guestsCount ? `${res.guestsCount} Guests` : '1 Guest',
+          unit: 'AUTO-UNIT',
+          comments: 'Reservation',
+          paymentAccount: 'Pending',
+          company: undefined, // Don't set to 'N/A', let getReservationLabel handle it
+          ratePlan: 'Standard',
+          guarantee: 'None',
+          cancellationPolicy: 'Standard',
+          noShowPolicy: 'Standard',
+          channel: 'Manual',
+          type: 'GUEST',
+          address: res.clientAddress,
+          phone: res.clientPhone,
+          email: res.clientEmail,
+          pricePerNight: res.pricePerNightNet,
+          taxRate: res.taxRate,
+          totalGross: res.totalGross?.toString(),
+          guestList: [],
+          clientType: 'Private',
+          firstName: res.clientFirstName,
+          lastName: res.clientLastName,
+          companyName: undefined,
+          internalCompany: undefined,
+          createdAt: res.createdAt,
+        } as ReservationData;
+      });
+      setReservations(transformedReservations);
+    } catch (error) {
+      console.error('Error loading reservations:', error);
+    }
+  };
 
-    const loadConfirmedBookings = async () => {
-      try {
-        // Load confirmed bookings from bookings table
-        const bookings = await bookingsService.getAll();
-        setConfirmedBookings(bookings);
-      } catch (error) {
-        console.error('Error loading confirmed bookings:', error);
-      }
-    };
-    
+  // Load confirmed bookings function (extracted for reuse)
+  const loadConfirmedBookings = async () => {
+    try {
+      // Load confirmed bookings from bookings table
+      const bookings = await bookingsService.getAll();
+      setConfirmedBookings(bookings);
+    } catch (error) {
+      console.error('Error loading confirmed bookings:', error);
+    }
+  };
+
+  useEffect(() => {
     loadReservations();
     loadConfirmedBookings();
   }, []);
@@ -2111,6 +2113,9 @@ const AccountDashboard: React.FC = () => {
 
   const handleDeleteReservation = async (id: number | string) => {
       try {
+        // Debug logging
+        console.log('[DELETE] reservationsService.delete', id);
+        
         // Convert id to string for comparison
         const idStr = String(id);
         
@@ -2118,6 +2123,7 @@ const AccountDashboard: React.FC = () => {
         const reservation = reservations.find(r => String(r.id) === idStr);
         if (!reservation) {
           console.error('Reservation not found:', id);
+          alert('Reservation not found. It may have already been deleted.');
           return;
         }
         
@@ -2127,8 +2133,11 @@ const AccountDashboard: React.FC = () => {
         // Use reservationsService.delete (not bookingsService)
         await reservationsService.delete(reservationId);
         
-        // Refresh reservations list from database (reuse existing loadReservations function)
+        // Refresh reservations list from database
         await loadReservations();
+        
+        // Also refresh confirmed bookings if calendar uses both
+        await loadConfirmedBookings();
       } catch (error) {
         console.error('Error deleting reservation:', error);
         alert('Failed to delete reservation. Please try again.');
@@ -6107,6 +6116,7 @@ ${internalCompany} Team`;
                 await updateReservationInDB(reservation.id, { status: newStatus });
               }
           }}
+          onDeleteReservation={handleDeleteReservation}
           onDeleteOffer={viewingOffer ? handleDeleteOffer : undefined}
           isViewingOffer={viewingOffer}
       />
