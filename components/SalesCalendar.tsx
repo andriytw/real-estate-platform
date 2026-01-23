@@ -429,8 +429,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   }, [reservations]);
 
   // Stacking constants for reservation stripes
-  const STRIPE_H = 24; // Height of each reservation stripe in pixels (fits 2 lines)
-  const STRIPE_GAP = 4; // Gap between stacked stripes in pixels
+  const STRIPE_H = 26; // Height of each reservation stripe in pixels
+  const STRIPE_GAP = 6; // Gap between stacked stripes in pixels
   const BASE_TOP_PX = 8; // Base top offset for first stripe
   const stackIndexByReservationId = React.useMemo(() => {
     const map = new Map<string, number>();
@@ -1201,9 +1201,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                   ? BASE_TOP_PX + stackIndex * (STRIPE_H + STRIPE_GAP)
                                   : 8; // Base top for confirmed bookings
                                 
-                                const baseOpacity = isReservation ? 0.85 : 1;
-                                const stackOpacity = isReservation ? Math.max(0.7, baseOpacity - (stackIndex * 0.03)) : 1;
-                                
                                 return (
                                     <div 
                                         key={booking.id}
@@ -1211,35 +1208,70 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                         onMouseEnter={(e) => setHoveredBooking({ booking, x: e.clientX, y: e.clientY })}
                                         onMouseLeave={() => setHoveredBooking(null)}
                                         className={`
-                                            absolute rounded-md text-xs text-white flex shadow-lg z-10 cursor-pointer
-                                            ${isReservation ? '' : 'h-12 px-2'}
-                                            ${getBookingColor(booking.status)} ${isReservation ? 'border-2 border-dashed' : getBookingBorderStyle(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
+                                            absolute rounded-md text-xs text-white flex shadow-lg z-10 cursor-pointer items-center
+                                            ${isReservation 
+                                                ? 'bg-sky-500/70 hover:bg-sky-500/85 border border-dashed border-white/25 ring-1 ring-white/10 shadow-[0_1px_0_rgba(0,0,0,0.35)] hover:-translate-y-[1px]' 
+                                                : 'h-12 px-2 ' + getBookingColor(booking.status) + ' ' + getBookingBorderStyle(booking.status)
+                                            } hover:scale-[1.01] transition-all duration-150
                                         `}
                                         style={{ 
                                             left: `${left}px`, 
                                             width: `${width}px`, 
                                             top: `${topPx}px`,
                                             height: isReservation ? `${STRIPE_H}px` : undefined,
-                                            opacity: stackOpacity
                                         }}
                                     >
-                                        {isReservation ? (
-                                            // Compact reservation stripe: check-in time, label, check-out time + nights/guests
-                                            <div className="flex flex-col justify-center w-full h-full px-2 py-0.5">
-                                                {/* First row: times and label */}
-                                                <div className="flex items-center justify-between w-full mb-0.5">
-                                                    <span className="font-mono text-[9px] opacity-80 flex-shrink-0">{booking.checkInTime}</span>
-                                                    <span className="font-semibold text-[10px] truncate text-center flex-1 px-1 leading-tight">
-                                                        {booking.guest}
-                                                    </span>
-                                                    <span className="font-mono text-[9px] opacity-80 flex-shrink-0">{booking.checkOutTime}</span>
+                                        {isReservation ? (() => {
+                                            const showTimes = width >= 110;
+                                            const showDetails = width >= 140;
+                                            const showOnlyInitials = width < 70;
+                                            
+                                            // Get first letter for initials fallback
+                                            const getInitial = (str: string) => {
+                                                const trimmed = str.trim();
+                                                return trimmed ? trimmed[0].toUpperCase() : '?';
+                                            };
+                                            
+                                            return (
+                                                <div className="flex items-center w-full h-full px-2.5 whitespace-nowrap">
+                                                    {showOnlyInitials ? (
+                                                        // Very narrow: show only initial
+                                                        <span className="font-bold text-[12px] w-full text-center">
+                                                            {getInitial(booking.guest)}
+                                                        </span>
+                                                    ) : showTimes ? (
+                                                        <>
+                                                            {/* Left: Check-in time (fixed width) */}
+                                                            <span className="font-mono text-[10px] opacity-70 w-[44px] text-left shrink-0 whitespace-nowrap">
+                                                                {booking.checkInTime}
+                                                            </span>
+                                                            
+                                                            {/* Center: Guest/Company label */}
+                                                            <span className="font-medium text-[11px] truncate flex-1 min-w-0 text-center whitespace-nowrap px-1">
+                                                                {booking.guest}
+                                                            </span>
+                                                            
+                                                            {/* Right: Check-out time (fixed width) */}
+                                                            <span className="font-mono text-[10px] opacity-70 w-[44px] text-right shrink-0 whitespace-nowrap">
+                                                                {booking.checkOutTime}
+                                                            </span>
+                                                            
+                                                            {/* Optional: Nights/Guests (if space allows) */}
+                                                            {showDetails && (
+                                                                <span className="text-[9px] opacity-60 ml-2 shrink-0 whitespace-nowrap">
+                                                                    {nights}N · {parseInt(booking.guests || '0')}G
+                                                                </span>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        // Narrow: show only label centered
+                                                        <span className="font-medium text-[11px] truncate w-full text-center whitespace-nowrap">
+                                                            {booking.guest}
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                {/* Second row: nights and guests */}
-                                                <div className="text-[9px] opacity-70 text-center leading-tight">
-                                                    {nights}N | {parseInt(booking.guests || '0')}G
-                                                </div>
-                                            </div>
-                                        ) : (
+                                            );
+                                        })() : (
                                             // Full confirmed booking: check-in, guest, nights/guests, check-out
                                             <div className="flex justify-between items-center w-full h-full px-4">
                                                 {/* Left: Check-in */}
