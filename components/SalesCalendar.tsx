@@ -408,7 +408,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   }, [reservations]);
 
   // Stacking logic: calculate vertical offsets for overlapping reservations
-  const STACK_PX = 14; // Vertical offset per stacked item
+  // STACK_PX must be >= stripe height (h-5 = 20px) + gap (4px) = 24px minimum
+  const STACK_PX = 24; // Vertical offset per stacked item (ensures no overlap)
   const stackIndexByReservationId = React.useMemo(() => {
     const map = new Map<string, number>();
     const groups = new Map<string, ReservationData[]>();
@@ -1134,6 +1135,13 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                   : 0;
                                 const topPx = 8 + (isReservation ? stackIndex * STACK_PX : 0);
                                 
+                                // For reservations: compact height, simplified content, reduced opacity per stack
+                                // For confirmed bookings: keep original height and full content
+                                const stripeHeight = isReservation ? 'h-5' : 'h-12';
+                                const stripePadding = isReservation ? 'px-2 py-0.5' : 'px-2';
+                                const baseOpacity = isReservation ? 0.75 : 1;
+                                const stackOpacity = isReservation ? Math.max(0.6, baseOpacity - (stackIndex * 0.05)) : 1;
+                                
                                 return (
                                     <div 
                                         key={booking.id}
@@ -1141,26 +1149,41 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                         onMouseEnter={(e) => setHoveredBooking({ booking, x: e.clientX, y: e.clientY })}
                                         onMouseLeave={() => setHoveredBooking(null)}
                                         className={`
-                                            absolute h-12 rounded-md text-xs text-white flex px-2 shadow-lg z-10 cursor-pointer
-                                            ${getBookingColor(booking.status)} ${isReservation ? 'border-2 border-dashed opacity-75' : getBookingBorderStyle(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
+                                            absolute ${stripeHeight} rounded-md text-xs text-white flex ${stripePadding} shadow-lg z-10 cursor-pointer
+                                            ${getBookingColor(booking.status)} ${isReservation ? 'border border-dashed' : getBookingBorderStyle(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
                                         `}
-                                        style={{ left: `${left}px`, width: `${width}px`, top: `${topPx}px` }}
+                                        style={{ 
+                                            left: `${left}px`, 
+                                            width: `${width}px`, 
+                                            top: `${topPx}px`,
+                                            opacity: stackOpacity
+                                        }}
                                     >
-                                        <div className="flex justify-between items-center w-full h-full px-4">
-                                            {/* Left: Check-in */}
-                                            <span className="font-mono text-[10px] font-bold opacity-80 ml-2">{booking.checkInTime}</span>
-                                            
-                                            {/* Center */}
-                                            <div className="flex flex-col items-center justify-center flex-1 px-2 min-w-0">
-                                                <span className="font-bold text-xs truncate w-full text-center leading-tight">{booking.guest}</span>
-                                                <span className="text-[9px] opacity-80 truncate leading-tight mt-0.5">
-                                                    {nights}N | {parseInt(booking.guests || '0')}G
+                                        {isReservation ? (
+                                            // Compact reservation stripe: ONLY client/company name
+                                            <div className="flex items-center justify-center w-full min-w-0">
+                                                <span className="font-semibold text-[11px] truncate w-full text-center leading-tight">
+                                                    {booking.guest}
                                                 </span>
                                             </div>
+                                        ) : (
+                                            // Full confirmed booking: check-in, guest, nights/guests, check-out
+                                            <div className="flex justify-between items-center w-full h-full px-4">
+                                                {/* Left: Check-in */}
+                                                <span className="font-mono text-[10px] font-bold opacity-80 ml-2">{booking.checkInTime}</span>
+                                                
+                                                {/* Center */}
+                                                <div className="flex flex-col items-center justify-center flex-1 px-2 min-w-0">
+                                                    <span className="font-bold text-xs truncate w-full text-center leading-tight">{booking.guest}</span>
+                                                    <span className="text-[9px] opacity-80 truncate leading-tight mt-0.5">
+                                                        {nights}N | {parseInt(booking.guests || '0')}G
+                                                    </span>
+                                                </div>
 
-                                            {/* Right: Check-out */}
-                                            <span className="font-mono text-[10px] font-bold opacity-80 mr-2">{booking.checkOutTime}</span>
-                                        </div>
+                                                {/* Right: Check-out */}
+                                                <span className="font-mono text-[10px] font-bold opacity-80 mr-2">{booking.checkOutTime}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -1172,30 +1195,54 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       </div>
 
       {/* --- HOVER TOOLTIP --- */}
-      {hoveredBooking && !isDragging && !selectedBooking && (
-        <div 
-          className="fixed z-[100] bg-[#1F2937] border border-gray-700 text-white p-3 rounded-lg shadow-2xl pointer-events-none min-w-[200px]"
-          style={{ left: hoveredBooking.x + 15, top: hoveredBooking.y + 15 }}
-        >
-          <div className="flex justify-between items-center mb-2 border-b border-gray-600 pb-2">
-            <span className="font-bold text-white">{hoveredBooking.booking.guest}</span>
-            <span className="text-xs font-bold text-emerald-400">({hoveredBooking.booking.status})</span>
-          </div>
-          <div className="text-xs text-gray-400 mb-2">
-            Property: {getRoomNameById(hoveredBooking.booking.roomId)}
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <span className="text-gray-500 block">Check-in</span>
-              <span className="font-bold text-[#A855F7]">{hoveredBooking.booking.start}</span>
+      {hoveredBooking && !isDragging && !selectedBooking && (() => {
+        const booking = hoveredBooking.booking;
+        const bookingStartDate = parseDate(booking.start);
+        const bookingEndDate = parseDate(booking.end);
+        const nights = dateDiffInDays(bookingStartDate, bookingEndDate);
+        const guestsCount = parseInt(booking.guests || '0') || 1;
+        
+        return (
+          <div 
+            className="fixed z-[100] bg-[#1F2937] border border-gray-700 text-white p-3 rounded-lg shadow-2xl pointer-events-none min-w-[200px]"
+            style={{ left: hoveredBooking.x + 15, top: hoveredBooking.y + 15 }}
+          >
+            <div className="flex justify-between items-center mb-2 border-b border-gray-600 pb-2">
+              <span className="font-bold text-white">{booking.guest}</span>
+              <span className="text-xs font-bold text-emerald-400">({booking.status})</span>
             </div>
-            <div className="text-right">
-              <span className="text-gray-500 block">Check-out</span>
-              <span className="font-bold text-[#3B82F6]">{hoveredBooking.booking.end}</span>
+            <div className="text-xs text-gray-400 mb-2">
+              Property: {getRoomNameById(booking.roomId)}
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+              <div>
+                <span className="text-gray-500 block">Check-in</span>
+                <span className="font-bold text-[#A855F7]">{booking.start}</span>
+                {booking.checkInTime && (
+                  <span className="text-gray-400 block text-[10px]">{booking.checkInTime}</span>
+                )}
+              </div>
+              <div className="text-right">
+                <span className="text-gray-500 block">Check-out</span>
+                <span className="font-bold text-[#3B82F6]">{booking.end}</span>
+                {booking.checkOutTime && (
+                  <span className="text-gray-400 block text-[10px]">{booking.checkOutTime}</span>
+                )}
+              </div>
+            </div>
+            <div className="text-xs text-gray-400 border-t border-gray-600 pt-2">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Nights:</span>
+                <span className="font-semibold text-white">{nights}</span>
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-gray-500">Guests:</span>
+                <span className="font-semibold text-white">{guestsCount}</span>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* --- ADD BOOKING MODAL --- */}
       {isAddModalOpen && (
