@@ -16,6 +16,37 @@ const normalizeDateKey = (v: string) => {
   return v;
 };
 
+// Helper to get reservation label with priority (never returns "N/A")
+function getReservationLabel(r: ReservationData): string {
+  // Priority: internalCompany || companyName || company
+  if (r.internalCompany && r.internalCompany.trim() && r.internalCompany !== 'N/A') return r.internalCompany.trim();
+  if (r.companyName && r.companyName.trim() && r.companyName !== 'N/A') return r.companyName.trim();
+  if (r.company && r.company.trim() && r.company !== 'N/A') return r.company.trim();
+  
+  // Priority: leadLabel (if available)
+  if ((r as any).leadLabel && (r as any).leadLabel.trim()) return (r as any).leadLabel.trim();
+  
+  // Priority: firstName + lastName OR clientFirstName + clientLastName
+  if (r.firstName || r.lastName) {
+    const name = `${r.firstName || ''} ${r.lastName || ''}`.trim();
+    if (name) return name;
+  }
+  if ((r as any).clientFirstName || (r as any).clientLastName) {
+    const name = `${(r as any).clientFirstName || ''} ${(r as any).clientLastName || ''}`.trim();
+    if (name) return name;
+  }
+  
+  // Priority: guest (only if not "N/A" or empty)
+  if (r.guest && r.guest.trim() && r.guest !== 'N/A' && r.guest !== 'Guest') return r.guest.trim();
+  
+  // Priority: email || phone
+  if (r.email && r.email.trim()) return r.email.trim();
+  if (r.phone && r.phone.trim()) return r.phone.trim();
+  
+  // Fallback: Reservation #id
+  return `Reservation #${r.id}`;
+}
+
 interface SalesCalendarProps {
   onSaveOffer?: (offer: OfferData) => void;
   onSaveReservation?: (reservation: ReservationData) => void;
@@ -354,23 +385,13 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     );
 
     return active.map(reservation => {
-      // Guest label priority: company > name > guest/leadLabel > 'Guest'
-      let guestLabel: string;
-      if (reservation.internalCompany || reservation.companyName || reservation.company) {
-        guestLabel = reservation.internalCompany || reservation.companyName || reservation.company || 'Guest';
-      } else if (reservation.firstName || reservation.lastName) {
-        guestLabel = `${reservation.firstName || ''} ${reservation.lastName || ''}`.trim() || 'Guest';
-      } else {
-        guestLabel = reservation.guest || 'Guest';
-      }
-
       return {
         id: reservation.id, // REAL DB id
         roomId: reservation.roomId,
         propertyId: reservation.propertyId,
         start: reservation.start,
         end: reservation.end,
-        guest: guestLabel, // NOT "Hold"
+        guest: getReservationLabel(reservation), // Never "N/A"
         status: reservation.status as any,
         color: getBookingStyle(reservation.status as any),
         checkInTime: reservation.checkInTime || '15:00',
@@ -407,9 +428,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     });
   }, [reservations]);
 
-  // Stacking logic: calculate vertical offsets for overlapping reservations
-  // STACK_PX must be >= stripe height (h-5 = 20px) + gap (4px) = 24px minimum
-  const STACK_PX = 24; // Vertical offset per stacked item (ensures no overlap)
+  // Stacking constants for reservation stripes
+  const STRIPE_H = 24; // Height of each reservation stripe in pixels (fits 2 lines)
+  const STRIPE_GAP = 4; // Gap between stacked stripes in pixels
+  const BASE_TOP_PX = 8; // Base top offset for first stripe
   const stackIndexByReservationId = React.useMemo(() => {
     const map = new Map<string, number>();
     const groups = new Map<string, ReservationData[]>();
@@ -437,6 +459,34 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       sorted.forEach((reservation, index) => {
         map.set(String(reservation.id), index);
       });
+    }
+
+    return map;
+  }, [reservations]);
+
+  // Compute max stack count per room for row height expansion
+  const maxStackForRoomId = React.useMemo(() => {
+    const map = new Map<string, number>();
+    const groups = new Map<string, ReservationData[]>();
+
+    const active = reservations.filter(
+      r => r.status !== 'lost' && r.status !== 'won' && r.status !== 'cancelled'
+    );
+
+    for (const r of active) {
+      const key = `${r.roomId}__${normalizeDateKey(r.start)}__${normalizeDateKey(r.end)}`;
+      const arr = groups.get(key) ?? [];
+      arr.push(r);
+      groups.set(key, arr);
+    }
+
+    // Count max stack per room
+    for (const [key, group] of groups.entries()) {
+      const roomId = key.split('__')[0];
+      const currentMax = map.get(roomId) ?? 0;
+      if (group.length > currentMax) {
+        map.set(roomId, group.length);
+      }
     }
 
     return map;
@@ -1053,8 +1103,19 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                         />
                     )}
 
-                    {filteredRooms.map(room => (
-                        <div key={room.id} className="h-16 border-b border-gray-800 relative flex bg-[#111315]/50 hover:bg-[#161B22]/50 transition-colors">
+                    {filteredRooms.map(room => {
+                        // Calculate row height: base (h-16 = 64px) + extra for stacked reservations
+                        const BASE_ROW_HEIGHT = 64; // h-16 = 64px
+                        const maxStack = maxStackForRoomId.get(room.id) ?? 0;
+                        const extraHeight = maxStack > 0 ? (maxStack - 1) * (STRIPE_H + STRIPE_GAP) : 0;
+                        const rowMinHeight = BASE_ROW_HEIGHT + extraHeight;
+
+                        return (
+                        <div 
+                            key={room.id} 
+                            className="border-b border-gray-800 relative flex bg-[#111315]/50 hover:bg-[#161B22]/50 transition-colors"
+                            style={{ minHeight: `${rowMinHeight}px` }}
+                        >
                             {/* Grid Lines & Cells for Selection */}
                             {Array.from({ length: getTotalDays() }).map((_, i) => {
                                 const cellDate = getDateFromIndex(i);
@@ -1133,14 +1194,15 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 const stackIndex = isReservation 
                                   ? (stackIndexByReservationId.get(String(booking.id)) ?? 0)
                                   : 0;
-                                const topPx = 8 + (isReservation ? stackIndex * STACK_PX : 0);
                                 
-                                // For reservations: compact height, simplified content, reduced opacity per stack
-                                // For confirmed bookings: keep original height and full content
-                                const stripeHeight = isReservation ? 'h-5' : 'h-12';
-                                const stripePadding = isReservation ? 'px-2 py-0.5' : 'px-2';
-                                const baseOpacity = isReservation ? 0.75 : 1;
-                                const stackOpacity = isReservation ? Math.max(0.6, baseOpacity - (stackIndex * 0.05)) : 1;
+                                // For reservations: use new constants, inline styles for top/height
+                                // For confirmed bookings: keep existing layout
+                                const topPx = isReservation 
+                                  ? BASE_TOP_PX + stackIndex * (STRIPE_H + STRIPE_GAP)
+                                  : 8; // Base top for confirmed bookings
+                                
+                                const baseOpacity = isReservation ? 0.85 : 1;
+                                const stackOpacity = isReservation ? Math.max(0.7, baseOpacity - (stackIndex * 0.03)) : 1;
                                 
                                 return (
                                     <div 
@@ -1149,22 +1211,33 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                         onMouseEnter={(e) => setHoveredBooking({ booking, x: e.clientX, y: e.clientY })}
                                         onMouseLeave={() => setHoveredBooking(null)}
                                         className={`
-                                            absolute ${stripeHeight} rounded-md text-xs text-white flex ${stripePadding} shadow-lg z-10 cursor-pointer
-                                            ${getBookingColor(booking.status)} ${isReservation ? 'border border-dashed' : getBookingBorderStyle(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
+                                            absolute rounded-md text-xs text-white flex shadow-lg z-10 cursor-pointer
+                                            ${isReservation ? '' : 'h-12 px-2'}
+                                            ${getBookingColor(booking.status)} ${isReservation ? 'border-2 border-dashed' : getBookingBorderStyle(booking.status)} hover:opacity-90 hover:scale-[1.01] transition-transform
                                         `}
                                         style={{ 
                                             left: `${left}px`, 
                                             width: `${width}px`, 
                                             top: `${topPx}px`,
+                                            height: isReservation ? `${STRIPE_H}px` : undefined,
                                             opacity: stackOpacity
                                         }}
                                     >
                                         {isReservation ? (
-                                            // Compact reservation stripe: ONLY client/company name
-                                            <div className="flex items-center justify-center w-full min-w-0">
-                                                <span className="font-semibold text-[11px] truncate w-full text-center leading-tight">
-                                                    {booking.guest}
-                                                </span>
+                                            // Compact reservation stripe: check-in time, label, check-out time + nights/guests
+                                            <div className="flex flex-col justify-center w-full h-full px-2 py-0.5">
+                                                {/* First row: times and label */}
+                                                <div className="flex items-center justify-between w-full mb-0.5">
+                                                    <span className="font-mono text-[9px] opacity-80 flex-shrink-0">{booking.checkInTime}</span>
+                                                    <span className="font-semibold text-[10px] truncate text-center flex-1 px-1 leading-tight">
+                                                        {booking.guest}
+                                                    </span>
+                                                    <span className="font-mono text-[9px] opacity-80 flex-shrink-0">{booking.checkOutTime}</span>
+                                                </div>
+                                                {/* Second row: nights and guests */}
+                                                <div className="text-[9px] opacity-70 text-center leading-tight">
+                                                    {nights}N | {parseInt(booking.guests || '0')}G
+                                                </div>
                                             </div>
                                         ) : (
                                             // Full confirmed booking: check-in, guest, nights/guests, check-out
@@ -1188,7 +1261,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 );
                             })}
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
          </div>

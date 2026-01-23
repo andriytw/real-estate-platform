@@ -1763,43 +1763,55 @@ const AccountDashboard: React.FC = () => {
         // Load reservations from reservations table (holds)
         const reservationsData = await reservationsService.getAll();
         // Transform Reservation to ReservationData for compatibility
-        const transformedReservations: ReservationData[] = reservationsData.map(res => ({
-          id: res.id as any,
-          roomId: res.propertyId,
-          propertyId: res.propertyId,
-          start: res.startDate,
-          end: res.endDate,
-          guest: res.leadLabel || `${res.clientFirstName || ''} ${res.clientLastName || ''}`.trim() || 'Guest',
-          color: getBookingStyle(res.status as any),
-          checkInTime: '15:00',
-          checkOutTime: '11:00',
-          status: res.status as any,
-          price: res.totalGross ? `${res.totalGross} EUR` : '0.00 EUR',
-          balance: '0.00 EUR',
-          guests: res.guestsCount ? `${res.guestsCount} Guests` : '1 Guest',
-          unit: 'AUTO-UNIT',
-          comments: 'Reservation',
-          paymentAccount: 'Pending',
-          company: 'N/A',
-          ratePlan: 'Standard',
-          guarantee: 'None',
-          cancellationPolicy: 'Standard',
-          noShowPolicy: 'Standard',
-          channel: 'Manual',
-          type: 'GUEST',
-          address: res.clientAddress,
-          phone: res.clientPhone,
-          email: res.clientEmail,
-          pricePerNight: res.pricePerNightNet,
-          taxRate: res.taxRate,
-          totalGross: res.totalGross?.toString(),
-          guestList: [],
-          clientType: 'Private',
-          firstName: res.clientFirstName,
-          lastName: res.clientLastName,
-          companyName: undefined,
-          createdAt: res.createdAt,
-        })) as ReservationData[];
+        const transformedReservations: ReservationData[] = reservationsData.map(res => {
+          // Build meaningful guest label (never "N/A")
+          const guestLabel = res.leadLabel 
+            || (res.clientFirstName || res.clientLastName 
+              ? `${res.clientFirstName || ''} ${res.clientLastName || ''}`.trim() 
+              : null)
+            || res.clientEmail
+            || res.clientPhone
+            || `Reservation #${res.id}`;
+          
+          return {
+            id: res.id as any,
+            roomId: res.propertyId,
+            propertyId: res.propertyId,
+            start: res.startDate,
+            end: res.endDate,
+            guest: guestLabel, // Never "N/A" or empty
+            color: getBookingStyle(res.status as any),
+            checkInTime: '15:00',
+            checkOutTime: '11:00',
+            status: res.status as any,
+            price: res.totalGross ? `${res.totalGross} EUR` : '0.00 EUR',
+            balance: '0.00 EUR',
+            guests: res.guestsCount ? `${res.guestsCount} Guests` : '1 Guest',
+            unit: 'AUTO-UNIT',
+            comments: 'Reservation',
+            paymentAccount: 'Pending',
+            company: undefined, // Don't set to 'N/A', let getReservationLabel handle it
+            ratePlan: 'Standard',
+            guarantee: 'None',
+            cancellationPolicy: 'Standard',
+            noShowPolicy: 'Standard',
+            channel: 'Manual',
+            type: 'GUEST',
+            address: res.clientAddress,
+            phone: res.clientPhone,
+            email: res.clientEmail,
+            pricePerNight: res.pricePerNightNet,
+            taxRate: res.taxRate,
+            totalGross: res.totalGross?.toString(),
+            guestList: [],
+            clientType: 'Private',
+            firstName: res.clientFirstName,
+            lastName: res.clientLastName,
+            companyName: undefined,
+            internalCompany: undefined,
+            createdAt: res.createdAt,
+          } as ReservationData;
+        });
         setReservations(transformedReservations);
       } catch (error) {
         console.error('Error loading reservations:', error);
