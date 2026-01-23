@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Briefcase, Euro, CreditCard, Mail, Phone, MapPin, User, FileText, Send, Save, Building2, ChevronDown, FilePlus2, Download, Edit3, Trash2, Copy, Check, Eye } from 'lucide-react';
-import { Booking, OfferData, BookingStatus } from '../types';
+import { Booking, OfferData, BookingStatus, ReservationData } from '../types';
 import { ROOMS } from '../constants';
 import { canSendOffer, canCreateInvoice } from '../bookingUtils';
 
@@ -14,7 +14,7 @@ interface BookingDetailsModalProps {
   onEdit?: () => void; // New Edit Callback
   onSendOffer?: () => void; // New callback for sending offer
   onUpdateBookingStatus?: (bookingId: number, newStatus: BookingStatus) => void; // New callback for updating status
-  onDeleteReservation?: (id: number) => void; // Delete reservation callback
+  onDeleteReservation?: (id: number | string) => Promise<void> | void; // Delete reservation callback
   onDeleteOffer?: (offerId: string) => void; // Delete offer callback
   isViewingOffer?: boolean; // Flag to indicate if viewing an offer
 }
@@ -215,16 +215,31 @@ ${selectedInternalCompany} Team`;
     }
   };
 
-  const handleDeleteReservation = () => {
+  const handleDeleteReservation = async () => {
     if (!onDeleteReservation || !booking) return;
     
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this reservation? This action cannot be undone."
-    );
+    // Get real reservation id (from reservationId field or booking.id)
+    const reservationId = (booking as any)?.reservationId ?? booking?.id;
+    
+    if (!reservationId) {
+      alert('No valid reservation to delete.');
+      return;
+    }
+    
+    const confirmed = window.confirm("Are you sure you want to delete this reservation? This action cannot be undone.");
     
     if (confirmed) {
-      onDeleteReservation(booking.id);
-      onClose();
+      try {
+        const result = onDeleteReservation(reservationId);
+        // Handle both sync and async callbacks
+        if (result instanceof Promise) {
+          await result;
+        }
+        onClose();
+      } catch (error) {
+        console.error('Error deleting reservation:', error);
+        alert('Failed to delete reservation. Please try again.');
+      }
     }
   };
 

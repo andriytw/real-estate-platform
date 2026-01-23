@@ -2099,18 +2099,24 @@ const AccountDashboard: React.FC = () => {
 
   const handleDeleteReservation = async (id: number | string) => {
       try {
+        // Convert id to string for comparison
+        const idStr = String(id);
+        
         // Find reservation to get the UUID if id is number
-        const reservation = reservations.find(r => r.id === id);
+        const reservation = reservations.find(r => String(r.id) === idStr);
         if (!reservation) {
           console.error('Reservation not found:', id);
           return;
         }
         
         // Use the reservation's id (which might be UUID string or number)
-        const bookingId = typeof reservation.id === 'string' ? reservation.id : id.toString();
+        const reservationId = typeof reservation.id === 'string' ? reservation.id : idStr;
         
-        await bookingsService.delete(bookingId);
-        setReservations(prev => prev.filter(r => r.id !== id));
+        // Use reservationsService.delete (not bookingsService)
+        await reservationsService.delete(reservationId);
+        
+        // Refresh reservations list from database (reuse existing loadReservations function)
+        await loadReservations();
       } catch (error) {
         console.error('Error deleting reservation:', error);
         alert('Failed to delete reservation. Please try again.');
