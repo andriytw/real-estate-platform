@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Briefcase, Euro, CreditCard, Mail, Phone, MapPin, User, FileText, Send, Save, Building2, ChevronDown, FilePlus2, Download, Edit3, Trash2, Copy, Check, Eye } from 'lucide-react';
+import { X, Briefcase, Euro, CreditCard, Mail, Phone, MapPin, User, FileText, Send, Save, Building2, ChevronDown, FilePlus2, Edit3, Trash2, Copy, Check } from 'lucide-react';
 import { Booking, OfferData, BookingStatus, ReservationData } from '../types';
 import { ROOMS } from '../constants';
 import { canSendOffer, canCreateInvoice } from '../bookingUtils';
@@ -71,11 +71,13 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
       const totalPrice = booking.totalGross || booking.price || '0.00 EUR';
       const bookingNo = booking.bookingNo || '';
       
+      const marketplaceLine = property?.marketplaceUrl
+        ? `View listing: ${property.marketplaceUrl}\n\n`
+        : '';
       const template = `Hello ${guestName},
 
 thank you for your interest in the apartment "${propertyName}".
-
-Your stay: ${checkInDate}${checkOutDate ? ` – ${checkOutDate}` : ''}
+${marketplaceLine}Your stay: ${checkInDate}${checkOutDate ? ` – ${checkOutDate}` : ''}
 ${bookingNo ? `Booking number: ${bookingNo}\n` : ''}Total price: ${totalPrice}
 
 Please find the offer attached.
@@ -113,108 +115,6 @@ ${selectedInternalCompany} Team`;
     }
   };
   
-  // Shared function to generate Offer PDF URL (used by both Preview and Download)
-  const getOfferPdfUrl = async (): Promise<string> => {
-    // TODO: replace jsPDF placeholder with real Offer PDF generation when available
-    // This function should be updated to use the actual PDF generation logic when implemented
-    
-    // Dynamic import of jsPDF to avoid loading if not needed
-    const { jsPDF } = await import('jspdf');
-    const doc = new jsPDF();
-    
-    // Get offer data from current booking/form state
-    const guestName = (booking.firstName && booking.lastName) 
-      ? `${booking.firstName} ${booking.lastName}`.trim()
-      : (booking.guest || 'Guest');
-    const propertyName = property?.title || booking.roomId || 'the apartment';
-    
-    // Format dates for PDF
-    const formatDate = (dateStr: string | undefined): string => {
-      if (!dateStr) return '';
-      try {
-        return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-      } catch {
-        return dateStr;
-      }
-    };
-    
-    const checkInDate = formatDate(booking.start);
-    const checkOutDate = formatDate(booking.end);
-    const totalPrice = booking.totalGross || booking.price || '0.00 EUR';
-    const bookingNo = booking.bookingNo || '';
-    const companyName = selectedInternalCompany || 'Sotiso';
-    
-    // PDF content
-    let yPos = 20;
-    doc.setFontSize(18);
-    doc.text('Offer', 20, yPos);
-    
-    yPos += 15;
-    doc.setFontSize(12);
-    doc.text(`Issued by: ${companyName}`, 20, yPos);
-    
-    yPos += 10;
-    doc.setFontSize(10);
-    doc.text(`Guest: ${guestName}`, 20, yPos);
-    
-    yPos += 7;
-    doc.text(`Property: ${propertyName}`, 20, yPos);
-    
-    yPos += 7;
-    doc.text(`Check-in: ${checkInDate}`, 20, yPos);
-    
-    yPos += 7;
-    doc.text(`Check-out: ${checkOutDate}`, 20, yPos);
-    
-    if (bookingNo) {
-      yPos += 7;
-      doc.text(`Booking Number: ${bookingNo}`, 20, yPos);
-    }
-    
-    yPos += 10;
-    doc.setFontSize(12);
-    doc.text(`Total Price: ${totalPrice}`, 20, yPos);
-    
-    // Export as blob URL
-    const blob = doc.output('blob');
-    const url = URL.createObjectURL(blob);
-    return url;
-  };
-
-  const handlePreviewOfferPdf = async () => {
-    try {
-      const url = await getOfferPdfUrl();
-      window.open(url, '_blank', 'noopener,noreferrer');
-      // Clean up blob URL after a delay (browser will handle it when tab closes)
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (error) {
-      console.error('Error generating PDF preview:', error);
-      alert('Failed to generate PDF preview. Please try again.');
-    }
-  };
-
-  const handleDownloadPdf = async () => {
-    try {
-      const url = await getOfferPdfUrl();
-      const bookingNo = booking.bookingNo || 'offer';
-      const filename = `Offer_${bookingNo.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
-      
-      // Create temporary anchor element for download
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      // Clean up blob URL after download
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (error) {
-      console.error('Error generating PDF download:', error);
-      alert('Failed to generate PDF. Please try again.');
-    }
-  };
-
   const handleDeleteReservation = async () => {
     if (!onDeleteReservation || !booking) return;
     
@@ -394,19 +294,6 @@ ${selectedInternalCompany} Team`;
                                 />
                             </div>
 
-                            {/* Preview Offer PDF */}
-                            <div>
-                                <button
-                                    onClick={handlePreviewOfferPdf}
-                                    className="w-full px-4 py-2.5 bg-[#1C1F24] border border-gray-700 hover:bg-gray-800 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
-                                >
-                                    <Eye className="w-4 h-4" />
-                                    Preview Offer PDF
-                                </button>
-                                <p className="text-xs text-gray-500 italic mt-2 text-center">
-                                    This PDF will be attached to the offer email.
-                                </p>
-                            </div>
                         </div>
                     </div>
                 )}
@@ -620,17 +507,8 @@ ${selectedInternalCompany} Team`;
                     </div>
                 )}
 
-                {/* Other Actions (Delete, Download PDF, Close) */}
+                {/* Other Actions (Delete, Close) */}
                 <div className="flex justify-end gap-3">
-                    {isViewingOffer && onCreateInvoice && (
-                        <button 
-                            onClick={handleDownloadPdf}
-                            className="px-6 py-2 bg-[#1C1F24] border border-gray-700 hover:bg-gray-800 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
-                        >
-                            <Download className="w-4 h-4" />
-                            Download Offer PDF
-                        </button>
-                    )}
                     {onDeleteOffer && isViewingOffer && booking && (
                         <button 
                             onClick={() => {
