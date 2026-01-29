@@ -1868,9 +1868,10 @@ const AccountDashboard: React.FC = () => {
         
         const savedReservation = await reservationsService.create(reservationToSave);
         
-        // Update local state - transform Reservation back to ReservationData
+        // Update local state - transform Reservation back to ReservationData (include reservationNo from API)
         const newReservation: ReservationData = {
           id: savedReservation.id as any,
+          reservationNo: savedReservation.reservationNo,
           roomId: savedReservation.propertyId,
           propertyId: savedReservation.propertyId,
           start: savedReservation.startDate,
