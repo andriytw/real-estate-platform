@@ -335,6 +335,7 @@ export interface Booking {
 
 export interface OfferData {
   id: string;
+  offerNo?: string; // Human-readable offer number (OFF-YYYY-000001)
   clientName: string;
   propertyId: string;
   internalCompany: string;

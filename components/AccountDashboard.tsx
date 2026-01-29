@@ -5009,7 +5009,7 @@ ${internalCompany} Team`;
                         <tbody className="divide-y divide-gray-800">
                             {reservations.filter(res => shouldShowInReservations(res.status)).map(res => {
                                 const linkedOffer = offers.find(o => o.reservationId != null && (String(o.reservationId) === String(res.id)));
-                                const displayRef = linkedOffer ? linkedOffer.id : (res.bookingNo || '—');
+                                const displayRef = linkedOffer ? (linkedOffer.offerNo || linkedOffer.id) : (res.bookingNo || '—');
                                 const isOfferId = !!linkedOffer;
                                 return (
                                 <tr key={res.id} className="hover:bg-[#16181D]">

@@ -1828,6 +1828,7 @@ function transformBookingToDB(booking: Booking): any {
 function transformOfferFromDB(db: any): OfferData {
   return {
     id: db.id,
+    offerNo: db.offer_no,
     clientName: db.client_name,
     propertyId: db.property_id,
     internalCompany: db.internal_company,
