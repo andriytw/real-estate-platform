@@ -6,7 +6,7 @@ import PropertyDetails from './components/PropertyDetails';
 import BookingForm from './components/BookingForm';
 import PartnerModal from './components/PartnerModal';
 import Marketplace from './components/Marketplace';
-import AccountDashboard from './components/AccountDashboard';
+const AccountDashboard = React.lazy(() => import('./components/AccountDashboard'));
 import TestDB from './components/TestDB';
 import LoginPage from './components/LoginPage';
 import RegisterPage from './components/RegisterPage';
@@ -479,7 +479,9 @@ const AppContent: React.FC = () => {
         // Logged in: show AccountDashboard (same as account view)
         return (
           <div className="animate-fadeIn">
-            <AccountDashboard />
+            <React.Suspense fallback={<div className="flex items-center justify-center min-h-[50vh] text-gray-400">Loading…</div>}>
+              <AccountDashboard />
+            </React.Suspense>
           </div>
         );
       } else if (!authLoading) {
@@ -500,7 +502,9 @@ const AppContent: React.FC = () => {
       if (worker) {
         return (
           <div className="animate-fadeIn">
-            <AccountDashboard />
+            <React.Suspense fallback={<div className="flex items-center justify-center min-h-[50vh] text-gray-400">Loading…</div>}>
+              <AccountDashboard />
+            </React.Suspense>
           </div>
         );
       } else {
