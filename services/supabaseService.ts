@@ -2162,6 +2162,7 @@ export const fileUploadService = {
 function transformReservationFromDB(db: any): Reservation {
   return {
     id: db.id,
+    reservationNo: db.reservation_no ?? undefined,
     propertyId: db.property_id,
     startDate: db.start_date,
     endDate: db.end_date,

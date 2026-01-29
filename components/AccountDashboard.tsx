@@ -1775,6 +1775,7 @@ const AccountDashboard: React.FC = () => {
         
         return {
           id: res.id as any,
+          reservationNo: res.reservationNo,
           roomId: res.propertyId,
           propertyId: res.propertyId,
           start: res.startDate,
@@ -1993,6 +1994,7 @@ const AccountDashboard: React.FC = () => {
       const reservationsData = await reservationsService.getAll();
       const transformedReservations: ReservationData[] = reservationsData.map(res => ({
         id: res.id as any,
+        reservationNo: res.reservationNo,
         roomId: res.propertyId,
         propertyId: res.propertyId,
         start: res.startDate,
@@ -2650,6 +2652,7 @@ ${internalCompany} Team`;
           const reservationsData = await reservationsService.getAll();
           const transformedReservations: ReservationData[] = reservationsData.map(res => ({
             id: res.id as any,
+            reservationNo: res.reservationNo,
             roomId: res.propertyId,
             propertyId: res.propertyId,
             start: res.startDate,
@@ -5015,15 +5018,15 @@ ${internalCompany} Team`;
                                 <tr key={res.id} className="hover:bg-[#16181D]">
                                     <td className="p-4">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-gray-300 font-mono text-sm truncate max-w-[140px]" title="Reservation ID">
-                                                {String(res.id)}
+                                            <span className="text-gray-300 font-mono text-sm truncate max-w-[140px]" title="Reservation number or ID">
+                                                {res.reservationNo || String(res.id)}
                                             </span>
                                             <button
                                                 onClick={() => {
-                                                    navigator.clipboard.writeText(String(res.id));
+                                                    navigator.clipboard.writeText(res.reservationNo || String(res.id));
                                                 }}
                                                 className="text-gray-500 hover:text-white transition-colors shrink-0"
-                                                title="Copy reservation ID"
+                                                title="Copy reservation number"
                                             >
                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />

@@ -327,6 +327,7 @@ export interface Booking {
   companyName?: string;
   internalCompany?: string;
   bookingNo?: string; // Human-readable booking number (RES-YYYY-000001)
+  reservationNo?: string; // Human-readable reservation number (RES-YYYY-000001) for holds
   companyId?: string; // UUID reference to companies table
   sourceInvoiceId?: string; // UUID reference to invoices table (confirmed booking source)
   sourceOfferId?: string; // UUID reference to offers table
@@ -428,6 +429,7 @@ export interface ReservationData extends Booking {}
 // New Reservation interface (separate from Booking)
 export interface Reservation {
   id: string; // UUID
+  reservationNo?: string; // Human-readable reservation number (RES-YYYY-000001)
   propertyId: string; // UUID reference to properties table
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
