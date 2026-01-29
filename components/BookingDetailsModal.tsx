@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Briefcase, Euro, CreditCard, Mail, Phone, MapPin, User, FileText, Send, Save, Building2, ChevronDown, FilePlus2, Edit3, Trash2, Copy, Check } from 'lucide-react';
 import { Booking, OfferData, BookingStatus, ReservationData } from '../types';
 import { ROOMS } from '../constants';
@@ -28,7 +28,6 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
   const [copiedInternalId, setCopiedInternalId] = useState(false);
   const [copiedMarketplaceUrl, setCopiedMarketplaceUrl] = useState(false);
   const [property, setProperty] = useState<any>(null);
-  const injectedMarketplaceUrlRef = useRef<string | null>(null);
 
   const INTERNAL_COMPANIES = ['Sotiso', 'Wonowo', 'NowFlats'];
 
@@ -56,11 +55,6 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
     } else {
       setProperty(null);
     }
-  }, [propertyIdToFetch]);
-
-  // Reset injected-link ref when switching to another booking/property
-  useEffect(() => {
-    injectedMarketplaceUrlRef.current = null;
   }, [propertyIdToFetch]);
 
   // Initialize form fields when booking changes
@@ -112,23 +106,6 @@ ${selectedInternalCompany} Team`;
       setClientMessage(template);
     }
   }, [booking, property, selectedInternalCompany]);
-
-  // When property loads with marketplace URL, inject link into message once (handles async load)
-  useEffect(() => {
-    const url = getMarketplaceUrl(property);
-    if (!url || !clientMessage) return;
-    if (clientMessage.includes(url)) {
-      injectedMarketplaceUrlRef.current = url;
-      return;
-    }
-    if (injectedMarketplaceUrlRef.current === url) return;
-    if (clientMessage.includes('Your stay:')) {
-      setClientMessage(prev => prev.replace('Your stay:', `View listing: ${url}\n\nYour stay:`));
-    } else {
-      setClientMessage(prev => (prev.trimEnd() + `\n\nView listing: ${url}`).trim());
-    }
-    injectedMarketplaceUrlRef.current = url;
-  }, [property, clientMessage]);
 
   // Update message template when company changes
   useEffect(() => {
