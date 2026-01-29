@@ -244,8 +244,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     return map;
   }, [offers]);
 
-  // Convert Offers to Booking Objects for Visualization
-  const offerBookings: Booking[] = offers.map(offer => {
+  // Convert Offers to Booking Objects for Visualization (exclude offers linked to a reservation — that reservation stripe is shown and styled as "offered")
+  const offerBookings: Booking[] = offers
+    .filter(offer => !offer.reservationId)
+    .map(offer => {
     // Parse dates string "YYYY-MM-DD to YYYY-MM-DD"
     const parts = offer.dates.split(' to ');
     const start = parts[0];
@@ -1218,6 +1220,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 // Determine if this is a reservation (hold) or confirmed booking
                                 const isReservation = (booking as any).isReservation === true;
                                 const isConfirmed = (booking as any).isConfirmed === true || (!isReservation);
+                                const reservationHasOffer = isReservation && (booking.status === 'offered' || (booking as any).status === 'offered');
                                 
                                 // Calculate dynamic top offset for stacking
                                 const stackIndex = isReservation 
@@ -1229,6 +1232,11 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 const topPx = isReservation 
                                   ? BASE_TOP_PX + stackIndex * (STRIPE_H + STRIPE_GAP)
                                   : 8; // Base top for confirmed bookings
+                                
+                                // Reservation stripe: dashed = open hold, solid = offer created/sent
+                                const reservationBorderClass = reservationHasOffer
+                                  ? 'border border-white/30 ring-1 ring-white/10 shadow-[0_1px_0_rgba(0,0,0,0.35)] hover:-translate-y-[1px]'
+                                  : 'border border-dashed border-white/25 ring-1 ring-white/10 shadow-[0_1px_0_rgba(0,0,0,0.35)] hover:-translate-y-[1px]';
                                 
                                 return (
                                     <div 
@@ -1251,7 +1259,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                         className={`
                                             absolute rounded-md text-xs text-white flex shadow-lg z-10 cursor-pointer items-center pointer-events-auto
                                             ${isReservation 
-                                                ? 'bg-sky-500/70 hover:bg-sky-500/85 border border-dashed border-white/25 ring-1 ring-white/10 shadow-[0_1px_0_rgba(0,0,0,0.35)] hover:-translate-y-[1px]' 
+                                                ? 'bg-sky-500/70 hover:bg-sky-500/85 ' + reservationBorderClass
                                                 : 'h-12 px-2 ' + getBookingColor(booking.status) + ' ' + getBookingBorderStyle(booking.status)
                                             } hover:scale-[1.01] transition-all duration-150
                                         `}
