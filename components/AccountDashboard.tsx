@@ -23,7 +23,7 @@ import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingS
 type Department = 'admin' | 'properties' | 'facility' | 'accounting' | 'sales' | 'tasks';
 type FacilityTab = 'overview' | 'calendar' | 'messages' | 'warehouse';
 type AccountingTab = 'dashboard' | 'invoices' | 'expenses' | 'calendar' | 'banking';
-type SalesTab = 'leads' | 'calendar' | 'offers' | 'reservations' | 'requests' | 'history' | 'chat'; 
+type SalesTab = 'leads' | 'calendar' | 'offers' | 'reservations' | 'proformas' | 'requests' | 'history' | 'chat'; 
 type PropertiesTab = 'list' | 'units';
 
 // --- TASK CATEGORIES ---
@@ -1363,6 +1363,20 @@ const AccountDashboard: React.FC = () => {
     loadOffers();
   }, []);
 
+  // Load proformas when Sales > Proformas tab is active
+  useEffect(() => {
+    if (activeDepartment !== 'sales' || salesTab !== 'proformas') return;
+    const loadProformas = async () => {
+      try {
+        const list = await invoicesService.getProformas();
+        setProformas(list);
+      } catch (error) {
+        console.error('Error loading proformas:', error);
+      }
+    };
+    loadProformas();
+  }, [activeDepartment, salesTab]);
+
   // Listen for task updates from Kanban board
   useEffect(() => {
     const handleTaskUpdated = async () => {
@@ -1517,6 +1531,10 @@ const AccountDashboard: React.FC = () => {
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [selectedOfferForInvoice, setSelectedOfferForInvoice] = useState<OfferData | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceData | null>(null);
+  const [selectedProformaForInvoice, setSelectedProformaForInvoice] = useState<InvoiceData | null>(null);
+  const [proformas, setProformas] = useState<InvoiceData[]>([]);
+  const [expandedProformaIds, setExpandedProformaIds] = useState<Set<string>>(new Set());
+  const [proformaChildInvoices, setProformaChildInvoices] = useState<Record<string, InvoiceData[]>>({});
   const [isOfferEditModalOpen, setIsOfferEditModalOpen] = useState(false);
   const [offerToEdit, setOfferToEdit] = useState<OfferData | null>(null);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
@@ -2419,6 +2437,30 @@ ${internalCompany} Team`;
       setSelectedInvoice(inv);
       setIsInvoiceModalOpen(true);
   };
+
+  const handleAddInvoiceToProforma = (proforma: InvoiceData) => {
+    setSelectedProformaForInvoice(proforma);
+    setSelectedOfferForInvoice(null);
+    setSelectedInvoice(null);
+    setIsInvoiceModalOpen(true);
+  };
+
+  const toggleProformaExpand = async (proformaId: string) => {
+    setExpandedProformaIds(prev => {
+      const next = new Set(prev);
+      if (next.has(proformaId)) next.delete(proformaId);
+      else next.add(proformaId);
+      return next;
+    });
+    if (!proformaChildInvoices[proformaId]) {
+      try {
+        const children = await invoicesService.getInvoicesByProformaId(proformaId);
+        setProformaChildInvoices(prev => ({ ...prev, [proformaId]: children }));
+      } catch (e) {
+        console.error('Error loading invoices for proforma:', e);
+      }
+    }
+  };
   
   const handleSaveInvoice = async (invoice: InvoiceData) => {
       // #region agent log
@@ -2601,8 +2643,22 @@ ${internalCompany} Team`;
         setIsInvoiceModalOpen(false);
         setSelectedOfferForInvoice(null);
         setSelectedInvoice(null);
-        setActiveDepartment('accounting');
-        setAccountingTab('invoices');
+        setSelectedProformaForInvoice(null);
+        if (invoice.documentType === 'invoice' && invoice.proformaId) {
+          setActiveDepartment('sales');
+          setSalesTab('proformas');
+          setProformaChildInvoices(prev => ({
+            ...prev,
+            [invoice.proformaId!]: [savedInvoice, ...(prev[invoice.proformaId!] ?? [])],
+          }));
+        } else if (savedInvoice.documentType === 'proforma' && !invoice.proformaId) {
+          setActiveDepartment('sales');
+          setSalesTab('proformas');
+          setProformas(prev => [savedInvoice, ...prev]);
+        } else {
+          setActiveDepartment('accounting');
+          setAccountingTab('invoices');
+        }
       } catch (error: any) {
         // #region agent log
         const errorDetails = error?.message || error?.code || String(error);
@@ -5185,11 +5241,11 @@ ${internalCompany} Team`;
                                                         onClick={() => handleCreateInvoiceClick(offer)}
                                                         className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
                                                     >
-                                                        Create Invoice
+                                                        Add Proforma
                                                     </button>
                                                 )}
                                                 {isInvoiced && (
-                                                    <span className="px-3 py-1.5 text-gray-500 text-xs">Invoice Created</span>
+                                                    <span className="px-3 py-1.5 text-gray-500 text-xs">Proforma added</span>
                                                 )}
                                                 <button 
                                                     onClick={() => handleDeleteOffer(offer.id)}
@@ -5206,6 +5262,98 @@ ${internalCompany} Team`;
                             {offers.filter(offer => offer.status === 'Sent' || offer.status === 'Draft' || offer.status === 'Invoiced').length === 0 && (
                                 <tr>
                                     <td colSpan={7} className="p-8 text-center text-gray-500">No offers found.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    }
+
+    if (salesTab === 'proformas') {
+        return (
+            <div className="p-8 bg-[#0D1117] text-white">
+                <h2 className="text-2xl font-bold mb-6">Proformas</h2>
+                <div className="bg-[#1C1F24] border border-gray-800 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                            <tr>
+                                <th className="p-4 w-10" />
+                                <th className="p-4">Number</th>
+                                <th className="p-4">Client</th>
+                                <th className="p-4">Date</th>
+                                <th className="p-4">Amount</th>
+                                <th className="p-4">PDF</th>
+                                <th className="p-4 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-800">
+                            {proformas.map(proforma => (
+                                <React.Fragment key={proforma.id}>
+                                    <tr className="hover:bg-[#16181D]">
+                                        <td className="p-4">
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleProformaExpand(proforma.id)}
+                                                className="text-gray-400 hover:text-white"
+                                            >
+                                                {expandedProformaIds.has(proforma.id) ? (
+                                                    <ChevronDown className="w-4 h-4" />
+                                                ) : (
+                                                    <ChevronRight className="w-4 h-4" />
+                                                )}
+                                            </button>
+                                        </td>
+                                        <td className="p-4 font-mono">{proforma.invoiceNumber}</td>
+                                        <td className="p-4">{proforma.clientName}</td>
+                                        <td className="p-4">{proforma.date}</td>
+                                        <td className="p-4">€{proforma.totalGross?.toFixed(2) ?? '—'}</td>
+                                        <td className="p-4">
+                                            {proforma.fileUrl ? (
+                                                <a href={proforma.fileUrl} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">PDF</a>
+                                            ) : (
+                                                <span className="text-gray-500">—</span>
+                                            )}
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            <button
+                                                onClick={() => handleAddInvoiceToProforma(proforma)}
+                                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
+                                            >
+                                                Add Invoice
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {expandedProformaIds.has(proforma.id) && (
+                                        (proformaChildInvoices[proforma.id] ?? []).length === 0 ? (
+                                            <tr className="bg-[#16181D]">
+                                                <td className="p-4" />
+                                                <td colSpan={6} className="p-4 pl-8 text-gray-500 text-sm italic">Інвойсів ще немає.</td>
+                                            </tr>
+                                        ) : (proformaChildInvoices[proforma.id] ?? []).map(inv => (
+                                            <tr key={inv.id} className="bg-[#16181D] hover:bg-[#1C1F24]">
+                                                <td className="p-4" />
+                                                <td className="p-4 pl-8 font-mono text-gray-400">{inv.invoiceNumber}</td>
+                                                <td className="p-4 text-gray-400">{inv.clientName}</td>
+                                                <td className="p-4 text-gray-400">{inv.date}</td>
+                                                <td className="p-4 text-gray-400">€{inv.totalGross?.toFixed(2) ?? '—'}</td>
+                                                <td className="p-4">
+                                                    {inv.fileUrl ? (
+                                                        <a href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline text-xs">PDF</a>
+                                                    ) : (
+                                                        <span className="text-gray-500">—</span>
+                                                    )}
+                                                </td>
+                                                <td className="p-4" />
+                                            </tr>
+                                        ))
+                                    )}
+                                </React.Fragment>
+                            ))}
+                            {proformas.length === 0 && (
+                                <tr>
+                                    <td colSpan={7} className="p-8 text-center text-gray-500">No proformas yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
                                 </tr>
                             )}
                         </tbody>
@@ -5599,6 +5747,16 @@ ${internalCompany} Team`;
                   }`}
                 >
                   Reservations
+                </button>
+                <button 
+                  onClick={() => { setActiveDepartment('sales'); setSalesTab('proformas'); }} 
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    activeDepartment === 'sales' && salesTab === 'proformas'
+                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Proformas
                 </button>
                 <button 
                   onClick={() => { setActiveDepartment('sales'); setSalesTab('requests'); }} 
@@ -6146,7 +6304,7 @@ ${internalCompany} Team`;
           onDeleteOffer={viewingOffer ? handleDeleteOffer : undefined}
           isViewingOffer={viewingOffer}
       />
-      <InvoiceModal isOpen={isInvoiceModalOpen} onClose={() => { setIsInvoiceModalOpen(false); setSelectedOfferForInvoice(null); setSelectedInvoice(null); }} offer={selectedOfferForInvoice} invoice={selectedInvoice} onSave={handleSaveInvoice} reservations={reservations} offers={offers} />
+      <InvoiceModal isOpen={isInvoiceModalOpen} onClose={() => { setIsInvoiceModalOpen(false); setSelectedOfferForInvoice(null); setSelectedInvoice(null); setSelectedProformaForInvoice(null); }} offer={selectedOfferForInvoice} invoice={selectedInvoice} proforma={selectedProformaForInvoice} onSave={handleSaveInvoice} reservations={reservations} offers={offers} />
       <OfferEditModal 
           isOpen={isOfferEditModalOpen} 
           onClose={() => setIsOfferEditModalOpen(false)} 

@@ -1507,6 +1507,43 @@ export const invoicesService = {
       .eq('id', id);
     
     if (error) throw error;
+  },
+
+  /** Proformas only (document_type = 'proforma') */
+  async getProformas(): Promise<InvoiceData[]> {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('document_type', 'proforma')
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(transformInvoiceFromDB);
+  },
+
+  /** Invoices under a proforma (document_type = 'invoice', proforma_id = ...) */
+  async getInvoicesByProformaId(proformaId: string): Promise<InvoiceData[]> {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('document_type', 'invoice')
+      .eq('proforma_id', proformaId)
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(transformInvoiceFromDB);
+  },
+
+  /** Upload PDF to invoice-pdfs bucket; returns public or signed URL for file_url */
+  async uploadInvoicePdf(file: File, pathPrefix?: string): Promise<string> {
+    const bucket = 'invoice-pdfs';
+    const path = pathPrefix
+      ? `${pathPrefix}/${Date.now()}-${file.name}`
+      : `${Date.now()}-${file.name}`;
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .upload(path, file, { cacheControl: '3600', upsert: false });
+    if (error) throw error;
+    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
+    return urlData.publicUrl;
   }
 };
 
@@ -1891,6 +1928,9 @@ function transformInvoiceFromDB(db: any): InvoiceData {
     offerId: db.offer_id, // Primary field
     offerIdSource: db.offer_id, // Legacy field for backward compatibility
     bookingId: db.booking_id,
+    fileUrl: db.file_url ?? undefined,
+    documentType: db.document_type ?? 'proforma',
+    proformaId: db.proforma_id ?? undefined,
   };
 }
 
@@ -1920,6 +1960,9 @@ function transformInvoiceToDB(invoice: InvoiceData): any {
     status: invoice.status,
     offer_id: offerId && isValidUUID(offerId) ? offerId : null,
     booking_id: invoice.bookingId && isValidUUID(invoice.bookingId) ? invoice.bookingId : null,
+    file_url: invoice.fileUrl ?? null,
+    document_type: invoice.documentType ?? 'proforma',
+    proforma_id: invoice.proformaId && isValidUUID(invoice.proformaId) ? invoice.proformaId : null,
   };
 }
 

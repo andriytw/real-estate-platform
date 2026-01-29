@@ -528,8 +528,17 @@ ${selectedInternalCompany} Team`;
                     </div>
                 )}
 
-                {/* Other Actions (Delete, Close) */}
+                {/* Other Actions (Add Proforma, Delete, Close) */}
                 <div className="flex justify-end gap-3">
+                    {onCreateInvoice && isViewingOffer && booking && canCreateInvoice((booking as any).status) && (
+                        <button 
+                            onClick={() => onCreateInvoice(booking as OfferData)}
+                            className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
+                        >
+                            <FilePlus2 className="w-4 h-4" />
+                            Add Proforma
+                        </button>
+                    )}
                     {onDeleteOffer && isViewingOffer && booking && (
                         <button 
                             onClick={() => {

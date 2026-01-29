@@ -382,6 +382,12 @@ export interface InvoiceData {
   offerId?: string; // UUID reference to offers table (mandatory when created from offer)
   offerIdSource?: string; // Legacy field, kept for backward compatibility
   bookingId?: string | number; // Зв'язок з бронюванням (set after booking is confirmed)
+  /** URL of uploaded PDF (proforma or invoice) */
+  fileUrl?: string;
+  /** 'proforma' | 'invoice' – record type in invoices table */
+  documentType?: 'proforma' | 'invoice';
+  /** Parent proforma UUID when this record is an invoice under a proforma */
+  proformaId?: string;
 }
 
 export interface Lead {

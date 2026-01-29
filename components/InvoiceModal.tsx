@@ -1,20 +1,23 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, FileText, Download, Edit2, Check } from 'lucide-react';
+import { X, Save, FileText, Download, Edit2, Check, Upload } from 'lucide-react';
 import { OfferData, InvoiceData, CompanyDetails, ReservationData } from '../types';
 import { INTERNAL_COMPANIES_DATA } from '../constants';
+import { invoicesService } from '../services/supabaseService';
 
 interface InvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
   offer?: OfferData | null;
   invoice?: InvoiceData | null;
+  /** Parent proforma when adding an invoice under a proforma */
+  proforma?: InvoiceData | null;
   onSave: (invoice: InvoiceData) => void;
   reservations?: ReservationData[];
   offers?: OfferData[];
 }
 
-const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, invoice, onSave, reservations = [], offers = [] }) => {
+const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, invoice, proforma, onSave, reservations = [], offers = [] }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [invoiceData, setInvoiceData] = useState<Partial<InvoiceData>>({
     invoiceNumber: '',
@@ -26,6 +29,9 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
   // State for sender details (auto-filled but editable)
   const [senderDetails, setSenderDetails] = useState<CompanyDetails | null>(null);
   const [clientAddress, setClientAddress] = useState('');
+  /** PDF file for Add Proforma / Add Invoice flows (required) */
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -52,6 +58,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
         });
         setClientAddress(invoice.clientAddress || '');
         setIsEditing(false); // Default to read-only view
+        setPdfFile(null);
 
       } else if (offer) {
         // CASE 2: Creating New Invoice from Offer or Reservation
@@ -135,9 +142,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
         // Визначити dates - для резервації використати start/end, для offer - dates
         const dates = 'dates' in offer ? offer.dates : (`${(offer as any).start} to ${(offer as any).end}`);
 
+        const isProformaMode = !proforma;
         setInvoiceData({
           id: Date.now().toString(), // New ID
-          invoiceNumber: `INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000)}`,
+          invoiceNumber: isProformaMode ? `PRO-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 100000)).padStart(5, '0')}` : `INV-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 100000)).padStart(5, '0')}`,
           date: new Date().toISOString().split('T')[0],
           dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
           internalCompany: companyKey,
@@ -157,7 +165,8 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
           status: 'Unpaid',
           offerId: 'id' in offer ? String(offer.id) : undefined, // Primary field for RPC
           offerIdSource: 'id' in offer ? String(offer.id) : undefined, // Legacy field for backward compatibility
-          bookingId: bookingId
+          bookingId: bookingId,
+          documentType: 'proforma',
         });
         
         // #region agent log
@@ -167,30 +176,82 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
         
         setClientAddress(offer.address || '');
         setIsEditing(true); // Default to edit mode for new invoices
+        setPdfFile(null);
+      } else if (proforma && !invoice) {
+        // CASE 3: Adding Invoice under a Proforma
+        const companyKey = proforma.internalCompany || 'Sotiso';
+        const companyData = INTERNAL_COMPANIES_DATA[companyKey] || INTERNAL_COMPANIES_DATA['Sotiso'];
+        setSenderDetails(companyData);
+        setInvoiceData({
+          id: Date.now().toString(),
+          invoiceNumber: `INV-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 100000)).padStart(5, '0')}`,
+          date: new Date().toISOString().split('T')[0],
+          dueDate: proforma.dueDate || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          internalCompany: proforma.internalCompany,
+          clientName: proforma.clientName,
+          clientAddress: proforma.clientAddress || '',
+          items: proforma.items || [],
+          totalNet: proforma.totalNet ?? 0,
+          taxAmount: proforma.taxAmount ?? 0,
+          totalGross: proforma.totalGross ?? 0,
+          status: 'Unpaid',
+          documentType: 'invoice',
+          proformaId: proforma.id,
+          offerId: proforma.offerId,
+          offerIdSource: proforma.offerIdSource ?? proforma.offerId,
+          bookingId: proforma.bookingId,
+        });
+        setClientAddress(proforma.clientAddress || '');
+        setIsEditing(true);
+        setPdfFile(null);
       }
     }
-  }, [offer, invoice, isOpen]);
+  }, [offer, invoice, proforma, isOpen]);
 
-  const handleSave = () => {
-    if (invoiceData && senderDetails) {
-        const finalInvoice: InvoiceData = {
-            id: invoiceData.id || Date.now().toString(),
-            invoiceNumber: invoiceData.invoiceNumber!,
-            date: invoiceData.date!,
-            dueDate: invoiceData.dueDate!,
-            internalCompany: invoiceData.internalCompany || 'Sotiso',
-            clientName: invoiceData.clientName!,
-            clientAddress: clientAddress,
-            items: invoiceData.items!,
-            totalNet: invoiceData.totalNet!,
-            taxAmount: invoiceData.taxAmount!,
-            totalGross: invoiceData.totalGross!,
-            status: invoiceData.status || 'Unpaid',
-            offerIdSource: invoiceData.offerIdSource,
-            bookingId: invoiceData.bookingId
-        };
-        onSave(finalInvoice);
+  const isAddProformaMode = Boolean(offer && !invoice && !proforma);
+  const isAddInvoiceToProformaMode = Boolean(proforma && !invoice);
+
+  const handleSave = async () => {
+    if (!invoiceData || !senderDetails) return;
+    let fileUrl: string | undefined;
+    if ((isAddProformaMode || isAddInvoiceToProformaMode) && pdfFile) {
+      setUploading(true);
+      try {
+        const prefix = isAddInvoiceToProformaMode && proforma ? `proforma-${proforma.id}` : 'proforma';
+        fileUrl = await invoicesService.uploadInvoicePdf(pdfFile, prefix);
+      } catch (e) {
+        console.error('PDF upload failed:', e);
+        alert('Failed to upload PDF. Please try again.');
+        setUploading(false);
+        return;
+      }
+      setUploading(false);
     }
+    if ((isAddProformaMode || isAddInvoiceToProformaMode) && !fileUrl) {
+      alert('Please attach a PDF file before saving.');
+      return;
+    }
+    const finalInvoice: InvoiceData = {
+      id: invoiceData.id || Date.now().toString(),
+      invoiceNumber: invoiceData.invoiceNumber!,
+      date: invoiceData.date!,
+      dueDate: invoiceData.dueDate!,
+      internalCompany: invoiceData.internalCompany || 'Sotiso',
+      clientName: invoiceData.clientName!,
+      clientAddress: clientAddress,
+      items: invoiceData.items!,
+      totalNet: invoiceData.totalNet!,
+      taxAmount: invoiceData.taxAmount!,
+      totalGross: invoiceData.totalGross!,
+      status: invoiceData.status || 'Unpaid',
+      offerIdSource: invoiceData.offerIdSource,
+      offerId: invoiceData.offerId,
+      bookingId: invoiceData.bookingId,
+      fileUrl: fileUrl ?? invoiceData.fileUrl,
+      documentType: invoiceData.documentType,
+      proformaId: invoiceData.proformaId,
+    };
+    onSave(finalInvoice);
   };
 
   const handleSimulatePdf = () => {
@@ -208,25 +269,80 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
           <div className="flex items-center gap-3">
              <div className="bg-purple-500/10 p-2 rounded text-purple-500"><FileText className="w-5 h-5" /></div>
              <div>
-                <h3 className="text-xl font-bold text-white">{invoice ? 'View Invoice' : 'Create Invoice'}</h3>
+                <h3 className="text-xl font-bold text-white">
+                  {invoice ? 'View Invoice' : isAddProformaMode ? 'Add Proforma' : isAddInvoiceToProformaMode ? 'Add Invoice' : 'Create Invoice'}
+                </h3>
                 <p className="text-xs text-gray-400">{invoiceData.invoiceNumber}</p>
              </div>
           </div>
           <div className="flex items-center gap-2">
-             <button 
-                onClick={() => setIsEditing(!isEditing)}
-                className={`p-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors ${isEditing ? 'bg-emerald-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
-             >
-                {isEditing ? <Check className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
-                {isEditing ? 'Done Editing' : 'Edit'}
-             </button>
+             {!(isAddProformaMode || isAddInvoiceToProformaMode) && (
+               <button 
+                  onClick={() => setIsEditing(!isEditing)}
+                  className={`p-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors ${isEditing ? 'bg-emerald-500 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+               >
+                  {isEditing ? <Check className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
+                  {isEditing ? 'Done Editing' : 'Edit'}
+               </button>
+             )}
              <button onClick={onClose} className="text-gray-400 hover:text-white bg-gray-800 p-2 rounded-lg transition-colors">
                 <X className="w-5 h-5" />
              </button>
           </div>
         </div>
 
-        {/* Body - Invoice Layout */}
+        {(isAddProformaMode || isAddInvoiceToProformaMode) ? (
+          /* Simplified form: number + read-only summary + required PDF */
+          <div className="p-8 bg-[#1C1F24] text-white space-y-6">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                {isAddProformaMode ? 'Proforma number' : 'Invoice number'}
+              </label>
+              <input
+                value={invoiceData.invoiceNumber}
+                onChange={e => setInvoiceData({ ...invoiceData, invoiceNumber: e.target.value })}
+                className="w-full max-w-xs bg-[#111315] border border-gray-700 rounded-lg p-2.5 text-white font-mono"
+                placeholder={isAddProformaMode ? 'PRO-2026-00001' : 'INV-2026-00001'}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div><span className="text-gray-500">Client:</span> <span className="text-white">{invoiceData.clientName}</span></div>
+              <div><span className="text-gray-500">Date:</span> <span className="text-white">{invoiceData.date}</span></div>
+              <div><span className="text-gray-500">Amount:</span> <span className="text-white">€{invoiceData.totalGross?.toFixed(2) ?? '—'}</span></div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1.5">PDF file <span className="text-red-400">*</span></label>
+              <div
+                onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-purple-500'); }}
+                onDragLeave={e => { e.currentTarget.classList.remove('border-purple-500'); }}
+                onDrop={e => {
+                  e.preventDefault();
+                  e.currentTarget.classList.remove('border-purple-500');
+                  const f = e.dataTransfer.files[0];
+                  if (f && f.type === 'application/pdf') setPdfFile(f);
+                }}
+                className="border-2 border-dashed border-gray-700 rounded-lg p-8 text-center hover:border-gray-600 transition-colors"
+              >
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  id="invoice-pdf-upload"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) setPdfFile(f); }}
+                />
+                <label htmlFor="invoice-pdf-upload" className="cursor-pointer flex flex-col items-center gap-2">
+                  <Upload className="w-10 h-10 text-gray-500" />
+                  {pdfFile ? (
+                    <span className="text-emerald-400 font-medium">{pdfFile.name}</span>
+                  ) : (
+                    <span className="text-gray-400">Drop PDF here or click to select</span>
+                  )}
+                </label>
+              </div>
+            </div>
+          </div>
+        ) : (
+        /* Body - Invoice Layout */
         <div className="p-8 bg-white text-gray-900 min-h-[600px] font-mono text-sm">
             {/* Invoice Header */}
             <div className="flex justify-between mb-12">
@@ -358,26 +474,30 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
                 </div>
             </div>
         </div>
+        )}
 
         {/* Footer Actions */}
         <div className="p-5 border-t border-gray-800 bg-[#161B22] flex gap-3 justify-end sticky bottom-0">
             <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
                 Cancel
             </button>
-            <button 
-                onClick={handleSimulatePdf}
-                className="px-4 py-2 rounded-lg text-sm font-bold bg-[#1C1F24] border border-gray-700 hover:bg-gray-700 text-white transition-colors flex items-center gap-2"
-            >
-                <Download className="w-4 h-4" />
-                Save as PDF
-            </button>
-            {isEditing && (
+            {!(isAddProformaMode || isAddInvoiceToProformaMode) && (
+              <button 
+                  onClick={handleSimulatePdf}
+                  className="px-4 py-2 rounded-lg text-sm font-bold bg-[#1C1F24] border border-gray-700 hover:bg-gray-700 text-white transition-colors flex items-center gap-2"
+              >
+                  <Download className="w-4 h-4" />
+                  Save as PDF
+              </button>
+            )}
+            {((isAddProformaMode || isAddInvoiceToProformaMode) ? true : isEditing) && (
                 <button 
                     onClick={handleSave}
-                    className="px-6 py-2 rounded-lg text-sm font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-lg transition-colors flex items-center gap-2"
+                    disabled={(isAddProformaMode || isAddInvoiceToProformaMode) && (!pdfFile || uploading)}
+                    className="px-6 py-2 rounded-lg text-sm font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <Save className="w-4 h-4" />
-                    Зберегти і відправити
+                    {uploading ? 'Uploading…' : (isAddProformaMode || isAddInvoiceToProformaMode) ? 'Save' : 'Зберегти і відправити'}
                 </button>
             )}
         </div>
