@@ -31,14 +31,17 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
   
   const INTERNAL_COMPANIES = ['Sotiso', 'Wonowo', 'NowFlats'];
 
-  // Fetch property for marketplace URL
+  // Fetch property for marketplace URL (use propertyId or roomId so reservations show link too)
+  const propertyIdToFetch = booking?.propertyId || booking?.roomId;
   useEffect(() => {
-    if (booking?.propertyId) {
+    if (propertyIdToFetch) {
       import('../services/supabaseService').then(({ propertiesService }) => {
-        propertiesService.getById(booking.propertyId!).then(setProperty).catch(() => setProperty(null));
+        propertiesService.getById(propertyIdToFetch).then(setProperty).catch(() => setProperty(null));
       });
+    } else {
+      setProperty(null);
     }
-  }, [booking?.propertyId]);
+  }, [propertyIdToFetch]);
 
   // Initialize form fields when booking changes
   useEffect(() => {
