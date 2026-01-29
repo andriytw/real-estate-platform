@@ -5274,7 +5274,7 @@ ${internalCompany} Team`;
     if (salesTab === 'proformas') {
         return (
             <div className="p-8 bg-[#0D1117] text-white">
-                <h2 className="text-2xl font-bold mb-6">Proformas</h2>
+                <h2 className="text-2xl font-bold mb-6">Payments</h2>
                 <div className="bg-[#1C1F24] border border-gray-800 rounded-lg overflow-hidden">
                     <table className="w-full text-sm text-left">
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
@@ -5353,7 +5353,7 @@ ${internalCompany} Team`;
                             ))}
                             {proformas.length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="p-8 text-center text-gray-500">No proformas yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
+                                    <td colSpan={7} className="p-8 text-center text-gray-500">No payments yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
                                 </tr>
                             )}
                         </tbody>
@@ -5709,14 +5709,14 @@ ${internalCompany} Team`;
           {expandedSections.sales && (
               <div className="ml-4 space-y-1 border-l border-gray-700 pl-3 my-1">
                 <button 
-                  onClick={() => { setActiveDepartment('sales'); setSalesTab('leads'); }} 
+                  onClick={() => { setActiveDepartment('sales'); setSalesTab('requests'); }} 
                   className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
-                    activeDepartment === 'sales' && salesTab === 'leads'
+                    activeDepartment === 'sales' && salesTab === 'requests'
                       ? 'text-emerald-500 font-bold bg-emerald-500/10'
                       : 'text-gray-500 hover:text-gray-300'
                   }`}
                 >
-                  Leads
+                  Requests
                 </button>
                 <button 
                   onClick={() => { setActiveDepartment('sales'); setSalesTab('calendar'); }} 
@@ -5729,16 +5729,6 @@ ${internalCompany} Team`;
                   Rent Calendar
                 </button>
                 <button 
-                  onClick={() => { setActiveDepartment('sales'); setSalesTab('offers'); }} 
-                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
-                    activeDepartment === 'sales' && salesTab === 'offers'
-                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
-                      : 'text-gray-500 hover:text-gray-300'
-                  }`}
-                >
-                  Offers
-                </button>
-                <button 
                   onClick={() => { setActiveDepartment('sales'); setSalesTab('reservations'); }} 
                   className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
                     activeDepartment === 'sales' && salesTab === 'reservations'
@@ -5749,6 +5739,16 @@ ${internalCompany} Team`;
                   Reservations
                 </button>
                 <button 
+                  onClick={() => { setActiveDepartment('sales'); setSalesTab('offers'); }} 
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    activeDepartment === 'sales' && salesTab === 'offers'
+                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Offers
+                </button>
+                <button 
                   onClick={() => { setActiveDepartment('sales'); setSalesTab('proformas'); }} 
                   className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
                     activeDepartment === 'sales' && salesTab === 'proformas'
@@ -5756,17 +5756,7 @@ ${internalCompany} Team`;
                       : 'text-gray-500 hover:text-gray-300'
                   }`}
                 >
-                  Proformas
-                </button>
-                <button 
-                  onClick={() => { setActiveDepartment('sales'); setSalesTab('requests'); }} 
-                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
-                    activeDepartment === 'sales' && salesTab === 'requests'
-                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
-                      : 'text-gray-500 hover:text-gray-300'
-                  }`}
-                >
-                  Requests
+                  Payments
                 </button>
                 <button 
                   onClick={() => { setActiveDepartment('sales'); setSalesTab('chat'); }} 
@@ -5777,6 +5767,16 @@ ${internalCompany} Team`;
                   }`}
                 >
                   Chat
+                </button>
+                <button 
+                  onClick={() => { setActiveDepartment('sales'); setSalesTab('leads'); }} 
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    activeDepartment === 'sales' && salesTab === 'leads'
+                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Leads
                 </button>
                 <button 
                   onClick={() => { setActiveDepartment('sales'); setSalesTab('history'); }} 
