@@ -434,65 +434,73 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     });
   }, [reservations]);
 
+  // Helper: two date ranges overlap (same room is checked separately)
+  const datesOverlap = (s1: string, e1: string, s2: string, e2: string) => {
+    const a = normalizeDateKey(s1);
+    const b = normalizeDateKey(e1);
+    const c = normalizeDateKey(s2);
+    const d = normalizeDateKey(e2);
+    return a < d && c < b;
+  };
+
   // Stacking constants for reservation stripes
   const STRIPE_H = 26; // Height of each reservation stripe in pixels
   const STRIPE_GAP = 6; // Gap between stacked stripes in pixels
   const BASE_TOP_PX = 8; // Base top offset for first stripe
   const stackIndexByReservationId = React.useMemo(() => {
     const map = new Map<string, number>();
-    const groups = new Map<string, ReservationData[]>();
-
-    // Group active reservations by roomId + normalized start + normalized end
     const active = reservations.filter(
       r => r.status !== 'lost' && r.status !== 'won' && r.status !== 'cancelled'
     );
 
+    // Group by room, then for each reservation find all in same room that OVERLAP it (same or different end date)
+    const byRoom = new Map<string, ReservationData[]>();
     for (const r of active) {
-      const key = `${r.roomId}__${normalizeDateKey(r.start)}__${normalizeDateKey(r.end)}`;
-      const arr = groups.get(key) ?? [];
+      const arr = byRoom.get(r.roomId) ?? [];
       arr.push(r);
-      groups.set(key, arr);
+      byRoom.set(r.roomId, arr);
     }
 
-    // Sort each group by createdAt desc and assign stack index
-    for (const [key, group] of groups.entries()) {
-      const sorted = [...group].sort((a, b) => {
-        const A = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const B = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return B - A; // Descending (newest first)
-      });
-
-      sorted.forEach((reservation, index) => {
-        map.set(String(reservation.id), index);
-      });
+    for (const [, roomReservations] of byRoom.entries()) {
+      for (const r of roomReservations) {
+        const overlapping = roomReservations.filter(
+          other => datesOverlap(r.start, r.end, other.start, other.end)
+        );
+        const sorted = [...overlapping].sort((a, b) => {
+          const A = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const B = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return B - A; // Newest first → index 0 is top stripe
+        });
+        const index = sorted.findIndex(x => String(x.id) === String(r.id));
+        map.set(String(r.id), index >= 0 ? index : 0);
+      }
     }
 
     return map;
   }, [reservations]);
 
-  // Compute max stack count per room for row height expansion
+  // Compute max stack count per room for row height (max overlapping reservations in that room)
   const maxStackForRoomId = React.useMemo(() => {
     const map = new Map<string, number>();
-    const groups = new Map<string, ReservationData[]>();
-
     const active = reservations.filter(
       r => r.status !== 'lost' && r.status !== 'won' && r.status !== 'cancelled'
     );
-
+    const byRoom = new Map<string, ReservationData[]>();
     for (const r of active) {
-      const key = `${r.roomId}__${normalizeDateKey(r.start)}__${normalizeDateKey(r.end)}`;
-      const arr = groups.get(key) ?? [];
+      const arr = byRoom.get(r.roomId) ?? [];
       arr.push(r);
-      groups.set(key, arr);
+      byRoom.set(r.roomId, arr);
     }
 
-    // Count max stack per room
-    for (const [key, group] of groups.entries()) {
-      const roomId = key.split('__')[0];
-      const currentMax = map.get(roomId) ?? 0;
-      if (group.length > currentMax) {
-        map.set(roomId, group.length);
+    for (const [roomId, roomReservations] of byRoom.entries()) {
+      let maxStack = 0;
+      for (const r of roomReservations) {
+        const overlapping = roomReservations.filter(
+          other => datesOverlap(r.start, r.end, other.start, other.end)
+        );
+        if (overlapping.length > maxStack) maxStack = overlapping.length;
       }
+      map.set(roomId, maxStack);
     }
 
     return map;
