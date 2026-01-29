@@ -4997,7 +4997,8 @@ ${internalCompany} Team`;
                     <table className="w-full text-sm text-left">
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
                             <tr>
-                                <th className="p-4">Booking No.</th>
+                                <th className="p-4">Reservation ID</th>
+                                <th className="p-4">Offer No.</th>
                                 <th className="p-4">Guest</th>
                                 <th className="p-4">Property</th>
                                 <th className="p-4">Dates</th>
@@ -5009,22 +5010,39 @@ ${internalCompany} Team`;
                         <tbody className="divide-y divide-gray-800">
                             {reservations.filter(res => shouldShowInReservations(res.status)).map(res => {
                                 const linkedOffer = offers.find(o => o.reservationId != null && (String(o.reservationId) === String(res.id)));
-                                const displayRef = linkedOffer ? (linkedOffer.offerNo || linkedOffer.id) : (res.bookingNo || '—');
-                                const isOfferId = !!linkedOffer;
+                                const offerNoDisplay = linkedOffer ? (linkedOffer.offerNo || linkedOffer.id) : '—';
                                 return (
                                 <tr key={res.id} className="hover:bg-[#16181D]">
                                     <td className="p-4">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-gray-300 font-mono text-sm" title={isOfferId ? 'Offer ID' : undefined}>
-                                                {displayRef}
+                                            <span className="text-gray-300 font-mono text-sm truncate max-w-[140px]" title="Reservation ID">
+                                                {String(res.id)}
                                             </span>
-                                            {displayRef !== '—' && (
+                                            <button
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(String(res.id));
+                                                }}
+                                                className="text-gray-500 hover:text-white transition-colors shrink-0"
+                                                title="Copy reservation ID"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </td>
+                                    <td className="p-4">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-gray-300 font-mono text-sm" title={linkedOffer ? 'Offer number' : undefined}>
+                                                {offerNoDisplay}
+                                            </span>
+                                            {offerNoDisplay !== '—' && (
                                                 <button
                                                     onClick={() => {
-                                                        navigator.clipboard.writeText(displayRef);
+                                                        navigator.clipboard.writeText(offerNoDisplay);
                                                     }}
                                                     className="text-gray-500 hover:text-white transition-colors"
-                                                    title={isOfferId ? 'Copy offer ID' : 'Copy booking number'}
+                                                    title="Copy offer number"
                                                 >
                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -5055,7 +5073,7 @@ ${internalCompany} Team`;
                             })}
                             {reservations.filter(res => shouldShowInReservations(res.status)).length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="p-8 text-center text-gray-500">No reservations found.</td>
+                                    <td colSpan={8} className="p-8 text-center text-gray-500">No reservations found.</td>
                                 </tr>
                             )}
                         </tbody>
