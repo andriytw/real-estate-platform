@@ -221,6 +221,12 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // Refs for drag state so document-level mouseup can read current values
+  const dragStateRef = useRef({ isDragging: false, dragStart: null as { roomId: string; date: Date } | null, dragEnd: null as { roomId: string; date: Date } | null });
+  useEffect(() => {
+    dragStateRef.current = { isDragging, dragStart, dragEnd };
+  }, [isDragging, dragStart, dragEnd]);
+
   // Build latestOfferByReservationId map (optimized, no sorting in render loops)
   const latestOfferByReservationId = React.useMemo(() => {
     const map = new Map<string, OfferData>();
@@ -705,27 +711,42 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     }
   };
 
+  const applyDragSelection = (start: { roomId: string; date: Date }, end: { roomId: string; date: Date }) => {
+    const startD = start.date < end.date ? start.date : end.date;
+    const endD = start.date > end.date ? start.date : end.date;
+    resetForm();
+    setFormData(prev => ({
+      ...prev,
+      roomId: start.roomId,
+      startDate: formatDateISO(startD),
+      endDate: formatDateISO(endD),
+    }));
+    setIsAddModalOpen(true);
+  };
+
   const handleMouseUp = () => {
     if (isDragging && dragStart && dragEnd) {
-      // Використовувати абсолютні дати з dragStart і dragEnd
-      const startD = dragStart.date < dragEnd.date ? dragStart.date : dragEnd.date;
-      const endD = dragStart.date > dragEnd.date ? dragStart.date : dragEnd.date;
-
-      // RESET and then SET
-      resetForm();
-      setFormData(prev => ({
-        ...prev,
-        roomId: dragStart.roomId,
-        startDate: formatDateISO(startD),
-        endDate: formatDateISO(endD),
-      }));
-      setIsAddModalOpen(true);
+      applyDragSelection(dragStart, dragEnd);
     }
-    
     setIsDragging(false);
     setDragStart(null);
     setDragEnd(null);
   };
+
+  // Document-level mouseup so releasing outside a cell still applies selection
+  useEffect(() => {
+    const onDocMouseUp = () => {
+      const { isDragging: d, dragStart: start, dragEnd: end } = dragStateRef.current;
+      if (d && start && end) {
+        applyDragSelection(start, end);
+      }
+      setIsDragging(false);
+      setDragStart(null);
+      setDragEnd(null);
+    };
+    document.addEventListener('mouseup', onDocMouseUp);
+    return () => document.removeEventListener('mouseup', onDocMouseUp);
+  }, []);
 
   const handleManualAdd = () => {
     resetForm();
@@ -1114,7 +1135,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                         <div 
                             key={room.id} 
                             className="border-b border-gray-800 relative flex bg-[#111315]/50 hover:bg-[#161B22]/50 transition-colors"
-                            style={{ minHeight: `${rowMinHeight}px` }}
+                            style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
                         >
                             {/* Grid Lines & Cells for Selection */}
                             {Array.from({ length: getTotalDays() }).map((_, i) => {
@@ -1141,7 +1162,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                         onMouseDown={() => handleMouseDown(room.id, i)}
                                         onMouseEnter={() => handleMouseEnter(room.id, i)}
                                         onMouseUp={handleMouseUp}
-                                        className={`w-[48px] min-w-[48px] border-r border-gray-800/50 h-full cursor-pointer ${isSelected ? 'bg-blue-500/30' : ''}`} 
+                                        className={`w-[48px] min-w-[48px] border-r border-gray-800/50 h-full cursor-pointer relative z-[1] pointer-events-auto ${isSelected ? 'bg-blue-500/30' : ''}`} 
                                     />
                                 );
                             })}
@@ -1204,11 +1225,23 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 return (
                                     <div 
                                         key={booking.id}
-                                        onClick={(e) => handleBookingClick(e, booking)}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleBookingClick(e, booking);
+                                        }}
+                                        onMouseDown={(e) => {
+                                            e.stopPropagation();
+                                        }}
+                                        onMouseMove={(e) => {
+                                            // Prevent drag selection when moving over stripe
+                                            if (isDragging) {
+                                                e.stopPropagation();
+                                            }
+                                        }}
                                         onMouseEnter={(e) => setHoveredBooking({ booking, x: e.clientX, y: e.clientY })}
                                         onMouseLeave={() => setHoveredBooking(null)}
                                         className={`
-                                            absolute rounded-md text-xs text-white flex shadow-lg z-10 cursor-pointer items-center
+                                            absolute rounded-md text-xs text-white flex shadow-lg z-10 cursor-pointer items-center pointer-events-auto
                                             ${isReservation 
                                                 ? 'bg-sky-500/70 hover:bg-sky-500/85 border border-dashed border-white/25 ring-1 ring-white/10 shadow-[0_1px_0_rgba(0,0,0,0.35)] hover:-translate-y-[1px]' 
                                                 : 'h-12 px-2 ' + getBookingColor(booking.status) + ' ' + getBookingBorderStyle(booking.status)
