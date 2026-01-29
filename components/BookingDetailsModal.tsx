@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Briefcase, Euro, CreditCard, Mail, Phone, MapPin, User, FileText, Send, Save, Building2, ChevronDown, FilePlus2, Edit3, Trash2, Copy, Check } from 'lucide-react';
 import { Booking, OfferData, BookingStatus, ReservationData } from '../types';
 import { ROOMS } from '../constants';
@@ -28,19 +28,39 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
   const [copiedInternalId, setCopiedInternalId] = useState(false);
   const [copiedMarketplaceUrl, setCopiedMarketplaceUrl] = useState(false);
   const [property, setProperty] = useState<any>(null);
-  
+  const injectedMarketplaceUrlRef = useRef<string | null>(null);
+
   const INTERNAL_COMPANIES = ['Sotiso', 'Wonowo', 'NowFlats'];
 
+  // Base URL for marketplace links (env for production, fallback to current origin)
+  const marketplaceBaseUrl =
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_PUBLIC_APP_URL) ||
+    (typeof import.meta !== 'undefined' && (import.meta.env as any)?.NEXT_PUBLIC_APP_URL) ||
+    (typeof window !== 'undefined' ? window.location.origin : '');
+
+  const getMarketplaceUrl = (prop: { marketplaceUrl?: string; id?: string } | null): string | undefined => {
+    if (!prop) return undefined;
+    if (prop.marketplaceUrl && prop.marketplaceUrl.trim()) return prop.marketplaceUrl.trim();
+    if (prop.id && marketplaceBaseUrl) return `${marketplaceBaseUrl.replace(/\/+$/, '')}/property/${prop.id}`;
+    return undefined;
+  };
+
   // Fetch property for marketplace URL (use propertyId or roomId so reservations show link too)
-  const propertyIdToFetch = booking?.propertyId || booking?.roomId;
+  const propertyIdToFetch = booking?.propertyId ?? booking?.roomId;
   useEffect(() => {
-    if (propertyIdToFetch) {
+    if (propertyIdToFetch != null && propertyIdToFetch !== '') {
+      const id = String(propertyIdToFetch);
       import('../services/supabaseService').then(({ propertiesService }) => {
-        propertiesService.getById(propertyIdToFetch).then(setProperty).catch(() => setProperty(null));
+        propertiesService.getById(id).then(setProperty).catch(() => setProperty(null));
       });
     } else {
       setProperty(null);
     }
+  }, [propertyIdToFetch]);
+
+  // Reset injected-link ref when switching to another booking/property
+  useEffect(() => {
+    injectedMarketplaceUrlRef.current = null;
   }, [propertyIdToFetch]);
 
   // Initialize form fields when booking changes
@@ -74,8 +94,9 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
       const totalPrice = booking.totalGross || booking.price || '0.00 EUR';
       const bookingNo = booking.bookingNo || '';
       
-      const marketplaceLine = property?.marketplaceUrl
-        ? `View listing: ${property.marketplaceUrl}\n\n`
+      const marketplaceUrl = getMarketplaceUrl(property);
+      const marketplaceLine = marketplaceUrl
+        ? `View listing: ${marketplaceUrl}\n\n`
         : '';
       const template = `Hello ${guestName},
 
@@ -91,6 +112,23 @@ ${selectedInternalCompany} Team`;
       setClientMessage(template);
     }
   }, [booking, property, selectedInternalCompany]);
+
+  // When property loads with marketplace URL, inject link into message once (handles async load)
+  useEffect(() => {
+    const url = getMarketplaceUrl(property);
+    if (!url || !clientMessage) return;
+    if (clientMessage.includes(url)) {
+      injectedMarketplaceUrlRef.current = url;
+      return;
+    }
+    if (injectedMarketplaceUrlRef.current === url) return;
+    if (clientMessage.includes('Your stay:')) {
+      setClientMessage(prev => prev.replace('Your stay:', `View listing: ${url}\n\nYour stay:`));
+    } else {
+      setClientMessage(prev => (prev.trimEnd() + `\n\nView listing: ${url}`).trim());
+    }
+    injectedMarketplaceUrlRef.current = url;
+  }, [property, clientMessage]);
 
   // Update message template when company changes
   useEffect(() => {
@@ -333,24 +371,26 @@ ${selectedInternalCompany} Team`;
                 </div>
 
                 {/* Marketplace Listing Section */}
-                {property?.marketplaceUrl && (
+                {getMarketplaceUrl(property) && (() => {
+                    const marketplaceUrl = getMarketplaceUrl(property)!;
+                    return (
                     <div className="bg-[#111315] border border-gray-800 rounded-lg p-4">
                         <div className="flex items-center justify-between">
                             <div className="flex-1 min-w-0">
                                 <span className="text-xs text-gray-500 block mb-1">Marketplace Listing</span>
                                 <a 
-                                    href={property.marketplaceUrl} 
+                                    href={marketplaceUrl} 
                                     target="_blank" 
                                     rel="noopener noreferrer"
                                     className="text-sm text-emerald-400 hover:text-emerald-300 truncate block"
                                 >
-                                    {property.marketplaceUrl}
+                                    {marketplaceUrl}
                                 </a>
                             </div>
                             <div className="flex items-center gap-2 ml-3">
                                 <button
                                     onClick={() => {
-                                        navigator.clipboard.writeText(property.marketplaceUrl);
+                                        navigator.clipboard.writeText(marketplaceUrl);
                                         setCopiedMarketplaceUrl(true);
                                         setTimeout(() => setCopiedMarketplaceUrl(false), 2000);
                                     }}
@@ -370,7 +410,7 @@ ${selectedInternalCompany} Team`;
                                     )}
                                 </button>
                                 <a
-                                    href={property.marketplaceUrl}
+                                    href={marketplaceUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors text-xs"
@@ -383,7 +423,8 @@ ${selectedInternalCompany} Team`;
                             </div>
                         </div>
                     </div>
-                )}
+                    );
+                })()}
 
                 {/* Three Column Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">

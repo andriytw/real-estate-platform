@@ -28,6 +28,8 @@
    NEXT_PUBLIC_SUPABASE_URL=https://qcpuzfhawcondygspiok.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_cpQrhzVqZRCCeULDWhVJJw_ZIhcLx0Y
    GEMINI_API_KEY=your_gemini_api_key_here
+   # Optional: public app URL for offer/marketplace links (e.g. https://real-estate-platform-rust.vercel.app). If unset, current origin is used.
+   VITE_PUBLIC_APP_URL=https://your-app.vercel.app
    ```
 
 3. Встановіть залежності:
@@ -58,6 +60,7 @@
    NEXT_PUBLIC_SUPABASE_URL=https://qcpuzfhawcondygspiok.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_cpQrhzVqZRCCeULDWhVJJw_ZIhcLx0Y
    GEMINI_API_KEY=your_gemini_api_key_here
+   # Optional: VITE_PUBLIC_APP_URL for offer/marketplace links in production (e.g. https://your-app.vercel.app)
    ```
 
 3. Запустіть проект:
