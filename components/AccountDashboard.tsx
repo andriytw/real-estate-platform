@@ -5007,21 +5007,24 @@ ${internalCompany} Team`;
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-800">
-                            {reservations.filter(res => shouldShowInReservations(res.status)).map(res => (
+                            {reservations.filter(res => shouldShowInReservations(res.status)).map(res => {
+                                const linkedOffer = offers.find(o => o.reservationId != null && (String(o.reservationId) === String(res.id)));
+                                const displayRef = linkedOffer ? linkedOffer.id : (res.bookingNo || '—');
+                                const isOfferId = !!linkedOffer;
+                                return (
                                 <tr key={res.id} className="hover:bg-[#16181D]">
                                     <td className="p-4">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-gray-300 font-mono text-sm">
-                                                {res.bookingNo || '—'}
+                                            <span className="text-gray-300 font-mono text-sm" title={isOfferId ? 'Offer ID' : undefined}>
+                                                {displayRef}
                                             </span>
-                                            {res.bookingNo && (
+                                            {displayRef !== '—' && (
                                                 <button
                                                     onClick={() => {
-                                                        navigator.clipboard.writeText(res.bookingNo || '');
-                                                        // Optional: show toast notification
+                                                        navigator.clipboard.writeText(displayRef);
                                                     }}
                                                     className="text-gray-500 hover:text-white transition-colors"
-                                                    title="Copy booking number"
+                                                    title={isOfferId ? 'Copy offer ID' : 'Copy booking number'}
                                                 >
                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -5048,7 +5051,8 @@ ${internalCompany} Team`;
                                         </button>
                                     </td>
                                 </tr>
-                            ))}
+                            );
+                            })}
                             {reservations.filter(res => shouldShowInReservations(res.status)).length === 0 && (
                                 <tr>
                                     <td colSpan={7} className="p-8 text-center text-gray-500">No reservations found.</td>
