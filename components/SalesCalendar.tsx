@@ -1120,7 +1120,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                       return (
                         <div
                           key={`month-boundary-${boundaryIndex}`}
-                          className="absolute top-0 bottom-0 w-[1.5px] bg-gray-600/70 z-0 pointer-events-none"
+                          className="absolute top-0 bottom-0 w-[1.5px] bg-gray-500 z-0 pointer-events-none"
                           style={{ left: `${left}px` }}
                         />
                       );
@@ -1144,7 +1144,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                         return (
                         <div 
                             key={room.id} 
-                            className="border-b border-gray-800 relative flex bg-[#111315]/50 hover:bg-[#161B22]/50 transition-colors"
+                            className="border-b border-gray-600 relative flex bg-[#111315]/50 hover:bg-[#161B22]/50 transition-colors"
                             style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
                         >
                             {/* Grid Lines & Cells for Selection */}
@@ -1172,7 +1172,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                         onMouseDown={() => handleMouseDown(room.id, i)}
                                         onMouseEnter={() => handleMouseEnter(room.id, i)}
                                         onMouseUp={handleMouseUp}
-                                        className={`w-[48px] min-w-[48px] border-r border-gray-800/50 h-full cursor-pointer relative z-[1] pointer-events-auto ${isSelected ? 'bg-blue-500/30' : ''}`} 
+                                        className={`w-[48px] min-w-[48px] border-r border-gray-600 h-full cursor-pointer relative z-[1] pointer-events-auto ${isSelected ? 'bg-blue-500/30' : ''}`} 
                                     />
                                 );
                             })}
