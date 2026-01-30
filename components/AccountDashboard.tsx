@@ -17,7 +17,7 @@ import UserManagement from './admin/UserManagement';
 import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem } from '../services/supabaseService';
 import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation } from '../types';
 import { MOCK_PROPERTIES } from '../constants';
-import { shouldShowInReservations, createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
+import { createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 
 // --- Types ---
 type Department = 'admin' | 'properties' | 'facility' | 'accounting' | 'sales' | 'tasks';
@@ -5216,14 +5216,25 @@ ${internalCompany} Team`;
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-800">
-                            {reservations.filter(res => shouldShowInReservations(res.status)).map(res => {
+                            {reservations.map(res => {
                                 const linkedOffer = offers.find(o => o.reservationId != null && (String(o.reservationId) === String(res.id)));
                                 const offerNoDisplay = linkedOffer ? (linkedOffer.offerNo || linkedOffer.id) : '—';
+                                const resStatusLower = String(res.status).toLowerCase();
+                                const isClosed = ['won', 'lost', 'cancelled'].includes(resStatusLower);
+                                const getReservationStatusBadge = () => {
+                                    if (res.status === BookingStatus.RESERVED || resStatusLower === 'open') return 'bg-blue-500/20 text-blue-500';
+                                    if (res.status === BookingStatus.OFFER_SENT || resStatusLower === 'offered') return 'bg-blue-500/20 text-blue-500 border border-dashed';
+                                    if (res.status === BookingStatus.INVOICED || resStatusLower === 'invoiced') return 'bg-blue-500/20 text-blue-500';
+                                    if (resStatusLower === 'won') return 'bg-emerald-500/20 text-emerald-400';
+                                    if (resStatusLower === 'lost') return 'bg-red-500/20 text-red-400';
+                                    if (resStatusLower === 'cancelled') return 'bg-gray-500/20 text-gray-400';
+                                    return 'bg-gray-500/20 text-gray-400';
+                                };
                                 return (
-                                <tr key={res.id} className="hover:bg-[#16181D]">
-                                    <td className="p-4">
+                                <tr key={res.id} className={`hover:bg-[#16181D] ${isClosed ? 'opacity-70' : ''}`}>
+                                    <td className={`p-4 ${isClosed ? 'text-gray-500' : ''}`}>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-gray-300 font-mono text-sm truncate max-w-[140px]" title="Reservation number or ID">
+                                            <span className={`font-mono text-sm truncate max-w-[140px] ${isClosed ? 'text-gray-500 line-through' : 'text-gray-300'}`} title="Reservation number or ID">
                                                 {res.reservationNo || String(res.id)}
                                             </span>
                                             <button
@@ -5239,9 +5250,9 @@ ${internalCompany} Team`;
                                             </button>
                                         </div>
                                     </td>
-                                    <td className="p-4">
+                                    <td className={`p-4 ${isClosed ? 'text-gray-500' : ''}`}>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-gray-300 font-mono text-sm" title={linkedOffer ? 'Offer number' : undefined}>
+                                            <span className={`font-mono text-sm ${isClosed ? 'text-gray-500' : 'text-gray-300'}`} title={linkedOffer ? 'Offer number' : undefined}>
                                                 {offerNoDisplay}
                                             </span>
                                             {offerNoDisplay !== '—' && (
@@ -5259,15 +5270,15 @@ ${internalCompany} Team`;
                                             )}
                                         </div>
                                     </td>
-                                    <td className="p-4 font-bold">{res.guest}</td>
-                                    <td className="p-4">{getPropertyNameById(res.roomId)}</td>
-                                    <td className="p-4">{res.start} - {res.end}</td>
+                                    <td className={`p-4 font-bold ${isClosed ? 'text-gray-500 line-through' : ''}`}>{res.guest}</td>
+                                    <td className={`p-4 ${isClosed ? 'text-gray-500' : ''}`}>{getPropertyNameById(res.roomId)}</td>
+                                    <td className={`p-4 ${isClosed ? 'text-gray-500' : ''}`}>{res.start} - {res.end}</td>
                                     <td className="p-4">
-                                        <span className={`px-2 py-1 rounded text-xs font-bold ${res.status === BookingStatus.RESERVED ? 'bg-blue-500/20 text-blue-500' : res.status === BookingStatus.OFFER_SENT ? 'bg-blue-500/20 text-blue-500 border border-dashed' : res.status === BookingStatus.INVOICED ? 'bg-blue-500/20 text-blue-500' : 'bg-emerald-500/20 text-emerald-500'}`}>
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${getReservationStatusBadge()}`}>
                                             {res.status}
                                         </span>
                                     </td>
-                                    <td className="p-4 text-right font-mono">{res.price}</td>
+                                    <td className={`p-4 text-right font-mono ${isClosed ? 'text-gray-500' : ''}`}>{res.price}</td>
                                     <td className="p-4 text-center">
                                         <button 
                                             onClick={() => openManageModal(res)}
@@ -5279,7 +5290,7 @@ ${internalCompany} Team`;
                                 </tr>
                             );
                             })}
-                            {reservations.filter(res => shouldShowInReservations(res.status)).length === 0 && (
+                            {reservations.length === 0 && (
                                 <tr>
                                     <td colSpan={8} className="p-8 text-center text-gray-500">No reservations found.</td>
                                 </tr>
@@ -5309,10 +5320,10 @@ ${internalCompany} Team`;
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-800">
-                            {/* Show Sent, Draft, and Invoiced offers with visual distinction */}
-                            {offers.filter(offer => offer.status === 'Sent' || offer.status === 'Draft' || offer.status === 'Invoiced').map(offer => {
+                            {offers.map(offer => {
                                 const isDraft = offer.status === 'Draft';
                                 const isInvoiced = offer.status === 'Invoiced';
+                                const isClosed = offer.status === 'Accepted' || offer.status === 'Lost';
                                 
                                 // Find linked booking by matching dates, client, and property
                                 const [offerStart, offerEnd] = offer.dates.split(' to ');
@@ -5325,18 +5336,19 @@ ${internalCompany} Team`;
                                            booking.roomId === offer.propertyId;
                                 });
                                 
-                                // Determine status color styling
                                 const getStatusStyle = () => {
                                     if (isDraft) return 'bg-gray-500/20 text-gray-400 border-gray-500';
                                     if (isInvoiced) return 'bg-purple-500/20 text-purple-400 border-purple-500';
+                                    if (offer.status === 'Accepted') return 'bg-emerald-500/20 text-emerald-400 border-emerald-500';
+                                    if (offer.status === 'Lost') return 'bg-red-500/20 text-red-400 border-red-500';
                                     return 'bg-blue-500/20 text-blue-500 border-blue-500';
                                 };
                                 
                                 return (
-                                    <tr key={offer.id} className={`hover:bg-[#16181D] ${isDraft || isInvoiced ? 'opacity-70' : ''}`}>
-                                        <td className="p-4">
+                                    <tr key={offer.id} className={`hover:bg-[#16181D] ${isDraft || isInvoiced || isClosed ? 'opacity-70' : ''}`}>
+                                        <td className={`p-4 ${isClosed ? 'text-gray-500' : ''}`}>
                                             <div className="flex items-center gap-2">
-                                                <span className="text-gray-300 font-mono text-sm">
+                                                <span className={`font-mono text-sm ${isClosed ? 'text-gray-500' : 'text-gray-300'}`}>
                                                     {linkedBooking?.bookingNo || '—'}
                                                 </span>
                                                 {linkedBooking?.bookingNo && (
@@ -5354,15 +5366,15 @@ ${internalCompany} Team`;
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="p-4 font-bold">{offer.clientName}</td>
-                                        <td className="p-4">{getPropertyNameById(offer.propertyId)}</td>
-                                        <td className="p-4">{offer.dates}</td>
+                                        <td className={`p-4 font-bold ${isClosed ? 'text-gray-500 line-through' : ''}`}>{offer.clientName}</td>
+                                        <td className={`p-4 ${isClosed ? 'text-gray-500' : ''}`}>{getPropertyNameById(offer.propertyId)}</td>
+                                        <td className={`p-4 ${isClosed ? 'text-gray-500' : ''}`}>{offer.dates}</td>
                                         <td className="p-4">
                                             <span className={`px-2 py-1 rounded text-xs font-bold border border-dashed ${getStatusStyle()}`}>
                                                 {offer.status}
                                             </span>
                                         </td>
-                                        <td className="p-4 text-right font-mono">{offer.price}</td>
+                                        <td className={`p-4 text-right font-mono ${isClosed ? 'text-gray-500' : ''}`}>{offer.price}</td>
                                         <td className="p-4 text-center">
                                             <div className="flex gap-2 justify-center">
                                                 <button 
@@ -5371,10 +5383,9 @@ ${internalCompany} Team`;
                                                 >
                                                     View
                                                 </button>
-                                                {isDraft && (
+                                                {!isClosed && isDraft && (
                                                     <button 
                                                         onClick={() => {
-                                                            // Send draft offer
                                                             setOffers(prev => prev.map(o => 
                                                                 o.id === offer.id ? { ...o, status: 'Sent' } : o
                                                             ));
@@ -5384,7 +5395,7 @@ ${internalCompany} Team`;
                                                         Send Offer
                                                     </button>
                                                 )}
-                                                {offer.status === 'Sent' && (
+                                                {!isClosed && offer.status === 'Sent' && (
                                                     <button 
                                                         onClick={() => handleCreateInvoiceClick(offer)}
                                                         className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
@@ -5392,7 +5403,7 @@ ${internalCompany} Team`;
                                                         Add Proforma
                                                     </button>
                                                 )}
-                                                {isInvoiced && (
+                                                {!isClosed && isInvoiced && (
                                                     <span className="px-3 py-1.5 text-gray-500 text-xs">Proforma added</span>
                                                 )}
                                                 <button 
@@ -5407,7 +5418,7 @@ ${internalCompany} Team`;
                                     </tr>
                                 );
                             })}
-                            {offers.filter(offer => offer.status === 'Sent' || offer.status === 'Draft' || offer.status === 'Invoiced').length === 0 && (
+                            {offers.length === 0 && (
                                 <tr>
                                     <td colSpan={7} className="p-8 text-center text-gray-500">No offers found.</td>
                                 </tr>
