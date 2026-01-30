@@ -288,7 +288,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
 
   return (
     <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
-      <div className={`bg-[#1C1F24] w-full max-h-[90vh] overflow-y-auto rounded-xl border border-gray-700 shadow-2xl flex flex-col animate-in zoom-in duration-200 ${(isAddProformaMode || isAddInvoiceToProformaMode) ? 'max-w-5xl' : 'max-w-4xl'}`}>
+      <div className={`bg-[#1C1F24] w-full overflow-y-auto rounded-xl border border-gray-700 shadow-2xl flex flex-col animate-in zoom-in duration-200 ${(isAddProformaMode || isAddInvoiceToProformaMode) ? 'max-w-6xl max-h-[92vh]' : 'max-w-4xl max-h-[90vh]'}`}>
         
         {/* Header */}
         <div className="p-5 border-b border-gray-800 bg-[#23262b] flex justify-between items-center sticky top-0 z-10">
@@ -319,7 +319,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
 
         {(isAddProformaMode || isAddInvoiceToProformaMode) ? (
           /* Two columns: left = compact fields, right = PDF upload + preview */
-          <div className="p-4 bg-[#1C1F24] text-white flex gap-4 h-[520px] min-h-[480px]">
+          <div className="p-4 bg-[#1C1F24] text-white flex gap-4 min-h-[600px] h-[70vh]">
             {/* Left: compact fields */}
             <div className="flex-shrink-0 w-[280px] flex flex-col gap-2 overflow-y-auto">
               <label className="text-[10px] font-medium text-gray-400">
@@ -332,7 +332,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
                 placeholder={isAddProformaMode ? 'PRO-2026-00001' : 'INV-2026-00001'}
               />
               {offer && (
-                <div className="mt-1 space-y-0.5 text-[10px]">
+                <div className="mt-3 rounded-lg border border-gray-800/80 overflow-hidden bg-[#111315]/60">
                   {[
                     ['Client', invoiceData.clientName || (offer as any).guest],
                     ['Date', invoiceData.date],
@@ -351,18 +351,18 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
                     ['Guarantee', (offer as any).guarantee],
                     ['Comments', (offer as any).comments],
                   ].filter(([, v]) => v != null && String(v).trim() !== '').map(([label, value]) => (
-                    <div key={String(label)} className="flex gap-1.5 truncate">
-                      <span className="text-gray-500 flex-shrink-0">{label}:</span>
-                      <span className="text-white truncate" title={String(value)}>{String(value)}</span>
+                    <div key={String(label)} className="flex items-center gap-3 py-2 px-3 border-b border-gray-800/50 last:border-b-0">
+                      <span className="text-[11px] text-gray-500 font-medium w-24 flex-shrink-0">{label}</span>
+                      <span className="text-xs text-gray-200 truncate min-w-0" title={String(value)}>{String(value)}</span>
                     </div>
                   ))}
                 </div>
               )}
               {!offer && (
-                <div className="mt-1 space-y-0.5 text-[10px]">
-                  <div className="flex gap-1.5"><span className="text-gray-500">Client:</span> <span className="text-white">{invoiceData.clientName}</span></div>
-                  <div className="flex gap-1.5"><span className="text-gray-500">Date:</span> <span className="text-white">{invoiceData.date}</span></div>
-                  <div className="flex gap-1.5"><span className="text-gray-500">Amount:</span> <span className="text-white">€{invoiceData.totalGross?.toFixed(2) ?? '—'}</span></div>
+                <div className="mt-3 rounded-lg border border-gray-800/80 overflow-hidden bg-[#111315]/60">
+                  <div className="flex items-center gap-3 py-2 px-3 border-b border-gray-800/50"><span className="text-[11px] text-gray-500 font-medium w-24 flex-shrink-0">Client</span><span className="text-xs text-gray-200">{invoiceData.clientName}</span></div>
+                  <div className="flex items-center gap-3 py-2 px-3 border-b border-gray-800/50"><span className="text-[11px] text-gray-500 font-medium w-24 flex-shrink-0">Date</span><span className="text-xs text-gray-200">{invoiceData.date}</span></div>
+                  <div className="flex items-center gap-3 py-2 px-3"><span className="text-[11px] text-gray-500 font-medium w-24 flex-shrink-0">Amount</span><span className="text-xs text-gray-200">€{invoiceData.totalGross?.toFixed(2) ?? '—'}</span></div>
                 </div>
               )}
             </div>
