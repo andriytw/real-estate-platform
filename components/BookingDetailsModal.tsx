@@ -16,10 +16,11 @@ interface BookingDetailsModalProps {
   onUpdateBookingStatus?: (bookingId: number, newStatus: BookingStatus) => void; // New callback for updating status
   onDeleteReservation?: (id: number | string) => Promise<void> | void; // Delete reservation callback
   onDeleteOffer?: (offerId: string) => void; // Delete offer callback
+  onDeleteBooking?: (bookingId: number | string) => Promise<void> | void; // Delete confirmed booking (from calendar)
   isViewingOffer?: boolean; // Flag to indicate if viewing an offer
 }
 
-const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClose, booking, onConvertToOffer, onCreateInvoice, onEdit, onSendOffer, onUpdateBookingStatus, onDeleteReservation, onDeleteOffer, isViewingOffer }) => {
+const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClose, booking, onConvertToOffer, onCreateInvoice, onEdit, onSendOffer, onUpdateBookingStatus, onDeleteReservation, onDeleteOffer, onDeleteBooking, isViewingOffer }) => {
   const [selectedInternalCompany, setSelectedInternalCompany] = useState('Sotiso');
   const [clientEmail, setClientEmail] = useState('');
   const [clientPhone, setClientPhone] = useState('');
@@ -565,6 +566,26 @@ ${selectedInternalCompany} Team`;
                             </button>
                         ) : null;
                     })()}
+                    {onDeleteBooking && !isViewingOffer && !(booking as any)?.isReservation && (
+                        <button 
+                            onClick={async () => {
+                                if (!booking?.id) return;
+                                if (!window.confirm('Видалити підтверджене бронювання з календаря? Цю дію не можна скасувати.')) return;
+                                try {
+                                    const result = onDeleteBooking(booking.id);
+                                    if (result instanceof Promise) await result;
+                                    onClose();
+                                } catch (e) {
+                                    console.error('Error deleting booking:', e);
+                                    alert('Не вдалося видалити бронювання.');
+                                }
+                            }}
+                            className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                            Видалити бронювання
+                        </button>
+                    )}
                     {!onConvertToOffer && (
                         <button onClick={onClose} className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-bold transition-colors">
                             Close

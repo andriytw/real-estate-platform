@@ -2165,6 +2165,16 @@ const AccountDashboard: React.FC = () => {
       }
   };
 
+  const handleDeleteBooking = async (bookingId: number | string) => {
+    try {
+      await bookingsService.delete(bookingId);
+      await loadConfirmedBookings();
+    } catch (error) {
+      console.error('Error deleting booking:', error);
+      alert('Не вдалося видалити бронювання. Спробуйте ще раз.');
+    }
+  };
+
   const openManageModal = (reservation: ReservationData) => {
       setViewingOffer(false);
       setSelectedReservation({ ...reservation, isReservation: true } as ReservationData & { isReservation: true });
@@ -2484,6 +2494,15 @@ ${internalCompany} Team`;
     if (!window.confirm(`Видалити проформу ${proforma.invoiceNumber}?`)) return;
     try {
       await invoicesService.delete(proforma.id);
+      const bookings = await bookingsService.getAll();
+      const linkedBookings = bookings.filter(b => b.sourceInvoiceId != null && String(b.sourceInvoiceId) === String(proforma.id));
+      for (const b of linkedBookings) {
+        await bookingsService.delete(b.id);
+      }
+      if (linkedBookings.length > 0) {
+        const updatedBookings = await bookingsService.getAll();
+        setConfirmedBookings(updatedBookings);
+      }
       setProformas(prev => prev.filter(p => p.id !== proforma.id));
       setExpandedProformaIds(prev => { const next = new Set(prev); next.delete(proforma.id); return next; });
       setProformaChildInvoices(prev => { const next = { ...prev }; delete next[proforma.id]; return next; });
@@ -5690,6 +5709,7 @@ ${internalCompany} Team`;
           onSaveOffer={handleSaveOffer} 
           onSaveReservation={handleSaveReservation} 
           onDeleteReservation={handleDeleteReservation}
+          onDeleteBooking={handleDeleteBooking}
           onAddLead={handleAddLeadFromBooking}
           reservations={reservations}
           confirmedBookings={confirmedBookings}

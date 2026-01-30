@@ -51,6 +51,7 @@ interface SalesCalendarProps {
   onSaveOffer?: (offer: OfferData) => void;
   onSaveReservation?: (reservation: ReservationData) => void;
   onDeleteReservation?: (id: number | string) => Promise<void> | void;
+  onDeleteBooking?: (bookingId: number | string) => Promise<void> | void; // Delete confirmed booking from calendar
   onAddLead?: (bookingData: any) => void; // New Prop for Lead creation
   reservations?: ReservationData[]; // Holds from reservations table (dashed)
   confirmedBookings?: Booking[]; // Confirmed bookings from bookings table (solid)
@@ -134,6 +135,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   onSaveOffer,
   onSaveReservation,
   onDeleteReservation,
+  onDeleteBooking,
   onAddLead,
   reservations = [],
   confirmedBookings = [],
@@ -1583,16 +1585,16 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         onClose={() => setSelectedBooking(null)}
         booking={selectedBooking}
         onDeleteReservation={onDeleteReservation ? async (id: number | string) => {
-          // Pass id as-is (can be UUID string or number)
-          // The handler in AccountDashboard will handle the conversion
           const result = onDeleteReservation(id);
           if (result instanceof Promise) {
             await result;
           }
           setSelectedBooking(null);
         } : undefined}
-        // Calendar view is read-only for offers logic usually, or we can add it if needed. 
-        // For now, let's keep it simple as per request: the "Manage" view needs the actions.
+        onDeleteBooking={onDeleteBooking ? async (bookingId: number | string) => {
+          await onDeleteBooking(bookingId);
+          setSelectedBooking(null);
+        } : undefined}
       />
 
       {/* --- STATS TILES MODAL --- */}
