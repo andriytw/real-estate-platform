@@ -5514,23 +5514,26 @@ ${internalCompany} Team`;
                                                 {proforma.status !== 'Paid' && (
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleConfirmProformaPayment(proforma)}
-                                                        className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-xs font-bold transition-colors"
-                                                        title="Підтвердити оплату"
+                                                        disabled={lost}
+                                                        onClick={() => !lost && handleConfirmProformaPayment(proforma)}
+                                                        className={`px-3 py-1.5 rounded text-xs font-bold transition-colors ${lost ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-500 text-white'}`}
+                                                        title={lost ? 'Програно — підтвердження недоступне' : 'Підтвердити оплату'}
                                                     >
                                                         Підтвердити оплату
                                                     </button>
                                                 )}
                                                 <button
-                                                    onClick={() => handleAddInvoiceToProforma(proforma)}
-                                                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
+                                                    type="button"
+                                                    disabled={lost}
+                                                    onClick={() => !lost && handleAddInvoiceToProforma(proforma)}
+                                                    className={`px-3 py-1.5 rounded text-xs font-bold transition-colors ${lost ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 text-white'}`}
                                                 >
                                                     Add Invoice
                                                 </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => handleDeleteProforma(proforma)}
-                                                    className="inline-flex items-center gap-1.5 px-2 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded text-xs font-medium transition-colors"
+                                                    className={`inline-flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium transition-colors ${lost ? 'text-gray-500 hover:text-gray-400 hover:bg-gray-800/50' : 'text-red-400 hover:text-red-300 hover:bg-red-900/30'}`}
                                                     title="Видалити проформу"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
