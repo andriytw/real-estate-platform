@@ -500,11 +500,10 @@ ${selectedInternalCompany} Team`;
             </div>
 
             <div className="p-5 border-t border-gray-800 bg-[#161B22]">
-                {/* Actions Section */}
-                {onConvertToOffer && (
-                    <div className="mb-4">
-                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Actions</h4>
-                        <div className="flex gap-3">
+                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Actions</h4>
+                <div className="flex flex-wrap items-center gap-3">
+                    {onConvertToOffer && (
+                        <>
                             <button 
                                 onClick={onClose}
                                 className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-bold transition-colors"
@@ -525,12 +524,8 @@ ${selectedInternalCompany} Team`;
                                 <Send className="w-4 h-4" />
                                 Save & Send
                             </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Other Actions (Add Proforma, Delete, Close) */}
-                <div className="flex justify-end gap-3">
+                        </>
+                    )}
                     {onCreateInvoice && isViewingOffer && booking && canCreateInvoice((booking as any).status) && (
                         <button 
                             onClick={() => onCreateInvoice(booking as OfferData)}
