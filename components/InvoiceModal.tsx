@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { X, Save, FileText, Download, Edit2, Check, Upload } from 'lucide-react';
 import { OfferData, InvoiceData, CompanyDetails, ReservationData } from '../types';
 import { INTERNAL_COMPANIES_DATA } from '../constants';
@@ -31,7 +31,33 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
   const [clientAddress, setClientAddress] = useState('');
   /** PDF file for Add Proforma / Add Invoice flows (required) */
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  /** Blob URL for PDF preview in Add Proforma / Add Invoice */
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+
+  // Create blob URL for PDF preview immediately so iframe shows on first paint
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setPdfPreviewUrl(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+    if (!pdfFile) {
+      setPdfPreviewUrl(prev => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+    const url = URL.createObjectURL(pdfFile);
+    setPdfPreviewUrl(prev => {
+      if (prev) URL.revokeObjectURL(prev);
+      return url;
+    });
+    return () => URL.revokeObjectURL(url);
+  }, [isOpen, pdfFile]);
 
   useEffect(() => {
     if (isOpen) {
@@ -262,7 +288,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
 
   return (
     <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
-      <div className="bg-[#1C1F24] w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl border border-gray-700 shadow-2xl flex flex-col animate-in zoom-in duration-200">
+      <div className={`bg-[#1C1F24] w-full max-h-[90vh] overflow-y-auto rounded-xl border border-gray-700 shadow-2xl flex flex-col animate-in zoom-in duration-200 ${(isAddProformaMode || isAddInvoiceToProformaMode) ? 'max-w-5xl' : 'max-w-4xl'}`}>
         
         {/* Header */}
         <div className="p-5 border-b border-gray-800 bg-[#23262b] flex justify-between items-center sticky top-0 z-10">
@@ -292,53 +318,105 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
         </div>
 
         {(isAddProformaMode || isAddInvoiceToProformaMode) ? (
-          /* Simplified form: number + read-only summary + required PDF */
-          <div className="p-8 bg-[#1C1F24] text-white space-y-6">
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1.5">
+          /* Two columns: left = compact fields, right = PDF upload + preview */
+          <div className="p-4 bg-[#1C1F24] text-white flex gap-4 h-[520px] min-h-[480px]">
+            {/* Left: compact fields */}
+            <div className="flex-shrink-0 w-[280px] flex flex-col gap-2 overflow-y-auto">
+              <label className="text-[10px] font-medium text-gray-400">
                 {isAddProformaMode ? 'Proforma number' : 'Invoice number'}
               </label>
               <input
                 value={invoiceData.invoiceNumber}
                 onChange={e => setInvoiceData({ ...invoiceData, invoiceNumber: e.target.value })}
-                className="w-full max-w-xs bg-[#111315] border border-gray-700 rounded-lg p-2.5 text-white font-mono"
+                className="w-full bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-xs text-white font-mono"
                 placeholder={isAddProformaMode ? 'PRO-2026-00001' : 'INV-2026-00001'}
               />
+              {offer && (
+                <div className="mt-1 space-y-0.5 text-[10px]">
+                  {[
+                    ['Client', invoiceData.clientName || (offer as any).guest],
+                    ['Date', invoiceData.date],
+                    ['Amount', invoiceData.totalGross != null ? `€${invoiceData.totalGross.toFixed(2)}` : (offer as any).price],
+                    ['Email', (offer as any).email],
+                    ['Phone', (offer as any).phone],
+                    ['Address', invoiceData.clientAddress || (offer as any).address],
+                    ['Dates', offer.dates || ((offer as any).start && (offer as any).end ? `${(offer as any).start} – ${(offer as any).end}` : '')],
+                    ['Check-in', (offer as any).checkInTime],
+                    ['Check-out', (offer as any).checkOutTime],
+                    ['Guests', (offer as any).guests],
+                    ['Unit', (offer as any).unit || (offer as any).propertyId || (offer as any).roomId],
+                    ['Res/Offer No', (offer as any).reservationNo || (offer as any).offerNo || (offer as any).bookingNo],
+                    ['Company', (offer as any).company || (offer as any).companyName],
+                    ['Rate plan', (offer as any).ratePlan],
+                    ['Guarantee', (offer as any).guarantee],
+                    ['Comments', (offer as any).comments],
+                  ].filter(([, v]) => v != null && String(v).trim() !== '').map(([label, value]) => (
+                    <div key={String(label)} className="flex gap-1.5 truncate">
+                      <span className="text-gray-500 flex-shrink-0">{label}:</span>
+                      <span className="text-white truncate" title={String(value)}>{String(value)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!offer && (
+                <div className="mt-1 space-y-0.5 text-[10px]">
+                  <div className="flex gap-1.5"><span className="text-gray-500">Client:</span> <span className="text-white">{invoiceData.clientName}</span></div>
+                  <div className="flex gap-1.5"><span className="text-gray-500">Date:</span> <span className="text-white">{invoiceData.date}</span></div>
+                  <div className="flex gap-1.5"><span className="text-gray-500">Amount:</span> <span className="text-white">€{invoiceData.totalGross?.toFixed(2) ?? '—'}</span></div>
+                </div>
+              )}
             </div>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div><span className="text-gray-500">Client:</span> <span className="text-white">{invoiceData.clientName}</span></div>
-              <div><span className="text-gray-500">Date:</span> <span className="text-white">{invoiceData.date}</span></div>
-              <div><span className="text-gray-500">Amount:</span> <span className="text-white">€{invoiceData.totalGross?.toFixed(2) ?? '—'}</span></div>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1.5">PDF file <span className="text-red-400">*</span></label>
-              <div
-                onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-purple-500'); }}
-                onDragLeave={e => { e.currentTarget.classList.remove('border-purple-500'); }}
-                onDrop={e => {
-                  e.preventDefault();
-                  e.currentTarget.classList.remove('border-purple-500');
-                  const f = e.dataTransfer.files[0];
-                  if (f && f.type === 'application/pdf') setPdfFile(f);
-                }}
-                className="border-2 border-dashed border-gray-700 rounded-lg p-8 text-center hover:border-gray-600 transition-colors"
-              >
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  className="hidden"
-                  id="invoice-pdf-upload"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) setPdfFile(f); }}
-                />
-                <label htmlFor="invoice-pdf-upload" className="cursor-pointer flex flex-col items-center gap-2">
-                  <Upload className="w-10 h-10 text-gray-500" />
-                  {pdfFile ? (
-                    <span className="text-emerald-400 font-medium">{pdfFile.name}</span>
-                  ) : (
-                    <span className="text-gray-400">Drop PDF here or click to select</span>
-                  )}
-                </label>
-              </div>
+            {/* Right: PDF upload + preview */}
+            <div className="flex-1 min-w-0 flex flex-col min-h-0 border border-gray-700 rounded-lg overflow-hidden bg-[#111315]">
+              <label className="text-[10px] font-medium text-gray-400 px-2 pt-2 flex-shrink-0">PDF file <span className="text-red-400">*</span></label>
+              {!pdfFile ? (
+                <div
+                  onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-purple-500'); }}
+                  onDragLeave={e => { e.currentTarget.classList.remove('border-purple-500'); }}
+                  onDrop={e => {
+                    e.preventDefault();
+                    e.currentTarget.classList.remove('border-purple-500');
+                    const f = e.dataTransfer.files[0];
+                    if (f && f.type === 'application/pdf') setPdfFile(f);
+                  }}
+                  className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-700 rounded m-2 min-h-[200px] hover:border-gray-600 transition-colors"
+                >
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    className="hidden"
+                    id="invoice-pdf-upload"
+                    onChange={e => { const f = e.target.files?.[0]; if (f && f.type === 'application/pdf') setPdfFile(f); }}
+                  />
+                  <label htmlFor="invoice-pdf-upload" className="cursor-pointer flex flex-col items-center gap-2">
+                    <Upload className="w-8 h-8 text-gray-500" />
+                    <span className="text-xs text-gray-400">Drop PDF or click</span>
+                  </label>
+                </div>
+              ) : (
+                <>
+                  <div className="px-2 pb-1 flex items-center gap-2 flex-shrink-0">
+                    <span className="text-emerald-400 text-xs truncate flex-1">{pdfFile.name}</span>
+                    <label className="text-[10px] text-gray-400 cursor-pointer hover:text-white" htmlFor="invoice-pdf-upload">Change</label>
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      className="hidden"
+                      id="invoice-pdf-upload"
+                      onChange={e => { const f = e.target.files?.[0]; if (f && f.type === 'application/pdf') setPdfFile(f); }}
+                    />
+                  </div>
+                  <div className="flex-1 min-h-[320px] relative bg-[#0d0f11]">
+                    {pdfPreviewUrl && (
+                      <iframe
+                        src={pdfPreviewUrl}
+                        title="PDF preview"
+                        className="absolute inset-0 w-full h-full border-0 rounded"
+                      />
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         ) : (

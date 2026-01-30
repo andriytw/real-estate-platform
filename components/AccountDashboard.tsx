@@ -2405,10 +2405,10 @@ ${internalCompany} Team`;
   
   const handleCreateInvoiceClick = (offer: OfferData | ReservationData) => {
     closeManageModals();
-    // Якщо це резервація, конвертувати в offer для створення інвойсу
+    // Якщо це резервація, зібрати один об'єкт з усіма полями резервації для модалки
     if ('roomId' in offer && 'start' in offer) {
       const reservation = offer as ReservationData;
-      const offerData: OfferData = {
+      const offerData = {
         id: String(reservation.id),
         clientName: reservation.guest,
         propertyId: reservation.roomId,
@@ -2425,7 +2425,25 @@ ${internalCompany} Team`;
         checkInTime: reservation.checkInTime,
         checkOutTime: reservation.checkOutTime,
         comments: reservation.comments,
-      };
+        // Усі додаткові поля резервації для відображення в модалці
+        reservationNo: reservation.reservationNo,
+        bookingNo: reservation.bookingNo,
+        company: reservation.company,
+        companyName: reservation.companyName,
+        ratePlan: reservation.ratePlan,
+        firstName: reservation.firstName,
+        lastName: reservation.lastName,
+        guarantee: reservation.guarantee,
+        cancellationPolicy: reservation.cancellationPolicy,
+        noShowPolicy: reservation.noShowPolicy,
+        balance: reservation.balance,
+        paymentAccount: reservation.paymentAccount,
+        channel: reservation.channel,
+        pricePerNight: reservation.pricePerNight,
+        taxRate: reservation.taxRate,
+        totalGross: reservation.totalGross,
+        clientType: reservation.clientType,
+      } as OfferData;
       setSelectedOfferForInvoice(offerData);
     } else {
       setSelectedOfferForInvoice(offer as OfferData);
