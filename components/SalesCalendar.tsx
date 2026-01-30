@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { RequestData, Property } from '../types';
 import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar, Search } from 'lucide-react';
-import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus } from '../types';
+import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus, Lead } from '../types';
 import BookingDetailsModal from './BookingDetailsModal';
 import BookingStatsTiles from './BookingStatsTiles';
 import BookingListModal from './BookingListModal';
@@ -53,6 +53,7 @@ interface SalesCalendarProps {
   onDeleteReservation?: (id: number | string) => Promise<void> | void;
   onDeleteBooking?: (bookingId: number | string) => Promise<void> | void; // Delete confirmed booking from calendar
   onAddLead?: (bookingData: any) => void; // New Prop for Lead creation
+  leads?: Lead[]; // For search/autocomplete when creating reservation
   reservations?: ReservationData[]; // Holds from reservations table (dashed)
   confirmedBookings?: Booking[]; // Confirmed bookings from bookings table (solid)
   offers?: OfferData[];
@@ -137,6 +138,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   onDeleteReservation,
   onDeleteBooking,
   onAddLead,
+  leads = [],
   reservations = [],
   confirmedBookings = [],
   offers = [],
@@ -182,7 +184,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   // Add Booking Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  
+  const [leadSearchQuery, setLeadSearchQuery] = useState('');
+  const [showLeadSuggestions, setShowLeadSuggestions] = useState(false);
+  const leadSearchRef = useRef<HTMLDivElement>(null);
+
   // View Details Modal State
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
@@ -1420,6 +1425,60 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                             <span className="text-white font-bold">{getRoomNameById(formData.roomId) || 'Select Room'}</span>
                         </div>
                     </div>
+
+                    {/* Lead search: autocomplete from leads */}
+                    {leads.length > 0 && (
+                      <div className="relative" ref={leadSearchRef}>
+                        <label className="block text-xs text-gray-400 mb-1">Пошук гостя / лідів</label>
+                        <input
+                          type="text"
+                          value={leadSearchQuery}
+                          onChange={e => { setLeadSearchQuery(e.target.value); setShowLeadSuggestions(true); }}
+                          onFocus={() => leadSearchQuery.trim() && setShowLeadSuggestions(true)}
+                          onBlur={() => setTimeout(() => setShowLeadSuggestions(false), 180)}
+                          placeholder="Введіть ім'я, email, телефон, адресу..."
+                          className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none placeholder-gray-500"
+                        />
+                        {showLeadSuggestions && leadSearchQuery.trim() && (() => {
+                          const q = leadSearchQuery.trim().toLowerCase();
+                          const searchable = (l: Lead) => [l.name, l.contactPerson, l.email, l.phone, l.address].filter(Boolean).join(' ').toLowerCase();
+                          const filtered = leads.filter(l => searchable(l).includes(q)).slice(0, 10);
+                          if (filtered.length === 0) return null;
+                          return (
+                            <ul className="absolute left-0 right-0 top-full mt-1 z-20 bg-[#1C1F24] border border-gray-700 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                              {filtered.map(l => (
+                                <li
+                                  key={l.id}
+                                  onMouseDown={e => e.preventDefault()}
+                                  onClick={() => {
+                                    const isCompany = l.type === 'Company';
+                                    const parts = l.name.trim().split(/\s+/);
+                                    const firstName = isCompany ? '' : (parts[0] || '');
+                                    const lastName = isCompany ? '' : (parts.slice(1).join(' ') || '');
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      clientType: isCompany ? 'Company' : 'Private',
+                                      firstName,
+                                      lastName,
+                                      companyName: isCompany ? l.name : '',
+                                      email: l.email || '',
+                                      phone: l.phone || '',
+                                      address: l.address || '',
+                                    }));
+                                    setLeadSearchQuery('');
+                                    setShowLeadSuggestions(false);
+                                  }}
+                                  className="px-3 py-2 text-sm text-white hover:bg-[#23262b] cursor-pointer border-b border-gray-800 last:border-0"
+                                >
+                                  <span className="font-medium">{l.name}</span>
+                                  {(l.email || l.phone) && <span className="text-gray-400 ml-2">· {l.email || l.phone}</span>}
+                                </li>
+                              ))}
+                            </ul>
+                          );
+                        })()}
+                      </div>
+                    )}
 
                     {/* Client Type Switch */}
                     <div className="flex bg-[#111315] p-1 rounded-lg border border-gray-800">

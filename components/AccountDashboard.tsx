@@ -9,12 +9,13 @@ import SalesChat from './SalesChat';
 import BookingDetailsModal from './BookingDetailsModal';
 import InvoiceModal from './InvoiceModal';
 import OfferEditModal from './OfferEditModal';
+import LeadEditModal from './LeadEditModal';
 import PropertyAddModal from './PropertyAddModal';
 import RequestModal from './RequestModal';
 import BankingDashboard from './BankingDashboard';
 import KanbanBoard from './kanban/KanbanBoard';
 import UserManagement from './admin/UserManagement';
-import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem } from '../services/supabaseService';
+import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, leadsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem } from '../services/supabaseService';
 import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation } from '../types';
 import { MOCK_PROPERTIES } from '../constants';
 import { createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
@@ -334,14 +335,7 @@ const AccountDashboard: React.FC = () => {
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   const [activities, setActivities] = useState<ActivityItem[]>(INITIAL_ACTIVITIES);
-  const [leads, setLeads] = useState<Lead[]>(() => {
-    try {
-      const stored = localStorage.getItem('leads');
-      return stored ? JSON.parse(stored) : INITIAL_LEADS;
-    } catch {
-      return INITIAL_LEADS;
-    }
-  });
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [requests, setRequests] = useState<RequestData[]>(() => {
     // Завантажити requests з localStorage при ініціалізації
     try {
@@ -354,24 +348,27 @@ const AccountDashboard: React.FC = () => {
   
   // Слухати події додавання нових requests
   React.useEffect(() => {
-    const handleRequestAdded = (event: CustomEvent<RequestData>) => {
+    const handleRequestAdded = async (event: CustomEvent<RequestData>) => {
       setRequests(prev => [event.detail, ...prev]);
-      // Створити Lead з Request
-      const newLead: Lead = {
-          id: `lead-${Date.now()}`,
-          name: event.detail.companyName || `${event.detail.firstName} ${event.detail.lastName}`,
-          type: event.detail.companyName ? 'Company' : 'Private',
-          contactPerson: event.detail.companyName ? `${event.detail.firstName} ${event.detail.lastName}` : undefined,
-          email: event.detail.email,
-          phone: event.detail.phone,
+      const req = event.detail;
+      const name = req.companyName || `${req.firstName || ''} ${req.lastName || ''}`.trim() || 'Unknown';
+      try {
+        const newLead = await leadsService.create({
+          name,
+          type: req.companyName ? 'Company' : 'Private',
+          contactPerson: req.companyName ? `${req.firstName || ''} ${req.lastName || ''}`.trim() || undefined : undefined,
+          email: req.email || '',
+          phone: req.phone || '',
           address: '',
           status: 'Active',
           createdAt: new Date().toISOString().split('T')[0],
-          source: event.detail.id
-      };
-      setLeads(prev => [...prev, newLead]);
+          source: req.id
+        });
+        setLeads(prev => [...prev, newLead].sort((a, b) => a.name.localeCompare(b.name)));
+      } catch (e) {
+        console.error('Failed to create lead from request:', e);
+      }
     };
-    
     window.addEventListener('requestAdded', handleRequestAdded as EventListener);
     return () => window.removeEventListener('requestAdded', handleRequestAdded as EventListener);
   }, []);
@@ -382,17 +379,6 @@ const AccountDashboard: React.FC = () => {
     localStorage.setItem('requests', JSON.stringify(requests));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requests.length]); // Only depend on length, not the array itself
-
-  // Синхронізувати leads з localStorage при змінах
-  // Use length instead of array to avoid React error #310
-  React.useEffect(() => {
-    try {
-      localStorage.setItem('leads', JSON.stringify(leads));
-    } catch (error) {
-      console.error('Failed to save leads to localStorage:', error);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leads.length]); // Only depend on length, not the array itself
 
   const [offers, setOffers] = useState<OfferData[]>([]);
 
@@ -1539,6 +1525,7 @@ const AccountDashboard: React.FC = () => {
   const [offerToEdit, setOfferToEdit] = useState<OfferData | null>(null);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<RequestData | null>(null);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
 
   // --- Toast notifications ---
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -1840,7 +1827,6 @@ const AccountDashboard: React.FC = () => {
   // Load confirmed bookings function (extracted for reuse)
   const loadConfirmedBookings = async () => {
     try {
-      // Load confirmed bookings from bookings table
       const bookings = await bookingsService.getAll();
       setConfirmedBookings(bookings);
     } catch (error) {
@@ -1848,9 +1834,19 @@ const AccountDashboard: React.FC = () => {
     }
   };
 
+  const loadLeads = async () => {
+    try {
+      const data = await leadsService.getAll();
+      setLeads(data);
+    } catch (error) {
+      console.error('Error loading leads:', error);
+    }
+  };
+
   useEffect(() => {
     loadReservations();
     loadConfirmedBookings();
+    loadLeads();
   }, []);
 
   const handleSaveReservation = async (reservation: ReservationData) => {
@@ -1937,34 +1933,40 @@ const AccountDashboard: React.FC = () => {
           setSelectedRequest(null);
           // Request already has a lead created, so skip lead creation
         } else {
-          // Create lead from reservation if it doesn't exist
           const isCompany = reservation.clientType === 'Company' || !!reservation.companyName;
-          const name = isCompany 
-              ? (reservation.companyName || reservation.company || reservation.guest)
-              : (reservation.guest || `${reservation.firstName || ''} ${reservation.lastName || ''}`.trim());
-          
-          if (name && name.trim() !== '') {
-              const email = reservation.email || '';
-              const exists = leads.find(l => 
-                  l.name.toLowerCase() === name.toLowerCase() || 
-                  (l.email && email && l.email.toLowerCase() === email.toLowerCase())
-              );
-              
-              if (!exists) {
-                  const newLead: Lead = {
-                      id: `lead-${Date.now()}`,
-                      name: name.trim(),
-                      type: isCompany ? 'Company' : 'Private',
-                      contactPerson: isCompany ? (reservation.guest || `${reservation.firstName || ''} ${reservation.lastName || ''}`.trim()) : undefined,
-                      email: email,
-                      phone: reservation.phone || '',
-                      address: reservation.address || '',
-                      status: 'Active',
-                      createdAt: new Date().toISOString().split('T')[0],
-                      source: `reservation-${reservation.id}`
-                  };
-                  setLeads(prev => [...prev, newLead].sort((a, b) => a.name.localeCompare(b.name)));
-              }
+          const name = isCompany
+            ? (reservation.companyName || reservation.company || reservation.guest)
+            : (reservation.guest || `${reservation.firstName || ''} ${reservation.lastName || ''}`.trim());
+          if (!name || !name.trim()) return;
+
+          const email = (reservation.email || '').trim().toLowerCase();
+          const phone = (reservation.phone || '').replace(/\s+/g, '').replace(/-/g, '');
+          const address = (reservation.address || '').trim().toLowerCase();
+          const norm = (s: string) => (s || '').trim().toLowerCase();
+          const exists = leads.some(l =>
+            norm(l.name) === norm(name) &&
+            norm(l.email) === email &&
+            (l.phone || '').replace(/\s+/g, '').replace(/-/g, '') === phone &&
+            norm(l.address) === address &&
+            l.type === (isCompany ? 'Company' : 'Private')
+          );
+          if (exists) return;
+
+          try {
+            const newLead = await leadsService.create({
+              name: name.trim(),
+              type: isCompany ? 'Company' : 'Private',
+              contactPerson: isCompany ? (reservation.guest || `${reservation.firstName || ''} ${reservation.lastName || ''}`.trim() || undefined) : undefined,
+              email: reservation.email || '',
+              phone: reservation.phone || '',
+              address: reservation.address || '',
+              status: 'Active',
+              createdAt: new Date().toISOString().split('T')[0],
+              source: `reservation-${savedReservation.id}`
+            });
+            setLeads(prev => [...prev, newLead].sort((a, b) => a.name.localeCompare(b.name)));
+          } catch (e) {
+            console.error('Failed to create lead from reservation:', e);
           }
         }
       } catch (error) {
@@ -2098,38 +2100,64 @@ const AccountDashboard: React.FC = () => {
       ));
   };
   
-  const handleAddLeadFromBooking = (bookingData: any) => {
-    // Handle both formData from SalesCalendar and Booking objects
+  const handleAddLeadFromBooking = async (bookingData: any) => {
     const isCompany = bookingData.clientType === 'Company' || !!bookingData.companyName;
-    const name = isCompany 
+    const name = isCompany
       ? (bookingData.companyName || bookingData.company || bookingData.guest)
       : (bookingData.guest || `${bookingData.firstName || ''} ${bookingData.lastName || ''}`.trim());
-    
-    if (!name || name.trim() === '') return; // Skip if no name
-    
-    const email = bookingData.email || '';
-    const phone = bookingData.phone || '';
-    
-    // Check for duplicates by name or email
-    const exists = leads.find(l => 
-      l.name.toLowerCase() === name.toLowerCase() || 
-      (l.email && email && l.email.toLowerCase() === email.toLowerCase())
+    if (!name || !name.trim()) return;
+
+    const email = (bookingData.email || '').trim().toLowerCase();
+    const phone = (bookingData.phone || '').replace(/\s+/g, '').replace(/-/g, '');
+    const address = (bookingData.address || '').trim().toLowerCase();
+    const norm = (s: string) => (s || '').trim().toLowerCase();
+    const exists = leads.some(l =>
+      norm(l.name) === norm(name) &&
+      norm(l.email) === email &&
+      (l.phone || '').replace(/\s+/g, '').replace(/-/g, '') === phone &&
+      norm(l.address) === address &&
+      l.type === (isCompany ? 'Company' : 'Private')
     );
     if (exists) return;
-    
-    const newLead: Lead = {
-      id: `lead-${Date.now()}`,
-      name: name.trim(),
-      type: isCompany ? 'Company' : 'Private',
-      contactPerson: isCompany ? (bookingData.guest || `${bookingData.firstName || ''} ${bookingData.lastName || ''}`.trim()) : undefined,
-      email: email,
-      phone: phone,
-      address: bookingData.address || '',
-      status: 'Active',
-      createdAt: new Date().toISOString().split('T')[0],
-      source: bookingData.source || `booking-${bookingData.id || Date.now()}`
-    };
-    setLeads(prev => [...prev, newLead].sort((a, b) => a.name.localeCompare(b.name)));
+
+    try {
+      const newLead = await leadsService.create({
+        name: name.trim(),
+        type: isCompany ? 'Company' : 'Private',
+        contactPerson: isCompany ? (bookingData.guest || `${bookingData.firstName || ''} ${bookingData.lastName || ''}`.trim() || undefined) : undefined,
+        email: bookingData.email || '',
+        phone: bookingData.phone || '',
+        address: bookingData.address || '',
+        status: 'Active',
+        createdAt: new Date().toISOString().split('T')[0],
+        source: bookingData.source || `booking-${bookingData.id || Date.now()}`
+      });
+      setLeads(prev => [...prev, newLead].sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (e) {
+      console.error('Failed to create lead from booking:', e);
+    }
+  };
+
+  const handleDeleteLead = async (id: string) => {
+    if (!window.confirm('Видалити цей лід? Це не видалить резервації чи оферти.')) return;
+    try {
+      await leadsService.delete(id);
+      setLeads(prev => prev.filter(l => l.id !== id));
+    } catch (e) {
+      console.error('Error deleting lead:', e);
+      alert('Не вдалося видалити лід.');
+    }
+  };
+
+  const handleSaveLeadEdit = async (id: string, updates: Partial<Lead>) => {
+    try {
+      const updated = await leadsService.update(id, updates);
+      setLeads(prev => prev.map(l => l.id === id ? updated : l));
+      setEditingLead(null);
+    } catch (e) {
+      console.error('Error updating lead:', e);
+      alert('Не вдалося зберегти зміни.');
+    }
   };
 
   const handleDeleteReservation = async (id: number | string) => {
@@ -5175,12 +5203,13 @@ ${internalCompany} Team`;
                                 <th className="p-4">Address</th>
                                 <th className="p-4">Status</th>
                                 <th className="p-4">Created</th>
+                                <th className="p-4 text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-800">
                             {leads.map(lead => (
                                 <tr key={lead.id} className="hover:bg-[#16181D]">
-                                    <td className="p-4 text-gray-400">#{lead.id}</td>
+                                    <td className="p-4 text-gray-400">#{String(lead.id).slice(0, 8)}</td>
                                     <td className="p-4 font-bold">{lead.name}</td>
                                     <td className="p-4">
                                         <span className={`px-2 py-1 rounded text-xs font-bold ${
@@ -5201,12 +5230,18 @@ ${internalCompany} Team`;
                                             {lead.status}
                                         </span>
                                     </td>
-                                    <td className="p-4 text-gray-400">{lead.createdAt}</td>
+                                    <td className="p-4 text-gray-400">{typeof lead.createdAt === 'string' ? lead.createdAt.slice(0, 10) : lead.createdAt}</td>
+                                    <td className="p-4 text-center">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <button type="button" onClick={() => setEditingLead(lead)} className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors" title="Редагувати"><Edit className="w-4 h-4" /></button>
+                                            <button type="button" onClick={() => handleDeleteLead(lead.id)} className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити"><Trash2 className="w-4 h-4" /></button>
+                                        </div>
+                                    </td>
                                 </tr>
                             ))}
                             {leads.length === 0 && (
                                 <tr>
-                                    <td colSpan={8} className="p-8 text-center text-gray-500">No leads found.</td>
+                                    <td colSpan={9} className="p-8 text-center text-gray-500">No leads found.</td>
                                 </tr>
                             )}
                         </tbody>
@@ -5729,6 +5764,7 @@ ${internalCompany} Team`;
           onDeleteReservation={handleDeleteReservation}
           onDeleteBooking={handleDeleteBooking}
           onAddLead={handleAddLeadFromBooking}
+          leads={leads}
           reservations={reservations}
           confirmedBookings={confirmedBookings}
           offers={offers}
@@ -6541,6 +6577,13 @@ ${internalCompany} Team`;
           onSave={handleSaveOfferUpdate}
           onDelete={handleDeleteOffer}
       />
+      {editingLead && (
+        <LeadEditModal
+          lead={editingLead}
+          onClose={() => setEditingLead(null)}
+          onSave={(updates) => handleSaveLeadEdit(editingLead.id, updates)}
+        />
+      )}
       <PropertyAddModal 
         isOpen={isPropertyAddModalOpen} 
         onClose={() => {

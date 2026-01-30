@@ -1560,8 +1560,17 @@ export const leadsService = {
     return data.map(transformLeadFromDB);
   },
 
+  async getById(id: string): Promise<Lead | null> {
+    const { data, error } = await supabase.from('leads').select('*').eq('id', id).single();
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw error;
+    }
+    return data ? transformLeadFromDB(data) : null;
+  },
+
   async create(lead: Omit<Lead, 'id'>): Promise<Lead> {
-    const dbData = transformLeadToDB(lead);
+    const dbData = transformLeadToDB(lead as Lead);
     const { data, error } = await supabase
       .from('leads')
       .insert([dbData])
@@ -1570,6 +1579,36 @@ export const leadsService = {
     
     if (error) throw error;
     return transformLeadFromDB(data);
+  },
+
+  async update(id: string, updates: Partial<Lead>): Promise<Lead> {
+    const dbData: Record<string, unknown> = {};
+    if (updates.name !== undefined) dbData.name = updates.name;
+    if (updates.type !== undefined) dbData.type = updates.type;
+    if (updates.contactPerson !== undefined) dbData.contact_person = updates.contactPerson;
+    if (updates.email !== undefined) dbData.email = updates.email;
+    if (updates.phone !== undefined) dbData.phone = updates.phone;
+    if (updates.address !== undefined) dbData.address = updates.address;
+    if (updates.status !== undefined) dbData.status = updates.status;
+    if (updates.source !== undefined) dbData.source = updates.source;
+    if (Object.keys(dbData).length === 0) {
+      const existing = await this.getById(id);
+      if (!existing) throw new Error('Lead not found');
+      return existing;
+    }
+    const { data, error } = await supabase
+      .from('leads')
+      .update(dbData)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return transformLeadFromDB(data);
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase.from('leads').delete().eq('id', id);
+    if (error) throw error;
   }
 };
 
