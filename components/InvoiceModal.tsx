@@ -361,7 +361,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
                     ['Check-out', (offer as any).checkOutTime],
                     ['Guests', (offer as any).guests],
                     ['Unit', offerPropertyTitle ?? '—'],
-                    ['Reservation No', (offer as any).reservationNo || (offer as any).bookingNo || '—'],
+                    ['Reservation ID', (offer as any).reservationId ?? (('roomId' in offer && 'start' in offer) ? offer.id : null) ?? reservations.find(r => String(r.id) === String(offer.id))?.id ?? '—'],
                     ['Offer No', (offer as any).offerNo ?? '—'],
                     ['Company', (offer as any).company || (offer as any).companyName],
                     ['Rate plan', (offer as any).ratePlan],
