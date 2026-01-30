@@ -7,8 +7,9 @@ import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, Bookin
 import BookingDetailsModal from './BookingDetailsModal';
 import BookingStatsTiles from './BookingStatsTiles';
 import BookingListModal from './BookingListModal';
-import SalesMapOverlay from './SalesMapOverlay';
 import { getBookingColor, getBookingBorderStyle, getBookingStyle } from '../bookingUtils';
+
+const SalesMapOverlay = React.lazy(() => import('./SalesMapOverlay'));
 
 // Helper to normalize date strings for stacking key
 const normalizeDateKey = (v: string) => {
@@ -1737,7 +1738,11 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         date={statsModalDate}
       />
 
-      <SalesMapOverlay open={isSalesMapOpen} onClose={() => setIsSalesMapOpen(false)} />
+      {isSalesMapOpen && (
+        <React.Suspense fallback={<div className="fixed inset-0 z-50 bg-[#0D1117] flex items-center justify-center text-gray-500">Loading map…</div>}>
+          <SalesMapOverlay open={isSalesMapOpen} onClose={() => setIsSalesMapOpen(false)} />
+        </React.Suspense>
+      )}
     </div>
   );
 };
