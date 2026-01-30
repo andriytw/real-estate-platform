@@ -1,5 +1,6 @@
 -- Fix: reservations table has price_per_night_net (not price_per_night).
--- Recreate mark_invoice_paid_and_confirm_booking to use reservation columns that actually exist.
+-- Fix: bookings.company_id is NOT NULL — use default company from public.companies.
+-- Recreate mark_invoice_paid_and_confirm_booking with all required columns.
 -- Run in Supabase SQL Editor.
 
 CREATE OR REPLACE FUNCTION public.mark_invoice_paid_and_confirm_booking(
@@ -13,6 +14,7 @@ DECLARE
   v_property_id UUID;
   v_start_date DATE;
   v_end_date DATE;
+  v_company_id UUID;
 BEGIN
   SELECT * INTO v_invoice FROM public.invoices WHERE id = p_invoice_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'Invoice not found: %', p_invoice_id; END IF;
@@ -30,6 +32,11 @@ BEGIN
   SELECT * INTO v_reservation FROM public.reservations WHERE id = v_offer.reservation_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'Reservation not found: %', v_offer.reservation_id; END IF;
 
+  SELECT id INTO v_company_id FROM public.companies ORDER BY created_at ASC LIMIT 1;
+  IF v_company_id IS NULL THEN
+    RAISE EXCEPTION 'No company found in public.companies. Create a company first.';
+  END IF;
+
   v_property_id := v_reservation.property_id;
   v_start_date := v_reservation.start_date;
   v_end_date := v_reservation.end_date;
@@ -37,6 +44,7 @@ BEGIN
   UPDATE public.invoices SET status = 'Paid', updated_at = NOW() WHERE id = p_invoice_id;
 
   INSERT INTO public.bookings (
+    company_id,
     property_id, room_id, start_date, end_date, guest,
     check_in_time, check_out_time, status, price, balance, guests, unit, comments,
     payment_account, company, rate_plan, guarantee, cancellation_policy, no_show_policy,
@@ -44,6 +52,7 @@ BEGIN
     internal_company, client_type, price_per_night, tax_rate, total_gross, guest_list,
     source_invoice_id, source_offer_id, source_reservation_id, created_at, updated_at
   ) VALUES (
+    v_company_id,
     v_reservation.property_id,
     v_reservation.property_id::TEXT,
     v_reservation.start_date,
