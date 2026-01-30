@@ -13,9 +13,13 @@
     "@supabase/ssr": "^0.1.0",
     "@supabase/supabase-js": "^2.86.0",
     "jspdf": "^3.0.4",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.554.0",
+    "mapbox-gl": "^3.7.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-leaflet": "^4.2.1",
+    "react-map-gl": "^7.1.7",
     "three": "0.160.0"
   },
   "devDependencies": {

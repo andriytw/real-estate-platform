@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => {
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY || ''),
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || ''),
+        'process.env.NEXT_PUBLIC_MAPBOX_TOKEN': JSON.stringify(env.NEXT_PUBLIC_MAPBOX_TOKEN || env.VITE_MAPBOX_TOKEN || ''),
       },
       envPrefix: ['VITE_', 'NEXT_PUBLIC_'], // Allow both VITE_ and NEXT_PUBLIC_ prefixes
       resolve: {

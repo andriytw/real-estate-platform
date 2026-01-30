@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { RequestData, Property } from '../types';
-import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar, Search, Map } from 'lucide-react';
 import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus, Lead } from '../types';
 import BookingDetailsModal from './BookingDetailsModal';
 import BookingStatsTiles from './BookingStatsTiles';
 import BookingListModal from './BookingListModal';
+import SalesMapOverlay from './SalesMapOverlay';
 import { getBookingColor, getBookingBorderStyle, getBookingStyle } from '../bookingUtils';
 
 // Helper to normalize date strings for stacking key
@@ -95,6 +96,7 @@ const INITIAL_BOOKINGS: Booking[] = [
 
 const DAY_WIDTH = 48; // px
 const NUM_DAYS = 120; // Початкова кількість днів (4 місяці)
+const CALENDAR_HEADER_HEIGHT = 28 + 48; // h-7 + h-12 (month row + dates row)
 
 const parseDate = (dateString: string) => {
   const [year, month, day] = dateString.split('-').map(Number);
@@ -196,6 +198,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   // Stats Tiles Modal State
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [statsModalType, setStatsModalType] = useState<'checkin' | 'checkout' | 'cleaning' | 'reminder'>('checkin');
+  const [isSalesMapOpen, setIsSalesMapOpen] = useState(false);
   const [statsModalItems, setStatsModalItems] = useState<(Booking | CalendarEvent)[]>([]);
   const [statsModalDate, setStatsModalDate] = useState<Date>(new Date());
   const [statsModalTitle, setStatsModalTitle] = useState<string>('');
@@ -1034,6 +1037,14 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
          </div>
 
          <div className="flex items-center gap-3">
+            <button
+                type="button"
+                onClick={() => setIsSalesMapOpen(true)}
+                className="flex items-center gap-2 bg-[#0D1117] hover:bg-[#161B22] border border-gray-700 text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                title="Sales Map"
+            >
+                <Map className="w-4 h-4" /> Map
+            </button>
             <button 
                 onClick={handleManualAdd}
                 className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors shadow-lg shadow-emerald-900/20"
@@ -1117,7 +1128,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
          
          {/* Left Sidebar (Rooms) */}
          <div className="w-56 flex-shrink-0 border-r border-gray-800 bg-[#161B22] z-20 flex flex-col">
-            <div className="sticky top-0 z-30 border-b border-gray-800 bg-[#1C1F24] flex flex-col justify-center px-4 py-3">
+            <div
+                className="sticky top-0 z-30 border-b border-gray-800 bg-[#1C1F24] flex flex-col justify-center px-4 py-3"
+                style={{ minHeight: CALENDAR_HEADER_HEIGHT, height: CALENDAR_HEADER_HEIGHT }}
+            >
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
@@ -1723,6 +1737,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         date={statsModalDate}
       />
 
+      <SalesMapOverlay open={isSalesMapOpen} onClose={() => setIsSalesMapOpen(false)} />
     </div>
   );
 };
