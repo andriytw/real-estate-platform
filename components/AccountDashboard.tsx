@@ -346,6 +346,18 @@ const AccountDashboard: React.FC = () => {
     }
   });
   
+  // Нормалізація для перевірки дублікатів лідів по email/phone (один контакт = один лід)
+  const leadExistsByContact = (email: string, phone: string, currentLeads: Lead[]) => {
+    const normEmail = (email || '').trim().toLowerCase();
+    const normPhone = (phone || '').replace(/\s+/g, '').replace(/-/g, '');
+    if (!normEmail && !normPhone) return false;
+    return currentLeads.some(l => {
+      const le = (l.email || '').trim().toLowerCase();
+      const lp = (l.phone || '').replace(/\s+/g, '').replace(/-/g, '');
+      return (normEmail && le === normEmail) || (normPhone && lp === normPhone);
+    });
+  };
+
   // Слухати події додавання нових requests
   React.useEffect(() => {
     const handleRequestAdded = async (event: CustomEvent<RequestData>) => {
@@ -353,6 +365,8 @@ const AccountDashboard: React.FC = () => {
       const req = event.detail;
       const name = req.companyName || `${req.firstName || ''} ${req.lastName || ''}`.trim() || 'Unknown';
       try {
+        const leadsNow = await leadsService.getAll();
+        if (leadExistsByContact(req.email || '', req.phone || '', leadsNow)) return;
         const newLead = await leadsService.create({
           name,
           type: req.companyName ? 'Company' : 'Private',
@@ -1939,18 +1953,8 @@ const AccountDashboard: React.FC = () => {
             : (reservation.guest || `${reservation.firstName || ''} ${reservation.lastName || ''}`.trim());
           if (!name || !name.trim()) return;
 
-          const email = (reservation.email || '').trim().toLowerCase();
-          const phone = (reservation.phone || '').replace(/\s+/g, '').replace(/-/g, '');
-          const address = (reservation.address || '').trim().toLowerCase();
-          const norm = (s: string) => (s || '').trim().toLowerCase();
-          const exists = leads.some(l =>
-            norm(l.name) === norm(name) &&
-            norm(l.email) === email &&
-            (l.phone || '').replace(/\s+/g, '').replace(/-/g, '') === phone &&
-            norm(l.address) === address &&
-            l.type === (isCompany ? 'Company' : 'Private')
-          );
-          if (exists) return;
+          const leadsNow = await leadsService.getAll();
+          if (leadExistsByContact(reservation.email || '', reservation.phone || '', leadsNow)) return;
 
           try {
             const newLead = await leadsService.create({
@@ -2107,18 +2111,8 @@ const AccountDashboard: React.FC = () => {
       : (bookingData.guest || `${bookingData.firstName || ''} ${bookingData.lastName || ''}`.trim());
     if (!name || !name.trim()) return;
 
-    const email = (bookingData.email || '').trim().toLowerCase();
-    const phone = (bookingData.phone || '').replace(/\s+/g, '').replace(/-/g, '');
-    const address = (bookingData.address || '').trim().toLowerCase();
-    const norm = (s: string) => (s || '').trim().toLowerCase();
-    const exists = leads.some(l =>
-      norm(l.name) === norm(name) &&
-      norm(l.email) === email &&
-      (l.phone || '').replace(/\s+/g, '').replace(/-/g, '') === phone &&
-      norm(l.address) === address &&
-      l.type === (isCompany ? 'Company' : 'Private')
-    );
-    if (exists) return;
+    const leadsNow = await leadsService.getAll();
+    if (leadExistsByContact(bookingData.email || '', bookingData.phone || '', leadsNow)) return;
 
     try {
       const newLead = await leadsService.create({
