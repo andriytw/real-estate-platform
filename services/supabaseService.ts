@@ -1532,16 +1532,17 @@ export const invoicesService = {
     return (data || []).map(transformInvoiceFromDB);
   },
 
-  /** Upload PDF to invoice-pdfs bucket; returns public or signed URL for file_url */
+  /** Upload PDF to invoice-pdfs bucket; returns public or signed URL for file_url. Keeps original filename (only / and \ sanitized for path safety). */
   async uploadInvoicePdf(file: File, pathPrefix?: string): Promise<string> {
     const bucket = 'invoice-pdfs';
+    const originalName = (file.name || 'document.pdf').replace(/[\0/\\]/g, '_').slice(0, 200).trim() || 'document.pdf';
     const path = pathPrefix
-      ? `${pathPrefix}/${Date.now()}-${file.name}`
-      : `${Date.now()}-${file.name}`;
-    const { data, error } = await supabase.storage
+      ? `${pathPrefix}/${Date.now()}-${originalName}`
+      : `${Date.now()}-${originalName}`;
+    const { error } = await supabase.storage
       .from(bucket)
       .upload(path, file, { cacheControl: '3600', upsert: false });
-    if (error) throw error;
+    if (error) throw new Error(error.message || 'Storage upload failed');
     const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
     return urlData.publicUrl;
   }

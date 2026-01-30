@@ -261,9 +261,12 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
       try {
         const prefix = isAddInvoiceToProformaMode && proforma ? `proforma-${proforma.id}` : 'proforma';
         fileUrl = await invoicesService.uploadInvoicePdf(pdfFile, prefix);
-      } catch (e) {
+      } catch (e: any) {
         console.error('PDF upload failed:', e);
-        alert('Failed to upload PDF. Please try again.');
+        const msg = e?.message || String(e);
+        alert(msg.includes('Bucket') || msg.includes('policy') || msg.includes('row-level')
+          ? `PDF upload failed: ${msg}. Create Storage bucket "invoice-pdfs" in Supabase Dashboard and add policy for uploads.`
+          : `Failed to upload PDF. ${msg || 'Please try again.'}`);
         setUploading(false);
         return;
       }
@@ -361,7 +364,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
                     ['Check-out', (offer as any).checkOutTime],
                     ['Guests', (offer as any).guests],
                     ['Unit', offerPropertyTitle ?? '—'],
-                    ['Reservation ID', (offer as any).reservationId ?? (('roomId' in offer && 'start' in offer) ? offer.id : null) ?? reservations.find(r => String(r.id) === String(offer.id))?.id ?? '—'],
+                    ['Reservation No', (offer as any).reservationNo || (offer as any).bookingNo || (reservations.find(r => String(r.id) === String((offer as any).reservationId))?.reservationNo) || (reservations.find(r => String(r.id) === String(offer.id))?.reservationNo) || '—'],
                     ['Offer No', (offer as any).offerNo ?? '—'],
                     ['Company', (offer as any).company || (offer as any).companyName],
                     ['Rate plan', (offer as any).ratePlan],
