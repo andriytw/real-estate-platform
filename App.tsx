@@ -13,7 +13,9 @@ import LoginPage from './components/LoginPage';
 import RegisterPage from './components/RegisterPage';
 import WorkerMobileApp from './components/WorkerMobileApp';
 import AdminTasksBoard from './components/AdminTasksBoard';
-import KanbanBoard from './components/kanban/KanbanBoard';
+
+// Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks view.
+const KanbanBoard = React.lazy(() => import('./components/kanban/KanbanBoard'));
 import { WorkerProvider, useWorker } from './contexts/WorkerContext';
 import { propertiesService } from './services/supabaseService';
 import { Property, FilterState, RequestData } from './types';
@@ -544,7 +546,11 @@ const AppContent: React.FC = () => {
     // Kanban Board View (Tasks)
     if (currentView === 'tasks') {
       if (worker) {
-        return <KanbanBoard />;
+        return (
+          <React.Suspense fallback={<div className="flex items-center justify-center min-h-screen text-white">Loading tasks…</div>}>
+            <KanbanBoard />
+          </React.Suspense>
+        );
       } else {
         return <LoginPage onLoginSuccess={() => setCurrentView('tasks')} />;
       }

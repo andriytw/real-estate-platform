@@ -13,8 +13,11 @@ import LeadEditModal from './LeadEditModal';
 import PropertyAddModal from './PropertyAddModal';
 import RequestModal from './RequestModal';
 import BankingDashboard from './BankingDashboard';
-import KanbanBoard from './kanban/KanbanBoard';
 import UserManagement from './admin/UserManagement';
+
+// Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks tab.
+// This avoids "X is not a constructor" on /account (CJS/ESM + esbuild minification issue with dnd).
+const KanbanBoard = React.lazy(() => import('./kanban/KanbanBoard'));
 import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, leadsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem } from '../services/supabaseService';
 import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation } from '../types';
 import { MOCK_PROPERTIES } from '../constants';
@@ -5171,7 +5174,9 @@ ${internalCompany} Team`;
   const renderTasksContent = () => {
     return (
       <div className="h-full w-full">
-        <KanbanBoard />
+        <React.Suspense fallback={<div className="flex items-center justify-center h-full text-gray-400">Loading tasks…</div>}>
+          <KanbanBoard />
+        </React.Suspense>
       </div>
     );
   };
