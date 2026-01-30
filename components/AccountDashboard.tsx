@@ -2167,7 +2167,7 @@ const AccountDashboard: React.FC = () => {
 
   const openManageModal = (reservation: ReservationData) => {
       setViewingOffer(false);
-      setSelectedReservation(reservation);
+      setSelectedReservation({ ...reservation, isReservation: true } as ReservationData & { isReservation: true });
       setIsManageModalOpen(true);
   };
 
@@ -5220,7 +5220,7 @@ ${internalCompany} Team`;
                                 const linkedOffer = offers.find(o => o.reservationId != null && (String(o.reservationId) === String(res.id)));
                                 const offerNoDisplay = linkedOffer ? (linkedOffer.offerNo || linkedOffer.id) : '—';
                                 const resStatusLower = String(res.status).toLowerCase();
-                                const isClosed = ['won', 'lost', 'cancelled'].includes(resStatusLower);
+                                const isLostOrCancelled = ['lost', 'cancelled'].includes(resStatusLower);
                                 const getReservationStatusBadge = () => {
                                     if (res.status === BookingStatus.RESERVED || resStatusLower === 'open') return 'bg-blue-500/20 text-blue-500';
                                     if (res.status === BookingStatus.OFFER_SENT || resStatusLower === 'offered') return 'bg-blue-500/20 text-blue-500 border border-dashed';
@@ -5231,10 +5231,10 @@ ${internalCompany} Team`;
                                     return 'bg-gray-500/20 text-gray-400';
                                 };
                                 return (
-                                <tr key={res.id} className={`hover:bg-[#16181D] ${isClosed ? 'opacity-70' : ''}`}>
-                                    <td className={`p-4 ${isClosed ? 'text-gray-500' : ''}`}>
+                                <tr key={res.id} className={`hover:bg-[#16181D] ${isLostOrCancelled ? 'opacity-70' : ''}`}>
+                                    <td className={`p-4 ${isLostOrCancelled ? 'text-gray-500' : ''}`}>
                                         <div className="flex items-center gap-2">
-                                            <span className={`font-mono text-sm truncate max-w-[140px] ${isClosed ? 'text-gray-500 line-through' : 'text-gray-300'}`} title="Reservation number or ID">
+                                            <span className={`font-mono text-sm truncate max-w-[140px] ${isLostOrCancelled ? 'text-gray-500 line-through' : 'text-gray-300'}`} title="Reservation number or ID">
                                                 {res.reservationNo || String(res.id)}
                                             </span>
                                             <button
@@ -5250,9 +5250,9 @@ ${internalCompany} Team`;
                                             </button>
                                         </div>
                                     </td>
-                                    <td className={`p-4 ${isClosed ? 'text-gray-500' : ''}`}>
+                                    <td className={`p-4 ${isLostOrCancelled ? 'text-gray-500' : ''}`}>
                                         <div className="flex items-center gap-2">
-                                            <span className={`font-mono text-sm ${isClosed ? 'text-gray-500' : 'text-gray-300'}`} title={linkedOffer ? 'Offer number' : undefined}>
+                                            <span className={`font-mono text-sm ${isLostOrCancelled ? 'text-gray-500' : 'text-gray-300'}`} title={linkedOffer ? 'Offer number' : undefined}>
                                                 {offerNoDisplay}
                                             </span>
                                             {offerNoDisplay !== '—' && (
@@ -5270,15 +5270,15 @@ ${internalCompany} Team`;
                                             )}
                                         </div>
                                     </td>
-                                    <td className={`p-4 font-bold ${isClosed ? 'text-gray-500 line-through' : ''}`}>{res.guest}</td>
-                                    <td className={`p-4 ${isClosed ? 'text-gray-500' : ''}`}>{getPropertyNameById(res.roomId)}</td>
-                                    <td className={`p-4 ${isClosed ? 'text-gray-500' : ''}`}>{res.start} - {res.end}</td>
+                                    <td className={`p-4 font-bold ${isLostOrCancelled ? 'text-gray-500 line-through' : ''}`}>{res.guest}</td>
+                                    <td className={`p-4 ${isLostOrCancelled ? 'text-gray-500' : ''}`}>{getPropertyNameById(res.roomId)}</td>
+                                    <td className={`p-4 ${isLostOrCancelled ? 'text-gray-500' : ''}`}>{res.start} - {res.end}</td>
                                     <td className="p-4">
                                         <span className={`px-2 py-1 rounded text-xs font-bold ${getReservationStatusBadge()}`}>
                                             {res.status}
                                         </span>
                                     </td>
-                                    <td className={`p-4 text-right font-mono ${isClosed ? 'text-gray-500' : ''}`}>{res.price}</td>
+                                    <td className={`p-4 text-right font-mono ${isLostOrCancelled ? 'text-gray-500' : ''}`}>{res.price}</td>
                                     <td className="p-4 text-center">
                                         <button 
                                             onClick={() => openManageModal(res)}
@@ -5323,7 +5323,8 @@ ${internalCompany} Team`;
                             {offers.map(offer => {
                                 const isDraft = offer.status === 'Draft';
                                 const isInvoiced = offer.status === 'Invoiced';
-                                const isClosed = offer.status === 'Accepted' || offer.status === 'Lost';
+                                const isLost = offer.status === 'Lost';
+                                const isOfferClosedForActions = offer.status === 'Accepted' || offer.status === 'Lost';
                                 
                                 // Find linked booking by matching dates, client, and property
                                 const [offerStart, offerEnd] = offer.dates.split(' to ');
@@ -5345,10 +5346,10 @@ ${internalCompany} Team`;
                                 };
                                 
                                 return (
-                                    <tr key={offer.id} className={`hover:bg-[#16181D] ${isDraft || isInvoiced || isClosed ? 'opacity-70' : ''}`}>
-                                        <td className={`p-4 ${isClosed ? 'text-gray-500' : ''}`}>
+                                    <tr key={offer.id} className={`hover:bg-[#16181D] ${isDraft || isInvoiced || isLost ? 'opacity-70' : ''}`}>
+                                        <td className={`p-4 ${isLost ? 'text-gray-500' : ''}`}>
                                             <div className="flex items-center gap-2">
-                                                <span className={`font-mono text-sm ${isClosed ? 'text-gray-500' : 'text-gray-300'}`}>
+                                                <span className={`font-mono text-sm ${isLost ? 'text-gray-500' : 'text-gray-300'}`}>
                                                     {linkedBooking?.bookingNo || '—'}
                                                 </span>
                                                 {linkedBooking?.bookingNo && (
@@ -5366,15 +5367,15 @@ ${internalCompany} Team`;
                                                 )}
                                             </div>
                                         </td>
-                                        <td className={`p-4 font-bold ${isClosed ? 'text-gray-500 line-through' : ''}`}>{offer.clientName}</td>
-                                        <td className={`p-4 ${isClosed ? 'text-gray-500' : ''}`}>{getPropertyNameById(offer.propertyId)}</td>
-                                        <td className={`p-4 ${isClosed ? 'text-gray-500' : ''}`}>{offer.dates}</td>
+                                        <td className={`p-4 font-bold ${isLost ? 'text-gray-500 line-through' : ''}`}>{offer.clientName}</td>
+                                        <td className={`p-4 ${isLost ? 'text-gray-500' : ''}`}>{getPropertyNameById(offer.propertyId)}</td>
+                                        <td className={`p-4 ${isLost ? 'text-gray-500' : ''}`}>{offer.dates}</td>
                                         <td className="p-4">
                                             <span className={`px-2 py-1 rounded text-xs font-bold border border-dashed ${getStatusStyle()}`}>
                                                 {offer.status}
                                             </span>
                                         </td>
-                                        <td className={`p-4 text-right font-mono ${isClosed ? 'text-gray-500' : ''}`}>{offer.price}</td>
+                                        <td className={`p-4 text-right font-mono ${isLost ? 'text-gray-500' : ''}`}>{offer.price}</td>
                                         <td className="p-4 text-center">
                                             <div className="flex gap-2 justify-center">
                                                 <button 
@@ -5383,7 +5384,7 @@ ${internalCompany} Team`;
                                                 >
                                                     View
                                                 </button>
-                                                {!isClosed && isDraft && (
+                                                {!isOfferClosedForActions && isDraft && (
                                                     <button 
                                                         onClick={() => {
                                                             setOffers(prev => prev.map(o => 
@@ -5395,7 +5396,7 @@ ${internalCompany} Team`;
                                                         Send Offer
                                                     </button>
                                                 )}
-                                                {!isClosed && offer.status === 'Sent' && (
+                                                {!isOfferClosedForActions && offer.status === 'Sent' && (
                                                     <button 
                                                         onClick={() => handleCreateInvoiceClick(offer)}
                                                         className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
@@ -5403,7 +5404,7 @@ ${internalCompany} Team`;
                                                         Add Proforma
                                                     </button>
                                                 )}
-                                                {!isClosed && isInvoiced && (
+                                                {!isOfferClosedForActions && isInvoiced && (
                                                     <span className="px-3 py-1.5 text-gray-500 text-xs">Proforma added</span>
                                                 )}
                                                 <button 
