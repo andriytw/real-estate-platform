@@ -5451,6 +5451,18 @@ ${internalCompany} Team`;
     }
 
     if (salesTab === 'proformas') {
+        const isProformaLost = (p: InvoiceData): boolean => {
+            if (p.reservationId) {
+                const res = reservations.find(r => String(r.id) === String(p.reservationId));
+                return res ? (res.status === 'lost' || res.status === 'cancelled') : false;
+            }
+            const offerId = p.offerId || p.offerIdSource;
+            if (offerId) {
+                const off = offers.find(o => String(o.id) === String(offerId));
+                return off ? (off.status === 'Lost') : false;
+            }
+            return false;
+        };
         return (
             <div className="p-8 bg-[#0D1117] text-white">
                 <h2 className="text-2xl font-bold mb-6">Payments</h2>
@@ -5468,9 +5480,11 @@ ${internalCompany} Team`;
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-800">
-                            {proformas.map(proforma => (
+                            {proformas.map(proforma => {
+                                const lost = isProformaLost(proforma);
+                                return (
                                 <React.Fragment key={proforma.id}>
-                                    <tr className="hover:bg-[#16181D]">
+                                    <tr className={`hover:bg-[#16181D] ${lost ? 'opacity-70 text-gray-500' : ''}`}>
                                         <td className="p-4">
                                             <button
                                                 type="button"
@@ -5484,8 +5498,8 @@ ${internalCompany} Team`;
                                                 )}
                                             </button>
                                         </td>
-                                        <td className="p-4 font-mono">{proforma.invoiceNumber}</td>
-                                        <td className="p-4">{proforma.clientName}</td>
+                                        <td className={`p-4 font-mono ${lost ? 'line-through text-gray-500' : ''}`}>{proforma.invoiceNumber}</td>
+                                        <td className={`p-4 ${lost ? 'line-through text-gray-500' : ''}`}>{proforma.clientName}</td>
                                         <td className="p-4">{proforma.date}</td>
                                         <td className="p-4">€{proforma.totalGross?.toFixed(2) ?? '—'}</td>
                                         <td className="p-4">
@@ -5560,7 +5574,8 @@ ${internalCompany} Team`;
                                         ))
                                     )}
                                 </React.Fragment>
-                            ))}
+                                );
+                            })}
                             {proformas.length === 0 && (
                                 <tr>
                                     <td colSpan={7} className="p-8 text-center text-gray-500">No payments yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
