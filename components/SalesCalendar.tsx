@@ -1117,6 +1117,18 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
          
          {/* Left Sidebar (Rooms) */}
          <div className="w-56 flex-shrink-0 border-r border-gray-800 bg-[#161B22] z-20 flex flex-col">
+            <div className="sticky top-0 z-30 border-b border-gray-800 bg-[#1C1F24] flex flex-col justify-center px-4 py-3">
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Пошук об'єктів..."
+                        className="w-full pl-10 pr-3 py-2 bg-[#0D1117] border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+                    />
+                </div>
+            </div>
             <div className="overflow-y-auto flex-1 scrollbar-hide">
                 {filteredRooms.map(room => {
                     const BASE_ROW_HEIGHT = 64;
