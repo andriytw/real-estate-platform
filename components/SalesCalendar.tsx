@@ -166,6 +166,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const [totalDays, setTotalDays] = useState(NUM_DAYS);
   const [cityFilter, setCityFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const [minPeopleFilter, setMinPeopleFilter] = useState<number | null>(null);
+  const [minRoomsFilter, setMinRoomsFilter] = useState<number | null>(null);
   const [hoveredBooking, setHoveredBooking] = useState<{booking: Booking, x: number, y: number} | null>(null);
   
   // Додати state для поточного видимого місяця
@@ -534,6 +536,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         name: p.title,
         city: p.city,
         details: p.address || p.fullAddress || '',
+        rooms: p.details?.rooms ?? p.rooms ?? 0,
+        beds: p.details?.beds ?? 0,
       })),
     [properties]
   );
@@ -554,9 +558,14 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         r.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (r.details && r.details.toLowerCase().includes(searchQuery.toLowerCase()));
       
-      return matchesCity && matchesSearch;
+      // People/beds filter (ліжка)
+      const matchesPeople = minPeopleFilter === null || (r.beds >= minPeopleFilter);
+      // Rooms filter (кімнати)
+      const matchesRooms = minRoomsFilter === null || (r.rooms >= minRoomsFilter);
+      
+      return matchesCity && matchesSearch && matchesPeople && matchesRooms;
     });
-  }, [roomsFromProperties, cityFilter, searchQuery]);
+  }, [roomsFromProperties, cityFilter, searchQuery, minPeopleFilter, minRoomsFilter]);
 
   const getRoomNameById = (roomId: string | undefined | null) => {
     if (!roomId) return '';
@@ -1031,19 +1040,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
             >
                 <Plus className="w-4 h-4" /> Add Booking
             </button>
-            
-            <div className="flex items-center gap-2 border-l border-gray-700 pl-3">
-                <Filter className="w-4 h-4 text-gray-400" />
-                <select 
-                    value={cityFilter}
-                    onChange={(e) => setCityFilter(e.target.value)}
-                    className="bg-[#0D1117] border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none"
-                >
-                    {cities.map(city => (
-                        <option key={city} value={city}>{city === 'ALL' ? 'All Cities' : city}</option>
-                    ))}
-                </select>
-            </div>
          </div>
       </div>
 
@@ -1059,33 +1055,80 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         />
       </div>
 
+      {/* Filters: under tiles */}
+      <div className="px-4 py-3 bg-[#0D1117] border-b border-gray-800 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <select
+            value={cityFilter}
+            onChange={(e) => setCityFilter(e.target.value)}
+            className="bg-[#161B22] border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none min-w-[140px]"
+          >
+            {cities.map(city => (
+              <option key={city} value={city}>{city === 'ALL' ? 'Усі міста' : city}</option>
+            ))}
+          </select>
+        </div>
+        <div className="relative flex-1 min-w-[160px] max-w-[220px]">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Пошук об'єктів..."
+            className="w-full pl-9 pr-3 py-2 bg-[#161B22] border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-emerald-500"
+          />
+        </div>
+        <select
+          value={minRoomsFilter === null ? '' : minRoomsFilter}
+          onChange={(e) => setMinRoomsFilter(e.target.value === '' ? null : Number(e.target.value))}
+          className="bg-[#161B22] border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none min-w-[100px]"
+          title="Кімнати"
+        >
+          <option value="">Кімнати: усі</option>
+          <option value={1}>1+</option>
+          <option value={2}>2+</option>
+          <option value={3}>3+</option>
+          <option value={4}>4+</option>
+        </select>
+        <select
+          value={minPeopleFilter === null ? '' : minPeopleFilter}
+          onChange={(e) => setMinPeopleFilter(e.target.value === '' ? null : Number(e.target.value))}
+          className="bg-[#161B22] border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none min-w-[100px]"
+          title="Ліжка"
+        >
+          <option value="">Ліжка: усі</option>
+          <option value={1}>1+</option>
+          <option value={2}>2+</option>
+          <option value={3}>3+</option>
+          <option value={4}>4+</option>
+        </select>
+        <span className="text-xs text-gray-400 whitespace-nowrap">
+          {filteredRooms.length === 0 ? (
+            <span className="text-red-400">Нічого не знайдено</span>
+          ) : (
+            <>{filteredRooms.length} {filteredRooms.length === 1 ? 'об\'єкт' : 'об\'єктів'}</>
+          )}
+        </span>
+      </div>
+
       {/* Main Grid Area */}
       <div className="flex-1 flex overflow-hidden relative">
          
          {/* Left Sidebar (Rooms) */}
          <div className="w-56 flex-shrink-0 border-r border-gray-800 bg-[#161B22] z-20 flex flex-col">
-            <div className="sticky top-0 z-30 h-[76px] border-b border-gray-800 bg-[#1C1F24] flex flex-col justify-center px-4">
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search properties..."
-                        className="w-full pl-10 pr-3 py-2 bg-[#0D1117] border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                    />
-                </div>
-                <div className="mt-1 text-xs text-gray-400">
-                    {filteredRooms.length === 0 ? (
-                        <span className="text-red-400">No results</span>
-                    ) : (
-                        <span>{filteredRooms.length} {filteredRooms.length === 1 ? 'property' : 'properties'}</span>
-                    )}
-                </div>
-            </div>
             <div className="overflow-y-auto flex-1 scrollbar-hide">
-                {filteredRooms.map(room => (
-                    <div key={room.id} className="h-16 border-b border-gray-800 flex flex-col justify-center px-4 hover:bg-[#1C1F24] transition-colors group relative">
+                {filteredRooms.map(room => {
+                    const BASE_ROW_HEIGHT = 64;
+                    const maxStack = maxStackForRoomId.get(room.id) ?? 0;
+                    const extraHeight = maxStack > 0 ? (maxStack - 1) * (STRIPE_H + STRIPE_GAP) : 0;
+                    const rowMinHeight = BASE_ROW_HEIGHT + extraHeight;
+                    return (
+                    <div
+                        key={room.id}
+                        className="border-b border-gray-800 flex flex-col justify-center px-4 hover:bg-[#1C1F24] transition-colors group relative"
+                        style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
+                    >
                         <span className="text-sm font-bold text-white truncate">{room.name}</span>
                         {room.details && (
                             <span className="text-xs text-gray-500 truncate">{room.details}</span>
@@ -1094,7 +1137,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                             <span className="text-xs text-gray-400 truncate">{room.city}</span>
                         )}
                     </div>
-                ))}
+                    );
+                })}
             </div>
          </div>
 
