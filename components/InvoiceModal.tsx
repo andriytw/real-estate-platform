@@ -3,7 +3,7 @@ import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { X, Save, FileText, Download, Edit2, Check, Upload } from 'lucide-react';
 import { OfferData, InvoiceData, CompanyDetails, ReservationData } from '../types';
 import { INTERNAL_COMPANIES_DATA } from '../constants';
-import { invoicesService } from '../services/supabaseService';
+import { invoicesService, propertiesService } from '../services/supabaseService';
 
 interface InvoiceModalProps {
   isOpen: boolean;
@@ -34,6 +34,22 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
   /** Blob URL for PDF preview in Add Proforma / Add Invoice */
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  /** Resolved apartment/property title for the offer (Unit row) */
+  const [offerPropertyTitle, setOfferPropertyTitle] = useState<string | null>(null);
+
+  // Resolve property title when offer has propertyId/roomId
+  useEffect(() => {
+    if (!isOpen || !offer) {
+      setOfferPropertyTitle(null);
+      return;
+    }
+    const id = offer.propertyId || (offer as any).roomId;
+    if (!id) {
+      setOfferPropertyTitle(null);
+      return;
+    }
+    propertiesService.getById(String(id)).then(p => setOfferPropertyTitle(p?.title ?? null)).catch(() => setOfferPropertyTitle(null));
+  }, [isOpen, offer]);
 
   // Create blob URL for PDF preview immediately so iframe shows on first paint
   useLayoutEffect(() => {
@@ -344,8 +360,9 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
                     ['Check-in', (offer as any).checkInTime],
                     ['Check-out', (offer as any).checkOutTime],
                     ['Guests', (offer as any).guests],
-                    ['Unit', (offer as any).unit || (offer as any).propertyId || (offer as any).roomId],
-                    ['Res/Offer No', (offer as any).reservationNo || (offer as any).offerNo || (offer as any).bookingNo],
+                    ['Unit', offerPropertyTitle ?? '—'],
+                    ['Reservation No', (offer as any).reservationNo || (offer as any).bookingNo || '—'],
+                    ['Offer No', (offer as any).offerNo ?? '—'],
                     ['Company', (offer as any).company || (offer as any).companyName],
                     ['Rate plan', (offer as any).ratePlan],
                     ['Guarantee', (offer as any).guarantee],
