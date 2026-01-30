@@ -9,8 +9,7 @@ import BookingStatsTiles from './BookingStatsTiles';
 import BookingListModal from './BookingListModal';
 import { getBookingColor, getBookingBorderStyle, getBookingStyle } from '../bookingUtils';
 
-const SalesMapOverlay = React.lazy(() => import('./SalesMapOverlay'));
-
+// Sales Map overlay: loaded only on first Map button click (no React.lazy to avoid module eval on page load)
 // Helper to normalize date strings for stacking key
 const normalizeDateKey = (v: string) => {
   if (!v) return '';
@@ -199,6 +198,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   // Stats Tiles Modal State
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [statsModalType, setStatsModalType] = useState<'checkin' | 'checkout' | 'cleaning' | 'reminder'>('checkin');
+  const [SalesMapOverlayComp, setSalesMapOverlayComp] = useState<null | React.ComponentType<any>>(null);
   const [isSalesMapOpen, setIsSalesMapOpen] = useState(false);
   const [statsModalItems, setStatsModalItems] = useState<(Booking | CalendarEvent)[]>([]);
   const [statsModalDate, setStatsModalDate] = useState<Date>(new Date());
@@ -1040,7 +1040,13 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
          <div className="flex items-center gap-3">
             <button
                 type="button"
-                onClick={() => setIsSalesMapOpen(true)}
+                onClick={async () => {
+                  if (!SalesMapOverlayComp) {
+                    const mod = await import('./SalesMapOverlay');
+                    setSalesMapOverlayComp(() => mod.default);
+                  }
+                  setIsSalesMapOpen(true);
+                }}
                 className="flex items-center gap-2 bg-[#0D1117] hover:bg-[#161B22] border border-gray-700 text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                 title="Sales Map"
             >
@@ -1738,11 +1744,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         date={statsModalDate}
       />
 
-      {isSalesMapOpen && (
-        <React.Suspense fallback={<div className="fixed inset-0 z-50 bg-[#0D1117] flex items-center justify-center text-gray-500">Loading map…</div>}>
-          <SalesMapOverlay open={isSalesMapOpen} onClose={() => setIsSalesMapOpen(false)} />
-        </React.Suspense>
-      )}
+      {SalesMapOverlayComp && isSalesMapOpen ? (
+        <SalesMapOverlayComp open={true} onClose={() => setIsSalesMapOpen(false)} />
+      ) : null}
     </div>
   );
 };

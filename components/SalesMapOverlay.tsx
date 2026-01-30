@@ -22,7 +22,6 @@ const SalesMapOverlay: React.FC<SalesMapOverlayProps> = ({ open, onClose }) => {
   const mapInstanceRef = useRef<any>(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
-  const [leafletError, setLeafletError] = useState<string | null>(null);
   const token = open ? getMapboxToken() : '';
 
   useEffect(() => {
@@ -38,7 +37,6 @@ const SalesMapOverlay: React.FC<SalesMapOverlayProps> = ({ open, onClose }) => {
     if (!open) {
       setMapReady(false);
       setMapError(null);
-      setLeafletError(null);
       if (mapInstanceRef.current) {
         try {
           mapInstanceRef.current.remove();
@@ -48,12 +46,16 @@ const SalesMapOverlay: React.FC<SalesMapOverlayProps> = ({ open, onClose }) => {
       return;
     }
     setMapError(null);
-    setLeafletError(null);
   }, [open]);
 
-  // Mapbox: only in useEffect, only when open && token, client-only
+  // Mapbox only: dynamic import inside useEffect, client-only
   useEffect(() => {
-    if (!open || !token || typeof window === 'undefined') {
+    if (!open || typeof window === 'undefined') {
+      setMapReady(false);
+      return;
+    }
+    if (!token) {
+      setMapError('Mapbox token missing');
       setMapReady(false);
       return;
     }
@@ -118,86 +120,27 @@ const SalesMapOverlay: React.FC<SalesMapOverlayProps> = ({ open, onClose }) => {
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 relative">
-        {token ? (
-          <>
-            <div ref={mapContainerRef} className="absolute inset-0 w-full h-full bg-[#111315]" />
-            {mapError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#0D1117]/95 p-4">
-                <div className="text-center max-w-md">
-                  <p className="text-red-400 font-medium mb-2">Map failed to load</p>
-                  <p className="text-gray-400 text-sm break-words">{mapError}</p>
-                  <p className="text-gray-500 text-xs mt-2">Calendar is unaffected. Close overlay to continue.</p>
-                </div>
-              </div>
-            )}
-            {!mapReady && !mapError && (
-              <div className="absolute inset-0 flex items-center justify-center text-gray-500 bg-[#111315]">Loading map…</div>
-            )}
-          </>
-        ) : (
-          <LeafletFallbackMap onError={setLeafletError} leafletError={leafletError} />
+      <div className="flex-1 min-h-0 relative bg-[#111315]">
+        <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
+        {/* Dark placeholder when no token or map failed */}
+        {(!token || mapError) && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-[#0D1117] to-[#161B22] p-4">
+            <div className="text-center max-w-md">
+              <p className="text-gray-400 font-medium mb-2">
+                {!token ? 'Mapbox token missing' : 'Map failed to load'}
+              </p>
+              {mapError && <p className="text-gray-500 text-sm break-words mb-2">{mapError}</p>}
+              <p className="text-gray-500 text-xs">Set NEXT_PUBLIC_MAPBOX_TOKEN or VITE_MAPBOX_TOKEN in .env</p>
+              <p className="text-gray-600 text-xs mt-2">Calendar is unaffected. Close overlay to continue.</p>
+            </div>
+          </div>
+        )}
+        {token && !mapError && !mapReady && (
+          <div className="absolute inset-0 flex items-center justify-center text-gray-500 bg-[#111315]">
+            Loading map…
+          </div>
         )}
       </div>
-    </div>
-  );
-};
-
-interface LeafletFallbackMapProps {
-  onError: (msg: string | null) => void;
-  leafletError: string | null;
-}
-
-const LeafletFallbackMap: React.FC<LeafletFallbackMapProps> = ({ onError, leafletError }) => {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<any>(null);
-
-  useEffect(() => {
-    if (!mapRef.current || typeof window === 'undefined') return;
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        await import('leaflet/dist/leaflet.css');
-        const L = await import('leaflet');
-        const lib = L.default ?? L;
-        if (cancelled || !mapRef.current) return;
-        const map = lib.map(mapRef.current).setView([BERLIN_CENTER.lat, BERLIN_CENTER.lng], DEFAULT_ZOOM);
-        lib.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-          attribution: '&copy; OpenStreetMap &copy; CARTO',
-          subdomains: 'abcd',
-          maxZoom: 19,
-        }).addTo(map);
-        mapInstanceRef.current = map;
-        onError(null);
-      } catch (e) {
-        if (!cancelled) onError(e instanceof Error ? e.message : String(e));
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (mapInstanceRef.current) {
-        try {
-          mapInstanceRef.current.remove();
-        } catch (_) {}
-        mapInstanceRef.current = null;
-      }
-    };
-  }, [onError]);
-
-  return (
-    <div className="w-full h-full relative bg-[#111315]">
-      <div ref={mapRef} className="absolute inset-0 w-full h-full" />
-      {leafletError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#0D1117]/95 p-4">
-          <div className="text-center max-w-md">
-            <p className="text-gray-400 text-sm">No Mapbox token. Set NEXT_PUBLIC_MAPBOX_TOKEN or VITE_MAPBOX_TOKEN.</p>
-            <p className="text-gray-500 text-xs mt-2">Leaflet fallback: {leafletError}</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
