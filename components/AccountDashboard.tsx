@@ -2479,6 +2479,152 @@ ${internalCompany} Team`;
       }
     }
   };
+
+  const handleDeleteProforma = async (proforma: InvoiceData) => {
+    if (!window.confirm(`Видалити проформу ${proforma.invoiceNumber}?`)) return;
+    try {
+      await invoicesService.delete(proforma.id);
+      setProformas(prev => prev.filter(p => p.id !== proforma.id));
+      setExpandedProformaIds(prev => { const next = new Set(prev); next.delete(proforma.id); return next; });
+      setProformaChildInvoices(prev => { const next = { ...prev }; delete next[proforma.id]; return next; });
+    } catch (e) {
+      console.error('Error deleting proforma:', e);
+      alert('Не вдалося видалити проформу.');
+    }
+  };
+
+  const handleDeleteInvoice = async (inv: InvoiceData, proformaId: string) => {
+    if (!window.confirm(`Видалити інвойс ${inv.invoiceNumber}?`)) return;
+    try {
+      await invoicesService.delete(inv.id);
+      setProformaChildInvoices(prev => ({
+        ...prev,
+        [proformaId]: (prev[proformaId] ?? []).filter(i => i.id !== inv.id)
+      }));
+    } catch (e) {
+      console.error('Error deleting invoice:', e);
+      alert('Не вдалося видалити інвойс.');
+    }
+  };
+
+  const handleConfirmProformaPayment = async (proforma: InvoiceData) => {
+    if (proforma.status === 'Paid') return;
+    const offerId = proforma.offerId || proforma.offerIdSource;
+    if (!offerId) {
+      alert('Щоб підтвердити оплату, проформа має бути прив’язана до оффера. Додайте проформу з розділу Оффери (Offers).');
+      return;
+    }
+    if (!window.confirm(`Підтвердити оплату проформи ${proforma.invoiceNumber}? Буде створено підтверджене бронювання.`)) return;
+    try {
+      const newBookingId = await markInvoicePaidAndConfirmBooking(proforma.id);
+      const reservationsData = await reservationsService.getAll();
+      const transformedReservations: ReservationData[] = reservationsData.map(res => ({
+        id: res.id as any,
+        reservationNo: res.reservationNo,
+        roomId: res.propertyId,
+        propertyId: res.propertyId,
+        start: res.startDate,
+        end: res.endDate,
+        guest: res.leadLabel || `${res.clientFirstName || ''} ${res.clientLastName || ''}`.trim() || 'Guest',
+        color: getBookingStyle(res.status as any),
+        checkInTime: '15:00',
+        checkOutTime: '11:00',
+        status: res.status as any,
+        price: res.totalGross ? `${res.totalGross} EUR` : '0.00 EUR',
+        balance: '0.00 EUR',
+        guests: res.guestsCount ? `${res.guestsCount} Guests` : '1 Guest',
+        unit: 'AUTO-UNIT',
+        comments: 'Reservation',
+        paymentAccount: 'Pending',
+        company: 'N/A',
+        ratePlan: 'Standard',
+        guarantee: 'None',
+        cancellationPolicy: 'Standard',
+        noShowPolicy: 'Standard',
+        channel: 'Manual',
+        type: 'GUEST',
+        address: res.clientAddress,
+        phone: res.clientPhone,
+        email: res.clientEmail,
+        pricePerNight: res.pricePerNightNet,
+        taxRate: res.taxRate,
+        totalGross: res.totalGross?.toString(),
+        guestList: [],
+        clientType: 'Private',
+        firstName: res.clientFirstName,
+        lastName: res.clientLastName,
+        createdAt: res.createdAt,
+      })) as ReservationData[];
+      setReservations(transformedReservations);
+      const bookings = await bookingsService.getAll();
+      setConfirmedBookings(bookings);
+      const offersData = await offersService.getAll();
+      setOffers(offersData);
+      const list = await invoicesService.getProformas();
+      setProformas(list);
+      const invoicesData = await invoicesService.getAll();
+      setInvoices(invoicesData);
+      setProformaChildInvoices({});
+      setExpandedProformaIds(new Set());
+
+      // Візуал календаря: оновлені reservations і confirmedBookings — колори/рамки (getBookingStyle).
+      // Виграна резервація має status 'won' і не показується; нове підтверджене бронювання — суцільна смуга з кольором за статусом.
+      // Та сама логіка, що при підтвердженні бухгалтером: Facility-таски (Einzug/Auszug) + meter log.
+      const newBooking = bookings.find(b => String(b.id) === String(newBookingId));
+      if (newBooking) {
+        const existingTasks = adminEvents.filter(e => {
+          if (!e.bookingId) return false;
+          return String(e.bookingId) === String(newBooking.id);
+        });
+        const hasEinzugTask = existingTasks.some(e => e.type === 'Einzug');
+        const hasAuszugTask = existingTasks.some(e => e.type === 'Auszug');
+        if (!hasEinzugTask || !hasAuszugTask) {
+          const property = properties.find(p => p.id === newBooking.propertyId || p.id === newBooking.roomId || String(p.id) === String(newBooking.propertyId));
+          const propertyName = property?.title || property?.address || newBooking.address || newBooking.roomId || 'Unknown';
+          const tasks = createFacilityTasksForBooking(newBooking, propertyName);
+          const newTasks = tasks.filter(task =>
+            (task.type === 'Einzug' && !hasEinzugTask) || (task.type === 'Auszug' && !hasAuszugTask)
+          );
+          const savedTasks: CalendarEvent[] = [];
+          for (const task of newTasks) {
+            try {
+              const taskToSave: Omit<CalendarEvent, 'id'> = {
+                ...task,
+                status: 'open' as TaskStatus,
+                department: 'facility',
+                assignee: undefined,
+                assignedWorkerId: undefined,
+                workerId: undefined
+              };
+              const savedTask = await tasksService.create(taskToSave);
+              savedTasks.push(savedTask);
+            } catch (err) {
+              console.error('Error creating Facility task:', err);
+            }
+          }
+          if (savedTasks.length > 0) {
+            setAdminEvents(prev => [...prev, ...savedTasks]);
+            window.dispatchEvent(new CustomEvent('taskUpdated'));
+          }
+          setProperties(prev => prev.map(prop => {
+            if (prop.id === newBooking.propertyId || String(prop.id) === String(newBooking.roomId)) {
+              const newLogs: MeterLogEntry[] = [
+                { date: newBooking.start, type: 'Check-In', bookingId: newBooking.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } },
+                { date: newBooking.end, type: 'Check-Out', bookingId: newBooking.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } }
+              ];
+              return { ...prop, meterLog: [...(prop.meterLog || []), ...newLogs] };
+            }
+            return prop;
+          }));
+        }
+      }
+
+      alert('Оплату підтверджено. Створено підтверджене бронювання.');
+    } catch (e: any) {
+      console.error('Error confirming proforma payment:', e);
+      alert(`Не вдалося підтвердити оплату: ${e.message || 'невідома помилка'}`);
+    }
+  };
   
   const handleSaveInvoice = async (invoice: InvoiceData) => {
       // #region agent log
@@ -5319,12 +5465,33 @@ ${internalCompany} Team`;
                                             )}
                                         </td>
                                         <td className="p-4 text-center">
-                                            <button
-                                                onClick={() => handleAddInvoiceToProforma(proforma)}
-                                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
-                                            >
-                                                Add Invoice
-                                            </button>
+                                            <div className="flex items-center justify-center gap-2 flex-wrap">
+                                                {proforma.status !== 'Paid' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleConfirmProformaPayment(proforma)}
+                                                        className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-xs font-bold transition-colors"
+                                                        title="Підтвердити оплату"
+                                                    >
+                                                        Підтвердити оплату
+                                                    </button>
+                                                )}
+                                                <button
+                                                    onClick={() => handleAddInvoiceToProforma(proforma)}
+                                                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
+                                                >
+                                                    Add Invoice
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteProforma(proforma)}
+                                                    className="inline-flex items-center gap-1.5 px-2 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded text-xs font-medium transition-colors"
+                                                    title="Видалити проформу"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                    Видалити
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                     {expandedProformaIds.has(proforma.id) && (
@@ -5347,7 +5514,17 @@ ${internalCompany} Team`;
                                                         <span className="text-gray-500">—</span>
                                                     )}
                                                 </td>
-                                                <td className="p-4" />
+                                                <td className="p-4 text-center">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteInvoice(inv, proforma.id)}
+                                                        className="inline-flex items-center gap-1.5 px-2 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded text-xs font-medium transition-colors"
+                                                        title="Видалити інвойс"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                        Видалити
+                                                    </button>
+                                                </td>
                                             </tr>
                                         ))
                                     )}
