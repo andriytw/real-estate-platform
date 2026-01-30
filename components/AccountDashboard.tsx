@@ -2486,28 +2486,19 @@ ${internalCompany} Team`;
       fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2142',message:'handleSaveInvoice called',data:{invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber,bookingId:invoice.bookingId,bookingIdType:typeof invoice.bookingId,offerIdSource:invoice.offerIdSource,offerIdSourceType:typeof invoice.offerIdSource,status:invoice.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
       // #endregion
       
-      // CRITICAL FIX: If bookingId is missing but offerIdSource exists, try to find the reservation
-      if (!invoice.bookingId && invoice.offerIdSource) {
-          // Try to find reservation by offerIdSource
+      // If reservationId not set but we can find reservation by offerIdSource, set reservationId (not bookingId; booking_id only after payment confirmed)
+      if (!invoice.reservationId && !invoice.bookingId && invoice.offerIdSource) {
           const reservationByOfferId = reservations.find(r => {
-              // Try exact match
               if (r.id === invoice.offerIdSource) return true;
-              // Try string comparison
               if (String(r.id) === String(invoice.offerIdSource)) return true;
-              // Try UUID comparison
               const rIdStr = String(r.id);
               const offerIdStr = String(invoice.offerIdSource);
               return rIdStr.toLowerCase() === offerIdStr.toLowerCase();
           });
           
           if (reservationByOfferId) {
-              invoice.bookingId = reservationByOfferId.id;
-              // #region agent log
-              console.log('✅ Found reservation by offerIdSource, setting bookingId:', invoice.bookingId);
-              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2155',message:'Found reservation by offerIdSource, setting bookingId',data:{bookingId:invoice.bookingId,bookingIdType:typeof invoice.bookingId,offerIdSource:invoice.offerIdSource,reservationId:reservationByOfferId.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-              // #endregion
+              invoice.reservationId = reservationByOfferId.id;
           } else {
-              // Try to find reservation by matching offer's propertyId and dates
               const linkedOffer = offers.find(o => {
                   if (o.id === invoice.offerIdSource) return true;
                   if (String(o.id) === String(invoice.offerIdSource)) return true;
@@ -2524,11 +2515,7 @@ ${internalCompany} Team`;
                   });
                   
                   if (reservationByPropertyAndDate) {
-                      invoice.bookingId = reservationByPropertyAndDate.id;
-                      // #region agent log
-                      console.log('✅ Found reservation by property and date, setting bookingId:', invoice.bookingId);
-                      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2175',message:'Found reservation by property and date, setting bookingId',data:{bookingId:invoice.bookingId,bookingIdType:typeof invoice.bookingId,offerIdSource:invoice.offerIdSource,reservationId:reservationByPropertyAndDate.id,propertyId:linkedOffer.propertyId,offerStart},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-                      // #endregion
+                      invoice.reservationId = reservationByPropertyAndDate.id;
                   }
               }
           }
@@ -2567,21 +2554,18 @@ ${internalCompany} Team`;
               fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2174',message:'Saved offer to Supabase and updated invoice.offerIdSource',data:{oldOfferId:localOffer.id,newOfferId:savedOffer.id,newOfferIdType:typeof savedOffer.id,invoiceOfferIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
               // #endregion
               
-              // IMPORTANT: Also update invoice.bookingId if it was pointing to the offer.id
-              // This ensures that when invoice is marked as Paid, we can find the booking
-              if (!invoice.bookingId || invoice.bookingId === localOffer.id || String(invoice.bookingId) === String(localOffer.id)) {
-                // Try to find the actual booking/reservation for this offer
+              // Link invoice to reservation (not booking; booking_id only after payment confirmed)
+              if (!invoice.reservationId && (!invoice.bookingId || invoice.bookingId === localOffer.id || String(invoice.bookingId) === String(localOffer.id))) {
                 const relatedReservation = reservations.find(r => {
-                  // Check if reservation matches offer by property and dates
                   if (r.roomId !== localOffer.propertyId) return false;
                   const [offerStart] = localOffer.dates.split(' to ');
                   return r.start === offerStart || String(r.start) === String(offerStart);
                 });
                 
                 if (relatedReservation) {
-                  invoice.bookingId = relatedReservation.id;
+                  invoice.reservationId = relatedReservation.id;
                   // #region agent log
-                  fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2187',message:'Found related reservation and updated invoice.bookingId',data:{reservationId:relatedReservation.id,reservationIdType:typeof relatedReservation.id,invoiceBookingId:invoice.bookingId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                  fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2187',message:'Found related reservation and updated invoice.reservationId',data:{reservationId:relatedReservation.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
                   // #endregion
                 }
               }

@@ -1929,6 +1929,7 @@ function transformInvoiceFromDB(db: any): InvoiceData {
     offerId: db.offer_id, // Primary field
     offerIdSource: db.offer_id, // Legacy field for backward compatibility
     bookingId: db.booking_id,
+    reservationId: db.reservation_id ?? undefined,
     fileUrl: db.file_url ?? undefined,
     documentType: db.document_type ?? 'proforma',
     proformaId: db.proforma_id ?? undefined,
@@ -1946,7 +1947,10 @@ function transformInvoiceToDB(invoice: InvoiceData): any {
   
   // Prefer offerId over offerIdSource
   const offerId = invoice.offerId || invoice.offerIdSource;
-  
+  // When reservationId is set (proforma from reservation), do not set booking_id (it is set only after payment confirmed)
+  const reservationId = invoice.reservationId && isValidUUID(invoice.reservationId) ? invoice.reservationId : null;
+  const bookingId = reservationId ? null : (invoice.bookingId && isValidUUID(invoice.bookingId) ? invoice.bookingId : null);
+
   return {
     invoice_number: invoice.invoiceNumber,
     date: invoice.date,
@@ -1960,7 +1964,8 @@ function transformInvoiceToDB(invoice: InvoiceData): any {
     total_gross: invoice.totalGross,
     status: invoice.status,
     offer_id: offerId && isValidUUID(offerId) ? offerId : null,
-    booking_id: invoice.bookingId && isValidUUID(invoice.bookingId) ? invoice.bookingId : null,
+    booking_id: bookingId,
+    reservation_id: reservationId,
     file_url: invoice.fileUrl ?? null,
     document_type: invoice.documentType ?? 'proforma',
     proforma_id: invoice.proformaId && isValidUUID(invoice.proformaId) ? invoice.proformaId : null,

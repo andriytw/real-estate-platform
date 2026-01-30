@@ -207,12 +207,13 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
           status: 'Unpaid',
           offerId: 'id' in offer ? String(offer.id) : undefined, // Primary field for RPC
           offerIdSource: 'id' in offer ? String(offer.id) : undefined, // Legacy field for backward compatibility
-          bookingId: bookingId,
+          reservationId: ('roomId' in offer && 'start' in offer) ? String(offer.id) : (offer as any).reservationId || undefined, // Proforma from reservation; booking_id only after payment confirmed
+          bookingId: undefined, // Do not set — booking is created only after manager confirms payment
           documentType: 'proforma',
         });
         
         // #region agent log
-        console.log('📋 InvoiceModal: Setting invoiceData with:', { bookingId, offerIdSource: 'id' in offer ? String(offer.id) : undefined, offerId: offer.id, offerIdType: typeof offer.id });
+        console.log('📋 InvoiceModal: Setting invoiceData with:', { reservationId: ('roomId' in offer && 'start' in offer) ? offer.id : (offer as any).reservationId, offerIdSource: 'id' in offer ? String(offer.id) : undefined, offerId: offer.id, offerIdType: typeof offer.id });
         fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceModal.tsx:115',message:'Setting invoiceData with bookingId and offerIdSource',data:{bookingId,bookingIdType:typeof bookingId,offerIdSource:'id' in offer ? String(offer.id) : undefined,offerId:offer.id,offerIdType:typeof offer.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'INVOICE_CREATE'})}).catch(()=>{});
         // #endregion
         
@@ -241,6 +242,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
           proformaId: proforma.id,
           offerId: proforma.offerId,
           offerIdSource: proforma.offerIdSource ?? proforma.offerId,
+          reservationId: proforma.reservationId,
           bookingId: proforma.bookingId,
         });
         setClientAddress(proforma.clientAddress || '');
@@ -291,6 +293,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
       status: invoiceData.status || 'Unpaid',
       offerIdSource: invoiceData.offerIdSource,
       offerId: invoiceData.offerId,
+      reservationId: invoiceData.reservationId,
       bookingId: invoiceData.bookingId,
       fileUrl: fileUrl ?? invoiceData.fileUrl,
       documentType: invoiceData.documentType,

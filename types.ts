@@ -381,7 +381,9 @@ export interface InvoiceData {
   status: 'Paid' | 'Unpaid' | 'Overdue';
   offerId?: string; // UUID reference to offers table (mandatory when created from offer)
   offerIdSource?: string; // Legacy field, kept for backward compatibility
-  bookingId?: string | number; // Зв'язок з бронюванням (set after booking is confirmed)
+  bookingId?: string | number; // Зв'язок з бронюванням (set only after payment confirmed and booking created)
+  /** Link to reservation (proforma/invoice from reservation); booking_id stays null until payment confirmed */
+  reservationId?: string;
   /** URL of uploaded PDF (proforma or invoice) */
   fileUrl?: string;
   /** 'proforma' | 'invoice' – record type in invoices table */
