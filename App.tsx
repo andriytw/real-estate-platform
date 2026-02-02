@@ -428,6 +428,16 @@ const AppContent: React.FC = () => {
       );
     }
 
+    // Don't show protected content until worker is determined (worker or workerError). Avoid empty dashboard when worker still loading.
+    if (isProtected && session !== null && worker === null && workerError === null) {
+      return (
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-white mb-2">Reconnecting…</div>
+          <div className="text-sm text-gray-400">Loading profile…</div>
+        </div>
+      );
+    }
+
     // Only show profile error when definitely logged in, worker still null, and workerError set. Don't block before WorkerContext init.
     if (isProtected && session !== null && worker === null && !!workerError) {
       return (
