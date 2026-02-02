@@ -67,21 +67,34 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
         .single();
       const code = (profileError as { code?: string } | null)?.code;
       if (profileError && code === 'PGRST116') {
-        const { error: insertError } = await supabase
-          .from('profiles')
-          .insert({
-            id: user.id,
-            name: user.email ?? 'Unknown',
-            role: 'worker',
-            department: 'facility',
-            is_active: true,
-          });
-        if (insertError) return { worker: null, error: insertError.message ?? 'Profile not found' };
+        const tryInsert = async (payload: Record<string, unknown>): Promise<{ error: { message?: string; code?: string } | null }> => {
+          const { error } = await supabase.from('profiles').insert(payload);
+          return { error };
+        };
+        const isColumnError = (e: { message?: string; code?: string } | null) =>
+          e && (e.code === '42703' || /column.*does not exist|undefined_column/i.test(e.message ?? ''));
+        let insertError: { message?: string; code?: string } | null = null;
+        insertError = (await tryInsert({ id: user.id, name: user.email ?? 'Unknown', email: user.email ?? undefined })).error;
+        if (insertError && isColumnError(insertError)) {
+          insertError = (await tryInsert({ id: user.id, name: user.email ?? 'Unknown' })).error;
+        }
+        if (insertError && isColumnError(insertError)) {
+          insertError = (await tryInsert({ id: user.id })).error;
+        }
+        if (insertError) {
+          const msg = insertError.message ?? 'Profile not found';
+          const codeStr = insertError.code ? ` (code: ${insertError.code})` : '';
+          return { worker: null, error: `${msg}${codeStr}` };
+        }
         const result = await supabase.from('profiles').select('*').eq('id', user.id).single();
         profile = result.data;
         profileError = result.error;
       }
-      if (profileError || !profile) return { worker: null, error: profileError?.message ?? 'Profile not found' };
+      if (profileError || !profile) {
+        const msg = profileError?.message ?? 'Profile not found';
+        const codeStr = (profileError as { code?: string } | null)?.code ? ` (code: ${(profileError as { code?: string }).code})` : '';
+        return { worker: null, error: `${msg}${codeStr}` };
+      }
       return {
         worker: {
           id: profile.id,
