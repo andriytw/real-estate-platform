@@ -21,7 +21,7 @@ const KanbanBoard = React.lazy(() => import('./components/kanban/KanbanBoard'));
 
 // Internal AppContent: only rendered when session exists (inside AuthGate)
 const AppContent: React.FC = () => {
-  const { worker, loading: authLoading, workerError, retryWorker } = useWorker();
+  const { session, worker, loading: authLoading, workerError, retryWorker, logout } = useWorker();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -428,18 +428,28 @@ const AppContent: React.FC = () => {
       );
     }
 
-    if (isProtected && (workerError || (!worker && !authLoading))) {
+    // Only show profile error when definitely logged in, worker still null, and workerError set. Don't block before WorkerContext init.
+    if (isProtected && session !== null && worker === null && !!workerError) {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen text-gray-400">
           <div className="text-white mb-2">Could not load your profile</div>
-          {workerError && <div className="text-sm mb-2">{workerError}</div>}
-          <button
-            type="button"
-            onClick={() => retryWorker()}
-            className="mt-4 px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-500"
-          >
-            Retry
-          </button>
+          <div className="text-sm mb-2">{workerError}</div>
+          <div className="flex gap-3 mt-4">
+            <button
+              type="button"
+              onClick={() => retryWorker()}
+              className="px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-500"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={() => logout()}
+              className="px-4 py-2 rounded bg-gray-600 text-white hover:bg-gray-500"
+            >
+              Logout
+            </button>
+          </div>
         </div>
       );
     }
