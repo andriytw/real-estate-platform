@@ -1531,6 +1531,19 @@ export const invoicesService = {
     if (error) throw new Error(error.message || 'Storage upload failed');
     const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
     return urlData.publicUrl;
+  },
+
+  /** Upload payment proof PDF to payment-proofs bucket; path payments/{proformaId}/{timestamp}_{filename}.pdf. Returns public URL for payment_proof_url. */
+  async uploadPaymentProofPdf(file: File, proformaId: string): Promise<string> {
+    const bucket = 'payment-proofs';
+    const originalName = (file.name || 'document.pdf').replace(/[\0/\\]/g, '_').slice(0, 200).trim() || 'document.pdf';
+    const path = `payments/${proformaId}/${Date.now()}_${originalName}`;
+    const { error } = await supabase.storage
+      .from(bucket)
+      .upload(path, file, { cacheControl: '3600', upsert: false });
+    if (error) throw new Error(error.message || 'Storage upload failed');
+    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
+    return urlData.publicUrl;
   }
 };
 
@@ -1956,6 +1969,7 @@ function transformInvoiceFromDB(db: any): InvoiceData {
     bookingId: db.booking_id,
     reservationId: db.reservation_id ?? undefined,
     fileUrl: db.file_url ?? undefined,
+    paymentProofUrl: db.payment_proof_url ?? undefined,
     documentType: db.document_type ?? 'proforma',
     proformaId: db.proforma_id ?? undefined,
   };
@@ -1992,6 +2006,7 @@ function transformInvoiceToDB(invoice: InvoiceData): any {
     booking_id: bookingId,
     reservation_id: reservationId,
     file_url: invoice.fileUrl ?? null,
+    payment_proof_url: invoice.paymentProofUrl ?? null,
     document_type: invoice.documentType ?? 'proforma',
     proforma_id: invoice.proformaId && isValidUUID(invoice.proformaId) ? invoice.proformaId : null,
   };

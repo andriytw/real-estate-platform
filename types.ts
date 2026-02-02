@@ -386,6 +386,8 @@ export interface InvoiceData {
   reservationId?: string;
   /** URL of uploaded PDF (proforma or invoice) */
   fileUrl?: string;
+  /** URL of payment proof PDF (bank statement / confirmation); separate from fileUrl */
+  paymentProofUrl?: string;
   /** 'proforma' | 'invoice' – record type in invoices table */
   documentType?: 'proforma' | 'invoice';
   /** Parent proforma UUID when this record is an invoice under a proforma */

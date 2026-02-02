@@ -12,6 +12,7 @@ import OfferEditModal from './OfferEditModal';
 import LeadEditModal from './LeadEditModal';
 import PropertyAddModal from './PropertyAddModal';
 import RequestModal from './RequestModal';
+import ConfirmPaymentModal from './ConfirmPaymentModal';
 import BankingDashboard from './BankingDashboard';
 import UserManagement from './admin/UserManagement';
 
@@ -1537,6 +1538,7 @@ const AccountDashboard: React.FC = () => {
   const [offerToEdit, setOfferToEdit] = useState<OfferData | null>(null);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<RequestData | null>(null);
+  const [confirmPaymentModalProforma, setConfirmPaymentModalProforma] = useState<InvoiceData | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
 
   // --- Toast notifications ---
@@ -2546,6 +2548,107 @@ ${internalCompany} Team`;
     }
   };
 
+  const refreshDataAfterPaymentConfirmed = async (newBookingId: string) => {
+    const reservationsData = await reservationsService.getAll();
+    const transformedReservations: ReservationData[] = reservationsData.map(res => ({
+      id: res.id as any,
+      reservationNo: res.reservationNo,
+      roomId: res.propertyId,
+      propertyId: res.propertyId,
+      start: res.startDate,
+      end: res.endDate,
+      guest: res.leadLabel || `${res.clientFirstName || ''} ${res.clientLastName || ''}`.trim() || 'Guest',
+      color: getBookingStyle(res.status as any),
+      checkInTime: '15:00',
+      checkOutTime: '11:00',
+      status: res.status as any,
+      price: res.totalGross ? `${res.totalGross} EUR` : '0.00 EUR',
+      balance: '0.00 EUR',
+      guests: res.guestsCount ? `${res.guestsCount} Guests` : '1 Guest',
+      unit: 'AUTO-UNIT',
+      comments: 'Reservation',
+      paymentAccount: 'Pending',
+      company: 'N/A',
+      ratePlan: 'Standard',
+      guarantee: 'None',
+      cancellationPolicy: 'Standard',
+      noShowPolicy: 'Standard',
+      channel: 'Manual',
+      type: 'GUEST',
+      address: res.clientAddress,
+      phone: res.clientPhone,
+      email: res.clientEmail,
+      pricePerNight: res.pricePerNightNet,
+      taxRate: res.taxRate,
+      totalGross: res.totalGross?.toString(),
+      guestList: [],
+      clientType: 'Private',
+      firstName: res.clientFirstName,
+      lastName: res.clientLastName,
+      createdAt: res.createdAt,
+    })) as ReservationData[];
+    setReservations(transformedReservations);
+    const bookings = await bookingsService.getAll();
+    setConfirmedBookings(bookings);
+    const offersData = await offersService.getAll();
+    setOffers(offersData);
+    const list = await invoicesService.getProformas();
+    setProformas(list);
+    const invoicesData = await invoicesService.getAll();
+    setInvoices(invoicesData);
+    setProformaChildInvoices({});
+    setExpandedProformaIds(new Set());
+
+    const newBooking = bookings.find(b => String(b.id) === String(newBookingId));
+    if (newBooking) {
+      const existingTasks = adminEvents.filter(e => {
+        if (!e.bookingId) return false;
+        return String(e.bookingId) === String(newBooking.id);
+      });
+      const hasEinzugTask = existingTasks.some(e => e.type === 'Einzug');
+      const hasAuszugTask = existingTasks.some(e => e.type === 'Auszug');
+      if (!hasEinzugTask || !hasAuszugTask) {
+        const property = properties.find(p => p.id === newBooking.propertyId || p.id === newBooking.roomId || String(p.id) === String(newBooking.propertyId));
+        const propertyName = property?.title || property?.address || newBooking.address || newBooking.roomId || 'Unknown';
+        const tasks = createFacilityTasksForBooking(newBooking, propertyName);
+        const newTasks = tasks.filter(task =>
+          (task.type === 'Einzug' && !hasEinzugTask) || (task.type === 'Auszug' && !hasAuszugTask)
+        );
+        const savedTasks: CalendarEvent[] = [];
+        for (const task of newTasks) {
+          try {
+            const taskToSave: Omit<CalendarEvent, 'id'> = {
+              ...task,
+              status: 'open' as TaskStatus,
+              department: 'facility',
+              assignee: undefined,
+              assignedWorkerId: undefined,
+              workerId: undefined
+            };
+            const savedTask = await tasksService.create(taskToSave);
+            savedTasks.push(savedTask);
+          } catch (err) {
+            console.error('Error creating Facility task:', err);
+          }
+        }
+        if (savedTasks.length > 0) {
+          setAdminEvents(prev => [...prev, ...savedTasks]);
+          window.dispatchEvent(new CustomEvent('taskUpdated'));
+        }
+        setProperties(prev => prev.map(prop => {
+          if (prop.id === newBooking.propertyId || String(prop.id) === String(newBooking.roomId)) {
+            const newLogs: MeterLogEntry[] = [
+              { date: newBooking.start, type: 'Check-In', bookingId: newBooking.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } },
+              { date: newBooking.end, type: 'Check-Out', bookingId: newBooking.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } }
+            ];
+            return { ...prop, meterLog: [...(prop.meterLog || []), ...newLogs] };
+          }
+          return prop;
+        }));
+      }
+    }
+  };
+
   const handleConfirmProformaPayment = async (proforma: InvoiceData) => {
     if (proforma.status === 'Paid') return;
     const offerId = proforma.offerId || proforma.offerIdSource;
@@ -2556,108 +2659,7 @@ ${internalCompany} Team`;
     if (!window.confirm(`Підтвердити оплату проформи ${proforma.invoiceNumber}? Буде створено підтверджене бронювання.`)) return;
     try {
       const newBookingId = await markInvoicePaidAndConfirmBooking(proforma.id);
-      const reservationsData = await reservationsService.getAll();
-      const transformedReservations: ReservationData[] = reservationsData.map(res => ({
-        id: res.id as any,
-        reservationNo: res.reservationNo,
-        roomId: res.propertyId,
-        propertyId: res.propertyId,
-        start: res.startDate,
-        end: res.endDate,
-        guest: res.leadLabel || `${res.clientFirstName || ''} ${res.clientLastName || ''}`.trim() || 'Guest',
-        color: getBookingStyle(res.status as any),
-        checkInTime: '15:00',
-        checkOutTime: '11:00',
-        status: res.status as any,
-        price: res.totalGross ? `${res.totalGross} EUR` : '0.00 EUR',
-        balance: '0.00 EUR',
-        guests: res.guestsCount ? `${res.guestsCount} Guests` : '1 Guest',
-        unit: 'AUTO-UNIT',
-        comments: 'Reservation',
-        paymentAccount: 'Pending',
-        company: 'N/A',
-        ratePlan: 'Standard',
-        guarantee: 'None',
-        cancellationPolicy: 'Standard',
-        noShowPolicy: 'Standard',
-        channel: 'Manual',
-        type: 'GUEST',
-        address: res.clientAddress,
-        phone: res.clientPhone,
-        email: res.clientEmail,
-        pricePerNight: res.pricePerNightNet,
-        taxRate: res.taxRate,
-        totalGross: res.totalGross?.toString(),
-        guestList: [],
-        clientType: 'Private',
-        firstName: res.clientFirstName,
-        lastName: res.clientLastName,
-        createdAt: res.createdAt,
-      })) as ReservationData[];
-      setReservations(transformedReservations);
-      const bookings = await bookingsService.getAll();
-      setConfirmedBookings(bookings);
-      const offersData = await offersService.getAll();
-      setOffers(offersData);
-      const list = await invoicesService.getProformas();
-      setProformas(list);
-      const invoicesData = await invoicesService.getAll();
-      setInvoices(invoicesData);
-      setProformaChildInvoices({});
-      setExpandedProformaIds(new Set());
-
-      // Візуал календаря: оновлені reservations і confirmedBookings — колори/рамки (getBookingStyle).
-      // Виграна резервація має status 'won' і не показується; нове підтверджене бронювання — суцільна смуга з кольором за статусом.
-      // Та сама логіка, що при підтвердженні бухгалтером: Facility-таски (Einzug/Auszug) + meter log.
-      const newBooking = bookings.find(b => String(b.id) === String(newBookingId));
-      if (newBooking) {
-        const existingTasks = adminEvents.filter(e => {
-          if (!e.bookingId) return false;
-          return String(e.bookingId) === String(newBooking.id);
-        });
-        const hasEinzugTask = existingTasks.some(e => e.type === 'Einzug');
-        const hasAuszugTask = existingTasks.some(e => e.type === 'Auszug');
-        if (!hasEinzugTask || !hasAuszugTask) {
-          const property = properties.find(p => p.id === newBooking.propertyId || p.id === newBooking.roomId || String(p.id) === String(newBooking.propertyId));
-          const propertyName = property?.title || property?.address || newBooking.address || newBooking.roomId || 'Unknown';
-          const tasks = createFacilityTasksForBooking(newBooking, propertyName);
-          const newTasks = tasks.filter(task =>
-            (task.type === 'Einzug' && !hasEinzugTask) || (task.type === 'Auszug' && !hasAuszugTask)
-          );
-          const savedTasks: CalendarEvent[] = [];
-          for (const task of newTasks) {
-            try {
-              const taskToSave: Omit<CalendarEvent, 'id'> = {
-                ...task,
-                status: 'open' as TaskStatus,
-                department: 'facility',
-                assignee: undefined,
-                assignedWorkerId: undefined,
-                workerId: undefined
-              };
-              const savedTask = await tasksService.create(taskToSave);
-              savedTasks.push(savedTask);
-            } catch (err) {
-              console.error('Error creating Facility task:', err);
-            }
-          }
-          if (savedTasks.length > 0) {
-            setAdminEvents(prev => [...prev, ...savedTasks]);
-            window.dispatchEvent(new CustomEvent('taskUpdated'));
-          }
-          setProperties(prev => prev.map(prop => {
-            if (prop.id === newBooking.propertyId || String(prop.id) === String(newBooking.roomId)) {
-              const newLogs: MeterLogEntry[] = [
-                { date: newBooking.start, type: 'Check-In', bookingId: newBooking.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } },
-                { date: newBooking.end, type: 'Check-Out', bookingId: newBooking.id, readings: { electricity: 'Pending', water: 'Pending', gas: 'Pending' } }
-              ];
-              return { ...prop, meterLog: [...(prop.meterLog || []), ...newLogs] };
-            }
-            return prop;
-          }));
-        }
-      }
-
+      await refreshDataAfterPaymentConfirmed(newBookingId);
       alert('Оплату підтверджено. Створено підтверджене бронювання.');
     } catch (e: any) {
       console.error('Error confirming proforma payment:', e);
@@ -5577,11 +5579,16 @@ ${internalCompany} Team`;
                                         <td className="p-4">{proforma.date}</td>
                                         <td className="p-4">€{proforma.totalGross?.toFixed(2) ?? '—'}</td>
                                         <td className="p-4">
-                                            {proforma.fileUrl ? (
+                                            <div className="flex flex-wrap items-center gap-2">
+                                              {proforma.fileUrl ? (
                                                 <a href={proforma.fileUrl} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">PDF</a>
-                                            ) : (
+                                              ) : (
                                                 <span className="text-gray-500">—</span>
-                                            )}
+                                              )}
+                                              {proforma.paymentProofUrl && (
+                                                <a href={proforma.paymentProofUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline text-xs">Proof</a>
+                                              )}
+                                            </div>
                                         </td>
                                         <td className="p-4 text-center">
                                             <div className="flex items-center justify-center gap-2 flex-wrap">
@@ -5589,12 +5596,15 @@ ${internalCompany} Team`;
                                                     <button
                                                         type="button"
                                                         disabled={lost}
-                                                        onClick={() => !lost && handleConfirmProformaPayment(proforma)}
+                                                        onClick={() => !lost && setConfirmPaymentModalProforma(proforma)}
                                                         className={`px-3 py-1.5 rounded text-xs font-bold transition-colors ${lost ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-500 text-white'}`}
                                                         title={lost ? 'Програно — підтвердження недоступне' : 'Підтвердити оплату'}
                                                     >
                                                         Підтвердити оплату
                                                     </button>
+                                                )}
+                                                {proforma.status === 'Paid' && (
+                                                    <span className="text-emerald-400 text-xs">Confirmed ✓</span>
                                                 )}
                                                 <button
                                                     type="button"
@@ -6609,6 +6619,15 @@ ${internalCompany} Team`;
           isViewingOffer={viewingOffer}
       />
       <InvoiceModal isOpen={isInvoiceModalOpen} onClose={() => { setIsInvoiceModalOpen(false); setSelectedOfferForInvoice(null); setSelectedInvoice(null); setSelectedProformaForInvoice(null); }} offer={selectedOfferForInvoice} invoice={selectedInvoice} proforma={selectedProformaForInvoice} onSave={handleSaveInvoice} reservations={reservations} offers={offers} />
+      <ConfirmPaymentModal
+        isOpen={!!confirmPaymentModalProforma}
+        onClose={() => setConfirmPaymentModalProforma(null)}
+        proforma={confirmPaymentModalProforma}
+        onConfirmed={async (newBookingId) => {
+          await refreshDataAfterPaymentConfirmed(newBookingId);
+          setConfirmPaymentModalProforma(null);
+        }}
+      />
       <OfferEditModal 
           isOpen={isOfferEditModalOpen} 
           onClose={() => setIsOfferEditModalOpen(false)} 
