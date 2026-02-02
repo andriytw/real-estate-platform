@@ -224,6 +224,17 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     };
   }, []);
 
+  // Re-validate session when tab becomes visible (e.g. after switching back)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshWorker();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
   const login = async (email: string, password: string) => {
     setLoading(true);
     try {
