@@ -59,12 +59,16 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   const getCurrentWorker = useCallback(async (): Promise<{ worker: Worker | null; error: string | null }> => {
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
+      // TEMP: diagnose worker load
+      console.log('[WORKER:getUser]', { userId: user?.id, authError: authError?.message ?? null });
       if (authError || !user) return { worker: null, error: authError?.message ?? 'Not authenticated' };
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
+      // TEMP: diagnose profiles query
+      console.log('[WORKER:profiles]', { hasProfile: !!profile, error: profileError?.message ?? null, code: (profileError as any)?.code ?? null });
       if (profileError || !profile) return { worker: null, error: profileError?.message ?? 'Profile not found' };
       return {
         worker: {
@@ -119,6 +123,8 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   const syncSessionAndWorker = useCallback(async () => {
     try {
       const { data: { session: s } } = await supabase.auth.getSession();
+      // TEMP: diagnose session sync
+      console.log('[SESSION:sync]', { hasSession: !!s, userId: s?.user?.id, origin: typeof window !== 'undefined' ? window.location.origin : '', keys: typeof window !== 'undefined' ? Object.keys(localStorage).filter(k => k.includes('sb-') || k.includes('auth')) : [] });
       setSession(s ?? null);
       if (s) {
         const { worker: w, error: err } = await getCurrentWorker();
@@ -144,6 +150,8 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     let mounted = true;
     (async () => {
       const { data: { session: s } } = await supabase.auth.getSession();
+      // TEMP: diagnose session init
+      console.log('[SESSION:init]', { hasSession: !!s, userId: s?.user?.id, origin: typeof window !== 'undefined' ? window.location.origin : '', keys: typeof window !== 'undefined' ? Object.keys(localStorage).filter(k => k.includes('sb-') || k.includes('auth')) : [] });
       if (!mounted) return;
       setSession(s ?? null);
       if (s) {
@@ -175,6 +183,8 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
+      // TEMP: diagnose auth events
+      console.log('[SESSION:event]', event, { userId: s?.user?.id });
       if (event === 'SIGNED_OUT') {
         setSession(null);
         setWorker(null);
