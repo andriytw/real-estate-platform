@@ -5,7 +5,11 @@ import { useWorker } from '../contexts/WorkerContext';
 
 const supabase = createClient();
 
-const RegisterPage: React.FC = () => {
+interface RegisterPageProps {
+  onRegisterSuccess?: () => void;
+}
+
+const RegisterPage: React.FC<RegisterPageProps> = ({ onRegisterSuccess }) => {
   const { login, refreshWorker } = useWorker();
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -129,10 +133,12 @@ const RegisterPage: React.FC = () => {
       await login(formData.email, formData.password);
       await refreshWorker();
 
+      onRegisterSuccess?.();
       // Redirect based on role
       if (invitation.role === 'worker') {
         window.location.href = '/worker';
       } else {
+        window.history.pushState({}, '', '/account');
         window.location.href = '/account';
       }
     } catch (err: any) {

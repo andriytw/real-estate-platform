@@ -9,20 +9,19 @@ import Marketplace from './components/Marketplace';
 import AccountDashboard from './components/AccountDashboard';
 import ErrorBoundary from './components/ErrorBoundary';
 import TestDB from './components/TestDB';
-import LoginPage from './components/LoginPage';
-import RegisterPage from './components/RegisterPage';
 import WorkerMobileApp from './components/WorkerMobileApp';
 import AdminTasksBoard from './components/AdminTasksBoard';
-
-// Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks view.
-const KanbanBoard = React.lazy(() => import('./components/kanban/KanbanBoard'));
+import AuthGate from './components/AuthGate';
 import { WorkerProvider, useWorker } from './contexts/WorkerContext';
 import { propertiesService } from './services/supabaseService';
 import { Property, FilterState, RequestData } from './types';
 
-// Internal AppContent component that uses Worker context
+// Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks view.
+const KanbanBoard = React.lazy(() => import('./components/kanban/KanbanBoard'));
+
+// Internal AppContent: only rendered when session exists (inside AuthGate)
 const AppContent: React.FC = () => {
-  const { worker, loading: authLoading } = useWorker();
+  const { worker, loading: authLoading, workerError, retryWorker } = useWorker();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,18 +39,6 @@ const AppContent: React.FC = () => {
     pets: '',
     status: ''
   });
-  const [authTimeoutReached, setAuthTimeoutReached] = useState(false);
-
-  // Force show login if loading takes too long (fallback)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (authLoading) {
-        console.warn('⚠️ App: Auth loading timed out (6s), forcing login check');
-        setAuthTimeoutReached(true);
-      }
-    }, 6000);
-    return () => clearTimeout(timer);
-  }, [authLoading]);
 
   // Load properties from Supabase
   const loadProperties = async () => {
@@ -167,10 +154,9 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('pageshow', handlePageShow);
   }, []);
 
-  // Check authentication and redirect
+  // Check authentication and redirect (session is source of truth; we only redirect when worker is known)
   useEffect(() => {
-    if (!authLoading) {
-      if (worker) {
+    if (worker) {
         console.log('✅ App: Worker loaded, checking permissions:', worker.name, worker.role);
         
         // IMPORTANT: If there's a pending property view, don't redirect - let the pendingPropertyView useEffect handle it
@@ -239,23 +225,22 @@ const AppContent: React.FC = () => {
           setCurrentView('account');
           window.history.pushState({}, '', '/account');
         }
-      } else {
-        console.log('⚠️ App: No worker, showing login if needed');
+      }
+      if (!worker && !authLoading) {
+        console.log('⚠️ App: No worker (profile loading failed or pending)');
         const path = window.location.pathname;
         const protectedPaths = ['/account', '/worker', '/admin/tasks', '/tasks'];
         
-        // Redirect to login for protected paths
+        // Redirect to account for protected paths (AuthGate shows Login when session is null)
         if (protectedPaths.includes(path)) {
-          setCurrentView('account'); // This will render LoginPage
+          setCurrentView('account');
           window.history.pushState({}, '', '/account');
-        } 
+        }
         // For dashboard/market, let renderContent handle showing login
-        // Don't change currentView here to allow renderContent to intercept
       }
-    }
     // Use only primitive values in dependencies to avoid React error #310
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [worker?.id, authLoading, pendingPropertyView?.id, currentView, selectedProperty?.id]);
+  }, [worker?.id, pendingPropertyView?.id, currentView, selectedProperty?.id]);
 
   useEffect(() => {
     loadProperties();
@@ -351,9 +336,11 @@ const AppContent: React.FC = () => {
           id: listing.id,
           title: listing.title,
           address: listing.location || listing.title,
+          zip: '',
           city: listing.location?.split(',')[1]?.trim() || 'Berlin',
-          country: 'Germany',
+          district: '',
           price: listing.price,
+          pricePerSqm: 0,
           rooms: listing.rooms || 1,
           area: listing.area || 0,
           image: listing.image || '',
@@ -361,8 +348,8 @@ const AppContent: React.FC = () => {
           status: 'Available',
           fullAddress: listing.location || listing.title,
           description: listing.description || '',
-          details: {},
-          building: {},
+          details: {} as Property['details'],
+          building: {} as Property['building'],
           inventory: [],
           meterReadings: [],
           meterLog: [],
@@ -381,9 +368,11 @@ const AppContent: React.FC = () => {
         id: listing.id,
         title: listing.title,
         address: listing.location || listing.title,
+        zip: '',
         city: listing.location?.split(',')[1]?.trim() || 'Berlin',
-        country: 'Germany',
+        district: '',
         price: listing.price,
+        pricePerSqm: 0,
         rooms: listing.rooms || 1,
         area: listing.area || 0,
         image: listing.image || '',
@@ -391,8 +380,8 @@ const AppContent: React.FC = () => {
         status: 'Available',
         fullAddress: listing.location || listing.title,
         description: listing.description || '',
-        details: {},
-        building: {},
+        details: {} as Property['details'],
+        building: {} as Property['building'],
         inventory: [],
         meterReadings: [],
         meterLog: [],
@@ -425,118 +414,88 @@ const AppContent: React.FC = () => {
   };
 
   const renderContent = () => {
-    console.log('Rendering content, currentView:', currentView, 'Auth loading:', authLoading, 'Worker:', worker?.id, 'Timeout:', authTimeoutReached);
-    
-    // If auth loading takes too long, show login page instead of infinite loading
-    if (authLoading && !authTimeoutReached) {
+    // Session is source of truth; we're only here when session exists (AuthGate passed).
+    // Never show Login due to timeout — only Reconnecting… while worker loads.
+    const protectedViews = ['account', 'dashboard', 'worker', 'tasks'];
+    const isProtected = protectedViews.includes(currentView);
+
+    if (isProtected && authLoading) {
       return (
         <div className="flex items-center justify-center min-h-screen">
-          <div className="text-white">Loading...</div>
+          <div className="text-white mb-2">Reconnecting…</div>
+          <div className="text-sm text-gray-400">Loading profile…</div>
         </div>
       );
     }
-    
-    // After timeout, if still loading, show login page for account/dashboard views
-    if (authLoading && authTimeoutReached && (currentView === 'account' || currentView === 'dashboard')) {
-      console.warn('⚠️ Auth loading timed out, showing login page');
+
+    if (isProtected && (workerError || (!worker && !authLoading))) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen text-gray-400">
+          <div className="text-white mb-2">Could not load your profile</div>
+          {workerError && <div className="text-sm mb-2">{workerError}</div>}
+          <button
+            type="button"
+            onClick={() => retryWorker()}
+            className="mt-4 px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-500"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+
+    // Register: when session exists, user is logged in — show account content
+    if (currentView === 'register') {
       return (
         <div className="animate-fadeIn">
-          <LoginPage 
-            onLoginSuccess={() => {
-              setCurrentView('account');
-              window.history.pushState({}, '', '/account');
-            }}
-          />
+          <React.Suspense fallback={<div className="flex items-center justify-center min-h-[50vh] text-gray-400">Loading…</div>}>
+            <AccountDashboard />
+          </React.Suspense>
         </div>
       );
     }
 
-    // Register Page (Public)
+    // Register: when session exists, show account content
     if (currentView === 'register') {
-      return <RegisterPage onRegisterSuccess={() => {
-        setCurrentView('account');
-        window.history.pushState({}, '', '/account');
-      }} />;
+      return (
+        <div className="animate-fadeIn">
+          <ErrorBoundary>
+            <AccountDashboard />
+          </ErrorBoundary>
+        </div>
+      );
     }
 
-    // Dashboard View - For logged in users, show AccountDashboard
-    if (currentView === 'dashboard') {
-      if (worker) {
-        // Logged in: show AccountDashboard (same as account view)
-        return (
-          <div className="animate-fadeIn">
-            <ErrorBoundary>
-              <AccountDashboard />
-            </ErrorBoundary>
-          </div>
-        );
-      } else if (!authLoading) {
-        // Not logged in: show login
-        return (
-          <div className="animate-fadeIn">
-            <LoginPage onLoginSuccess={() => {
-              setCurrentView('account'); // Redirect to account after login
-              window.history.pushState({}, '', '/account');
-            }} />
-          </div>
-        );
-      }
-    }
-
-    // Account / Login View
-    if (currentView === 'account') {
-      if (worker) {
-        return (
-          <div className="animate-fadeIn">
-            <ErrorBoundary>
-              <AccountDashboard />
-            </ErrorBoundary>
-          </div>
-        );
-      } else {
-        return (
-          <div className="animate-fadeIn">
-            <LoginPage onLoginSuccess={async () => {
-              // Wait for worker to be loaded and state to update
-              console.log('🔄 Login success callback called');
-              // Give time for worker state to update
-              await new Promise(resolve => setTimeout(resolve, 500));
-              // Force re-check by reading current worker from context
-              // The useEffect will handle the redirect based on role
-              console.log('🔄 Waiting for useEffect to handle redirect...');
-            }} />
-          </div>
-        );
-      }
+    // Dashboard / Account — we only reach here when session exists (AuthGate); worker handled above
+    if (currentView === 'dashboard' || currentView === 'account') {
+      return (
+        <div className="animate-fadeIn">
+          <ErrorBoundary>
+            <AccountDashboard />
+          </ErrorBoundary>
+        </div>
+      );
     }
 
     // Worker Mobile View
     if (currentView === 'worker') {
-      if (worker && worker.role === 'worker') {
+      if (worker?.role === 'worker') {
         return <WorkerMobileApp />;
-      } else if (worker) {
-        // Manager trying to access worker view -> redirect to dashboard
-        return (
-          <div className="flex items-center justify-center min-h-screen text-white">
-            Redirecting to dashboard...
-          </div>
-        );
-      } else {
-        return <LoginPage onLoginSuccess={() => setCurrentView('worker')} />;
       }
+      return (
+        <div className="flex items-center justify-center min-h-screen text-white">
+          Redirecting to dashboard...
+        </div>
+      );
     }
 
     // Kanban Board View (Tasks)
     if (currentView === 'tasks') {
-      if (worker) {
-        return (
-          <React.Suspense fallback={<div className="flex items-center justify-center min-h-screen text-white">Loading tasks…</div>}>
-            <KanbanBoard />
-          </React.Suspense>
-        );
-      } else {
-        return <LoginPage onLoginSuccess={() => setCurrentView('tasks')} />;
-      }
+      return (
+        <React.Suspense fallback={<div className="flex items-center justify-center min-h-screen text-white">Loading tasks…</div>}>
+          <KanbanBoard />
+        </React.Suspense>
+      );
     }
 
     // Admin Tasks Board (Legacy? Or remove if replaced)
@@ -603,11 +562,7 @@ const AppContent: React.FC = () => {
               <PropertyDetails 
                 property={selectedProperty} 
                 worker={worker}
-                onBook={() => setCurrentView('booking')}
-                onClose={() => {
-                  setSelectedProperty(null);
-                  setCurrentView('market');
-                }}
+                onBookViewing={() => setCurrentView('booking')}
                 onRequireLogin={() => {
                   // Save property and redirect to login
                   setPendingPropertyView(selectedProperty);
@@ -677,7 +632,9 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   return (
     <WorkerProvider>
-      <AppContent />
+      <AuthGate>
+        <AppContent />
+      </AuthGate>
     </WorkerProvider>
   );
 };

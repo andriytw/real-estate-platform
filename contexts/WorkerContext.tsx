@@ -1,9 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { createClient } from '../utils/supabase/client';
 
 const supabase = createClient();
 
-// Worker type definition
 export interface Worker {
   id: string;
   name: string;
@@ -18,14 +18,20 @@ export interface Worker {
 }
 
 interface WorkerContextType {
+  session: Session | null | undefined;
   worker: Worker | null;
+  /** True only while session is undefined (initializing). Not worker loading. */
   loading: boolean;
+  /** Set when worker profile fetch failed (e.g. API down). Do not treat as logout. */
+  workerError: string | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   isAdmin: boolean;
   isManager: boolean;
   isWorker: boolean;
   refreshWorker: () => Promise<void>;
+  /** Clear workerError and retry loading worker. */
+  retryWorker: () => Promise<void>;
 }
 
 const WorkerContext = createContext<WorkerContextType | undefined>(undefined);
@@ -43,300 +49,205 @@ interface WorkerProviderProps {
 }
 
 export function WorkerProvider({ children }: WorkerProviderProps) {
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [worker, setWorker] = useState<Worker | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [workerError, setWorkerError] = useState<string | null>(null);
 
-  const getCurrentWorker = async (): Promise<Worker | null> => {
+  /** loading = session not yet determined (session === undefined) */
+  const loading = session === undefined;
+
+  const getCurrentWorker = useCallback(async (): Promise<{ worker: Worker | null; error: string | null }> => {
     try {
-      console.log('🔍 Getting current user from Supabase Auth...');
-      const authStartTime = Date.now();
       const { data: { user }, error: authError } = await supabase.auth.getUser();
-      const authTime = Date.now() - authStartTime;
-      console.log(`⏱️ Auth getUser took ${authTime}ms`);
-      
-      if (authError) {
-        console.error('❌ Auth error:', authError);
-        console.error('Auth error details:', {
-          code: authError.code,
-          message: authError.message,
-          status: authError.status
-        });
-        return null;
-      }
-      
-      if (!user) {
-        console.warn('⚠️ No user found in auth session');
-        return null;
-      }
-
-      console.log('✅ User found:', user.id, user.email);
-
-      // Get worker profile from profiles table
-      console.log('🔍 Fetching profile from profiles table for user:', user.id);
-      const profileStartTime = Date.now();
+      if (authError || !user) return { worker: null, error: authError?.message ?? 'Not authenticated' };
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
-      const profileTime = Date.now() - profileStartTime;
-      console.log(`⏱️ Profile query took ${profileTime}ms`);
-
-      if (profileError) {
-        console.error('❌ Profile fetch error:', profileError);
-        console.error('Error details:', {
-          code: profileError.code,
-          message: profileError.message,
-          details: profileError.details,
-          hint: profileError.hint
-        });
-        
-        // If profile doesn't exist, this is a common issue
-        if (profileError.code === 'PGRST116') {
-          console.error('💡 Profile does not exist in database. User needs to have a profile created.');
-          console.error('💡 Run: supabase/create_profile_for_user.sql or check RLS policies');
-        }
-        return null;
-      }
-
-      if (!profile) {
-        console.warn('⚠️ No profile found for user:', user.id);
-        console.warn('💡 Profile needs to be created in Supabase for user:', user.id);
-        return null;
-      }
-
-      console.log('✅ Profile found:', profile.name, profile.role, profile.department);
-
+      if (profileError || !profile) return { worker: null, error: profileError?.message ?? 'Profile not found' };
       return {
-        id: profile.id,
-        name: profile.name || user.email || 'Unknown',
-        email: user.email || '',
-        phone: profile.phone || undefined,
-        department: profile.department || 'facility',
-        role: profile.role || 'worker',
-        managerId: profile.manager_id || undefined,
-        isActive: profile.is_active !== false,
-        createdAt: profile.created_at,
-        updatedAt: profile.updated_at,
+        worker: {
+          id: profile.id,
+          name: profile.name || user.email || 'Unknown',
+          email: user.email || '',
+          phone: profile.phone || undefined,
+          department: profile.department || 'facility',
+          role: profile.role || 'worker',
+          managerId: profile.manager_id || undefined,
+          isActive: profile.is_active !== false,
+          createdAt: profile.created_at,
+          updatedAt: profile.updated_at,
+        },
+        error: null,
       };
-    } catch (error) {
-      console.error('❌ Error getting current worker:', error);
-      if (error instanceof Error) {
-        console.error('Error stack:', error.stack);
-      }
-      return null;
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Failed to load profile';
+      return { worker: null, error: message };
     }
-  };
+  }, []);
 
-  const refreshWorker = async () => {
-    try {
-      console.log('🔄 refreshWorker called');
-      setLoading(true);
-      
-      // Add timeout for getCurrentWorker to prevent infinite loading
-      const workerPromise = getCurrentWorker();
-      const timeoutPromise = new Promise<null>((resolve) => 
-        setTimeout(() => {
-          console.warn('⚠️ refreshWorker: getCurrentWorker timeout (5s)');
-          resolve(null);
-        }, 5000)
-      );
-      
-      const currentWorker = await Promise.race([workerPromise, timeoutPromise]);
-      console.log('🔄 refreshWorker - got worker:', currentWorker ? currentWorker.name : 'null');
-      setWorker(currentWorker);
-      if (currentWorker) {
-        console.log('✅ Worker set in state:', currentWorker.name, currentWorker.role);
-      } else {
-        console.warn('⚠️ No worker to set in state');
-      }
-    } catch (error) {
-      console.error('❌ Error refreshing worker:', error);
-      setWorker(null);
-    } finally {
-      setLoading(false);
-      console.log('🔄 refreshWorker finished, loading set to false');
+  const loadWorkerWhenSessionExists = useCallback(async () => {
+    const { worker: w, error: err } = await getCurrentWorker();
+    if (err) {
+      setWorkerError(err);
+      /* do not set worker=null on transient failure */
+    } else {
+      setWorker(w);
+      setWorkerError(null);
     }
-  };
+  }, [getCurrentWorker]);
+
+  const refreshWorker = useCallback(async () => {
+    if (session == null) return;
+    setWorkerError(null);
+    const { worker: w, error: err } = await getCurrentWorker();
+    if (err) {
+      setWorkerError(err);
+      /* do not set worker=null — keep previous worker on transient failure */
+    } else {
+      setWorker(w);
+      setWorkerError(null);
+    }
+  }, [session, getCurrentWorker]);
+
+  const retryWorker = useCallback(async () => {
+    setWorkerError(null);
+    await loadWorkerWhenSessionExists();
+  }, [loadWorkerWhenSessionExists]);
+
+  const syncSessionAndWorker = useCallback(async () => {
+    try {
+      const { data: { session: s } } = await supabase.auth.getSession();
+      setSession(s ?? null);
+      if (s) {
+        const { worker: w, error: err } = await getCurrentWorker();
+        if (err) {
+          setWorkerError(err);
+          /* do not set worker=null */
+        } else {
+          setWorker(w);
+          setWorkerError(null);
+        }
+      } else {
+        setWorker(null);
+        setWorkerError(null);
+      }
+    } catch {
+      setSession(null);
+      setWorker(null);
+      setWorkerError(null);
+    }
+  }, [getCurrentWorker]);
 
   useEffect(() => {
     let mounted = true;
-    let timeoutId: NodeJS.Timeout;
-
-    const loadWorker = async () => {
-      try {
-        setLoading(true);
-        
-        const workerPromise = getCurrentWorker();
-        const timeoutPromise = new Promise<null>((resolve) => 
-          setTimeout(() => resolve(null), 3000)
-        );
-        
-        const currentWorker = await Promise.race([workerPromise, timeoutPromise]);
-        
-        if (mounted) {
-          setWorker(currentWorker);
-        }
-      } catch (error) {
-        console.error('Error loading worker:', error);
-        if (mounted) {
-          setWorker(null);
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    timeoutId = setTimeout(() => {
-      if (mounted) {
-        setLoading(false);
-      }
-    }, 5000);
-
-    loadWorker().catch(err => {
-      console.error('loadWorker threw error:', err);
-      if (mounted) {
-        setLoading(false);
-        setWorker(null);
-      }
-    });
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    (async () => {
+      const { data: { session: s } } = await supabase.auth.getSession();
       if (!mounted) return;
-      
-      if (event === 'SIGNED_IN' && session) {
-        await refreshWorker();
-      } else if (event === 'SIGNED_OUT') {
+      setSession(s ?? null);
+      if (s) {
+        const { worker: w, error: err } = await getCurrentWorker();
+        if (!mounted) return;
+        if (err) {
+          setWorkerError(err);
+        } else {
+          setWorker(w);
+          setWorkerError(null);
+        }
+      } else {
         setWorker(null);
-        setLoading(false);
-      } else if (event === 'TOKEN_REFRESHED') {
-        await refreshWorker();
+        setWorkerError(null);
       }
-    });
+    })();
+    return () => { mounted = false; };
+  }, [getCurrentWorker]);
 
-    return () => {
-      mounted = false;
-      clearTimeout(timeoutId);
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  // Re-validate session when tab becomes visible (e.g. after switching back)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        refreshWorker();
+        syncSessionAndWorker();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
+  }, [syncSessionAndWorker]);
 
-  const login = async (email: string, password: string) => {
-    setLoading(true);
-    try {
-      console.log('🔐 Attempting login for:', email);
-      
-      // Add timeout to prevent infinite loading
-      const loginPromise = (async () => {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (error) {
-          console.error('❌ Supabase auth error:', error);
-          throw error;
-        }
-
-        if (data.user) {
-          console.log('✅ Auth successful, user ID:', data.user.id);
-          console.log('✅ Session:', data.session ? 'exists' : 'missing');
-          
-          // Wait a bit for session to be stored
-          await new Promise(resolve => setTimeout(resolve, 200));
-          
-          console.log('🔄 Refreshing worker profile...');
-          // refreshWorker will set loading to false when done
-          await refreshWorker();
-          
-          // Double-check worker was loaded
-          const currentWorker = await getCurrentWorker();
-          if (currentWorker) {
-            console.log('✅ Worker profile loaded:', currentWorker.name, currentWorker.role);
-            setWorker(currentWorker);
-            setLoading(false); // Ensure loading is false after successful login
-          } else {
-            console.error('❌ Worker profile not loaded after refresh');
-            console.error('💡 This usually means the user profile does not exist in the profiles table');
-            setLoading(false);
-            throw new Error('Worker profile not found. Please contact administrator.');
-          }
-        } else {
-          console.error('❌ No user data returned from auth');
-          setLoading(false);
-          throw new Error('No user data returned');
-        }
-      })();
-
-      // Add 10 second timeout
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Login timeout: The request took too long. Please try again.')), 10000)
-      );
-
-      await Promise.race([loginPromise, timeoutPromise]);
-    } catch (error: any) {
-      console.error('❌ Login error:', error);
-      setLoading(false);
-      // Provide user-friendly error messages
-      if (error.message?.includes('timeout')) {
-        throw new Error('Час очікування вичерпано. Спробуйте ще раз.');
-      } else if (error.message?.includes('Invalid login credentials')) {
-        throw new Error('Невірний email або пароль.');
-      } else if (error.message?.includes('profile not found')) {
-        throw new Error('Профіль користувача не знайдено. Зверніться до адміністратора.');
-      } else {
-        throw error;
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setWorker(null);
+        setWorkerError(null);
+        return;
       }
-    }
-  };
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && s) {
+        setSession(s);
+        await loadWorkerWhenSessionExists();
+      }
+      if (event === 'INITIAL_SESSION') {
+        setSession(s ?? null);
+        if (s) await loadWorkerWhenSessionExists();
+        else {
+          setWorker(null);
+          setWorkerError(null);
+        }
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [loadWorkerWhenSessionExists]);
 
-  const logout = async () => {
-    setLoading(true);
+  const login = useCallback(async (email: string, password: string) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      if (data.session) {
+        setSession(data.session);
+        setWorkerError(null);
+        const { worker: w, error: err } = await getCurrentWorker();
+        if (err) {
+          setWorkerError(err);
+          throw new Error('Worker profile not found. Please contact administrator.');
+        }
+        setWorker(w);
+      }
+    } finally {
+      /* session is set above, so loading becomes false */
+    }
+  }, [getCurrentWorker]);
+
+  const logout = useCallback(async () => {
     try {
       await supabase.auth.signOut();
+      setSession(null);
       setWorker(null);
-    } catch (error) {
-      console.error('Logout error:', error);
-      throw error;
+      setWorkerError(null);
     } finally {
-      setLoading(false);
+      /* session/worker cleared above */
     }
-  };
+  }, []);
 
   const isAdmin = worker?.role === 'super_manager';
   const isManager = worker?.role === 'manager' || worker?.role === 'super_manager';
   const isWorker = worker?.role === 'worker';
 
-  const value: WorkerContextType = {
-    worker,
-    loading,
-    login,
-    logout,
-    isAdmin,
-    isManager,
-    isWorker,
-    refreshWorker
-  };
-
   return (
-    <WorkerContext.Provider value={value}>
+    <WorkerContext.Provider
+      value={{
+        session,
+        worker,
+        loading,
+        workerError,
+        login,
+        logout,
+        isAdmin,
+        isManager,
+        isWorker,
+        refreshWorker,
+        retryWorker,
+      }}
+    >
       {children}
     </WorkerContext.Provider>
   );
 }
-
-
