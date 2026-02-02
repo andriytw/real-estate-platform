@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { createClient } from '../utils/supabase/client';
-
-const supabase = createClient();
+import { supabase, getSupabaseRestUrl } from '../utils/supabase/client';
 
 export interface Worker {
   id: string;
@@ -57,15 +55,29 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   const loading = session === undefined;
 
   const getCurrentWorker = useCallback(async (): Promise<{ worker: Worker | null; error: string | null }> => {
+    const isDev = import.meta.env.DEV;
     try {
+      if (isDev && typeof window !== 'undefined') {
+        console.log('[DEV] WorkerContext: supabaseUrl=', getSupabaseRestUrl(), 'window.location.origin=', window.location.origin);
+      }
       const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) return { worker: null, error: authError?.message ?? 'Not authenticated' };
+      if (isDev && typeof window !== 'undefined') {
+        console.log('[DEV] WorkerContext: after getUser() user=', !!user, 'userId=', user?.id, 'authError=', authError?.message ?? authError);
+      }
+      if (authError || !user) {
+        const errMsg = authError?.message ?? 'Not authenticated';
+        if (isDev && typeof window !== 'undefined') console.log('[DEV] WorkerContext: returning error (no user)', { error: errMsg });
+        return { worker: null, error: errMsg };
+      }
       let { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
       const code = (profileError as { code?: string } | null)?.code;
+      if (isDev && typeof window !== 'undefined') {
+        console.log('[DEV] WorkerContext: after profiles select single()', { profile: profile ?? null, errorCode: code, errorMessage: profileError?.message });
+      }
       if (profileError && code === 'PGRST116') {
         const tryInsert = async (payload: Record<string, unknown>): Promise<{ error: { message?: string; code?: string } | null }> => {
           const { error } = await supabase.from('profiles').insert(payload);
@@ -75,24 +87,35 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
           e && (e.code === '42703' || /column.*does not exist|undefined_column/i.test(e.message ?? ''));
         let insertError: { message?: string; code?: string } | null = null;
         insertError = (await tryInsert({ id: user.id, name: user.email ?? 'Unknown', email: user.email ?? undefined })).error;
+        if (isDev && typeof window !== 'undefined') {
+          console.log('[DEV] WorkerContext: insert attempt 1', { insertError: insertError ? { message: insertError.message, code: insertError.code } : null });
+        }
         if (insertError && isColumnError(insertError)) {
           insertError = (await tryInsert({ id: user.id, name: user.email ?? 'Unknown' })).error;
+          if (isDev && typeof window !== 'undefined') console.log('[DEV] WorkerContext: insert attempt 2', { insertError: insertError ? { message: insertError.message, code: insertError.code } : null });
         }
         if (insertError && isColumnError(insertError)) {
           insertError = (await tryInsert({ id: user.id })).error;
+          if (isDev && typeof window !== 'undefined') console.log('[DEV] WorkerContext: insert attempt 3', { insertError: insertError ? { message: insertError.message, code: insertError.code } : null });
         }
         if (insertError) {
           const msg = insertError.message ?? 'Profile not found';
           const codeStr = insertError.code ? ` (code: ${insertError.code})` : '';
+          if (isDev && typeof window !== 'undefined') console.log('[DEV] WorkerContext: returning error (insert failed)', { error: msg, code: insertError.code });
           return { worker: null, error: `${msg}${codeStr}` };
         }
         const result = await supabase.from('profiles').select('*').eq('id', user.id).single();
         profile = result.data;
         profileError = result.error;
+        if (isDev && typeof window !== 'undefined') {
+          console.log('[DEV] WorkerContext: after re-select', { profile: profile ?? null, error: profileError ? { message: profileError.message, code: (profileError as { code?: string }).code } : null });
+        }
       }
       if (profileError || !profile) {
         const msg = profileError?.message ?? 'Profile not found';
-        const codeStr = (profileError as { code?: string } | null)?.code ? ` (code: ${(profileError as { code?: string }).code})` : '';
+        const errCode = (profileError as { code?: string } | null)?.code;
+        const codeStr = errCode ? ` (code: ${errCode})` : '';
+        if (isDev && typeof window !== 'undefined') console.log('[DEV] WorkerContext: returning error (profile select)', { error: msg, code: errCode });
         return { worker: null, error: `${msg}${codeStr}` };
       }
       return {
@@ -112,33 +135,48 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       };
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Failed to load profile';
+      if (isDev && typeof window !== 'undefined') console.log('[DEV] WorkerContext: returning error (catch)', { error: message });
       return { worker: null, error: message };
     }
   }, []);
 
+  const PROFILE_LOAD_TIMEOUT_MS = 15000;
+
+  const getCurrentWorkerWithTimeout = useCallback(async (): Promise<{ worker: Worker | null; error: string | null }> => {
+    const timeoutPromise = new Promise<{ worker: Worker | null; error: string | null }>((resolve) => {
+      setTimeout(
+        () => resolve({ worker: null, error: 'Profile load timed out. Please retry or log out.' }),
+        PROFILE_LOAD_TIMEOUT_MS
+      );
+    });
+    return Promise.race([getCurrentWorker(), timeoutPromise]);
+  }, [getCurrentWorker]);
+
   const loadWorkerWhenSessionExists = useCallback(async () => {
-    const { worker: w, error: err } = await getCurrentWorker();
+    const { worker: w, error: err } = await getCurrentWorkerWithTimeout();
     if (err) {
       setWorkerError(err);
-      /* do not set worker=null on transient failure */
-    } else {
+    } else if (w) {
       setWorker(w);
       setWorkerError(null);
+    } else {
+      setWorkerError('Failed to load profile.');
     }
-  }, [getCurrentWorker]);
+  }, [getCurrentWorkerWithTimeout]);
 
   const refreshWorker = useCallback(async () => {
     if (session == null) return;
     setWorkerError(null);
-    const { worker: w, error: err } = await getCurrentWorker();
+    const { worker: w, error: err } = await getCurrentWorkerWithTimeout();
     if (err) {
       setWorkerError(err);
-      /* do not set worker=null — keep previous worker on transient failure */
-    } else {
+    } else if (w) {
       setWorker(w);
       setWorkerError(null);
+    } else {
+      setWorkerError('Failed to load profile.');
     }
-  }, [session, getCurrentWorker]);
+  }, [session, getCurrentWorkerWithTimeout]);
 
   const retryWorker = useCallback(async () => {
     setWorkerError(null);
@@ -148,15 +186,19 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   const syncSessionAndWorker = useCallback(async () => {
     try {
       const { data: { session: s } } = await supabase.auth.getSession();
+      if (import.meta.env.DEV && typeof window !== 'undefined') {
+        console.log('[DEV] WorkerContext: after getSession() (sync) hasSession=', !!s, 'userId=', s?.user?.id);
+      }
       setSession(s ?? null);
       if (s) {
-        const { worker: w, error: err } = await getCurrentWorker();
+        const { worker: w, error: err } = await getCurrentWorkerWithTimeout();
         if (err) {
           setWorkerError(err);
-          /* do not set worker=null */
-        } else {
+        } else if (w) {
           setWorker(w);
           setWorkerError(null);
+        } else {
+          setWorkerError('Failed to load profile.');
         }
       } else {
         setWorker(null);
@@ -167,22 +209,27 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       setWorker(null);
       setWorkerError(null);
     }
-  }, [getCurrentWorker]);
+  }, [getCurrentWorkerWithTimeout]);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       const { data: { session: s } } = await supabase.auth.getSession();
+      if (import.meta.env.DEV && typeof window !== 'undefined') {
+        console.log('[DEV] WorkerContext: after getSession() hasSession=', !!s, 'userId=', s?.user?.id);
+      }
       if (!mounted) return;
       setSession(s ?? null);
       if (s) {
-        const { worker: w, error: err } = await getCurrentWorker();
+        const { worker: w, error: err } = await getCurrentWorkerWithTimeout();
         if (!mounted) return;
         if (err) {
           setWorkerError(err);
-        } else {
+        } else if (w) {
           setWorker(w);
           setWorkerError(null);
+        } else {
+          setWorkerError('Failed to load profile.');
         }
       } else {
         setWorker(null);
@@ -190,7 +237,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       }
     })();
     return () => { mounted = false; };
-  }, [getCurrentWorker]);
+  }, [getCurrentWorkerWithTimeout]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -233,7 +280,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       if (data.session) {
         setSession(data.session);
         setWorkerError(null);
-        const { worker: w, error: err } = await getCurrentWorker();
+        const { worker: w, error: err } = await getCurrentWorkerWithTimeout();
         if (err) {
           setWorkerError(err);
           throw new Error('Worker profile not found. Please contact administrator.');
@@ -243,7 +290,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     } finally {
       /* session is set above, so loading becomes false */
     }
-  }, [getCurrentWorker]);
+  }, [getCurrentWorkerWithTimeout]);
 
   const logout = useCallback(async () => {
     try {

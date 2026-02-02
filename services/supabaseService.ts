@@ -1,4 +1,4 @@
-import { createClient } from '../utils/supabase/client';
+import { supabase } from '../utils/supabase/client';
 import {
   Property,
   Booking,
@@ -21,8 +21,6 @@ import {
   WarehouseInvoiceLine,
   Reservation,
 } from '../types';
-
-const supabase = createClient();
 
 // Lightweight type for joined stock + item for UI
 export interface WarehouseStockItem {
@@ -660,14 +658,10 @@ export const usersService = {
     department: 'facility' | 'accounting' | 'sales' | 'general';
     categoryAccess?: CategoryAccess[];
   }): Promise<Worker> {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 
-                       import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_URL || 
-                       (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_URL : '');
-    
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
     const functionsUrl = `${supabaseUrl}/functions/v1/invite-user`;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 
-                   import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-                   (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : '');
 
     console.log('👤 Creating user without invitation:', userData.email);
 
@@ -729,14 +723,10 @@ export const usersService = {
     department: 'facility' | 'accounting' | 'sales' | 'general';
     categoryAccess?: CategoryAccess[];
   }): Promise<Worker> {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 
-                       import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_URL || 
-                       (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_URL : '');
-    
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
     const functionsUrl = `${supabaseUrl}/functions/v1/invite-user`;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 
-                   import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-                   (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : '');
 
     // Get current session token for authentication (if JWT verification is enabled)
     // If JWT verification is disabled in Edge Function, we can use anon key directly
@@ -797,14 +787,10 @@ export const usersService = {
 
   // Resend invitation email for existing user
   async resendInvite(userId: string, email: string): Promise<void> {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 
-                       import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_URL || 
-                       (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_URL : '');
-    
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
     const functionsUrl = `${supabaseUrl}/functions/v1/invite-user`;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 
-                   import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-                   (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : '');
 
     // Get current session token for authentication (if JWT verification is enabled)
     // If JWT verification is disabled in Edge Function, we can use anon key directly

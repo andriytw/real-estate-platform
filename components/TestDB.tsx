@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { createClient } from '../utils/supabase/client';
+import { supabase } from '../utils/supabase/client';
 
 const TestDB: React.FC = () => {
   const [status, setStatus] = useState<'checking' | 'success' | 'error'>('checking');
@@ -9,14 +9,8 @@ const TestDB: React.FC = () => {
   useEffect(() => {
     const testConnection = async () => {
       try {
-        // Check if environment variables are set
-        // Vite automatically exposes env vars with VITE_ prefix, but we also support NEXT_PUBLIC_ for compatibility
-        const supabaseUrl = import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_URL || 
-                           import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
-                           (typeof window !== 'undefined' && (window as any).__SUPABASE_URL__);
-        const supabaseKey = import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY || 
-                           import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-                           (typeof window !== 'undefined' && (window as any).__SUPABASE_KEY__);
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
         if (!supabaseUrl || !supabaseKey) {
           setStatus('error');
@@ -25,8 +19,7 @@ const TestDB: React.FC = () => {
           return;
         }
 
-        // Try to create client and make a simple query
-        const supabase = createClient();
+        // Try to make a simple query
         
         // Test connection with a simple query (this will work even without tables)
         const { data, error } = await supabase.from('_test_connection').select('*').limit(1);
@@ -99,18 +92,14 @@ const TestDB: React.FC = () => {
               <div>
                 <span className="text-gray-500">NEXT_PUBLIC_SUPABASE_URL:</span>{' '}
                 <span className="text-gray-300">
-                  {import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_URL || 
-                   import.meta.env.NEXT_PUBLIC_SUPABASE_URL || 
-                   'Not set'}
+                  {process.env.NEXT_PUBLIC_SUPABASE_URL || 'Not set'}
                 </span>
               </div>
               <div>
                 <span className="text-gray-500">NEXT_PUBLIC_SUPABASE_ANON_KEY:</span>{' '}
                 <span className="text-gray-300">
-                  {(import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY || 
-                    import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) 
-                    ? '***' + (import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY || 
-                               import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY).slice(-4)
+                  {process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+                    ? '***' + process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.slice(-4)
                     : 'Not set'}
                 </span>
               </div>

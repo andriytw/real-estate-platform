@@ -3,7 +3,7 @@ import { X, Calendar, Clock, User, CheckCircle2, Circle, Building2, Wrench, Chec
 import { tasksService, workersService, propertiesService } from '../../services/supabaseService';
 import { CalendarEvent, TaskStatus, Property, Worker } from '../../types';
 import { getTaskColor } from '../../utils/taskColors';
-import { createClient } from '../../utils/supabase/client';
+import { supabase } from '../../utils/supabase/client';
 import { useWorker } from '../../contexts/WorkerContext';
 
 interface TaskDetailModalProps {
@@ -164,8 +164,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
   const handleMediaUpload = async (files: FileList | null) => {
     if (!files || !task) return;
-    const supabase = createClient();
-    if (!supabase) return;
 
     setIsUploadingMedia(true);
 

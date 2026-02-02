@@ -22,6 +22,7 @@ import { propertiesService, tasksService, workersService, warehouseService, book
 import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation } from '../types';
 import { MOCK_PROPERTIES } from '../constants';
 import { createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
+import { supabase } from '../utils/supabase/client';
 
 // --- Types ---
 type Department = 'admin' | 'properties' | 'facility' | 'accounting' | 'sales' | 'tasks';
@@ -634,23 +635,17 @@ const AccountDashboard: React.FC = () => {
           const base64Data = base64String.split(',')[1]; // Remove data:image/jpeg;base64, prefix
           const mimeType = uploadedInventoryFile.type;
 
-          // Get Supabase client for auth
-          const { createClient } = await import('../utils/supabase/client');
-          const supabase = createClient();
           const { data: { session } } = await supabase.auth.getSession();
           
           if (!session) {
             throw new Error('Not authenticated. Please log in again.');
           }
 
-          // Get Supabase URL
-          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 
-                            import.meta.env.NEXT_PUBLIC_SUPABASE_URL || 
-                            'https://qcpuzfhawcondygspiok.supabase.co';
-          
-          const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 
-                         import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
-                         'sb_publishable_cpQrhzVqZRCCeULDWhVJJw_ZIhcLx0Y';
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+          const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+          if (!supabaseUrl || !anonKey) {
+            throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
+          }
 
           // Call Edge Function
           const response = await fetch(`${supabaseUrl}/functions/v1/ocr-invoice`, {

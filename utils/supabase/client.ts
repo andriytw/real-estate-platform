@@ -1,43 +1,22 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
-let supabaseInstance: ReturnType<typeof createSupabaseClient> | null = null;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-/**
- * Vite SPA: single Supabase client from @supabase/supabase-js.
- * Session in localStorage so it persists across tab switch/resume.
- * No @supabase/ssr (cookies) — SPA only.
- */
-export function createClient() {
-  if (supabaseInstance) return supabaseInstance;
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
+}
 
-  const supabaseUrl =
-    import.meta.env.VITE_SUPABASE_URL ||
-    import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_URL ||
-    import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
-    (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_URL : '');
+export const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+  },
+});
 
-  const supabaseKey =
-    import.meta.env.VITE_SUPABASE_ANON_KEY ||
-    import.meta.env.VITE_NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : '');
-
-  if (!supabaseUrl || !supabaseKey) {
-    console.error('Missing Supabase env vars');
-  }
-
-  supabaseInstance = createSupabaseClient(
-    supabaseUrl || 'https://placeholder.supabase.co',
-    supabaseKey || 'placeholder',
-    {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-        // No custom storageKey — use Supabase default (sb-<project-ref>-auth-token) so session restores after reload/tab switch
-      },
-    }
-  );
-  return supabaseInstance;
+/** For diagnostics only: actual REST base URL used (confirm project ref). */
+export function getSupabaseRestUrl(): string {
+  return supabaseUrl || '';
 }

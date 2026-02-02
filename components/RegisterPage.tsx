@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserPlus, Mail, Lock, User, Building, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { createClient } from '../utils/supabase/client';
+import { supabase } from '../utils/supabase/client';
 import { useWorker } from '../contexts/WorkerContext';
-
-const supabase = createClient();
 
 interface RegisterPageProps {
   onRegisterSuccess?: () => void;
