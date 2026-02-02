@@ -35,7 +35,7 @@ export function createClient() {
         autoRefreshToken: true,
         detectSessionInUrl: true,
         storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-        storageKey: 'heroRooms-auth',
+        // No custom storageKey — use Supabase default (sb-<project-ref>-auth-token) so session restores after reload/tab switch
       },
     }
   );
