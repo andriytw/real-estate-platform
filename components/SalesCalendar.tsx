@@ -47,6 +47,13 @@ function getReservationLabel(r: ReservationData): string {
   return `Reservation #${r.id}`;
 }
 
+// Never show blank in calendar/tooltip — API/DB may return empty guest
+function getDisplayGuest(booking: { guest?: string | null }): string {
+  const g = booking.guest;
+  if (g != null && String(g).trim()) return String(g).trim();
+  return 'Guest';
+}
+
 interface SalesCalendarProps {
   onSaveOffer?: (offer: OfferData) => void;
   onSaveReservation?: (reservation: ReservationData) => void;
@@ -1242,6 +1249,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
                             {/* Bookings */}
                             {allBookings.filter(b => b.roomId === room.id).map(booking => {
+                                const displayGuest = getDisplayGuest(booking);
                                 const bookingStartDate = parseDate(booking.start);
                                 const bookingEndDate = parseDate(booking.end);
                                 
@@ -1349,7 +1357,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                                     {showOnlyInitials ? (
                                                         // Very narrow: show only initial
                                                         <span className="font-bold text-[12px] w-full text-center">
-                                                            {getInitial(booking.guest)}
+                                                            {getInitial(displayGuest)}
                                                         </span>
                                                     ) : showTimes ? (
                                                         <>
@@ -1360,7 +1368,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                                             
                                                             {/* Center: Guest/Company label */}
                                                             <span className="font-medium text-[11px] truncate flex-1 min-w-0 text-center whitespace-nowrap px-1">
-                                                                {booking.guest}
+                                                                {displayGuest}
                                                             </span>
                                                             
                                                             {/* Right: Check-out time (fixed width) */}
@@ -1378,7 +1386,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                                     ) : (
                                                         // Narrow: show only label centered
                                                         <span className="font-medium text-[11px] truncate w-full text-center whitespace-nowrap">
-                                                            {booking.guest}
+                                                            {displayGuest}
                                                         </span>
                                                     )}
                                                 </div>
@@ -1391,7 +1399,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                                 
                                                 {/* Center */}
                                                 <div className="flex flex-col items-center justify-center flex-1 px-2 min-w-0">
-                                                    <span className="font-bold text-xs truncate w-full text-center leading-tight">{booking.guest}</span>
+                                                    <span className="font-bold text-xs truncate w-full text-center leading-tight">{displayGuest}</span>
                                                     <span className="text-[9px] opacity-80 truncate leading-tight mt-0.5">
                                                         {nights}N | {parseInt(booking.guests || '0')}G
                                                     </span>
@@ -1415,6 +1423,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       {/* --- HOVER TOOLTIP --- */}
       {hoveredBooking && !isDragging && !selectedBooking && (() => {
         const booking = hoveredBooking.booking;
+        const displayGuest = getDisplayGuest(booking);
         const bookingStartDate = parseDate(booking.start);
         const bookingEndDate = parseDate(booking.end);
         const nights = dateDiffInDays(bookingStartDate, bookingEndDate);
@@ -1426,7 +1435,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
             style={{ left: hoveredBooking.x + 15, top: hoveredBooking.y + 15 }}
           >
             <div className="flex justify-between items-center mb-2 border-b border-gray-600 pb-2">
-              <span className="font-bold text-white">{booking.guest}</span>
+              <span className="font-bold text-white">{displayGuest}</span>
               <span className="text-xs font-bold text-emerald-400">({booking.status})</span>
             </div>
             <div className="text-xs text-gray-400 mb-2">

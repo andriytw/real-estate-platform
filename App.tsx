@@ -50,23 +50,6 @@ const AppContent: React.FC = () => {
     return () => clearTimeout(timer);
   }, [authLoading]);
 
-  // Clear Supabase cache if loading fails aggressively
-  useEffect(() => {
-    if (authTimeoutReached && authLoading) {
-      console.log('🧹 Clearing Supabase cache due to timeout');
-      try {
-        Object.keys(localStorage).forEach(key => {
-          if (key.startsWith('sb-')) localStorage.removeItem(key);
-        });
-        Object.keys(sessionStorage).forEach(key => {
-          if (key.startsWith('sb-')) sessionStorage.removeItem(key);
-        });
-      } catch (e) {
-        console.error('Error clearing cache', e);
-      }
-    }
-  }, [authLoading, authTimeoutReached]);
-
   // Load properties from Supabase
   const loadProperties = async () => {
     try {
