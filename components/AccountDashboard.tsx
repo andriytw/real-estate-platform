@@ -5452,9 +5452,9 @@ ${internalCompany} Team`;
                     <table className="w-full text-sm text-left">
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
                             <tr>
-                                <th className="p-4">Booking No.</th>
-                                <th className="p-4">Offer No.</th>
                                 <th className="p-4">Proforma No.</th>
+                                <th className="p-4">Offer No.</th>
+                                <th className="p-4">Reservation No.</th>
                                 <th className="p-4">Client</th>
                                 <th className="p-4">Property</th>
                                 <th className="p-4">Dates</th>
@@ -5498,15 +5498,15 @@ ${internalCompany} Team`;
                                         <td className={`p-4 ${isLost ? 'text-gray-500' : ''}`}>
                                             <div className="flex items-center gap-2">
                                                 <span className={`font-mono text-sm ${isLost ? 'text-gray-500' : 'text-gray-300'}`}>
-                                                    {linkedBooking?.bookingNo || '—'}
+                                                    {linkedProforma?.invoiceNumber ?? '—'}
                                                 </span>
-                                                {linkedBooking?.bookingNo && (
+                                                {(linkedProforma?.invoiceNumber) && (
                                                     <button
                                                         onClick={() => {
-                                                            navigator.clipboard.writeText(linkedBooking.bookingNo || '');
+                                                            navigator.clipboard.writeText(linkedProforma.invoiceNumber || '');
                                                         }}
                                                         className="text-gray-500 hover:text-white transition-colors"
-                                                        title="Copy booking number"
+                                                        title="Copy proforma number"
                                                     >
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -5538,15 +5538,15 @@ ${internalCompany} Team`;
                                         <td className={`p-4 ${isLost ? 'text-gray-500' : ''}`}>
                                             <div className="flex items-center gap-2">
                                                 <span className={`font-mono text-sm ${isLost ? 'text-gray-500' : 'text-gray-300'}`}>
-                                                    {linkedProforma?.invoiceNumber ?? '—'}
+                                                    {linkedReservation?.reservationNo ?? '—'}
                                                 </span>
-                                                {(linkedProforma?.invoiceNumber) && (
+                                                {(linkedReservation?.reservationNo) && (
                                                     <button
                                                         onClick={() => {
-                                                            navigator.clipboard.writeText(linkedProforma.invoiceNumber || '');
+                                                            navigator.clipboard.writeText(linkedReservation.reservationNo || '');
                                                         }}
                                                         className="text-gray-500 hover:text-white transition-colors"
-                                                        title="Copy proforma number"
+                                                        title="Copy reservation number"
                                                     >
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />

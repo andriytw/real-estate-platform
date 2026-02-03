@@ -1432,7 +1432,17 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         const bookingEndDate = parseDate(booking.end);
         const nights = dateDiffInDays(bookingStartDate, bookingEndDate);
         const guestsCount = parseInt(booking.guests || '0') || 1;
-        
+        const resList = reservations ?? [];
+        const offList = offers ?? [];
+        const invList = invoices ?? [];
+        const linkedReservation = resList.find(r => String(r.id) === String(booking.sourceReservationId));
+        const linkedOffer = offList.find(o => String(o.id) === String(booking.sourceOfferId));
+        const sourceInv = invList.find(i => i.id === booking.sourceInvoiceId);
+        const proformaNumber = sourceInv?.documentType === 'proforma'
+          ? (sourceInv.invoiceNumber ?? '—')
+          : sourceInv?.proformaId
+            ? (invList.find(p => p.id === sourceInv.proformaId)?.invoiceNumber ?? '—')
+            : '—';
         return (
           <div 
             className="fixed z-[100] bg-[#1F2937] border border-gray-700 text-white p-3 rounded-lg shadow-2xl pointer-events-none min-w-[200px]"
@@ -1469,6 +1479,20 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
               <div className="flex justify-between mt-1">
                 <span className="text-gray-500">Guests:</span>
                 <span className="font-semibold text-white">{guestsCount}</span>
+              </div>
+            </div>
+            <div className="text-xs text-gray-400 border-t border-gray-600 pt-2 mt-2">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Reservation:</span>
+                <span className="font-mono font-semibold text-white">{linkedReservation?.reservationNo ?? '—'}</span>
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-gray-500">Offer:</span>
+                <span className="font-mono font-semibold text-white">{linkedOffer?.offerNo ?? '—'}</span>
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-gray-500">Proforma:</span>
+                <span className="font-mono font-semibold text-white">{proformaNumber}</span>
               </div>
             </div>
           </div>
