@@ -5657,6 +5657,7 @@ ${internalCompany} Team`;
                                 <th className="p-4">Date</th>
                                 <th className="p-4">Amount</th>
                                 <th className="p-4">Document</th>
+                                <th className="p-4">Status</th>
                                 <th className="p-4 text-right w-32">Actions</th>
                             </tr>
                         </thead>
@@ -5701,30 +5702,30 @@ ${internalCompany} Team`;
                                               ) : null}
                                             </div>
                                         </td>
+                                        <td className="p-4">
+                                            {!lost && (proforma.status === 'Paid' ? (
+                                                <span className="text-emerald-400 text-xs">Confirmed ✓</span>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setConfirmPaymentModalProforma(proforma)}
+                                                    className="px-3 py-1.5 rounded text-xs font-bold transition-colors bg-green-600 hover:bg-green-500 text-white"
+                                                    title="Confirm payment"
+                                                >
+                                                    Confirm payment
+                                                </button>
+                                            ))}
+                                        </td>
                                         <td className="p-4 text-right">
                                             <div className="flex items-center justify-end gap-2 flex-wrap">
-                                                {proforma.status !== 'Paid' && (
-                                                    <button
-                                                        type="button"
-                                                        disabled={lost}
-                                                        onClick={() => !lost && setConfirmPaymentModalProforma(proforma)}
-                                                        className={`px-3 py-1.5 rounded text-xs font-bold transition-colors ${lost ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-500 text-white'}`}
-                                                        title={lost ? 'Програно — підтвердження недоступне' : 'Підтвердити оплату'}
-                                                    >
-                                                        Підтвердити оплату
-                                                    </button>
-                                                )}
-                                                {proforma.status === 'Paid' && (
-                                                    <span className="text-emerald-400 text-xs">Confirmed ✓</span>
-                                                )}
                                                 <button
                                                     type="button"
                                                     onClick={() => handleDeleteProforma(proforma)}
                                                     className={`inline-flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium transition-colors ${lost ? 'text-gray-500 hover:text-gray-400 hover:bg-gray-800/50' : 'text-red-400 hover:text-red-300 hover:bg-red-900/30'}`}
-                                                    title="Видалити проформу"
+                                                    title="Delete proforma"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
-                                                    Видалити
+                                                    Delete
                                                 </button>
                                             </div>
                                         </td>
@@ -5748,22 +5749,23 @@ ${internalCompany} Team`;
                                                             <span className="text-gray-500">—</span>
                                                         )}
                                                     </td>
+                                                    <td className="p-4" />
                                                     <td className="p-4 text-right">
                                                         <button
                                                             type="button"
                                                             onClick={() => handleDeleteInvoice(inv, proforma.id)}
                                                             className="inline-flex items-center gap-1.5 px-2 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded text-xs font-medium transition-colors"
-                                                            title="Видалити інвойс"
+                                                            title="Delete invoice"
                                                         >
                                                             <Trash2 className="w-4 h-4" />
-                                                            Видалити
+                                                            Delete
                                                         </button>
                                                     </td>
                                                 </tr>
                                             ))}
                                             <tr className="text-sm text-gray-400 hover:bg-[#16181D]">
                                                 <td className="p-4" />
-                                                <td colSpan={5} className="p-4 pl-8">
+                                                <td colSpan={6} className="p-4 pl-8">
                                                     <button
                                                         type="button"
                                                         disabled={lost}
@@ -5777,7 +5779,7 @@ ${internalCompany} Team`;
                                             </tr>
                                             <tr className="text-sm text-gray-400 hover:bg-[#16181D]">
                                                 <td className="p-4" />
-                                                <td colSpan={5} className="p-4 pl-8">
+                                                <td colSpan={6} className="p-4 pl-8">
                                                     <button
                                                         type="button"
                                                         disabled={lost}
@@ -5805,13 +5807,22 @@ ${internalCompany} Team`;
                                                                     <span className="text-gray-500">—</span>
                                                                 )}
                                                             </td>
+                                                            <td className="p-4">
+                                                                {proof.rpcConfirmedAt ? (
+                                                                    <span className="text-emerald-400 text-xs">Confirmed ✓</span>
+                                                                ) : (
+                                                                    <>
+                                                                        <span className="text-amber-400 text-xs">Not confirmed</span>
+                                                                        {proforma.status !== 'Paid' && (
+                                                                            <button type="button" onClick={() => handleRetryProofConfirmation(proforma, proof)} className="ml-2 px-2 py-1 rounded text-xs bg-amber-600 hover:bg-amber-500 text-white">Retry</button>
+                                                                        )}
+                                                                    </>
+                                                                )}
+                                                            </td>
                                                             <td className="p-4 text-right">
                                                                 <div className="flex items-center justify-end gap-2 flex-wrap">
-                                                                    {!proof.rpcConfirmedAt && proforma.status !== 'Paid' && (
-                                                                        <button type="button" onClick={() => handleRetryProofConfirmation(proforma, proof)} className="px-2 py-1 rounded text-xs bg-amber-600 hover:bg-amber-500 text-white">Retry</button>
-                                                                    )}
                                                                     {proof.filePath ? (
-                                                                        <button type="button" onClick={() => setPaymentProofModal({ mode: 'replace', proof })} className="px-2 py-1 rounded text-xs font-medium bg-white/10 hover:bg-white/15 text-white">Replace PDF</button>
+                                                                        <button type="button" onClick={() => setPaymentProofModal({ mode: 'replace', proof })} className="px-2 py-1 rounded text-xs font-medium bg-white/10 hover:bg-white/15 text-white">Replace</button>
                                                                     ) : (
                                                                         <button type="button" onClick={() => setPaymentProofModal({ mode: 'add', proof })} className="px-2 py-1 rounded text-xs font-medium bg-white/10 hover:bg-white/15 text-white">Add PDF</button>
                                                                     )}
@@ -5826,7 +5837,7 @@ ${internalCompany} Team`;
                             })}
                             {proformas.length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="p-8 text-center text-gray-500">No payments yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
+                                    <td colSpan={8} className="p-8 text-center text-gray-500">No payments yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
                                 </tr>
                             )}
                         </tbody>
