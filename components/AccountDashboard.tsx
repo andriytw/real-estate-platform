@@ -1391,12 +1391,6 @@ const AccountDashboard: React.FC = () => {
     loadProformas();
   }, [activeDepartment, salesTab]);
 
-  // Load payment proofs when proformas are shown (Payments table)
-  useEffect(() => {
-    if (activeDepartment !== 'sales' || salesTab !== 'proformas' || proformas.length === 0) return;
-    loadPaymentProofsForInvoiceIds(proformas.map(p => p.id));
-  }, [activeDepartment, salesTab, proformas.map(p => p.id).join(',')]);
-
   // Listen for task updates from Kanban board
   useEffect(() => {
     const handleTaskUpdated = async () => {
@@ -1564,6 +1558,44 @@ const AccountDashboard: React.FC = () => {
   const [proofSignedUrlByInvoiceId, setProofSignedUrlByInvoiceId] = useState<Record<string, string>>({});
   const [paymentProofModal, setPaymentProofModal] = useState<{ mode: 'add' | 'replace'; proof: PaymentProof } | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
+
+  /** Load payment proofs for given invoice ids and signed URLs for current proofs. */
+  const loadPaymentProofsForInvoiceIds = async (invoiceIds: string[]) => {
+    if (invoiceIds.length === 0) return;
+    try {
+      const byId: Record<string, PaymentProof[]> = {};
+      await Promise.all(
+        invoiceIds.map(async (id) => {
+          const list = await paymentProofsService.getByInvoiceId(id);
+          byId[id] = list;
+        })
+      );
+      setPaymentProofsByInvoiceId(prev => ({ ...prev, ...byId }));
+      const signed: Record<string, string> = {};
+      await Promise.all(
+        Object.entries(byId).map(async ([invId, proofs]) => {
+          const current = proofs.find(p => p.isCurrent && p.filePath);
+          if (current?.filePath) {
+            try {
+              const url = await paymentProofsService.getPaymentProofSignedUrl(current.filePath);
+              signed[invId] = url;
+            } catch {
+              // ignore per-invoice signed URL errors
+            }
+          }
+        })
+      );
+      setProofSignedUrlByInvoiceId(prev => ({ ...prev, ...signed }));
+    } catch (e) {
+      console.error('Error loading payment proofs:', e);
+    }
+  };
+
+  // Load payment proofs when proformas are shown (Payments table)
+  useEffect(() => {
+    if (activeDepartment !== 'sales' || salesTab !== 'proformas' || proformas.length === 0) return;
+    loadPaymentProofsForInvoiceIds(proformas.map(p => p.id));
+  }, [activeDepartment, salesTab, proformas.map(p => p.id).join(',')]);
 
   // --- Toast notifications ---
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -2517,38 +2549,6 @@ ${internalCompany} Team`;
     setSelectedOfferForInvoice(null);
     setSelectedInvoice(null);
     setIsInvoiceModalOpen(true);
-  };
-
-  /** Load payment proofs for given invoice ids and signed URLs for current proofs. */
-  const loadPaymentProofsForInvoiceIds = async (invoiceIds: string[]) => {
-    if (invoiceIds.length === 0) return;
-    try {
-      const byId: Record<string, PaymentProof[]> = {};
-      await Promise.all(
-        invoiceIds.map(async (id) => {
-          const list = await paymentProofsService.getByInvoiceId(id);
-          byId[id] = list;
-        })
-      );
-      setPaymentProofsByInvoiceId(prev => ({ ...prev, ...byId }));
-      const signed: Record<string, string> = {};
-      await Promise.all(
-        Object.entries(byId).map(async ([invId, proofs]) => {
-          const current = proofs.find(p => p.isCurrent && p.filePath);
-          if (current?.filePath) {
-            try {
-              const url = await paymentProofsService.getPaymentProofSignedUrl(current.filePath);
-              signed[invId] = url;
-            } catch {
-              // ignore per-invoice signed URL errors
-            }
-          }
-        })
-      );
-      setProofSignedUrlByInvoiceId(prev => ({ ...prev, ...signed }));
-    } catch (e) {
-      console.error('Error loading payment proofs:', e);
-    }
   };
 
   const toggleProformaExpand = async (proformaId: string) => {
