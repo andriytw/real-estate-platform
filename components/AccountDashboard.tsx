@@ -98,8 +98,18 @@ const INITIAL_LEADS: Lead[] = [
 
 const DOC_LINK_PILL = 'inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 text-xs text-indigo-300';
 
-/** Renders a "Proof" link that fetches signed URL for the given storage path (pill style). */
-const ProofLink: React.FC<{ filePath: string }> = ({ filePath }) => {
+function formatDateEU(value: string | undefined): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}.${month}.${year}`;
+}
+
+/** Renders a document link that fetches signed URL for the given storage path (pill style). */
+const ProofLink: React.FC<{ filePath: string; label?: string }> = ({ filePath, label = 'Proof' }) => {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -112,7 +122,7 @@ const ProofLink: React.FC<{ filePath: string }> = ({ filePath }) => {
   return (
     <a href={url} target="_blank" rel="noopener noreferrer" className={DOC_LINK_PILL}>
       <FileText className="w-3.5 h-3.5" />
-      Proof
+      {label}
     </a>
   );
 };
@@ -2728,6 +2738,19 @@ ${internalCompany} Team`;
     } catch (e) {
       console.error('Retry confirmation failed:', e);
       alert(`Retry failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const handleAddProofClick = async (proforma: InvoiceData) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const createdBy = session?.user?.id;
+      const newProof = await paymentProofsService.create({ invoiceId: proforma.id, createdBy });
+      await loadPaymentProofsForInvoiceIds([proforma.id]);
+      setPaymentProofModal({ mode: 'add', proof: newProof });
+    } catch (e) {
+      console.error('Add proof failed:', e);
+      alert(`Не вдалося створити підтвердження: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -5634,7 +5657,7 @@ ${internalCompany} Team`;
                                 <th className="p-4">Date</th>
                                 <th className="p-4">Amount</th>
                                 <th className="p-4">Document</th>
-                                <th className="p-4 text-center">Actions</th>
+                                <th className="p-4 text-right w-32">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-800">
@@ -5658,7 +5681,7 @@ ${internalCompany} Team`;
                                         </td>
                                         <td className={`p-4 font-mono ${lost ? 'line-through text-gray-500' : ''}`}>{proforma.invoiceNumber}</td>
                                         <td className={`p-4 ${lost ? 'line-through text-gray-500' : ''}`}>{proforma.clientName}</td>
-                                        <td className="p-4">{proforma.date}</td>
+                                        <td className="p-4 tabular-nums">{formatDateEU(proforma.date)}</td>
                                         <td className="p-4">€{proforma.totalGross?.toFixed(2) ?? '—'}</td>
                                         <td className="p-4">
                                             <div className="flex flex-wrap items-center gap-2">
@@ -5673,13 +5696,13 @@ ${internalCompany} Team`;
                                               {(proofSignedUrlByInvoiceId[proforma.id] ?? proforma.paymentProofUrl) ? (
                                                 <a href={proofSignedUrlByInvoiceId[proforma.id] ?? proforma.paymentProofUrl ?? '#'} target="_blank" rel="noopener noreferrer" className={DOC_LINK_PILL}>
                                                   <FileText className="w-3.5 h-3.5" />
-                                                  Proof
+                                                  PDF
                                                 </a>
                                               ) : null}
                                             </div>
                                         </td>
-                                        <td className="p-4 text-center">
-                                            <div className="flex items-center justify-center gap-2 flex-wrap">
+                                        <td className="p-4 text-right">
+                                            <div className="flex items-center justify-end gap-2 flex-wrap">
                                                 {proforma.status !== 'Paid' && (
                                                     <button
                                                         type="button"
@@ -5713,11 +5736,14 @@ ${internalCompany} Team`;
                                                     <td className="p-4" />
                                                     <td className="p-4 pl-8 font-mono">{inv.invoiceNumber}</td>
                                                     <td className="p-4" />
-                                                    <td className="p-4 tabular-nums">{inv.date}</td>
+                                                    <td className="p-4 tabular-nums">{formatDateEU(inv.date)}</td>
                                                     <td className="p-4 tabular-nums">€{inv.totalGross?.toFixed(2) ?? '—'}</td>
                                                     <td className="p-4">
                                                         {inv.fileUrl ? (
-                                                            <a href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-300 hover:underline text-xs">PDF</a>
+                                                            <a href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className={DOC_LINK_PILL}>
+                                                                <FileText className="w-3.5 h-3.5" />
+                                                                PDF
+                                                            </a>
                                                         ) : (
                                                             <span className="text-gray-500">—</span>
                                                         )}
@@ -5749,21 +5775,32 @@ ${internalCompany} Team`;
                                                 </td>
                                                 <td className="p-4" />
                                             </tr>
+                                            <tr className="text-sm text-gray-400 hover:bg-[#16181D]">
+                                                <td className="p-4" />
+                                                <td colSpan={5} className="p-4 pl-8">
+                                                    <button
+                                                        type="button"
+                                                        disabled={lost}
+                                                        onClick={() => !lost && handleAddProofClick(proforma)}
+                                                        className="text-left hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        + Add proof
+                                                    </button>
+                                                </td>
+                                                <td className="p-4" />
+                                            </tr>
                                             {[...(paymentProofsByInvoiceId[proforma.id] ?? [])]
                                                 .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                                                .map(proof => {
-                                                    const d = new Date(proof.createdAt);
-                                                    const dateStr = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-                                                    return (
+                                                .map(proof => (
                                                         <tr key={proof.id} className="text-sm text-gray-300 hover:bg-[#16181D]">
                                                             <td className="p-4" />
                                                             <td className="p-4 pl-8" />
                                                             <td className="p-4" />
-                                                            <td className="p-4 tabular-nums text-gray-400">{dateStr}</td>
+                                                            <td className="p-4 tabular-nums text-gray-400">{formatDateEU(proof.createdAt)}</td>
                                                             <td className="p-4" />
                                                             <td className="p-4">
                                                                 {proof.filePath ? (
-                                                                    <ProofLink filePath={proof.filePath} />
+                                                                    <ProofLink filePath={proof.filePath} label="PDF" />
                                                                 ) : (
                                                                     <span className="text-gray-500">—</span>
                                                                 )}
@@ -5781,8 +5818,7 @@ ${internalCompany} Team`;
                                                                 </div>
                                                             </td>
                                                         </tr>
-                                                    );
-                                                })}
+                                                    ))}
                                         </>
                                     )}
                                 </React.Fragment>
