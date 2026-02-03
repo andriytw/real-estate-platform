@@ -66,7 +66,7 @@ export const MOCK_PROPERTIES: Property[] = [
     description: "Quiet, bright apartment in the city center, ideal for a family. Central heating.",
     
     // Details
-    details: { area: "65 m²", rooms: 3, floor: 2, year: 1985, beds: 4, baths: 1, balconies: 1, buildingFloors: 5 },
+    details: { area: 65, rooms: 3, floor: 2, year: 1985, beds: 4, baths: 1, balconies: 1, buildingFloors: 5 },
     building: { 
         type: "Multi-family (MFH)", repairYear: 2015, heating: "Gas", energyClass: "C", 
         parking: "Open Space", pets: "Allowed", elevator: "No", kitchen: "Yes", 
@@ -131,7 +131,7 @@ export const MOCK_PROPERTIES: Property[] = [
     status: 'Available',
     description: "Spacious house in a quiet Berlin neighborhood. Ideal for a large family.",
     
-    details: { area: "150 m²", rooms: 6, floor: 3, year: 2005, beds: 7, baths: 2, balconies: 0, buildingFloors: 3 },
+    details: { area: 150, rooms: 6, floor: 3, year: 2005, beds: 7, baths: 2, balconies: 0, buildingFloors: 3 },
     building: { 
         type: "Single Family (EFH)", repairYear: 2020, heating: "Heat Pump", energyClass: "A+", 
         parking: "Garage", pets: "Allowed", elevator: "No", kitchen: "Yes", 
@@ -181,7 +181,7 @@ export const MOCK_PROPERTIES: Property[] = [
     status: 'Maintenance',
     description: "Private house with a large plot near the sea. Needs minor repairs.",
     
-    details: { area: "220 m²", rooms: 7, floor: 2, year: 1995, beds: 8, baths: 3, balconies: 1, buildingFloors: 2 },
+    details: { area: 220, rooms: 7, floor: 2, year: 1995, beds: 8, baths: 3, balconies: 1, buildingFloors: 2 },
     building: { 
         type: "Single Family (EFH)", repairYear: 2010, heating: "Gas", energyClass: "D", 
         parking: "Open Space", pets: "Allowed", elevator: "No", kitchen: "Yes", 
@@ -225,7 +225,7 @@ export const MOCK_PROPERTIES: Property[] = [
     status: 'Available',
     description: "Stylish apartment in the center of Warsaw. Ideal for a couple.",
     
-    details: { area: "45 m²", rooms: 2, floor: 12, year: 2021, beds: 2, baths: 1, balconies: 1, buildingFloors: 15 },
+    details: { area: 45, rooms: 2, floor: 12, year: 2021, beds: 2, baths: 1, balconies: 1, buildingFloors: 15 },
     building: { 
         type: "Skyscraper", repairYear: 2021, heating: "City", energyClass: "A", 
         parking: "Carport", pets: "Not Allowed", elevator: "Yes", kitchen: "Yes", 
@@ -262,7 +262,7 @@ export const MOCK_PROPERTIES: Property[] = [
     meta: "30 m² / 1",
     image: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?q=80&w=2070&auto=format&fit=crop',
     status: 'Available',
-    details: { area: "30 m²", rooms: 1, floor: 1, year: 1900, beds: 1, baths: 1, balconies: 0, buildingFloors: 4 },
+    details: { area: 30, rooms: 1, floor: 1, year: 1900, beds: 1, baths: 1, balconies: 0, buildingFloors: 4 },
     building: { type: "Old Town", repairYear: 2010, heating: "Gas", energyClass: "D", parking: "None", pets: "No", elevator: "No", kitchen: "Yes", access: "No", certificate: "N/A", energyDemand: "150", centralHeating: "No" },
     inventory: [],
     meterReadings: [],
@@ -284,7 +284,7 @@ export const MOCK_PROPERTIES: Property[] = [
     meta: "80 m² / 4",
     image: 'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?q=80&w=1974&auto=format&fit=crop',
     status: 'Available',
-    details: { area: "80 m²", rooms: 4, floor: 3, year: 1980, beds: 4, baths: 2, balconies: 1, buildingFloors: 9 },
+    details: { area: 80, rooms: 4, floor: 3, year: 1980, beds: 4, baths: 2, balconies: 1, buildingFloors: 9 },
     building: { type: "MFH", repairYear: 2018, heating: "Central", energyClass: "C", parking: "Street", pets: "Yes", elevator: "Yes", kitchen: "Yes", access: "Yes", certificate: "N/A", energyDemand: "100", centralHeating: "Yes" },
     inventory: [],
     meterReadings: [],
@@ -306,7 +306,7 @@ export const MOCK_PROPERTIES: Property[] = [
     meta: "110 m² / Office",
     image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=2069&auto=format&fit=crop',
     status: 'Available',
-    details: { area: "110 m²", rooms: 5, floor: 2, year: 2000, beds: 0, baths: 2, balconies: 0, buildingFloors: 5 },
+    details: { area: 110, rooms: 5, floor: 2, year: 2000, beds: 0, baths: 2, balconies: 0, buildingFloors: 5 },
     building: { type: "Commercial", repairYear: 2022, heating: "Electric", energyClass: "B", parking: "Lot", pets: "No", elevator: "Yes", kitchen: "No", access: "Yes", certificate: "N/A", energyDemand: "90", centralHeating: "Yes" },
     inventory: [],
     meterReadings: [],
@@ -328,7 +328,7 @@ export const MOCK_PROPERTIES: Property[] = [
     meta: "25 m² / 1",
     image: 'https://images.unsplash.com/photo-1536376072261-38c75010e6c9?q=80&w=2071&auto=format&fit=crop',
     status: 'Available',
-    details: { area: "25 m²", rooms: 1, floor: 4, year: 1910, beds: 1, baths: 1, balconies: 0, buildingFloors: 4 },
+    details: { area: 25, rooms: 1, floor: 4, year: 1910, beds: 1, baths: 1, balconies: 0, buildingFloors: 4 },
     building: { type: "Old Stock", repairYear: 2015, heating: "Electric", energyClass: "E", parking: "None", pets: "No", elevator: "No", kitchen: "Yes", access: "No", certificate: "N/A", energyDemand: "180", centralHeating: "No" },
     inventory: [],
     meterReadings: [],

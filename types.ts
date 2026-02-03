@@ -165,7 +165,7 @@ export interface WarehouseInvoiceLine {
 }
 
 export interface PropertyDetails {
-  area: string;
+  area: number;
   rooms: number;
   floor: number;
   year: number;

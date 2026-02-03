@@ -1792,7 +1792,7 @@ const AccountDashboard: React.FC = () => {
     }
   };
 
-  const defaultDetails: PropertyDetails = { area: '', rooms: 0, floor: 0, year: 0, beds: 0, baths: 0, balconies: 0, buildingFloors: 0 };
+  const defaultDetails: PropertyDetails = { area: 0, rooms: 0, floor: 0, year: 0, beds: 0, baths: 0, balconies: 0, buildingFloors: 0 };
 
   const AMENITY_GROUPS: { groupLabel: string; keys: string[] }[] = [
     { groupLabel: 'Küche & Haushalt', keys: ['Kochmöglichkeit', 'Kühlschrank', 'Mikrowelle', 'Wasserkocher', 'Kochutensilien', 'Spülmaschine', 'Kaffeemaschine'] },
@@ -1814,7 +1814,7 @@ const AccountDashboard: React.FC = () => {
     const d = selectedProperty.details || {};
     const a = selectedProperty.amenities || {};
     setCard2Draft({
-      details: { ...defaultDetails, area: d.area ?? '', rooms: d.rooms ?? 0, floor: d.floor ?? 0, year: d.year ?? 0, beds: d.beds ?? 0, baths: d.baths ?? 0, balconies: d.balconies ?? 0, buildingFloors: d.buildingFloors ?? 0 },
+      details: { ...defaultDetails, area: d.area ?? 0, rooms: d.rooms ?? 0, floor: d.floor ?? 0, year: d.year ?? 0, beds: d.beds ?? 0, baths: d.baths ?? 0, balconies: d.balconies ?? 0, buildingFloors: d.buildingFloors ?? 0 },
       amenities: { ...defaultAmenities, ...a }
     });
     setIsCard2Editing(true);
@@ -3847,10 +3847,10 @@ ${internalCompany} Team`;
          <div className="w-full md:w-[350px] flex-shrink-0 border-r border-gray-800 overflow-y-auto p-4 space-y-3 bg-[#161B22]">
             <div className="mb-4">
                 <button 
-                    onClick={() => setIsPropertyAddModalOpen(true)}
+                    onClick={() => { setPropertyToEdit(undefined); setIsPropertyAddModalOpen(true); }}
                     className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20 transition-colors"
                 >
-                    <Plus className="w-5 h-5" /> Додати об'єкт
+                    <Plus className="w-5 h-5" /> Додати квартиру
                 </button>
             </div>
             <div className="relative mb-4">
@@ -3867,7 +3867,7 @@ ${internalCompany} Team`;
                   
                   {/* Characteristics */}
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-gray-400">
-                     {prop.details?.area && (
+                     {(prop.details?.area != null && prop.details.area !== 0) && (
                         <span>Площа: <span className="text-gray-300 font-medium">{prop.details.area} м²</span></span>
                      )}
                      {(prop.details?.rooms || prop.details?.beds) && (
@@ -3896,7 +3896,8 @@ ${internalCompany} Team`;
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold text-white">Оренда квартири</h2>
                     <button
-                        onClick={() => { setPropertyToEdit(selectedProperty); setIsPropertyAddModalOpen(true); }}
+                        type="button"
+                        onClick={() => { /* Create-only: no edit modal; future inline edit */ }}
                         className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
                     >
                         <Edit className="w-4 h-4 mr-1 inline" /> Редагувати
@@ -4029,8 +4030,8 @@ ${internalCompany} Team`;
                             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-y-4 gap-x-6 text-sm mb-6">
                                 <div>
                                     <span className="text-gray-500 text-xs block mb-1">Площа</span>
-                                    {view ? <span className="text-white font-bold">{ph(d.area) || '—'}</span> : (
-                                        <input type="text" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={d.area ?? ''} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, area: e.target.value } })} placeholder="—" />
+                                    {view ? <span className="text-white font-bold">{(d.area != null && d.area !== 0) ? String(d.area) : '—'}</span> : (
+                                        <input type="number" min={0} step={0.1} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={d.area != null && d.area !== 0 ? d.area : ''} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, area: parseFloat(e.target.value) || 0 } })} placeholder="—" />
                                     )}
                                 </div>
                                 <div>
@@ -7001,7 +7002,6 @@ ${internalCompany} Team`;
           setPropertyToEdit(undefined);
         }} 
         onSave={handleSaveProperty}
-        propertyToEdit={propertyToEdit}
       />
       <RequestModal 
         isOpen={isRequestModalOpen} 

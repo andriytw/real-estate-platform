@@ -551,7 +551,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         details: p.address || p.fullAddress || '',
         rooms: p.details?.rooms ?? p.rooms ?? 0,
         beds: p.details?.beds ?? 0,
-        area: p.details?.area ?? (p.area != null ? String(p.area) : ''),
+        area: p.details?.area ?? p.area ?? 0,
         termStatus: p.termStatus ?? undefined,
       })),
     [properties]
