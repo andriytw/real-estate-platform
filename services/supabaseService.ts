@@ -1294,12 +1294,13 @@ export const reservationsService = {
   },
 
   async delete(id: string): Promise<void> {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('reservations')
       .delete()
-      .eq('id', id);
-    
+      .eq('id', id)
+      .select('id');
     if (error) throw error;
+    if (!data || data.length === 0) throw new Error('Delete not allowed or reservation not found. Check your role (Sales) and RLS policies.');
   }
 };
 
@@ -1386,12 +1387,13 @@ export const bookingsService = {
   },
 
   async delete(id: string | number): Promise<void> {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('bookings')
       .delete()
-      .eq('id', id.toString());
-    
+      .eq('id', id.toString())
+      .select('id');
     if (error) throw error;
+    if (!data || data.length === 0) throw new Error('Delete not allowed or booking not found. Check your role and RLS policies.');
   }
 };
 
@@ -1433,12 +1435,13 @@ export const offersService = {
   },
 
   async delete(id: string): Promise<void> {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('offers')
       .delete()
-      .eq('id', id);
-    
+      .eq('id', id)
+      .select('id');
     if (error) throw error;
+    if (!data || data.length === 0) throw new Error('Delete not allowed or offer not found. Check your role (Sales) and RLS policies.');
   }
 };
 
@@ -1488,12 +1491,13 @@ export const invoicesService = {
   },
   
   async delete(id: string): Promise<void> {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('invoices')
       .delete()
-      .eq('id', id);
-    
+      .eq('id', id)
+      .select('id');
     if (error) throw error;
+    if (!data || data.length === 0) throw new Error('Delete not allowed or invoice not found. Check your role (Sales/Accounting) and RLS policies.');
   },
 
   /** Proformas only (document_type = 'proforma') */

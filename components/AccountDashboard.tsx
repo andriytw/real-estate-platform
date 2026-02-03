@@ -96,7 +96,9 @@ const INITIAL_LEADS: Lead[] = [
   { id: 'l2', name: 'Schmidt, Anna', type: 'Private', email: 'anna.schmidt@email.com', phone: '+49 123 4567', address: 'Berlin, Germany', status: 'Past', createdAt: '2025-08-10' },
 ];
 
-/** Renders a "Proof" link that fetches signed URL for the given storage path. */
+const DOC_LINK_PILL = 'inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 text-xs text-indigo-300';
+
+/** Renders a "Proof" link that fetches signed URL for the given storage path (pill style). */
 const ProofLink: React.FC<{ filePath: string }> = ({ filePath }) => {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -107,7 +109,12 @@ const ProofLink: React.FC<{ filePath: string }> = ({ filePath }) => {
     return () => { cancelled = true; };
   }, [filePath]);
   if (!url) return <span className="text-gray-500 text-xs">…</span>;
-  return <a href={url} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline text-xs">Proof</a>;
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className={DOC_LINK_PILL}>
+      <FileText className="w-3.5 h-3.5" />
+      Proof
+    </a>
+  );
 };
 
 const AccountDashboard: React.FC = () => {
@@ -2553,10 +2560,12 @@ ${internalCompany} Team`;
 
   const toggleProformaExpand = async (proformaId: string) => {
     setExpandedProformaIds(prev => {
-      const next = new Set(prev);
-      if (next.has(proformaId)) next.delete(proformaId);
-      else next.add(proformaId);
-      return next;
+      if (prev.has(proformaId)) {
+        const next = new Set(prev);
+        next.delete(proformaId);
+        return next;
+      }
+      return new Set([proformaId]);
     });
     if (!proformaChildInvoices[proformaId]) {
       try {
@@ -5624,7 +5633,7 @@ ${internalCompany} Team`;
                                 <th className="p-4">Client</th>
                                 <th className="p-4">Date</th>
                                 <th className="p-4">Amount</th>
-                                <th className="p-4">PDF</th>
+                                <th className="p-4">Проформа</th>
                                 <th className="p-4 text-center">Actions</th>
                             </tr>
                         </thead>
@@ -5633,7 +5642,7 @@ ${internalCompany} Team`;
                                 const lost = isProformaLost(proforma);
                                 return (
                                 <React.Fragment key={proforma.id}>
-                                    <tr className={`hover:bg-[#16181D] ${lost ? 'opacity-70 text-gray-500' : ''}`}>
+                                    <tr className={`hover:bg-[#16181D] border-b border-white/5 ${lost ? 'opacity-70 text-gray-500' : ''}`}>
                                         <td className="p-4">
                                             <button
                                                 type="button"
@@ -5654,12 +5663,18 @@ ${internalCompany} Team`;
                                         <td className="p-4">
                                             <div className="flex flex-wrap items-center gap-2">
                                               {proforma.fileUrl ? (
-                                                <a href={proforma.fileUrl} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">PDF</a>
+                                                <a href={proforma.fileUrl} target="_blank" rel="noopener noreferrer" className={DOC_LINK_PILL}>
+                                                  <FileText className="w-3.5 h-3.5" />
+                                                  PDF
+                                                </a>
                                               ) : (
                                                 <span className="text-gray-500">—</span>
                                               )}
                                               {(proofSignedUrlByInvoiceId[proforma.id] ?? proforma.paymentProofUrl) ? (
-                                                <a href={proofSignedUrlByInvoiceId[proforma.id] ?? proforma.paymentProofUrl ?? '#'} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline text-xs">Proof</a>
+                                                <a href={proofSignedUrlByInvoiceId[proforma.id] ?? proforma.paymentProofUrl ?? '#'} target="_blank" rel="noopener noreferrer" className={DOC_LINK_PILL}>
+                                                  <FileText className="w-3.5 h-3.5" />
+                                                  Proof
+                                                </a>
                                               ) : null}
                                             </div>
                                         </td>
@@ -5700,74 +5715,122 @@ ${internalCompany} Team`;
                                         </td>
                                     </tr>
                                     {expandedProformaIds.has(proforma.id) && (
-                                        <>
-                                            {(proformaChildInvoices[proforma.id] ?? []).length === 0 ? (
-                                                <tr className="bg-[#16181D]">
-                                                    <td className="p-4" />
-                                                    <td colSpan={6} className="p-4 pl-8 text-gray-500 text-sm italic">Інвойсів ще немає.</td>
-                                                </tr>
-                                            ) : (proformaChildInvoices[proforma.id] ?? []).map(inv => (
-                                                <tr key={inv.id} className="bg-[#16181D] hover:bg-[#1C1F24]">
-                                                    <td className="p-4" />
-                                                    <td className="p-4 pl-8 font-mono text-gray-400">{inv.invoiceNumber}</td>
-                                                    <td className="p-4 text-gray-400">{inv.clientName}</td>
-                                                    <td className="p-4 text-gray-400">{inv.date}</td>
-                                                    <td className="p-4 text-gray-400">€{inv.totalGross?.toFixed(2) ?? '—'}</td>
-                                                    <td className="p-4">
-                                                        {inv.fileUrl ? (
-                                                            <a href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline text-xs">PDF</a>
-                                                        ) : (
-                                                            <span className="text-gray-500">—</span>
-                                                        )}
-                                                    </td>
-                                                    <td className="p-4 text-center">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleDeleteInvoice(inv, proforma.id)}
-                                                            className="inline-flex items-center gap-1.5 px-2 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded text-xs font-medium transition-colors"
-                                                            title="Видалити інвойс"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                            Видалити
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                            <tr className="bg-[#16181D]">
-                                                <td className="p-4" />
-                                                <td colSpan={6} className="p-4 pl-8">
-                                                    <div className="font-medium text-gray-400 mb-2">Payment Proofs</div>
-                                                    {(paymentProofsByInvoiceId[proforma.id] ?? []).length === 0 ? (
-                                                        <div className="text-gray-500 text-sm italic">No payment proofs yet.</div>
+                                        <tr className="bg-transparent">
+                                            <td className="p-4" />
+                                            <td colSpan={6} className="p-3 pt-0 pb-5">
+                                                <div className="rounded-xl border border-white/10 bg-[#12141A] p-4 shadow-sm">
+                                                    {/* Section A: Invoices */}
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <span className="text-xs text-gray-400 uppercase tracking-wide">Invoices</span>
+                                                        <span className="rounded px-2 py-0.5 text-xs bg-white/5 text-gray-400 border border-white/10">{(proformaChildInvoices[proforma.id] ?? []).length}</span>
+                                                    </div>
+                                                    {(proformaChildInvoices[proforma.id] ?? []).length === 0 ? (
+                                                        <p className="text-sm text-gray-500">Інвойсів ще немає. Натисни Add Invoice у верхньому рядку.</p>
                                                     ) : (
-                                                        <div className="space-y-2">
-                                                            {(paymentProofsByInvoiceId[proforma.id] ?? []).map(proof => (
-                                                                <div key={proof.id} className="flex flex-wrap items-center gap-2 border-b border-gray-700 pb-2 last:border-0 last:pb-0">
-                                                                    <span className="text-gray-400 text-xs">{new Date(proof.createdAt).toLocaleString()}</span>
-                                                                    <span className={`px-1.5 py-0.5 rounded text-xs ${proof.isCurrent ? 'bg-emerald-500/20 text-emerald-400' : proof.state === 'replaced' ? 'bg-gray-500/20 text-gray-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                                                                        {proof.isCurrent ? 'Current' : proof.state === 'replaced' ? 'Replaced' : 'Active'}
+                                                        <div className="text-sm text-gray-300">
+                                                            <div className="grid grid-cols-[220px_140px_140px_1fr_120px] items-center text-xs text-gray-400 uppercase tracking-wide">
+                                                                <div>Number</div>
+                                                                <div className="tabular-nums">Date</div>
+                                                                <div className="tabular-nums">Amount</div>
+                                                                <div>PDF</div>
+                                                                <div>Actions</div>
+                                                            </div>
+                                                            {(proformaChildInvoices[proforma.id] ?? []).map(inv => (
+                                                                <div key={inv.id} className="grid grid-cols-[220px_140px_140px_1fr_120px] items-center border-t border-white/5 py-2 text-sm text-gray-300">
+                                                                    <span className="font-mono text-gray-200">{inv.invoiceNumber}</span>
+                                                                    <span className="tabular-nums">{inv.date}</span>
+                                                                    <span className="tabular-nums">€{inv.totalGross?.toFixed(2) ?? '—'}</span>
+                                                                    <span>
+                                                                        {inv.fileUrl ? (
+                                                                            <a href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className={DOC_LINK_PILL}>
+                                                                                <FileText className="w-3.5 h-3.5" />
+                                                                                PDF
+                                                                            </a>
+                                                                        ) : (
+                                                                            <span className="text-gray-500">—</span>
+                                                                        )}
                                                                     </span>
-                                                                    {proof.rpcConfirmedAt ? <span className="text-emerald-400 text-xs">Confirmed ✓</span> : (
-                                                                        <>
-                                                                            <span className="text-amber-400 text-xs">Proof created but payment confirmation failed.</span>
-                                                                            {proforma.status !== 'Paid' && (
-                                                                                <button type="button" onClick={() => handleRetryProofConfirmation(proforma, proof)} className="px-2 py-1 rounded text-xs bg-amber-600 hover:bg-amber-500 text-white">Retry confirmation</button>
-                                                                            )}
-                                                                        </>
-                                                                    )}
-                                                                    {proof.filePath ? <ProofLink filePath={proof.filePath} /> : <span className="text-gray-500 text-xs">No PDF yet</span>}
-                                                                    {proof.filePath ? (
-                                                                        <button type="button" onClick={() => setPaymentProofModal({ mode: 'replace', proof })} className="px-2 py-1 rounded text-xs bg-gray-600 hover:bg-gray-500 text-white">Replace PDF</button>
-                                                                    ) : (
-                                                                        <button type="button" onClick={() => setPaymentProofModal({ mode: 'add', proof })} className="px-2 py-1 rounded text-xs bg-purple-600 hover:bg-purple-500 text-white">Add confirmation PDF</button>
-                                                                    )}
+                                                                    <div className="flex justify-end">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleDeleteInvoice(inv, proforma.id)}
+                                                                            className="inline-flex items-center gap-1.5 px-2 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded text-xs font-medium transition-colors"
+                                                                            title="Видалити інвойс"
+                                                                        >
+                                                                            <Trash2 className="w-4 h-4" />
+                                                                            Видалити
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
                                                             ))}
                                                         </div>
                                                     )}
-                                                </td>
-                                            </tr>
-                                        </>
+
+                                                    <div className="my-4 border-t border-white/10" />
+
+                                                    {/* Section B: Payment Proofs */}
+                                                    <div className="rounded-lg border border-white/5 bg-[#0F1116] p-4">
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <span className="text-xs text-gray-400 uppercase tracking-wide">Payment Proofs</span>
+                                                            <span className="text-xs text-gray-500">History</span>
+                                                        </div>
+                                                        {(paymentProofsByInvoiceId[proforma.id] ?? []).length === 0 ? (
+                                                            <p className="text-sm text-gray-500">No confirmations yet</p>
+                                                        ) : (
+                                                            <div className="text-sm text-gray-300">
+                                                                <div className="grid grid-cols-[180px_120px_1fr_160px] items-center text-xs text-gray-400 uppercase tracking-wide">
+                                                                    <div>Date</div>
+                                                                    <div>Status</div>
+                                                                    <div>Document</div>
+                                                                    <div>Actions</div>
+                                                                </div>
+                                                                {(paymentProofsByInvoiceId[proforma.id] ?? []).map(proof => {
+                                                                    const d = new Date(proof.createdAt);
+                                                                    const dateStr = `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                                                                    return (
+                                                                        <div key={proof.id} className="grid grid-cols-[180px_120px_1fr_160px] items-center border-t border-white/5 py-2 text-sm text-gray-300">
+                                                                            <span className="tabular-nums">{dateStr}</span>
+                                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                                {proof.isCurrent && (
+                                                                                    <span className="px-1.5 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-300 border border-emerald-500/20">Current</span>
+                                                                                )}
+                                                                                {proof.state === 'replaced' && (
+                                                                                    <span className="px-1.5 py-0.5 rounded text-xs bg-white/5 text-gray-400 border border-white/10">Replaced</span>
+                                                                                )}
+                                                                                {proof.rpcConfirmedAt ? (
+                                                                                    <span className="text-emerald-400 text-xs">Confirmed ✓</span>
+                                                                                ) : (
+                                                                                    <>
+                                                                                        <span className="text-amber-400 text-xs">Not confirmed</span>
+                                                                                        {proforma.status !== 'Paid' && (
+                                                                                            <button type="button" onClick={() => handleRetryProofConfirmation(proforma, proof)} className="px-2 py-1 rounded text-xs bg-amber-600 hover:bg-amber-500 text-white">Retry confirmation</button>
+                                                                                        )}
+                                                                                    </>
+                                                                                )}
+                                                                            </div>
+                                                                            <span>
+                                                                                {proof.filePath ? (
+                                                                                    <ProofLink filePath={proof.filePath} />
+                                                                                ) : (
+                                                                                    <span className="text-gray-500 text-xs">No PDF yet</span>
+                                                                                )}
+                                                                            </span>
+                                                                            <div className="flex justify-end gap-2">
+                                                                                {proof.filePath ? (
+                                                                                    <button type="button" onClick={() => setPaymentProofModal({ mode: 'replace', proof })} className="px-3 py-1.5 rounded-md text-xs font-medium bg-white/10 hover:bg-white/15 text-white min-w-[96px]">Replace PDF</button>
+                                                                                ) : (
+                                                                                    <button type="button" onClick={() => setPaymentProofModal({ mode: 'add', proof })} className="px-3 py-1.5 rounded-md text-xs font-medium bg-white/10 hover:bg-white/15 text-white min-w-[96px]">Add PDF</button>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
                                     )}
                                 </React.Fragment>
                                 );
