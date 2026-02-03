@@ -181,6 +181,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const [minPeopleFilter, setMinPeopleFilter] = useState<number | null>(null);
   const [minRoomsFilter, setMinRoomsFilter] = useState<number | null>(null);
   const [hoveredBooking, setHoveredBooking] = useState<{booking: Booking, x: number, y: number} | null>(null);
+  const hoverLeaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Додати state для поточного видимого місяця
   const [currentVisibleMonth, setCurrentVisibleMonth] = useState(() => {
@@ -1333,8 +1334,16 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                                 e.stopPropagation();
                                             }
                                         }}
-                                        onMouseEnter={(e) => setHoveredBooking({ booking, x: e.clientX, y: e.clientY })}
-                                        onMouseLeave={() => setHoveredBooking(null)}
+                                        onMouseEnter={(e) => {
+                                            if (hoverLeaveTimeoutRef.current) {
+                                                clearTimeout(hoverLeaveTimeoutRef.current);
+                                                hoverLeaveTimeoutRef.current = null;
+                                            }
+                                            setHoveredBooking({ booking, x: e.clientX, y: e.clientY });
+                                        }}
+                                        onMouseLeave={() => {
+                                            hoverLeaveTimeoutRef.current = setTimeout(() => setHoveredBooking(null), 350);
+                                        }}
                                         className={`
                                             absolute rounded-md text-xs text-white flex shadow-lg z-10 cursor-pointer items-center pointer-events-auto
                                             ${isReservation 
@@ -1452,6 +1461,13 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
           <div 
             className="fixed z-[100] bg-[#1F2937] border border-gray-700 text-white p-3 rounded-lg shadow-2xl pointer-events-auto min-w-[200px]"
             style={{ left: hoveredBooking.x + 15, top: hoveredBooking.y + 15 }}
+            onMouseEnter={() => {
+              if (hoverLeaveTimeoutRef.current) {
+                clearTimeout(hoverLeaveTimeoutRef.current);
+                hoverLeaveTimeoutRef.current = null;
+              }
+            }}
+            onMouseLeave={() => setHoveredBooking(null)}
           >
             <div className="flex justify-between items-center mb-2 border-b border-gray-600 pb-2">
               <span className="font-bold text-white">{displayGuest}</span>
@@ -1504,7 +1520,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                 )}
               </div>
               <div className="flex justify-between items-center mt-1">
-                <span className="text-gray-500">Payment confirmation:</span>
+                <span className="text-gray-500">Confirmation:</span>
                 {currentProof ? (
                   getPaymentProofSignedUrl && currentProof.filePath ? (
                     <button
