@@ -5414,7 +5414,7 @@ ${internalCompany} Team`;
                                     </td>
                                     <td className={`p-4 font-bold ${isLostOrCancelled ? 'text-gray-500 line-through' : ''}`}>{res.guest}</td>
                                     <td className={`p-4 ${isLostOrCancelled ? 'text-gray-500' : ''}`}>{getPropertyNameById(res.roomId)}</td>
-                                    <td className={`p-4 ${isLostOrCancelled ? 'text-gray-500' : ''}`}>{res.start} - {res.end}</td>
+                                    <td className={`p-4 tabular-nums ${isLostOrCancelled ? 'text-gray-500' : ''}`}>{formatDateEU(res.start)} – {formatDateEU(res.end)}</td>
                                     <td className="p-4">
                                         <span className={`px-2 py-1 rounded text-xs font-bold ${getReservationStatusBadge()}`}>
                                             {res.status}
@@ -5454,7 +5454,7 @@ ${internalCompany} Team`;
                             <tr>
                                 <th className="p-4">Booking No.</th>
                                 <th className="p-4">Offer No.</th>
-                                <th className="p-4">Reservation No.</th>
+                                <th className="p-4">Proforma No.</th>
                                 <th className="p-4">Client</th>
                                 <th className="p-4">Property</th>
                                 <th className="p-4">Dates</th>
@@ -5483,6 +5483,7 @@ ${internalCompany} Team`;
                                 const linkedReservation = offer.reservationId
                                     ? reservations.find(r => String(r.id) === String(offer.reservationId))
                                     : linkedBooking;
+                                const linkedProforma = invoices.find(inv => inv.documentType === 'proforma' && (String(inv.offerId || inv.offerIdSource) === String(offer.id)));
                                 
                                 const getStatusStyle = () => {
                                     if (isDraft) return 'bg-gray-500/20 text-gray-400 border-gray-500';
@@ -5537,15 +5538,15 @@ ${internalCompany} Team`;
                                         <td className={`p-4 ${isLost ? 'text-gray-500' : ''}`}>
                                             <div className="flex items-center gap-2">
                                                 <span className={`font-mono text-sm ${isLost ? 'text-gray-500' : 'text-gray-300'}`}>
-                                                    {linkedReservation?.reservationNo ?? '—'}
+                                                    {linkedProforma?.invoiceNumber ?? '—'}
                                                 </span>
-                                                {(linkedReservation?.reservationNo) && (
+                                                {(linkedProforma?.invoiceNumber) && (
                                                     <button
                                                         onClick={() => {
-                                                            navigator.clipboard.writeText(linkedReservation.reservationNo || '');
+                                                            navigator.clipboard.writeText(linkedProforma.invoiceNumber || '');
                                                         }}
                                                         className="text-gray-500 hover:text-white transition-colors"
-                                                        title="Copy reservation number"
+                                                        title="Copy proforma number"
                                                     >
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -5556,7 +5557,7 @@ ${internalCompany} Team`;
                                         </td>
                                         <td className={`p-4 font-bold ${isLost ? 'text-gray-500 line-through' : ''}`}>{offer.clientName}</td>
                                         <td className={`p-4 ${isLost ? 'text-gray-500' : ''}`}>{getPropertyNameById(offer.propertyId)}</td>
-                                        <td className={`p-4 ${isLost ? 'text-gray-500' : ''}`}>{offer.dates}</td>
+                                        <td className={`p-4 tabular-nums ${isLost ? 'text-gray-500' : ''}`}>{[offerStart, offerEnd].map(d => formatDateEU(d)).join(' – ')}</td>
                                         <td className="p-4">
                                             <span className={`px-2 py-1 rounded text-xs font-bold border border-dashed ${getStatusStyle()}`}>
                                                 {offer.status}
@@ -5849,7 +5850,7 @@ ${internalCompany} Team`;
                                     <td className="p-4 font-bold">{req.firstName} {req.lastName}</td>
                                     <td className="p-4">{req.email}</td>
                                     <td className="p-4">{req.phone}</td>
-                                    <td className="p-4">{req.startDate} - {req.endDate}</td>
+                                    <td className="p-4 tabular-nums">{formatDateEU(req.startDate)} – {formatDateEU(req.endDate)}</td>
                                     <td className="p-4">{req.peopleCount}</td>
                                     <td className="p-4">
                                         <span className={`px-2 py-1 rounded text-xs font-bold ${
@@ -5922,7 +5923,7 @@ ${internalCompany} Team`;
                                     <td className="p-4 text-gray-400">#{res.id}</td>
                                     <td className="p-4 font-bold">{res.guest || `${res.firstName || ''} ${res.lastName || ''}`.trim() || 'Unknown Guest'}</td>
                                     <td className="p-4">{getPropertyNameById(res.roomId)}</td>
-                                    <td className="p-4">{res.start} - {res.end}</td>
+                                    <td className="p-4 tabular-nums">{formatDateEU(res.start)} – {formatDateEU(res.end)}</td>
                                     <td className="p-4">
                                         <span className="px-2 py-1 rounded text-xs font-bold bg-gray-500/20 text-gray-400 border border-gray-500">
                                             {typeof res.status === 'string' ? res.status : 'Completed'}
