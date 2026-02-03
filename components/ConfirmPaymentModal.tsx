@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, Upload } from 'lucide-react';
 import { InvoiceData } from '../types';
 import { paymentProofsService, markInvoicePaidAndConfirmBooking } from '../services/supabaseService';
@@ -20,12 +20,22 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
   onConfirmed,
 }) => {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [documentNumber, setDocumentNumber] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  useEffect(() => {
+    if (isOpen && proforma) {
+      paymentProofsService.getNextDocumentNumber()
+        .then((next) => setDocumentNumber(next))
+        .catch(() => setDocumentNumber(''));
+    }
+  }, [isOpen, proforma]);
+
   const resetForm = () => {
     setPdfFile(null);
+    setDocumentNumber('');
     setError(null);
   };
 
@@ -50,7 +60,11 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
       const createdBy = session?.user?.id ?? undefined;
 
       // 1. Always create payment_proofs row (is_current = false; do not modify previous proofs)
-      const proof = await paymentProofsService.create({ invoiceId: proforma.id, createdBy });
+      const proof = await paymentProofsService.create({
+        invoiceId: proforma.id,
+        createdBy,
+        documentNumber: documentNumber.trim() || undefined,
+      });
       proofId = proof.id;
 
       // 2. If user selected a PDF: upload and update proof row
@@ -126,6 +140,19 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
           <p className="text-sm text-gray-400">
             Проформа: <span className="font-mono text-white">{proforma.invoiceNumber}</span> — {proforma.clientName}
           </p>
+
+          <div>
+            <label className="text-xs font-medium text-gray-400 block mb-2">
+              Confirmation number
+            </label>
+            <input
+              type="text"
+              value={documentNumber}
+              onChange={(e) => setDocumentNumber(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-gray-700 bg-[#111315] text-white text-sm font-mono placeholder-gray-500 focus:outline-none focus:border-gray-500"
+              placeholder="PAY-2026-000001"
+            />
+          </div>
 
           <div>
             <label className="text-xs font-medium text-gray-400 block mb-2">

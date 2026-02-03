@@ -2741,19 +2741,6 @@ ${internalCompany} Team`;
     }
   };
 
-  const handleAddProofClick = async (proforma: InvoiceData) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const createdBy = session?.user?.id;
-      const newProof = await paymentProofsService.create({ invoiceId: proforma.id, createdBy });
-      await loadPaymentProofsForInvoiceIds([proforma.id]);
-      setPaymentProofModal({ mode: 'add', proof: newProof });
-    } catch (e) {
-      console.error('Add proof failed:', e);
-      alert(`Не вдалося створити підтвердження: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  };
-
   const handleConfirmProformaPayment = async (proforma: InvoiceData) => {
     if (proforma.status === 'Paid') return;
     const offerId = proforma.offerId || proforma.offerIdSource;
@@ -5777,26 +5764,12 @@ ${internalCompany} Team`;
                                                 </td>
                                                 <td className="p-4" />
                                             </tr>
-                                            <tr className="text-sm text-gray-400 hover:bg-[#16181D]">
-                                                <td className="p-4" />
-                                                <td colSpan={6} className="p-4 pl-8">
-                                                    <button
-                                                        type="button"
-                                                        disabled={lost}
-                                                        onClick={() => !lost && handleAddProofClick(proforma)}
-                                                        className="text-left hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    >
-                                                        + Add proof
-                                                    </button>
-                                                </td>
-                                                <td className="p-4" />
-                                            </tr>
                                             {[...(paymentProofsByInvoiceId[proforma.id] ?? [])]
                                                 .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                                                 .map(proof => (
                                                         <tr key={proof.id} className="text-sm text-gray-300 hover:bg-[#16181D]">
                                                             <td className="p-4" />
-                                                            <td className="p-4 pl-8" />
+                                                            <td className="p-4 pl-8 font-mono">{proof.documentNumber ?? '—'}</td>
                                                             <td className="p-4" />
                                                             <td className="p-4 tabular-nums text-gray-400">{formatDateEU(proof.createdAt)}</td>
                                                             <td className="p-4" />

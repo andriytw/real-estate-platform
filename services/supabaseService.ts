@@ -1566,12 +1566,37 @@ export const paymentProofsService = {
     return (data || []).map(transformPaymentProofFromDB);
   },
 
-  async create(payload: { invoiceId: string; createdBy?: string }): Promise<PaymentProof> {
+  /** Returns next suggested document number (e.g. PAY-2026-000001). */
+  async getNextDocumentNumber(): Promise<string> {
+    const year = new Date().getFullYear();
+    const prefix = `PAY-${year}-`;
+    const { data, error } = await supabase
+      .from('payment_proofs')
+      .select('document_number')
+      .not('document_number', 'is', null)
+      .like('document_number', `${prefix}%`);
+    if (error) throw error;
+    let maxN = 0;
+    for (const row of data || []) {
+      const num = row.document_number?.replace(prefix, '');
+      const n = parseInt(num || '0', 10);
+      if (!Number.isNaN(n) && n > maxN) maxN = n;
+    }
+    const next = maxN + 1;
+    return `${prefix}${String(next).padStart(6, '0')}`;
+  },
+
+  async create(payload: { invoiceId: string; createdBy?: string; documentNumber?: string }): Promise<PaymentProof> {
+    let docNum = payload.documentNumber?.trim() || null;
+    if (!docNum) {
+      docNum = await this.getNextDocumentNumber();
+    }
     const { data, error } = await supabase
       .from('payment_proofs')
       .insert([{
         invoice_id: payload.invoiceId,
         created_by: payload.createdBy ?? null,
+        document_number: docNum,
         is_current: false,
         state: 'active',
       }])
@@ -2103,6 +2128,7 @@ function transformPaymentProofFromDB(db: any): PaymentProof {
   return {
     id: db.id,
     invoiceId: db.invoice_id,
+    documentNumber: db.document_number ?? undefined,
     createdAt: db.created_at,
     createdBy: db.created_by ?? undefined,
     filePath: db.file_path ?? undefined,
@@ -2120,6 +2146,7 @@ function transformPaymentProofFromDB(db: any): PaymentProof {
 
 function transformPaymentProofToDB(proof: Partial<PaymentProof>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
+  if (proof.documentNumber !== undefined) out.document_number = proof.documentNumber;
   if (proof.filePath !== undefined) out.file_path = proof.filePath;
   if (proof.fileName !== undefined) out.file_name = proof.fileName;
   if (proof.fileUploadedAt !== undefined) out.file_uploaded_at = proof.fileUploadedAt;

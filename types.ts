@@ -398,6 +398,7 @@ export interface InvoiceData {
 export interface PaymentProof {
   id: string;
   invoiceId: string;
+  documentNumber?: string;
   createdAt: string;
   createdBy?: string;
   filePath?: string;
