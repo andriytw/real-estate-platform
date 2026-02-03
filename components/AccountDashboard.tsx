@@ -5564,43 +5564,47 @@ ${internalCompany} Team`;
                                         </td>
                                         <td className={`p-4 text-right font-mono ${isLost ? 'text-gray-500' : ''}`}>{offer.price}</td>
                                         <td className="p-4 text-center">
-                                            <div className="flex gap-2 justify-center">
-                                                <button 
-                                                    onClick={() => handleViewOffer(offer)}
-                                                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors"
-                                                >
-                                                    View
-                                                </button>
-                                                {!isOfferClosedForActions && isDraft && (
+                                            <div className="flex justify-between items-center gap-4">
+                                                <div className="flex gap-2 items-center">
+                                                    {!isOfferClosedForActions && isDraft && (
+                                                        <button 
+                                                            onClick={() => {
+                                                                setOffers(prev => prev.map(o => 
+                                                                    o.id === offer.id ? { ...o, status: 'Sent' } : o
+                                                                ));
+                                                            }}
+                                                            className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-xs font-bold transition-colors"
+                                                        >
+                                                            Send Offer
+                                                        </button>
+                                                    )}
+                                                    {!isOfferClosedForActions && offer.status === 'Sent' && (
+                                                        <button 
+                                                            onClick={() => handleCreateInvoiceClick(offer)}
+                                                            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
+                                                        >
+                                                            Add Proforma
+                                                        </button>
+                                                    )}
+                                                    {!isOfferClosedForActions && isInvoiced && (
+                                                        <span className="px-3 py-1.5 text-gray-500 text-xs">Proforma added</span>
+                                                    )}
+                                                </div>
+                                                <div className="flex gap-2 shrink-0">
                                                     <button 
-                                                        onClick={() => {
-                                                            setOffers(prev => prev.map(o => 
-                                                                o.id === offer.id ? { ...o, status: 'Sent' } : o
-                                                            ));
-                                                        }}
-                                                        className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-xs font-bold transition-colors"
+                                                        onClick={() => handleViewOffer(offer)}
+                                                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors"
                                                     >
-                                                        Send Offer
+                                                        View
                                                     </button>
-                                                )}
-                                                {!isOfferClosedForActions && offer.status === 'Sent' && (
                                                     <button 
-                                                        onClick={() => handleCreateInvoiceClick(offer)}
-                                                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
+                                                        onClick={() => handleDeleteOffer(offer.id)}
+                                                        className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded text-xs font-bold transition-colors"
+                                                        title="Delete offer"
                                                     >
-                                                        Add Proforma
+                                                        Delete
                                                     </button>
-                                                )}
-                                                {!isOfferClosedForActions && isInvoiced && (
-                                                    <span className="px-3 py-1.5 text-gray-500 text-xs">Proforma added</span>
-                                                )}
-                                                <button 
-                                                    onClick={() => handleDeleteOffer(offer.id)}
-                                                    className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded text-xs font-bold transition-colors"
-                                                    title="Delete offer"
-                                                >
-                                                    Delete
-                                                </button>
+                                                </div>
                                             </div>
                                         </td>
                                     </tr>
