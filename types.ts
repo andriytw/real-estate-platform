@@ -226,6 +226,8 @@ export interface Property {
   
   details: PropertyDetails;
   building: BuildingSpecs;
+  /** Unit amenities (Ausstattung) — keys from approved list, always render all, even when false */
+  amenities?: Record<string, boolean>;
   inventory: InventoryItem[];
   meterReadings?: MeterReading[]; 
   meterLog?: MeterLogEntry[];

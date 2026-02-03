@@ -21,7 +21,7 @@ import UserManagement from './admin/UserManagement';
 // This avoids "X is not a constructor" on /account (CJS/ESM + esbuild minification issue with dnd).
 const KanbanBoard = React.lazy(() => import('./kanban/KanbanBoard'));
 import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, leadsService, paymentProofsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem } from '../services/supabaseService';
-import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation, PaymentProof } from '../types';
+import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, PropertyDetails, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation, PaymentProof } from '../types';
 import { MOCK_PROPERTIES } from '../constants';
 import { createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 import { supabase } from '../utils/supabase/client';
@@ -323,6 +323,8 @@ const AccountDashboard: React.FC = () => {
   }, []); // Empty deps - only run once on mount
   const [isPropertyAddModalOpen, setIsPropertyAddModalOpen] = useState(false);
   const [propertyToEdit, setPropertyToEdit] = useState<Property | undefined>(undefined);
+  const [isCard2Editing, setIsCard2Editing] = useState(false);
+  const [card2Draft, setCard2Draft] = useState<{ details: PropertyDetails; amenities: Record<string, boolean> } | null>(null);
   const [isInventoryEditing, setIsInventoryEditing] = useState(false);
   const [expandedMeterGroups, setExpandedMeterGroups] = useState<Set<string>>(new Set());
   const [warehouseTab, setWarehouseTab] = useState<'warehouses' | 'stock' | 'addInventory'>('warehouses');
@@ -1789,6 +1791,58 @@ const AccountDashboard: React.FC = () => {
       alert('Помилка збереження об\'єкта. Спробуйте ще раз.');
     }
   };
+
+  const defaultDetails: PropertyDetails = { area: '', rooms: 0, floor: 0, year: 0, beds: 0, baths: 0, balconies: 0, buildingFloors: 0 };
+
+  const AMENITY_GROUPS: { groupLabel: string; keys: string[] }[] = [
+    { groupLabel: 'Küche & Haushalt', keys: ['Kochmöglichkeit', 'Kühlschrank', 'Mikrowelle', 'Wasserkocher', 'Kochutensilien', 'Spülmaschine', 'Kaffeemaschine'] },
+    { groupLabel: 'Sanvuzol & Komfort', keys: ['Privates Bad', 'Dusche', 'WC', 'Handtücher inkl.', 'Hygiene Produkte', 'Waschmaschine', 'Trockner'] },
+    { groupLabel: 'Sleeping & Living', keys: ['Getrennte Betten', 'Bettwäsche inkl.', 'Zustellbett möglich', 'Arbeitsplatz', 'Spind / Safe'] },
+    { groupLabel: 'Technologie & Media', keys: ['TV', 'W-LAN', 'Radio', 'Streaming Dienste'] },
+    { groupLabel: 'Building & Access', keys: ['Aufzug', 'Barrierefrei', 'Ruhige Lage'] },
+    { groupLabel: 'Outdoor & Location', keys: ['Terrasse', 'Gute Verkehrsanbindung', 'Geschäfte in der Nähe'] },
+    { groupLabel: 'Parking', keys: ['PKW-Parkplatz', 'LKW-Parkplatz'] },
+    { groupLabel: 'Freizeit / Extras', keys: ['Sauna', 'Grillmöglichkeit', 'Tisch-Fußball', 'Billardtisch', 'Dart'] },
+    { groupLabel: 'Services', keys: ['24h-Rezeption', 'Frühstück', 'Lunchpaket (gg. Aufpreis)'] },
+    { groupLabel: 'Rules / Shared', keys: ['Raucher', 'Gemeinschaftsbad', 'Gemeinschaftsraum'] },
+  ];
+  const ALL_AMENITY_KEYS = AMENITY_GROUPS.flatMap(g => g.keys);
+  const defaultAmenities = Object.fromEntries(ALL_AMENITY_KEYS.map(k => [k, false]));
+
+  const startCard2Edit = () => {
+    if (!selectedProperty) return;
+    const d = selectedProperty.details || {};
+    const a = selectedProperty.amenities || {};
+    setCard2Draft({
+      details: { ...defaultDetails, area: d.area ?? '', rooms: d.rooms ?? 0, floor: d.floor ?? 0, year: d.year ?? 0, beds: d.beds ?? 0, baths: d.baths ?? 0, balconies: d.balconies ?? 0, buildingFloors: d.buildingFloors ?? 0 },
+      amenities: { ...defaultAmenities, ...a }
+    });
+    setIsCard2Editing(true);
+  };
+
+  const saveCard2 = async () => {
+    if (!selectedProperty || !card2Draft) return;
+    try {
+      const updated = await propertiesService.update(selectedProperty.id, { details: card2Draft.details, amenities: card2Draft.amenities });
+      setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+      setSelectedPropertyId(updated.id);
+      setIsCard2Editing(false);
+      setCard2Draft(null);
+    } catch (err) {
+      console.error('Card 2 save error:', err);
+      alert('Помилка збереження. Спробуйте ще раз.');
+    }
+  };
+
+  const cancelCard2 = () => {
+    setIsCard2Editing(false);
+    setCard2Draft(null);
+  };
+
+  useEffect(() => {
+    setIsCard2Editing(false);
+    setCard2Draft(null);
+  }, [selectedPropertyId]);
 
   const handleAddInventoryRow = () => {
     const updatedProperties = properties.map(prop => {
@@ -3837,106 +3891,243 @@ ${internalCompany} Team`;
                </div>
             </div>
 
-            {/* 1. Basic Info (Split) */}
+            {/* Card 1 — Lease (Rent) + Identity */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold text-white">1. Основні Дані Об'єкта</h2>
-                    <button 
-                      onClick={() => {
-                        setPropertyToEdit(selectedProperty);
-                        setIsPropertyAddModalOpen(true);
-                      }}
-                      className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                    <h2 className="text-2xl font-bold text-white">Оренда квартири</h2>
+                    <button
+                        onClick={() => { setPropertyToEdit(selectedProperty); setIsPropertyAddModalOpen(true); }}
+                        className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
                     >
-                      <Edit className="w-4 h-4 mr-1 inline" /> Редагувати
+                        <Edit className="w-4 h-4 mr-1 inline" /> Редагувати
                     </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div className="border-r border-gray-700 pr-4">
-                        <span className="text-xs text-gray-500 block mb-1">Термін Оренди</span>
-                        <span className="text-lg font-bold text-emerald-500">{selectedProperty.term}</span>
+                <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
+                        <div>
+                            <span className="text-xs text-gray-500 block mb-1">Адреса</span>
+                            <span className="text-sm text-white font-bold">{selectedProperty.fullAddress || [selectedProperty.address, selectedProperty.zip, selectedProperty.city].filter(Boolean).join(', ') || '—'}</span>
+                        </div>
+                        <div>
+                            <span className="text-xs text-gray-500 block mb-1">Поверх / Сторона</span>
+                            <span className="text-sm text-white">{selectedProperty.details?.floor != null ? `${selectedProperty.details.floor} OG` : '—'} {selectedProperty.details?.buildingFloors != null ? ` / ${selectedProperty.details.buildingFloors} поверхов` : ''}</span>
+                        </div>
+                        <div>
+                            <span className="text-xs text-gray-500 block mb-1">Квартира / Код</span>
+                            <span className="text-sm text-white">{selectedProperty.title || '—'}</span>
+                        </div>
                     </div>
-                    <div className="border-r border-gray-700 pr-4 col-span-2">
-                        <span className="text-xs text-gray-500 block mb-1">Опис</span>
-                        <span className="text-sm text-gray-300">{selectedProperty.description}</span>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
+                        <div>
+                            <span className="text-xs text-gray-500 block mb-1">Термін оренди</span>
+                            <span className="text-lg font-bold text-emerald-500">{selectedProperty.term || '—'}</span>
+                        </div>
+                        <div>
+                            <span className="text-xs text-gray-500 block mb-1">Статус</span>
+                            <span className={`text-sm font-medium ${selectedProperty.termStatus === 'green' ? 'text-emerald-500' : 'text-amber-500'}`}>{selectedProperty.termStatus === 'green' ? 'Активний' : 'Завершується'}</span>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
+                        <div>
+                            <span className="text-xs text-gray-500 block mb-1">Орендодавець</span>
+                            <span className="text-sm text-white">—</span>
+                        </div>
+                        <div>
+                            <span className="text-xs text-gray-500 block mb-1">Орендар</span>
+                            <span className="text-sm text-white">{selectedProperty.tenant?.name || '—'}</span>
+                        </div>
+                        <div>
+                            <span className="text-xs text-gray-500 block mb-1">Управління</span>
+                            <span className="text-sm text-white">—</span>
+                        </div>
                     </div>
                     <div>
-                        <span className="text-xs text-gray-500 block mb-1">Адреса</span>
-                        <span className="text-sm text-white font-bold">{selectedProperty.fullAddress}</span>
+                        <span className="text-xs text-gray-500 block mb-2">Рентний таймлайн</span>
+                        <div className="overflow-hidden border border-gray-700 rounded-lg">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                                    <tr>
+                                        <th className="p-2 font-bold text-xs uppercase">Дійсний з</th>
+                                        <th className="p-2 font-bold text-xs uppercase">Дійсний по</th>
+                                        <th className="p-2 font-bold text-xs uppercase text-right">Kaltmiete</th>
+                                        <th className="p-2 font-bold text-xs uppercase text-right">BK</th>
+                                        <th className="p-2 font-bold text-xs uppercase text-right">HK</th>
+                                        <th className="p-2 font-bold text-xs uppercase text-right">Warmmiete</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
+                                    {(() => {
+                                        const history = selectedProperty.rentalHistory || [];
+                                        const tenant = selectedProperty.tenant;
+                                        const rows = history.length > 0
+                                            ? history.map(a => ({ validFrom: a.startDate, validTo: a.endDate || '∞', km: a.km, bk: a.bk, hk: a.hk, warm: a.km + a.bk + a.hk }))
+                                            : (tenant ? [{ validFrom: tenant.startDate || '—', validTo: '∞', km: tenant.km ?? 0, bk: tenant.bk ?? 0, hk: tenant.hk ?? 0, warm: (tenant.km ?? 0) + (tenant.bk ?? 0) + (tenant.hk ?? 0) }] : []);
+                                        if (rows.length === 0) {
+                                            return (
+                                                <tr><td colSpan={6} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr>
+                                            );
+                                        }
+                                        return rows.map((r, i) => (
+                                            <tr key={i} className="hover:bg-[#1C1F24]">
+                                                <td className="p-2 text-white">{r.validFrom}</td>
+                                                <td className="p-2 text-white">{r.validTo}</td>
+                                                <td className="p-2 text-right text-white font-mono">€{r.km.toFixed(2)}</td>
+                                                <td className="p-2 text-right text-white font-mono">€{r.bk.toFixed(2)}</td>
+                                                <td className="p-2 text-right text-white font-mono">€{r.hk.toFixed(2)}</td>
+                                                <td className="p-2 text-right text-emerald-400 font-mono font-bold">€{r.warm.toFixed(2)}</td>
+                                            </tr>
+                                        ));
+                                    })()}
+                                </tbody>
+                            </table>
+                        </div>
+                        <button type="button" className="mt-2 text-sm text-emerald-500 hover:text-emerald-400 font-medium">+ Додати підвищення оренди</button>
                     </div>
-                </div>
-                
-                {/* Characteristics Grid */}
-                <div className="mt-6 pt-6 border-t border-gray-700">
-                    <h3 className="text-lg font-bold text-white mb-4">Деталі Об'єкта та Характеристики</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-y-4 gap-x-6 text-sm">
-                        <div><span className="text-gray-500 text-xs block">Площа</span><span className="text-white font-bold">{selectedProperty.details.area}</span></div>
-                        <div><span className="text-gray-500 text-xs block">Кімнати/Ліжка</span><span className="text-white font-bold">{selectedProperty.details.rooms} / {selectedProperty.details.beds}</span></div>
-                        <div><span className="text-gray-500 text-xs block">Поверх</span><span className="text-white font-bold">{selectedProperty.details.floor} / {selectedProperty.details.buildingFloors}</span></div>
-                        <div><span className="text-gray-500 text-xs block">Ванні/Балкони</span><span className="text-white font-bold">{selectedProperty.details.baths || 0} / {selectedProperty.details.balconies || 0}</span></div>
-                        <div><span className="text-gray-500 text-xs block">Тип Будівлі</span><span className="text-white font-bold">{selectedProperty.building.type}</span></div>
-                        {selectedProperty.details?.year && selectedProperty.details.year > 0 && (
-                            <div><span className="text-gray-500 text-xs block">Рік</span><span className="text-white font-bold">{selectedProperty.details.year}</span></div>
-                        )}
-                        {selectedProperty.building?.repairYear && selectedProperty.building.repairYear > 0 && (
-                            <div><span className="text-gray-500 text-xs block">Ремонт</span><span className="text-white font-bold">{selectedProperty.building.repairYear}</span></div>
-                        )}
-                        <div><span className="text-gray-500 text-xs block">Опалення</span><span className="text-white font-bold">{selectedProperty.building.heating}</span></div>
-                        <div><span className="text-gray-500 text-xs block">Центр. Опалення</span><span className="text-white font-bold">{selectedProperty.building.centralHeating}</span></div>
-                        <div><span className="text-gray-500 text-xs block">Паркування</span><span className="text-white font-bold">{selectedProperty.building.parking}</span></div>
-                        {selectedProperty.building?.elevator && (
-                            <div><span className="text-gray-500 text-xs block">Ліфт</span><span className="text-white font-bold">{selectedProperty.building.elevator}</span></div>
-                        )}
-                        {selectedProperty.building?.pets && (
-                            <div><span className="text-gray-500 text-xs block">Тварини</span><span className="text-white font-bold">{selectedProperty.building.pets}</span></div>
-                        )}
-                        {selectedProperty.building?.access && (
-                            <div><span className="text-gray-500 text-xs block">Доступ</span><span className="text-white font-bold">{selectedProperty.building.access}</span></div>
-                        )}
-                        {selectedProperty.building?.kitchen && (
-                            <div><span className="text-gray-500 text-xs block">Кухня</span><span className="text-white font-bold">{selectedProperty.building.kitchen}</span></div>
-                        )}
-                        {selectedProperty.building?.certificate && (
-                            <div><span className="text-gray-500 text-xs block">Сертифікат</span><span className="text-white font-bold">{selectedProperty.building.certificate}</span></div>
-                        )}
-                        <div><span className="text-gray-500 text-xs block">Енергоклас</span><span className="text-white font-bold">{selectedProperty.building.energyClass}</span></div>
-                        {selectedProperty.building?.energyDemand && (
-                            <div><span className="text-gray-500 text-xs block">Попит</span><span className="text-white font-bold">{selectedProperty.building.energyDemand}</span></div>
-                        )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4 border-b border-gray-700">
+                        <div>
+                            <span className="text-xs text-gray-500 block mb-1">Застава (Kaution)</span>
+                            <span className="text-sm text-white font-bold">{selectedProperty.tenant?.deposit != null ? `€${Number(selectedProperty.tenant.deposit).toFixed(2)}` : '—'}</span>
+                        </div>
+                        <div>
+                            <span className="text-xs text-gray-500 block mb-1">Статус застави</span>
+                            <span className="text-sm text-white">—</span>
+                        </div>
+                    </div>
+                    <div>
+                        <span className="text-xs text-gray-500 block mb-1">Договір (PDF)</span>
+                        <div className="flex gap-2">
+                            <button type="button" className="text-sm text-gray-400 hover:text-white border border-gray-700 rounded px-2 py-1">Переглянути</button>
+                            <button type="button" className="text-sm text-gray-400 hover:text-white border border-gray-700 rounded px-2 py-1">Замінити</button>
+                        </div>
                     </div>
                 </div>
             </section>
 
-            {/* Rent & Owner Expenses */}
+            {/* Card 2: Unit Details & Ausstattung — single editable form (details + amenities only; no building) */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold text-white">RENT & OWNER EXPENSES</h2>
+                    <h2 className="text-2xl font-bold text-white">🏠 Дані квартири</h2>
+                    {!isCard2Editing && (
+                        <button
+                            onClick={startCard2Edit}
+                            className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                        >
+                            <Edit className="w-4 h-4 mr-1 inline" /> Редагувати
+                        </button>
+                    )}
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                        <label className="text-xs text-gray-500 block mb-1">Mortgage (KM)</label>
-                        <div className="bg-[#111315] border border-gray-700 rounded p-3 text-lg font-bold text-white">
-                            {selectedProperty.ownerExpense?.mortgage || 0}
-                        </div>
+                {(() => {
+                    const d = isCard2Editing && card2Draft ? card2Draft.details : (selectedProperty.details || {});
+                    const a = isCard2Editing && card2Draft ? card2Draft.amenities : (selectedProperty.amenities || {});
+                    const view = !isCard2Editing;
+                    const ph = (v: unknown) => (v !== undefined && v !== null && String(v).trim() !== '') ? String(v) : '—';
+                    const phNum = (v: unknown) => (v === undefined || v === null || v === '') ? '—' : String(v);
+                    const numOrZero = (v: unknown) => (v !== undefined && v !== null && !Number.isNaN(Number(v))) ? Number(v) : 0;
+                    return (
+                        <>
+                            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Основні параметри</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-y-4 gap-x-6 text-sm mb-6">
+                                <div>
+                                    <span className="text-gray-500 text-xs block mb-1">Площа</span>
+                                    {view ? <span className="text-white font-bold">{ph(d.area) || '—'}</span> : (
+                                        <input type="text" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={d.area ?? ''} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, area: e.target.value } })} placeholder="—" />
+                                    )}
+                                </div>
+                                <div>
+                                    <span className="text-gray-500 text-xs block mb-1">Кімнати</span>
+                                    {view ? <span className="text-white font-bold">{phNum(d.rooms)}</span> : (
+                                        <input type="number" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={numOrZero(d.rooms)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, rooms: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                    )}
+                                </div>
+                                <div>
+                                    <span className="text-gray-500 text-xs block mb-1">Ліжка</span>
+                                    {view ? <span className="text-white font-bold">{phNum(d.beds)}</span> : (
+                                        <input type="number" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={numOrZero(d.beds)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, beds: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                    )}
+                                </div>
+                                <div>
+                                    <span className="text-gray-500 text-xs block mb-1">Ванни</span>
+                                    {view ? <span className="text-white font-bold">{phNum(d.baths)}</span> : (
+                                        <input type="number" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={numOrZero(d.baths)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, baths: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                    )}
+                                </div>
+                                <div>
+                                    <span className="text-gray-500 text-xs block mb-1">Балкони</span>
+                                    {view ? <span className="text-white font-bold">{phNum(d.balconies)}</span> : (
+                                        <input type="number" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={numOrZero(d.balconies)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, balconies: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                    )}
+                                </div>
+                                <div>
+                                    <span className="text-gray-500 text-xs block mb-1">Поверх (поточний)</span>
+                                    {view ? <span className="text-white font-bold">{phNum(d.floor)}</span> : (
+                                        <input type="number" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={numOrZero(d.floor)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, floor: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                    )}
+                                </div>
+                                <div>
+                                    <span className="text-gray-500 text-xs block mb-1">Поверх (всього)</span>
+                                    {view ? <span className="text-white font-bold">{phNum(d.buildingFloors)}</span> : (
+                                        <input type="number" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={numOrZero(d.buildingFloors)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, buildingFloors: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                    )}
+                                </div>
+                            </div>
+                            <div className="border-t border-gray-700 pt-4">
+                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Ausstattung</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {AMENITY_GROUPS.map(({ groupLabel, keys }) => (
+                                        <div key={groupLabel} className="bg-[#111315] border border-gray-700 rounded-lg p-3">
+                                            <div className="text-xs font-semibold text-gray-400 mb-2">{groupLabel}</div>
+                                            <div className="space-y-1.5">
+                                                {keys.map((key) => {
+                                                    const checked = !!a[key];
+                                                    return (
+                                                        <label key={key} className="flex items-center gap-2 cursor-pointer text-sm">
+                                                            {view ? (
+                                                                <span className="text-white">{key}: <span className="font-bold">{checked ? 'Так' : '—'}</span></span>
+                                                            ) : (
+                                                                <>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        className="rounded border-gray-600 bg-[#0D1117] text-emerald-500 focus:ring-emerald-500"
+                                                                        checked={checked}
+                                                                        onChange={e => card2Draft && setCard2Draft({ ...card2Draft, amenities: { ...card2Draft.amenities, [key]: e.target.checked } })}
+                                                                    />
+                                                                    <span className="text-white">{key}</span>
+                                                                </>
+                                                            )}
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
+                    );
+                })()}
+                {isCard2Editing && (
+                    <div className="mt-6 pt-4 border-t border-gray-700 flex gap-3">
+                        <button type="button" onClick={saveCard2} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2">
+                            <Save className="w-4 h-4" /> Зберегти
+                        </button>
+                        <button type="button" onClick={cancelCard2} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+                            Скасувати
+                        </button>
                     </div>
-                    <div>
-                        <label className="text-xs text-gray-500 block mb-1">Management (BK)</label>
-                        <div className="bg-[#111315] border border-gray-700 rounded p-3 text-lg font-bold text-white">
-                            {selectedProperty.ownerExpense?.management || 0}
-                        </div>
-                    </div>
-                    <div>
-                        <label className="text-xs text-gray-500 block mb-1">Tax/Ins (HK)</label>
-                        <div className="bg-[#111315] border border-gray-700 rounded p-3 text-lg font-bold text-white">
-                            {selectedProperty.ownerExpense?.taxIns || 0}
-                        </div>
-                    </div>
-                    <div>
-                        <label className="text-xs text-gray-500 block mb-1">Reserve</label>
-                        <div className="bg-[#111315] border border-gray-700 rounded p-3 text-lg font-bold text-white">
-                            {selectedProperty.ownerExpense?.reserve || 0}
-                        </div>
-                    </div>
+                )}
+            </section>
+
+            {/* Card 3 — Building (read-only) */}
+            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
+                <h2 className="text-2xl font-bold text-white mb-4">Будівля</h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-y-4 gap-x-6 text-sm">
+                    <div><span className="text-gray-500 text-xs block">Тип будівлі</span><span className="text-white font-bold">{selectedProperty.building?.type || '—'}</span></div>
+                    <div><span className="text-gray-500 text-xs block">Рік побудови</span><span className="text-white font-bold">{selectedProperty.details?.year ? String(selectedProperty.details.year) : '—'}</span></div>
+                    <div><span className="text-gray-500 text-xs block">Рік ремонту</span><span className="text-white font-bold">{selectedProperty.building?.repairYear ? String(selectedProperty.building.repairYear) : '—'}</span></div>
+                    <div><span className="text-gray-500 text-xs block">Ліфт</span><span className="text-white font-bold">{selectedProperty.building?.elevator || '—'}</span></div>
+                    <div><span className="text-gray-500 text-xs block">Доступність</span><span className="text-white font-bold">{selectedProperty.building?.access || '—'}</span></div>
+                    <div><span className="text-gray-500 text-xs block">Сертифікат</span><span className="text-white font-bold">{selectedProperty.building?.certificate || '—'}</span></div>
+                    <div><span className="text-gray-500 text-xs block">Енергоклас</span><span className="text-white font-bold">{selectedProperty.building?.energyClass || '—'}</span></div>
                 </div>
             </section>
 

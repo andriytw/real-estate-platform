@@ -1818,6 +1818,7 @@ function transformPropertyFromDB(db: any): Property {
     // For lightweight queries, these may be undefined - provide defaults
     details: db.details || {},
     building: db.building || {},
+    amenities: typeof db.amenities === 'object' && db.amenities !== null ? db.amenities : {},
     inventory: Array.isArray(db.inventory) ? db.inventory : (db.inventory ? JSON.parse(db.inventory) : []),
     meterReadings: db.meter_readings || db.meterReadings || [],
     meterLog: db.meter_log || db.meterLog || [],
@@ -1874,6 +1875,7 @@ function transformPropertyToDB(property: Property): any {
   if (property.description !== undefined) result.description = property.description;
   if (property.details !== undefined) result.details = property.details;
   if (property.building !== undefined) result.building = property.building;
+  if (property.amenities !== undefined) result.amenities = property.amenities;
   // КРИТИЧНО: inventory завжди має бути масивом (навіть порожнім), не undefined
   // Якщо inventory передано, завжди встановлюємо його (навіть якщо це порожній масив)
   if (property.inventory !== undefined) {
