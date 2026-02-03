@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { RequestData, Property } from '../types';
 import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar, Search } from 'lucide-react';
-import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus, Lead } from '../types';
+import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus, Lead, PaymentProof } from '../types';
 import BookingDetailsModal from './BookingDetailsModal';
 import BookingStatsTiles from './BookingStatsTiles';
 import BookingListModal from './BookingListModal';
@@ -65,6 +65,8 @@ interface SalesCalendarProps {
   confirmedBookings?: Booking[]; // Confirmed bookings from bookings table (solid)
   offers?: OfferData[];
   invoices?: InvoiceData[];
+  paymentProofsByInvoiceId?: Record<string, PaymentProof[]>;
+  getPaymentProofSignedUrl?: (filePath: string) => Promise<string | null>;
   adminEvents?: CalendarEvent[];
   prefilledRequestData?: Partial<RequestData>; // Для префілу форми з Request
   properties?: Property[]; // Реальні об'єкти з Properties List
@@ -151,6 +153,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   confirmedBookings = [],
   offers = [],
   invoices = [],
+  paymentProofsByInvoiceId,
+  getPaymentProofSignedUrl,
   adminEvents = [],
   prefilledRequestData,
   properties = [],
@@ -1438,14 +1442,15 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         const linkedReservation = resList.find(r => String(r.id) === String(booking.sourceReservationId));
         const linkedOffer = offList.find(o => String(o.id) === String(booking.sourceOfferId));
         const sourceInv = invList.find(i => i.id === booking.sourceInvoiceId);
-        const proformaNumber = sourceInv?.documentType === 'proforma'
-          ? (sourceInv.invoiceNumber ?? '—')
-          : sourceInv?.proformaId
-            ? (invList.find(p => p.id === sourceInv.proformaId)?.invoiceNumber ?? '—')
-            : '—';
+        const proformaInv = sourceInv?.documentType === 'proforma' ? sourceInv : sourceInv?.proformaId ? invList.find(p => p.id === sourceInv.proformaId) : undefined;
+        const proformaNumber = proformaInv?.invoiceNumber ?? '—';
+        const proofs = (paymentProofsByInvoiceId?.[proformaInv?.id ?? ''] ?? []).filter(p => p.filePath);
+        const currentProof = proofs.find(p => p.isCurrent) ?? proofs[0];
+        const childInvoices = invList.filter(inv => inv.proformaId === proformaInv?.id);
+        const linkClass = 'font-mono font-semibold text-white cursor-pointer hover:underline';
         return (
           <div 
-            className="fixed z-[100] bg-[#1F2937] border border-gray-700 text-white p-3 rounded-lg shadow-2xl pointer-events-none min-w-[200px]"
+            className="fixed z-[100] bg-[#1F2937] border border-gray-700 text-white p-3 rounded-lg shadow-2xl pointer-events-auto min-w-[200px]"
             style={{ left: hoveredBooking.x + 15, top: hoveredBooking.y + 15 }}
           >
             <div className="flex justify-between items-center mb-2 border-b border-gray-600 pb-2">
@@ -1482,17 +1487,52 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
               </div>
             </div>
             <div className="text-xs text-gray-400 border-t border-gray-600 pt-2 mt-2">
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center mt-1">
                 <span className="text-gray-500">Reservation:</span>
                 <span className="font-mono font-semibold text-white">{linkedReservation?.reservationNo ?? '—'}</span>
               </div>
-              <div className="flex justify-between mt-1">
+              <div className="flex justify-between items-center mt-1">
                 <span className="text-gray-500">Offer:</span>
                 <span className="font-mono font-semibold text-white">{linkedOffer?.offerNo ?? '—'}</span>
               </div>
-              <div className="flex justify-between mt-1">
+              <div className="flex justify-between items-center mt-1">
                 <span className="text-gray-500">Proforma:</span>
-                <span className="font-mono font-semibold text-white">{proformaNumber}</span>
+                {proformaInv?.fileUrl ? (
+                  <a href={proformaInv.fileUrl} target="_blank" rel="noopener noreferrer" className={linkClass}>{proformaNumber}</a>
+                ) : (
+                  <span className="font-mono font-semibold text-white">{proformaNumber}</span>
+                )}
+              </div>
+              <div className="flex justify-between items-center mt-1">
+                <span className="text-gray-500">Payment confirmation:</span>
+                {currentProof ? (
+                  getPaymentProofSignedUrl && currentProof.filePath ? (
+                    <button
+                      type="button"
+                      className={linkClass}
+                      onClick={async () => {
+                        const url = await getPaymentProofSignedUrl(currentProof.filePath!);
+                        if (url) window.open(url, '_blank');
+                      }}
+                    >
+                      {currentProof.documentNumber ?? 'PDF'}
+                    </button>
+                  ) : (
+                    <span className="font-mono font-semibold text-white">{currentProof.documentNumber ?? '—'}</span>
+                  )
+                ) : (
+                  <span className="font-mono font-semibold text-white">—</span>
+                )}
+              </div>
+              <div className="flex justify-between items-start mt-1 gap-2">
+                <span className="text-gray-500 shrink-0">Invoices:</span>
+                <span className="font-mono font-semibold text-white text-right">
+                  {childInvoices.length === 0 ? '—' : childInvoices.map(inv => inv.fileUrl ? (
+                    <a key={inv.id} href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className={linkClass + ' block'}>{inv.invoiceNumber}</a>
+                  ) : (
+                    <span key={inv.id} className="block">{inv.invoiceNumber}</span>
+                  ))}
+                </span>
               </div>
             </div>
           </div>

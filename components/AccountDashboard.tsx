@@ -5968,6 +5968,8 @@ ${internalCompany} Team`;
           confirmedBookings={confirmedBookings}
           offers={offers}
           invoices={invoices}
+          paymentProofsByInvoiceId={paymentProofsByInvoiceId}
+          getPaymentProofSignedUrl={async (filePath) => { try { return await paymentProofsService.getPaymentProofSignedUrl(filePath); } catch { return null; } }}
           adminEvents={adminEvents}
           properties={properties}
           prefilledRequestData={selectedRequest ? {
