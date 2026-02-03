@@ -551,6 +551,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         details: p.address || p.fullAddress || '',
         rooms: p.details?.rooms ?? p.rooms ?? 0,
         beds: p.details?.beds ?? 0,
+        area: p.details?.area ?? (p.area != null ? String(p.area) : ''),
+        termStatus: p.termStatus ?? undefined,
       })),
     [properties]
   );
@@ -1154,16 +1156,28 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                     return (
                     <div
                         key={room.id}
-                        className="border-b border-gray-800 flex flex-col justify-center px-4 hover:bg-[#1C1F24] transition-colors group relative"
+                        className="border-b border-gray-800 flex flex-col justify-center px-4 py-2 hover:bg-[#1C1F24] transition-colors group relative"
                         style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
                     >
-                        <span className="text-sm font-bold text-white truncate">{room.name}</span>
+                        <div className="flex justify-between items-start gap-2 mb-1">
+                            <span className="text-sm font-bold text-white truncate">{room.name}</span>
+                            {room.termStatus != null && (
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${room.termStatus === 'green' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
+                                    {room.termStatus === 'green' ? 'Active' : 'Expiring'}
+                                </span>
+                            )}
+                        </div>
                         {room.details && (
-                            <span className="text-xs text-gray-500 truncate">{room.details}</span>
+                            <span className="text-xs text-gray-500 truncate mb-1">{room.details}</span>
                         )}
-                        {room.city && (
-                            <span className="text-xs text-gray-400 truncate">{room.city}</span>
-                        )}
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-gray-400">
+                            {room.area && (
+                                <span>Площа: <span className="text-gray-300 font-medium">{room.area} м²</span></span>
+                            )}
+                            {(room.rooms || room.beds) ? (
+                                <span>Кімнати/Ліжка: <span className="text-gray-300 font-medium">{room.rooms}/{room.beds}</span></span>
+                            ) : null}
+                        </div>
                     </div>
                     );
                 })}
