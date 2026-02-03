@@ -1,23 +1,27 @@
 import React, { useState, useRef } from 'react';
 import { X, Upload } from 'lucide-react';
-import { InvoiceData } from '../types';
-import { paymentProofsService, markInvoicePaidAndConfirmBooking } from '../services/supabaseService';
+import { PaymentProof } from '../types';
+import { paymentProofsService } from '../services/supabaseService';
 import { supabase } from '../utils/supabase/client';
 
-const CONFIRM_PAYMENT_PDF_INPUT_ID = 'confirm-payment-pdf-upload';
+const PAYMENT_PROOF_PDF_INPUT_ID = 'payment-proof-pdf-upload';
 
-interface ConfirmPaymentModalProps {
+type Mode = 'add' | 'replace';
+
+interface PaymentProofPdfModalProps {
   isOpen: boolean;
   onClose: () => void;
-  proforma: InvoiceData | null;
-  onConfirmed: (newBookingId: string) => Promise<void>;
+  mode: Mode;
+  proof: PaymentProof | null;
+  onDone: () => void;
 }
 
-const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
+const PaymentProofPdfModal: React.FC<PaymentProofPdfModalProps> = ({
   isOpen,
   onClose,
-  proforma,
-  onConfirmed,
+  mode,
+  proof,
+  onDone,
 }) => {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -34,57 +38,45 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
     onClose();
   };
 
-  const handleSaveAndConfirm = async () => {
-    if (!proforma) return;
-    const offerId = proforma.offerId || proforma.offerIdSource;
-    if (!offerId) {
-      setError('Щоб підтвердити оплату, проформа має бути прив\'язана до оффера. Додайте проформу з розділу Оффери (Offers).');
+  const handleSave = async () => {
+    if (!proof || !pdfFile) {
+      setError('Please select a PDF file.');
       return;
     }
+    const invoiceId = proof.invoiceId;
     setError(null);
     setUploading(true);
-    let proofId: string | null = null;
-    let proofHasFile = false;
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const createdBy = session?.user?.id ?? undefined;
-
-      // 1. Always create payment_proofs row (is_current = false; do not modify previous proofs)
-      const proof = await paymentProofsService.create({ invoiceId: proforma.id, createdBy });
-      proofId = proof.id;
-
-      // 2. If user selected a PDF: upload and update proof row
-      if (pdfFile) {
-        const filePath = await paymentProofsService.uploadPaymentProofFile(pdfFile, proforma.id, proof.id);
+      if (mode === 'add') {
+        const filePath = await paymentProofsService.uploadPaymentProofFile(pdfFile, invoiceId, proof.id);
         await paymentProofsService.update(proof.id, {
           filePath,
           fileName: pdfFile.name || 'document.pdf',
           fileUploadedAt: new Date().toISOString(),
         });
-        proofHasFile = true;
+      } else {
+        const { data: { session } } = await supabase.auth.getSession();
+        const createdBy = session?.user?.id ?? undefined;
+        const newProof = await paymentProofsService.create({ invoiceId, createdBy });
+        const filePath = await paymentProofsService.uploadPaymentProofFile(pdfFile, invoiceId, newProof.id);
+        await paymentProofsService.update(newProof.id, {
+          filePath,
+          fileName: pdfFile.name || 'document.pdf',
+          fileUploadedAt: new Date().toISOString(),
+          replacesProofId: proof.id,
+        });
+        await paymentProofsService.update(proof.id, {
+          isCurrent: false,
+          state: 'replaced',
+          replacedByProofId: newProof.id,
+        });
+        await paymentProofsService.setCurrentProof(invoiceId, newProof.id);
       }
-
-      // 3. Call RPC
-      const newBookingId = await markInvoicePaidAndConfirmBooking(proforma.id);
-
-      // 4. On RPC success: set rpc_confirmed_at; if this proof has a file, set it current and clear previous current
-      await paymentProofsService.update(proof.id, { rpcConfirmedAt: new Date().toISOString() });
-      if (proofHasFile) {
-        await paymentProofsService.setCurrentProof(proforma.id, proof.id);
-      }
-      await onConfirmed(newBookingId);
+      await onDone();
       handleClose();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      const hint =
-        msg.includes('Bucket') || msg.includes('policy') || msg.includes('row-level')
-          ? ' Ensure bucket "payment-proofs" exists and allows uploads.'
-          : '';
-      const rpcFailedHint =
-        proofId != null
-          ? ' Proof was created but payment confirmation failed. Use "Retry confirmation" in the expanded row or contact support.'
-          : '';
-      setError(`Failed to confirm payment. ${msg}${hint}${rpcFailedHint}`);
+      setError(`Failed to upload. ${msg}`);
     } finally {
       setUploading(false);
     }
@@ -103,14 +95,15 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
   };
 
   if (!isOpen) return null;
-  if (!proforma) return null;
+  if (!proof) return null;
+
+  const title = mode === 'add' ? 'Add confirmation PDF' : 'Replace PDF';
 
   return (
     <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
       <div className="bg-[#1C1F24] w-full max-w-lg overflow-y-auto rounded-xl border border-gray-700 shadow-2xl flex flex-col">
-        {/* Header */}
         <div className="p-5 border-b border-gray-800 bg-[#23262b] flex justify-between items-center">
-          <h3 className="text-lg font-bold text-white">Підтвердити оплату</h3>
+          <h3 className="text-lg font-bold text-white">{title}</h3>
           <button
             type="button"
             onClick={handleClose}
@@ -120,16 +113,13 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
-
-        {/* Body */}
         <div className="p-5 flex flex-col gap-4">
           <p className="text-sm text-gray-400">
-            Проформа: <span className="font-mono text-white">{proforma.invoiceNumber}</span> — {proforma.clientName}
+            Proof created {new Date(proof.createdAt).toLocaleString()}
           </p>
-
           <div>
             <label className="text-xs font-medium text-gray-400 block mb-2">
-              Payment proof PDF (optional)
+              PDF file
             </label>
             {!pdfFile ? (
               <div
@@ -146,16 +136,15 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
                   type="file"
                   accept="application/pdf"
                   className="hidden"
-                  id={CONFIRM_PAYMENT_PDF_INPUT_ID}
+                  id={PAYMENT_PROOF_PDF_INPUT_ID}
                   onChange={handleFileChange}
                 />
                 <label
-                  htmlFor={CONFIRM_PAYMENT_PDF_INPUT_ID}
+                  htmlFor={PAYMENT_PROOF_PDF_INPUT_ID}
                   className="cursor-pointer flex flex-col items-center gap-2"
                 >
                   <Upload className="w-8 h-8 text-gray-500" />
                   <span className="text-xs text-gray-400">Drop PDF or click to upload</span>
-                  <span className="text-xs text-gray-500">Upload PDF</span>
                 </label>
               </div>
             ) : (
@@ -176,24 +165,21 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
                   type="file"
                   accept="application/pdf"
                   className="hidden"
-                  id={CONFIRM_PAYMENT_PDF_INPUT_ID}
+                  id={PAYMENT_PROOF_PDF_INPUT_ID}
                   onChange={handleFileChange}
                 />
-                <label htmlFor={CONFIRM_PAYMENT_PDF_INPUT_ID} className="text-xs text-purple-400 hover:text-purple-300 cursor-pointer">
+                <label htmlFor={PAYMENT_PROOF_PDF_INPUT_ID} className="text-xs text-purple-400 hover:text-purple-300 cursor-pointer">
                   Change
                 </label>
               </div>
             )}
           </div>
-
           {error && (
             <div className="text-sm text-red-400 bg-red-900/20 border border-red-800/50 rounded-lg p-3">
               {error}
             </div>
           )}
         </div>
-
-        {/* Footer */}
         <div className="p-5 border-t border-gray-800 flex justify-end gap-2">
           <button
             type="button"
@@ -205,11 +191,11 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
           </button>
           <button
             type="button"
-            onClick={handleSaveAndConfirm}
-            disabled={uploading}
-            className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-green-600 hover:bg-green-500 transition-colors disabled:opacity-50"
+            onClick={handleSave}
+            disabled={uploading || !pdfFile}
+            className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-purple-600 hover:bg-purple-500 transition-colors disabled:opacity-50"
           >
-            {uploading ? 'Saving…' : 'Save & Confirm'}
+            {uploading ? 'Uploading…' : 'Save'}
           </button>
         </div>
       </div>
@@ -217,4 +203,4 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
   );
 };
 
-export default ConfirmPaymentModal;
+export default PaymentProofPdfModal;

@@ -13,14 +13,15 @@ import LeadEditModal from './LeadEditModal';
 import PropertyAddModal from './PropertyAddModal';
 import RequestModal from './RequestModal';
 import ConfirmPaymentModal from './ConfirmPaymentModal';
+import PaymentProofPdfModal from './PaymentProofPdfModal';
 import BankingDashboard from './BankingDashboard';
 import UserManagement from './admin/UserManagement';
 
 // Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks tab.
 // This avoids "X is not a constructor" on /account (CJS/ESM + esbuild minification issue with dnd).
 const KanbanBoard = React.lazy(() => import('./kanban/KanbanBoard'));
-import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, leadsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem } from '../services/supabaseService';
-import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation } from '../types';
+import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, leadsService, paymentProofsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem } from '../services/supabaseService';
+import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation, PaymentProof } from '../types';
 import { MOCK_PROPERTIES } from '../constants';
 import { createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 import { supabase } from '../utils/supabase/client';
@@ -94,6 +95,20 @@ const INITIAL_LEADS: Lead[] = [
   { id: 'l1', name: 'TechCorp GmbH', type: 'Company', contactPerson: 'Mark Zuckerberg', email: 'mark@techcorp.com', phone: '+1 555 0123', address: 'Silicon Valley, CA', status: 'Active', createdAt: '2025-10-15' },
   { id: 'l2', name: 'Schmidt, Anna', type: 'Private', email: 'anna.schmidt@email.com', phone: '+49 123 4567', address: 'Berlin, Germany', status: 'Past', createdAt: '2025-08-10' },
 ];
+
+/** Renders a "Proof" link that fetches signed URL for the given storage path. */
+const ProofLink: React.FC<{ filePath: string }> = ({ filePath }) => {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    paymentProofsService.getPaymentProofSignedUrl(filePath).then((signed) => {
+      if (!cancelled) setUrl(signed);
+    }).catch(() => { if (!cancelled) setUrl(null); });
+    return () => { cancelled = true; };
+  }, [filePath]);
+  if (!url) return <span className="text-gray-500 text-xs">…</span>;
+  return <a href={url} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline text-xs">Proof</a>;
+};
 
 const AccountDashboard: React.FC = () => {
   const { worker, logout } = useWorker();
@@ -1376,6 +1391,12 @@ const AccountDashboard: React.FC = () => {
     loadProformas();
   }, [activeDepartment, salesTab]);
 
+  // Load payment proofs when proformas are shown (Payments table)
+  useEffect(() => {
+    if (activeDepartment !== 'sales' || salesTab !== 'proformas' || proformas.length === 0) return;
+    loadPaymentProofsForInvoiceIds(proformas.map(p => p.id));
+  }, [activeDepartment, salesTab, proformas.map(p => p.id).join(',')]);
+
   // Listen for task updates from Kanban board
   useEffect(() => {
     const handleTaskUpdated = async () => {
@@ -1539,6 +1560,9 @@ const AccountDashboard: React.FC = () => {
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<RequestData | null>(null);
   const [confirmPaymentModalProforma, setConfirmPaymentModalProforma] = useState<InvoiceData | null>(null);
+  const [paymentProofsByInvoiceId, setPaymentProofsByInvoiceId] = useState<Record<string, PaymentProof[]>>({});
+  const [proofSignedUrlByInvoiceId, setProofSignedUrlByInvoiceId] = useState<Record<string, string>>({});
+  const [paymentProofModal, setPaymentProofModal] = useState<{ mode: 'add' | 'replace'; proof: PaymentProof } | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
 
   // --- Toast notifications ---
@@ -2495,6 +2519,38 @@ ${internalCompany} Team`;
     setIsInvoiceModalOpen(true);
   };
 
+  /** Load payment proofs for given invoice ids and signed URLs for current proofs. */
+  const loadPaymentProofsForInvoiceIds = async (invoiceIds: string[]) => {
+    if (invoiceIds.length === 0) return;
+    try {
+      const byId: Record<string, PaymentProof[]> = {};
+      await Promise.all(
+        invoiceIds.map(async (id) => {
+          const list = await paymentProofsService.getByInvoiceId(id);
+          byId[id] = list;
+        })
+      );
+      setPaymentProofsByInvoiceId(prev => ({ ...prev, ...byId }));
+      const signed: Record<string, string> = {};
+      await Promise.all(
+        Object.entries(byId).map(async ([invId, proofs]) => {
+          const current = proofs.find(p => p.isCurrent && p.filePath);
+          if (current?.filePath) {
+            try {
+              const url = await paymentProofsService.getPaymentProofSignedUrl(current.filePath);
+              signed[invId] = url;
+            } catch {
+              // ignore per-invoice signed URL errors
+            }
+          }
+        })
+      );
+      setProofSignedUrlByInvoiceId(prev => ({ ...prev, ...signed }));
+    } catch (e) {
+      console.error('Error loading payment proofs:', e);
+    }
+  };
+
   const toggleProformaExpand = async (proformaId: string) => {
     setExpandedProformaIds(prev => {
       const next = new Set(prev);
@@ -2509,6 +2565,9 @@ ${internalCompany} Team`;
       } catch (e) {
         console.error('Error loading invoices for proforma:', e);
       }
+    }
+    if (!paymentProofsByInvoiceId[proformaId]) {
+      loadPaymentProofsForInvoiceIds([proformaId]);
     }
   };
 
@@ -2598,6 +2657,7 @@ ${internalCompany} Team`;
     setInvoices(invoicesData);
     setProformaChildInvoices({});
     setExpandedProformaIds(new Set());
+    await loadPaymentProofsForInvoiceIds(list.map(p => p.id));
 
     const newBooking = bookings.find(b => String(b.id) === String(newBookingId));
     if (newBooking) {
@@ -2646,6 +2706,19 @@ ${internalCompany} Team`;
           return prop;
         }));
       }
+    }
+  };
+
+  const handleRetryProofConfirmation = async (proforma: InvoiceData, proof: PaymentProof) => {
+    if (proforma.status === 'Paid') return;
+    if (proof.rpcConfirmedAt) return;
+    try {
+      await markInvoicePaidAndConfirmBooking(proforma.id);
+      await paymentProofsService.update(proof.id, { rpcConfirmedAt: new Date().toISOString() });
+      await loadPaymentProofsForInvoiceIds([proforma.id]);
+    } catch (e) {
+      console.error('Retry confirmation failed:', e);
+      alert(`Retry failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -5585,9 +5658,9 @@ ${internalCompany} Team`;
                                               ) : (
                                                 <span className="text-gray-500">—</span>
                                               )}
-                                              {proforma.paymentProofUrl && (
-                                                <a href={proforma.paymentProofUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline text-xs">Proof</a>
-                                              )}
+                                              {(proofSignedUrlByInvoiceId[proforma.id] ?? proforma.paymentProofUrl) ? (
+                                                <a href={proofSignedUrlByInvoiceId[proforma.id] ?? proforma.paymentProofUrl ?? '#'} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline text-xs">Proof</a>
+                                              ) : null}
                                             </div>
                                         </td>
                                         <td className="p-4 text-center">
@@ -5627,38 +5700,74 @@ ${internalCompany} Team`;
                                         </td>
                                     </tr>
                                     {expandedProformaIds.has(proforma.id) && (
-                                        (proformaChildInvoices[proforma.id] ?? []).length === 0 ? (
+                                        <>
+                                            {(proformaChildInvoices[proforma.id] ?? []).length === 0 ? (
+                                                <tr className="bg-[#16181D]">
+                                                    <td className="p-4" />
+                                                    <td colSpan={6} className="p-4 pl-8 text-gray-500 text-sm italic">Інвойсів ще немає.</td>
+                                                </tr>
+                                            ) : (proformaChildInvoices[proforma.id] ?? []).map(inv => (
+                                                <tr key={inv.id} className="bg-[#16181D] hover:bg-[#1C1F24]">
+                                                    <td className="p-4" />
+                                                    <td className="p-4 pl-8 font-mono text-gray-400">{inv.invoiceNumber}</td>
+                                                    <td className="p-4 text-gray-400">{inv.clientName}</td>
+                                                    <td className="p-4 text-gray-400">{inv.date}</td>
+                                                    <td className="p-4 text-gray-400">€{inv.totalGross?.toFixed(2) ?? '—'}</td>
+                                                    <td className="p-4">
+                                                        {inv.fileUrl ? (
+                                                            <a href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline text-xs">PDF</a>
+                                                        ) : (
+                                                            <span className="text-gray-500">—</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-4 text-center">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteInvoice(inv, proforma.id)}
+                                                            className="inline-flex items-center gap-1.5 px-2 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded text-xs font-medium transition-colors"
+                                                            title="Видалити інвойс"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                            Видалити
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
                                             <tr className="bg-[#16181D]">
                                                 <td className="p-4" />
-                                                <td colSpan={6} className="p-4 pl-8 text-gray-500 text-sm italic">Інвойсів ще немає.</td>
-                                            </tr>
-                                        ) : (proformaChildInvoices[proforma.id] ?? []).map(inv => (
-                                            <tr key={inv.id} className="bg-[#16181D] hover:bg-[#1C1F24]">
-                                                <td className="p-4" />
-                                                <td className="p-4 pl-8 font-mono text-gray-400">{inv.invoiceNumber}</td>
-                                                <td className="p-4 text-gray-400">{inv.clientName}</td>
-                                                <td className="p-4 text-gray-400">{inv.date}</td>
-                                                <td className="p-4 text-gray-400">€{inv.totalGross?.toFixed(2) ?? '—'}</td>
-                                                <td className="p-4">
-                                                    {inv.fileUrl ? (
-                                                        <a href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline text-xs">PDF</a>
+                                                <td colSpan={6} className="p-4 pl-8">
+                                                    <div className="font-medium text-gray-400 mb-2">Payment Proofs</div>
+                                                    {(paymentProofsByInvoiceId[proforma.id] ?? []).length === 0 ? (
+                                                        <div className="text-gray-500 text-sm italic">No payment proofs yet.</div>
                                                     ) : (
-                                                        <span className="text-gray-500">—</span>
+                                                        <div className="space-y-2">
+                                                            {(paymentProofsByInvoiceId[proforma.id] ?? []).map(proof => (
+                                                                <div key={proof.id} className="flex flex-wrap items-center gap-2 border-b border-gray-700 pb-2 last:border-0 last:pb-0">
+                                                                    <span className="text-gray-400 text-xs">{new Date(proof.createdAt).toLocaleString()}</span>
+                                                                    <span className={`px-1.5 py-0.5 rounded text-xs ${proof.isCurrent ? 'bg-emerald-500/20 text-emerald-400' : proof.state === 'replaced' ? 'bg-gray-500/20 text-gray-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                                                        {proof.isCurrent ? 'Current' : proof.state === 'replaced' ? 'Replaced' : 'Active'}
+                                                                    </span>
+                                                                    {proof.rpcConfirmedAt ? <span className="text-emerald-400 text-xs">Confirmed ✓</span> : (
+                                                                        <>
+                                                                            <span className="text-amber-400 text-xs">Proof created but payment confirmation failed.</span>
+                                                                            {proforma.status !== 'Paid' && (
+                                                                                <button type="button" onClick={() => handleRetryProofConfirmation(proforma, proof)} className="px-2 py-1 rounded text-xs bg-amber-600 hover:bg-amber-500 text-white">Retry confirmation</button>
+                                                                            )}
+                                                                        </>
+                                                                    )}
+                                                                    {proof.filePath ? <ProofLink filePath={proof.filePath} /> : <span className="text-gray-500 text-xs">No PDF yet</span>}
+                                                                    {proof.filePath ? (
+                                                                        <button type="button" onClick={() => setPaymentProofModal({ mode: 'replace', proof })} className="px-2 py-1 rounded text-xs bg-gray-600 hover:bg-gray-500 text-white">Replace PDF</button>
+                                                                    ) : (
+                                                                        <button type="button" onClick={() => setPaymentProofModal({ mode: 'add', proof })} className="px-2 py-1 rounded text-xs bg-purple-600 hover:bg-purple-500 text-white">Add confirmation PDF</button>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
                                                     )}
                                                 </td>
-                                                <td className="p-4 text-center">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleDeleteInvoice(inv, proforma.id)}
-                                                        className="inline-flex items-center gap-1.5 px-2 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded text-xs font-medium transition-colors"
-                                                        title="Видалити інвойс"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                        Видалити
-                                                    </button>
-                                                </td>
                                             </tr>
-                                        ))
+                                        </>
                                     )}
                                 </React.Fragment>
                                 );
@@ -6626,6 +6735,15 @@ ${internalCompany} Team`;
         onConfirmed={async (newBookingId) => {
           await refreshDataAfterPaymentConfirmed(newBookingId);
           setConfirmPaymentModalProforma(null);
+        }}
+      />
+      <PaymentProofPdfModal
+        isOpen={!!paymentProofModal}
+        onClose={() => setPaymentProofModal(null)}
+        mode={paymentProofModal?.mode ?? 'add'}
+        proof={paymentProofModal?.proof ?? null}
+        onDone={async () => {
+          if (paymentProofModal?.proof) await loadPaymentProofsForInvoiceIds([paymentProofModal.proof.invoiceId]);
         }}
       />
       <OfferEditModal 

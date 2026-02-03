@@ -4,6 +4,7 @@ import {
   Booking,
   OfferData,
   InvoiceData,
+  PaymentProof,
   Lead,
   RequestData,
   CalendarEvent,
@@ -1533,7 +1534,7 @@ export const invoicesService = {
     return urlData.publicUrl;
   },
 
-  /** Upload payment proof PDF to payment-proofs bucket; path payments/{proformaId}/{timestamp}_{filename}.pdf. Returns public URL for payment_proof_url. */
+  /** Upload payment proof PDF to payment-proofs bucket; path payments/{proformaId}/{timestamp}_{filename}.pdf. Returns public URL for payment_proof_url. (Legacy; new flow uses paymentProofsService.uploadPaymentProofFile.) */
   async uploadPaymentProofPdf(file: File, proformaId: string): Promise<string> {
     const bucket = 'payment-proofs';
     const originalName = (file.name || 'document.pdf').replace(/[\0/\\]/g, '_').slice(0, 200).trim() || 'document.pdf';
@@ -1545,6 +1546,88 @@ export const invoicesService = {
     const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
     return urlData.publicUrl;
   }
+};
+
+// ==================== PAYMENT PROOFS ====================
+const PAYMENT_PROOFS_BUCKET = 'payment-proofs';
+
+export const paymentProofsService = {
+  async getByInvoiceId(invoiceId: string): Promise<PaymentProof[]> {
+    const { data, error } = await supabase
+      .from('payment_proofs')
+      .select('*')
+      .eq('invoice_id', invoiceId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(transformPaymentProofFromDB);
+  },
+
+  async create(payload: { invoiceId: string; createdBy?: string }): Promise<PaymentProof> {
+    const { data, error } = await supabase
+      .from('payment_proofs')
+      .insert([{
+        invoice_id: payload.invoiceId,
+        created_by: payload.createdBy ?? null,
+        is_current: false,
+        state: 'active',
+      }])
+      .select()
+      .single();
+    if (error) throw error;
+    return transformPaymentProofFromDB(data);
+  },
+
+  async update(id: string, updates: Partial<PaymentProof>): Promise<PaymentProof> {
+    const dbData = transformPaymentProofToDB(updates);
+    if (Object.keys(dbData).length === 0) {
+      const { data, error } = await supabase.from('payment_proofs').select('*').eq('id', id).single();
+      if (error) throw error;
+      return transformPaymentProofFromDB(data);
+    }
+    const { data, error } = await supabase
+      .from('payment_proofs')
+      .update(dbData)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return transformPaymentProofFromDB(data);
+  },
+
+  /** Upload to payments/{invoiceId}/{proofId}/{timestamp}_{filename}.pdf; returns storage path. */
+  async uploadPaymentProofFile(file: File, invoiceId: string, proofId: string): Promise<string> {
+    const originalName = (file.name || 'document.pdf').replace(/[\0/\\]/g, '_').slice(0, 200).trim() || 'document.pdf';
+    const path = `payments/${invoiceId}/${proofId}/${Date.now()}_${originalName}`;
+    const { error } = await supabase.storage
+      .from(PAYMENT_PROOFS_BUCKET)
+      .upload(path, file, { cacheControl: '3600', upsert: false });
+    if (error) throw new Error(error.message || 'Storage upload failed');
+    return path;
+  },
+
+  /** Get signed URL for a payment proof file (works with public or private bucket). */
+  async getPaymentProofSignedUrl(filePath: string, expirySeconds: number = 3600): Promise<string> {
+    const { data, error } = await supabase.storage
+      .from(PAYMENT_PROOFS_BUCKET)
+      .createSignedUrl(filePath, expirySeconds);
+    if (error) throw new Error(error.message || 'Failed to create signed URL');
+    if (!data?.signedUrl) throw new Error('No signed URL returned');
+    return data.signedUrl;
+  },
+
+  /** Set one proof as current for the invoice; clear is_current on others. Call after RPC success when new proof has file. */
+  async setCurrentProof(invoiceId: string, proofId: string): Promise<void> {
+    const { data: existing } = await supabase
+      .from('payment_proofs')
+      .select('id')
+      .eq('invoice_id', invoiceId)
+      .eq('is_current', true);
+    const toClear = (existing || []).filter((r: { id: string }) => r.id !== proofId);
+    for (const row of toClear) {
+      await supabase.from('payment_proofs').update({ is_current: false, updated_at: new Date().toISOString() }).eq('id', row.id);
+    }
+    await supabase.from('payment_proofs').update({ is_current: true, updated_at: new Date().toISOString() }).eq('id', proofId);
+  },
 };
 
 // ==================== LEADS ====================
@@ -2010,6 +2093,40 @@ function transformInvoiceToDB(invoice: InvoiceData): any {
     document_type: invoice.documentType ?? 'proforma',
     proforma_id: invoice.proformaId && isValidUUID(invoice.proformaId) ? invoice.proformaId : null,
   };
+}
+
+function transformPaymentProofFromDB(db: any): PaymentProof {
+  return {
+    id: db.id,
+    invoiceId: db.invoice_id,
+    createdAt: db.created_at,
+    createdBy: db.created_by ?? undefined,
+    filePath: db.file_path ?? undefined,
+    fileName: db.file_name ?? undefined,
+    fileUploadedAt: db.file_uploaded_at ?? undefined,
+    notes: db.notes ?? undefined,
+    isCurrent: db.is_current === true,
+    state: db.state || 'active',
+    replacedByProofId: db.replaced_by_proof_id ?? undefined,
+    replacesProofId: db.replaces_proof_id ?? undefined,
+    updatedAt: db.updated_at,
+    rpcConfirmedAt: db.rpc_confirmed_at ?? undefined,
+  };
+}
+
+function transformPaymentProofToDB(proof: Partial<PaymentProof>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (proof.filePath !== undefined) out.file_path = proof.filePath;
+  if (proof.fileName !== undefined) out.file_name = proof.fileName;
+  if (proof.fileUploadedAt !== undefined) out.file_uploaded_at = proof.fileUploadedAt;
+  if (proof.notes !== undefined) out.notes = proof.notes;
+  if (proof.isCurrent !== undefined) out.is_current = proof.isCurrent;
+  if (proof.state !== undefined) out.state = proof.state;
+  if (proof.replacedByProofId !== undefined) out.replaced_by_proof_id = proof.replacedByProofId;
+  if (proof.replacesProofId !== undefined) out.replaces_proof_id = proof.replacesProofId;
+  if (proof.rpcConfirmedAt !== undefined) out.rpc_confirmed_at = proof.rpcConfirmedAt;
+  if (Object.keys(out).length > 0) out.updated_at = new Date().toISOString();
+  return out;
 }
 
 function transformLeadFromDB(db: any): Lead {

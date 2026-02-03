@@ -394,6 +394,24 @@ export interface InvoiceData {
   proformaId?: string;
 }
 
+/** One row per payment confirmation; PDF optional; is_current = proof shown in main row */
+export interface PaymentProof {
+  id: string;
+  invoiceId: string;
+  createdAt: string;
+  createdBy?: string;
+  filePath?: string;
+  fileName?: string;
+  fileUploadedAt?: string;
+  notes?: string;
+  isCurrent: boolean;
+  state: 'active' | 'replaced' | 'void';
+  replacedByProofId?: string;
+  replacesProofId?: string;
+  updatedAt: string;
+  rpcConfirmedAt?: string;
+}
+
 export interface Lead {
   id: string;
   name: string; 
