@@ -2561,8 +2561,8 @@ export const propertyDepositProofsService = {
       .upload(filePath, file, { cacheControl: '3600', upsert: false });
     if (uploadError) throw new Error(uploadError.message || 'Storage upload failed');
 
-    const { data } = await supabase.auth.getSession();
-    const createdBy = data?.session?.user?.id ?? null;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const createdBy = sessionData?.session?.user?.id ?? null;
 
     const { data, error } = await supabase
       .from('property_deposit_proofs')
