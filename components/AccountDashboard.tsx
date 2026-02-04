@@ -373,6 +373,7 @@ const AccountDashboard: React.FC = () => {
   const [rentIncreaseForm, setRentIncreaseForm] = useState<{ validFrom: string; validTo: string; km: string; bk: string; hk: string }>({ validFrom: '', validTo: '', km: '', bk: '', hk: '' });
   const [rentIncreaseFormError, setRentIncreaseFormError] = useState<string | null>(null);
   const [isAddingRentIncrease, setIsAddingRentIncrease] = useState(false);
+  const selectedProperty = useMemo(() => properties.find(p => p.id === selectedPropertyId) || properties[0] || null, [properties, selectedPropertyId]);
   const [isInventoryEditing, setIsInventoryEditing] = useState(false);
   const [expandedMeterGroups, setExpandedMeterGroups] = useState<Set<string>>(new Set());
   const [warehouseTab, setWarehouseTab] = useState<'warehouses' | 'stock' | 'addInventory'>('warehouses');
@@ -1858,9 +1859,10 @@ const AccountDashboard: React.FC = () => {
   const defaultAmenities = Object.fromEntries(ALL_AMENITY_KEYS.map(k => [k, false]));
 
   const startCard2Edit = () => {
-    if (!selectedProperty) return;
-    const d = selectedProperty.details || {};
-    const a = selectedProperty.amenities || {};
+    const prop = properties.find(p => p.id === selectedPropertyId) ?? null;
+    if (!prop) return;
+    const d = prop.details || {};
+    const a = prop.amenities || {};
     setCard2Draft({
       details: { ...defaultDetails, area: d.area ?? 0, rooms: d.rooms ?? 0, floor: d.floor ?? 0, year: d.year ?? 0, beds: d.beds ?? 0, baths: d.baths ?? 0, balconies: d.balconies ?? 0, buildingFloors: d.buildingFloors ?? 0 },
       amenities: { ...defaultAmenities, ...a }
@@ -1869,9 +1871,10 @@ const AccountDashboard: React.FC = () => {
   };
 
   const saveCard2 = async () => {
-    if (!selectedProperty || !card2Draft) return;
+    const prop = properties.find(p => p.id === selectedPropertyId) ?? null;
+    if (!prop || !card2Draft) return;
     try {
-      const updated = await propertiesService.update(selectedProperty.id, { details: card2Draft.details, amenities: card2Draft.amenities });
+      const updated = await propertiesService.update(prop.id, { details: card2Draft.details, amenities: card2Draft.amenities });
       setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
       setSelectedPropertyId(updated.id);
       setIsCard2Editing(false);
@@ -1896,8 +1899,8 @@ const AccountDashboard: React.FC = () => {
   });
 
   const startCard1Edit = () => {
-    if (!selectedProperty) return;
-    const p = selectedProperty;
+    const p = properties.find(pr => pr.id === selectedPropertyId) ?? null;
+    if (!p) return;
     const landlord = p.landlord ? {
       name: p.landlord.name || '',
       address: p.landlord.address || defaultContactParty().address,
@@ -1977,7 +1980,8 @@ const AccountDashboard: React.FC = () => {
   };
 
   const saveCard1 = async () => {
-    if (!selectedProperty || !card1Draft) return;
+    const prop = properties.find(p => p.id === selectedPropertyId) ?? null;
+    if (!prop || !card1Draft) return;
     if (!isCard1LandlordValid(card1Draft.landlord)) {
       alert('Орендодавець: заповніть назву, IBAN, адресу та хоча б один телефон або email.');
       return;
@@ -1994,7 +1998,7 @@ const AccountDashboard: React.FC = () => {
       return;
     }
     try {
-      const base = selectedProperty.tenant || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0 };
+      const base = prop.tenant || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0 };
       const tenantPayload: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number } = {
         ...base,
         ...card1Draft.tenant,
@@ -2016,13 +2020,13 @@ const AccountDashboard: React.FC = () => {
             returnedAmount: card1Draft.deposit.returnedAmount
           }
         : null;
-      const updated = await propertiesService.update(selectedProperty.id, {
+      const updated = await propertiesService.update(prop.id, {
         address: card1Draft.address,
         zip: card1Draft.zip,
         city: card1Draft.city,
         country: card1Draft.country,
         title: card1Draft.title,
-        details: { ...(selectedProperty.details ?? {}), floor: card1Draft.floor, buildingFloors: card1Draft.buildingFloors },
+        details: { ...(prop.details ?? {}), floor: card1Draft.floor, buildingFloors: card1Draft.buildingFloors },
         apartmentStatus: card1Draft.apartmentStatus,
         landlord: card1Draft.landlord,
         management: card1Draft.management,
@@ -3097,7 +3101,6 @@ ${internalCompany} Team`;
       // If reservationId not set but we can find reservation by offerIdSource, set reservationId (not bookingId; booking_id only after payment confirmed)
       if (!invoice.reservationId && !invoice.bookingId && invoice.offerIdSource) {
           const reservationByOfferId = reservations.find(r => {
-              if (r.id === invoice.offerIdSource) return true;
               if (String(r.id) === String(invoice.offerIdSource)) return true;
               const rIdStr = String(r.id);
               const offerIdStr = String(invoice.offerIdSource);
@@ -3105,7 +3108,7 @@ ${internalCompany} Team`;
           });
           
           if (reservationByOfferId) {
-              invoice.reservationId = reservationByOfferId.id;
+              invoice.reservationId = String(reservationByOfferId.id);
           } else {
               const linkedOffer = offers.find(o => {
                   if (o.id === invoice.offerIdSource) return true;
@@ -3157,7 +3160,7 @@ ${internalCompany} Team`;
               ));
               
               // Update invoice.offerIdSource with the new UUID
-              invoice.offerIdSource = savedOffer.id;
+              invoice.offerIdSource = String(savedOffer.id);
               // #region agent log
               (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2174',message:'Saved offer to Supabase and updated invoice.offerIdSource',data:{oldOfferId:localOffer.id,newOfferId:savedOffer.id,newOfferIdType:typeof savedOffer.id,invoiceOfferIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{}));
               // #endregion
@@ -3171,7 +3174,7 @@ ${internalCompany} Team`;
                 });
                 
                 if (relatedReservation) {
-                  invoice.reservationId = relatedReservation.id;
+                  invoice.reservationId = String(relatedReservation.id);
                   // #region agent log
                   (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2187',message:'Found related reservation and updated invoice.reservationId',data:{reservationId:relatedReservation.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{}));
                   // #endregion
@@ -4098,8 +4101,6 @@ ${internalCompany} Team`;
   };
 
   const renderPropertiesContent = () => {
-    const selectedProperty = properties.find(p => p.id === selectedPropertyId) || properties[0];
-    
     // #region agent log
     if (selectedProperty) {
       (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1931',message:'selectedProperty used for rendering',data:{propertyId:selectedProperty.id,propertyTitle:selectedProperty.title,inventoryCount:selectedProperty.inventory?.length||0,inventoryItems:selectedProperty.inventory?.slice(0,5).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type,sku:i.sku})),isFromMock:selectedProperty.id === '1' && selectedProperty.title === 'Apartment 1, Lviv'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
@@ -4158,7 +4159,17 @@ ${internalCompany} Team`;
             
             {/* Header */}
             <div className="relative h-64 rounded-xl overflow-hidden mb-8 group">
-               <img src={selectedProperty.image} alt={selectedProperty.title} className="w-full h-full object-cover" />
+               {(() => {
+                  const headerImageUrl = selectedProperty.image?.trim() || selectedProperty.images?.[0]?.trim() || '';
+                  return headerImageUrl ? (
+                     <img src={headerImageUrl} alt={selectedProperty.title} className="w-full h-full object-cover" />
+                  ) : (
+                     <div className="absolute inset-0 bg-[#1C1F24] flex flex-col items-center justify-center gap-2">
+                        <Camera className="w-16 h-16 text-gray-600" />
+                        <span className="text-sm text-gray-500">Немає фото</span>
+                     </div>
+                  );
+               })()}
                <div className="absolute inset-0 bg-gradient-to-t from-[#0D1117] via-transparent to-transparent opacity-90"></div>
                <div className="absolute bottom-6 left-6 right-6">
                   <h1 className="text-4xl font-extrabold text-white mb-1 drop-shadow-md">{selectedProperty.title}</h1>
