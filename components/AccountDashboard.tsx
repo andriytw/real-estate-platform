@@ -20,8 +20,8 @@ import UserManagement from './admin/UserManagement';
 // Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks tab.
 // This avoids "X is not a constructor" on /account (CJS/ESM + esbuild minification issue with dnd).
 const KanbanBoard = React.lazy(() => import('./kanban/KanbanBoard'));
-import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, leadsService, paymentProofsService, propertyDocumentsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem } from '../services/supabaseService';
-import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, PropertyDetails, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation, PaymentProof, ContactParty, TenantDetails, PropertyDocument, PropertyDocumentType, PropertyDeposit } from '../types';
+import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, leadsService, paymentProofsService, propertyDocumentsService, propertyDepositProofsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem } from '../services/supabaseService';
+import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, PropertyDetails, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation, PaymentProof, ContactParty, TenantDetails, PropertyDocument, PropertyDocumentType, PropertyDeposit, PropertyDepositProof } from '../types';
 import { MOCK_PROPERTIES } from '../constants';
 import { createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 import { supabase } from '../utils/supabase/client';
@@ -369,6 +369,12 @@ const AccountDashboard: React.FC = () => {
     deposit: PropertyDeposit | null;
   } | null>(null);
   const [card1DepositError, setCard1DepositError] = useState<string | null>(null);
+  const [isDepositProofModalOpen, setIsDepositProofModalOpen] = useState(false);
+  const [depositProofType, setDepositProofType] = useState<'payment' | 'return' | null>(null);
+  const [kautionProofs, setKautionProofs] = useState<{ payment: PropertyDepositProof | null; return: PropertyDepositProof | null }>({ payment: null, return: null });
+  const [depositProofFile, setDepositProofFile] = useState<File | null>(null);
+  const [depositProofError, setDepositProofError] = useState<string | null>(null);
+  const [depositProofUploading, setDepositProofUploading] = useState(false);
   const [showAddRentIncreaseForm, setShowAddRentIncreaseForm] = useState(false);
   const [rentIncreaseForm, setRentIncreaseForm] = useState<{ validFrom: string; validTo: string; km: string; bk: string; hk: string }>({ validFrom: '', validTo: '', km: '', bk: '', hk: '' });
   const [rentIncreaseFormError, setRentIncreaseFormError] = useState<string | null>(null);
@@ -406,6 +412,7 @@ const AccountDashboard: React.FC = () => {
   const [ocrPurchaseDate, setOcrPurchaseDate] = useState<string>('');
   const [ocrVendor, setOcrVendor] = useState<string>('');
   const inventoryFileInputRef = useRef<HTMLInputElement | null>(null);
+  const depositProofFileInputRef = useRef<HTMLInputElement | null>(null);
   const [transferPropertyId, setTransferPropertyId] = useState<string>('');
   const [transferWorkerId, setTransferWorkerId] = useState<string>('');
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -2122,6 +2129,25 @@ const AccountDashboard: React.FC = () => {
       })
       .finally(() => setCard1DocumentsLoading(false));
   }, [selectedPropertyId]);
+
+  useEffect(() => {
+    if (!selectedPropertyId) {
+      setKautionProofs({ payment: null, return: null });
+      return;
+    }
+    Promise.all([
+      propertyDepositProofsService.getLatest(selectedPropertyId, 'payment'),
+      propertyDepositProofsService.getLatest(selectedPropertyId, 'return'),
+    ]).then(([payment, ret]) => setKautionProofs({ payment, return: ret })).catch(() => setKautionProofs({ payment: null, return: null }));
+  }, [selectedPropertyId]);
+
+  const refreshKautionProofs = () => {
+    if (!selectedPropertyId) return;
+    Promise.all([
+      propertyDepositProofsService.getLatest(selectedPropertyId, 'payment'),
+      propertyDepositProofsService.getLatest(selectedPropertyId, 'return'),
+    ]).then(([payment, ret]) => setKautionProofs({ payment, return: ret })).catch(() => setKautionProofs({ payment: null, return: null }));
+  };
 
   const handleAddInventoryRow = () => {
     const updatedProperties = properties.map(prop => {
@@ -4299,9 +4325,9 @@ ${internalCompany} Team`;
                                     <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Сума (€)</label><input type="number" min={0} step={0.01} value={card1Draft.deposit?.amount ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid' }), amount: parseFloat(e.target.value) || 0 } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
                                     <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Статус</label><select value={card1Draft.deposit?.status ?? 'unpaid'} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid' }), status: e.target.value as PropertyDeposit['status'] } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white"><option value="unpaid">Не оплачено</option><option value="paid">Оплачено</option><option value="partially_returned">Частково повернено</option><option value="returned">Повернено</option></select></div>
                                     <div className="col-span-3 flex items-center justify-end gap-0.5 shrink-0">
-                                        <button type="button" onClick={() => { setNewDocType('deposit_payment_proof'); setShowAddDocumentForm(true); }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати підтвердження оплати"><Plus className="w-4 h-4" /></button>
-                                        {(() => { const doc = card1Documents.find(d => d.type === 'deposit_payment_proof'); return doc ? <button type="button" onClick={async () => { try { const url = await propertyDocumentsService.getDocumentSignedUrl(doc.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors" title="Переглянути підтвердження оплати"><FileText className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><FileText className="w-4 h-4" /></button>; })()}
-                                        {(() => { const doc = card1Documents.find(d => d.type === 'deposit_payment_proof'); return doc ? <button type="button" onClick={() => { if (window.confirm('Видалити документ безповоротно?')) { const pid = selectedProperty!.id; propertyDocumentsService.deletePropertyDocumentHard(doc).then(() => {}).catch((e) => { alert(e?.message || 'Помилка видалення'); }).finally(() => { propertyDocumentsService.listPropertyDocuments(pid).then(setCard1Documents); }); } }} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити підтвердження оплати"><Trash2 className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><Trash2 className="w-4 h-4" /></button>; })()}
+                                        <button type="button" onClick={() => { setDepositProofType('payment'); setDepositProofFile(null); setDepositProofError(null); setIsDepositProofModalOpen(true); }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати підтвердження оплати"><Plus className="w-4 h-4" /></button>
+                                        {kautionProofs.payment ? <button type="button" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.payment!.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors" title="Переглянути підтвердження оплати"><FileText className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><FileText className="w-4 h-4" /></button>}
+                                        {kautionProofs.payment ? <button type="button" onClick={() => { if (window.confirm('Видалити документ безповоротно?')) { propertyDepositProofsService.delete(kautionProofs.payment!.id).then(() => refreshKautionProofs()).catch((e) => alert(e?.message || 'Помилка видалення')); } }} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити підтвердження оплати"><Trash2 className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><Trash2 className="w-4 h-4" /></button>}
                                     </div>
                                     {/* Row 2: Deposit refund */}
                                     <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Дата повернення</label><input type="date" value={card1Draft.deposit?.returnedAt ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid' }), returnedAt: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
@@ -4309,9 +4335,9 @@ ${internalCompany} Team`;
                                     <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Сума повернення (€)</label><input type="number" min={0} step={0.01} value={card1Draft.deposit?.returnedAmount ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid' }), returnedAmount: e.target.value === '' ? undefined : parseFloat(e.target.value) || 0 } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
                                     <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Статус</label><select value={card1Draft.deposit?.status ?? 'unpaid'} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid' }), status: e.target.value as PropertyDeposit['status'] } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white"><option value="unpaid">Не оплачено</option><option value="paid">Оплачено</option><option value="partially_returned">Частково повернено</option><option value="returned">Повернено</option></select></div>
                                     <div className="col-span-3 flex items-center justify-end gap-0.5 shrink-0">
-                                        <button type="button" onClick={() => { setNewDocType('deposit_return_proof'); setShowAddDocumentForm(true); }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати підтвердження повернення"><Plus className="w-4 h-4" /></button>
-                                        {(() => { const doc = card1Documents.find(d => d.type === 'deposit_return_proof'); return doc ? <button type="button" onClick={async () => { try { const url = await propertyDocumentsService.getDocumentSignedUrl(doc.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors" title="Переглянути підтвердження повернення"><FileText className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><FileText className="w-4 h-4" /></button>; })()}
-                                        {(() => { const doc = card1Documents.find(d => d.type === 'deposit_return_proof'); return doc ? <button type="button" onClick={() => { if (window.confirm('Видалити документ безповоротно?')) { const pid = selectedProperty!.id; propertyDocumentsService.deletePropertyDocumentHard(doc).then(() => {}).catch((e) => { alert(e?.message || 'Помилка видалення'); }).finally(() => { propertyDocumentsService.listPropertyDocuments(pid).then(setCard1Documents); }); } }} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити підтвердження повернення"><Trash2 className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><Trash2 className="w-4 h-4" /></button>; })()}
+                                        <button type="button" onClick={() => { setDepositProofType('return'); setDepositProofFile(null); setDepositProofError(null); setIsDepositProofModalOpen(true); }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати підтвердження повернення"><Plus className="w-4 h-4" /></button>
+                                        {kautionProofs.return ? <button type="button" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.return!.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors" title="Переглянути підтвердження повернення"><FileText className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><FileText className="w-4 h-4" /></button>}
+                                        {kautionProofs.return ? <button type="button" onClick={() => { if (window.confirm('Видалити документ безповоротно?')) { propertyDepositProofsService.delete(kautionProofs.return!.id).then(() => refreshKautionProofs()).catch((e) => alert(e?.message || 'Помилка видалення')); } }} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити підтвердження повернення"><Trash2 className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><Trash2 className="w-4 h-4" /></button>}
                                     </div>
                                 </div>
                                 {card1DepositError && <p className="text-sm text-red-400 mt-2">{card1DepositError}</p>}
@@ -4319,6 +4345,40 @@ ${internalCompany} Team`;
                                     <button type="button" onClick={() => { if (window.confirm('Очистити заставу повністю? Це видалить дані застави (deposit) з цієї квартири.')) { setCard1Draft(d => d ? { ...d, deposit: null } : null); setCard1DepositError(null); } }} className="text-sm text-amber-400 hover:text-amber-300 font-medium">Очистити заставу</button>
                                 </div>
                             </div>
+                            {isDepositProofModalOpen && depositProofType && selectedProperty && (
+                                <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4" onClick={() => { setIsDepositProofModalOpen(false); setDepositProofType(null); setDepositProofFile(null); setDepositProofError(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; }}>
+                                    <div className="bg-[#1C1F24] w-full max-w-md rounded-xl border border-gray-700 shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
+                                        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+                                            <h3 className="text-lg font-bold text-white">{depositProofType === 'payment' ? 'Додати підтвердження оплати' : 'Додати підтвердження повернення'}</h3>
+                                            <button type="button" onClick={() => { setIsDepositProofModalOpen(false); setDepositProofType(null); setDepositProofFile(null); setDepositProofError(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; }} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
+                                        </div>
+                                        <div className="p-4 space-y-4">
+                                            <div>
+                                                <label className="text-xs text-gray-500 block mb-2">Файл (PDF або зображення)</label>
+                                                {!depositProofFile ? (
+                                                    <div onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-emerald-500'); }} onDragLeave={e => e.currentTarget.classList.remove('border-emerald-500')} onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('border-emerald-500'); const f = e.dataTransfer.files[0]; if (f && (f.type === 'application/pdf' || f.type.startsWith('image/'))) setDepositProofFile(f); }} className="border-2 border-dashed border-gray-700 rounded-lg p-6 min-h-[120px] flex flex-col items-center justify-center gap-2 hover:border-gray-600 transition-colors">
+                                                        <input ref={depositProofFileInputRef} type="file" accept=".pdf,image/*" className="hidden" id="deposit-proof-file" onChange={e => { const f = e.target.files?.[0]; if (f && (f.type === 'application/pdf' || f.type.startsWith('image/'))) setDepositProofFile(f); }} />
+                                                        <label htmlFor="deposit-proof-file" className="cursor-pointer flex flex-col items-center gap-2">
+                                                            <Upload className="w-8 h-8 text-gray-500" />
+                                                            <span className="text-sm text-gray-400">Перетягніть файл сюди або натисніть для вибору</span>
+                                                        </label>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-2 p-3 rounded-lg border border-gray-700 bg-[#111315]">
+                                                        <span className="text-emerald-400 text-sm truncate flex-1">{depositProofFile.name}</span>
+                                                        <button type="button" onClick={() => { setDepositProofFile(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; }} className="text-xs text-gray-400 hover:text-white">Видалити файл</button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {depositProofError && <p className="text-sm text-red-400">{depositProofError}</p>}
+                                            <div className="flex gap-2">
+                                                <button type="button" disabled={depositProofUploading || !depositProofFile} onClick={async () => { if (!selectedProperty || !depositProofFile) return; setDepositProofUploading(true); setDepositProofError(null); try { await propertyDepositProofsService.create(selectedProperty.id, depositProofType!, depositProofFile); refreshKautionProofs(); setIsDepositProofModalOpen(false); setDepositProofType(null); setDepositProofFile(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; } catch (e) { setDepositProofError(e instanceof Error ? e.message : 'Помилка'); } finally { setDepositProofUploading(false); } }} className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white">Зберегти</button>
+                                                <button type="button" onClick={() => { setIsDepositProofModalOpen(false); setDepositProofType(null); setDepositProofFile(null); setDepositProofError(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; }} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white">Скасувати</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             <div className="pb-4 border-b border-gray-700">
                                 <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Документи та договори</h3>
                                 {card1DocumentsLoading ? <p className="text-sm text-gray-500">Завантаження…</p> : card1DocumentsError ? <p className="text-sm text-red-400">{card1DocumentsError}</p> : (
@@ -4398,19 +4458,19 @@ ${internalCompany} Team`;
                                 {selectedProperty.deposit ? (
                                     <>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
-                                            <div><span className="text-xs text-gray-500 block mb-1">Сума</span><span className="text-sm text-white font-bold">€{Number(selectedProperty.deposit.amount).toFixed(2)}</span></div>
+                                            <div><span className="text-xs text-gray-500 block mb-1">Сума</span><span className="text-sm text-white font-bold">{(() => { const n = Number(selectedProperty.deposit.amount); return (n != null && !Number.isNaN(n)) ? `€${n.toFixed(2)}` : '—'; })()}</span></div>
                                             <div><span className="text-xs text-gray-500 block mb-1">Статус</span><span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${selectedProperty.deposit.status === 'returned' ? 'bg-emerald-500/20 text-emerald-400' : selectedProperty.deposit.status === 'paid' ? 'bg-blue-500/20 text-blue-400' : selectedProperty.deposit.status === 'partially_returned' ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/20 text-gray-400'}`}>{selectedProperty.deposit.status === 'unpaid' ? 'Не оплачено' : selectedProperty.deposit.status === 'paid' ? 'Оплачено' : selectedProperty.deposit.status === 'partially_returned' ? 'Частково повернено' : 'Повернено'}</span></div>
                                             {selectedProperty.deposit.paidAt && <div><span className="text-xs text-gray-500 block mb-1">Дата оплати</span><span className="text-sm text-white">{selectedProperty.deposit.paidAt}</span></div>}
                                             {selectedProperty.deposit.paidTo && <div><span className="text-xs text-gray-500 block mb-1">Оплачено кому</span><span className="text-sm text-white">{selectedProperty.deposit.paidTo}</span></div>}
-                                            {(selectedProperty.deposit.returnedAt || selectedProperty.deposit.returnedAmount != null) && <div><span className="text-xs text-gray-500 block mb-1">Повернення</span><span className="text-sm text-white">{selectedProperty.deposit.returnedAt || '—'} {selectedProperty.deposit.returnedAmount != null ? `€${Number(selectedProperty.deposit.returnedAmount).toFixed(2)}` : ''}</span></div>}
+                                            {(selectedProperty.deposit.returnedAt || selectedProperty.deposit.returnedAmount != null) && <div><span className="text-xs text-gray-500 block mb-1">Повернення</span><span className="text-sm text-white">{selectedProperty.deposit.returnedAt || '—'} {selectedProperty.deposit.returnedAmount != null ? (() => { const n = Number(selectedProperty.deposit!.returnedAmount); return !Number.isNaN(n) ? `€${n.toFixed(2)}` : '—'; })() : ''}</span></div>}
                                         </div>
-                                        {(card1Documents.some(d => d.type === 'deposit_payment_proof') || card1Documents.some(d => d.type === 'deposit_return_proof')) && (
+                                        {(kautionProofs.payment || kautionProofs.return) && (
                                             <div className="mt-2 space-y-2">
-                                                {card1Documents.filter(d => d.type === 'deposit_payment_proof').length > 0 && (
-                                                    <div><span className="text-xs text-gray-500 block mb-1">Підтвердження оплати</span><ul className="space-y-1">{card1Documents.filter(d => d.type === 'deposit_payment_proof').map((doc) => (<li key={doc.id} className="flex flex-wrap items-center gap-2 text-sm"><span className="text-white">{DOCUMENT_TYPE_LABELS[doc.type]}</span>{doc.title && <span className="text-gray-400">— {doc.title}</span>}<button type="button" onClick={async () => { try { const url = await propertyDocumentsService.getDocumentSignedUrl(doc.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="text-emerald-500 hover:text-emerald-400 text-xs">Відкрити</button></li>))}</ul></div>
+                                                {kautionProofs.payment && (
+                                                    <div><span className="text-xs text-gray-500 block mb-1">Підтвердження оплати</span><div className="flex items-center gap-2 text-sm"><span className="text-white">Підтвердження оплати застави</span><button type="button" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.payment!.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="text-emerald-500 hover:text-emerald-400 text-xs">Відкрити</button></div></div>
                                                 )}
-                                                {card1Documents.filter(d => d.type === 'deposit_return_proof').length > 0 && (
-                                                    <div><span className="text-xs text-gray-500 block mb-1">Підтвердження повернення</span><ul className="space-y-1">{card1Documents.filter(d => d.type === 'deposit_return_proof').map((doc) => (<li key={doc.id} className="flex flex-wrap items-center gap-2 text-sm"><span className="text-white">{DOCUMENT_TYPE_LABELS[doc.type]}</span>{doc.title && <span className="text-gray-400">— {doc.title}</span>}<button type="button" onClick={async () => { try { const url = await propertyDocumentsService.getDocumentSignedUrl(doc.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="text-emerald-500 hover:text-emerald-400 text-xs">Відкрити</button></li>))}</ul></div>
+                                                {kautionProofs.return && (
+                                                    <div><span className="text-xs text-gray-500 block mb-1">Підтвердження повернення</span><div className="flex items-center gap-2 text-sm"><span className="text-white">Підтвердження повернення застави</span><button type="button" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.return!.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="text-emerald-500 hover:text-emerald-400 text-xs">Відкрити</button></div></div>
                                                 )}
                                             </div>
                                         )}

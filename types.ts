@@ -135,6 +135,18 @@ export interface PropertyDeposit {
   returnedAmount?: number;
 }
 
+/** Kaution proof document — stored in property_deposit_proofs (independent from property_documents). */
+export interface PropertyDepositProof {
+  id: string;
+  propertyId: string;
+  proofType: 'payment' | 'return';
+  bucket: string;
+  filePath: string;
+  originalFilename?: string | null;
+  mimeType?: string | null;
+  createdAt: string;
+}
+
 export interface FuturePayment {
   date: string;
   recipient: string;

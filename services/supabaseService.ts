@@ -23,6 +23,7 @@ import {
   Reservation,
   PropertyDocument,
   PropertyDocumentType,
+  PropertyDepositProof,
 } from '../types';
 
 // Lightweight type for joined stock + item for UI
@@ -2509,6 +2510,101 @@ export const propertyDocumentsService = {
       .upload(filePath, file, { cacheControl: '3600', upsert: false });
     if (error) throw new Error(error.message || 'Storage upload failed');
     return filePath;
+  },
+};
+
+// ==================== PROPERTY DEPOSIT PROOFS (Kaution only, independent from property_documents) ====================
+const DEPOSIT_PROOFS_BUCKET = 'property-docs';
+
+function transformDepositProofFromDB(db: {
+  id: string;
+  property_id: string;
+  proof_type: string;
+  bucket: string;
+  file_path: string;
+  original_filename?: string | null;
+  mime_type?: string | null;
+  created_at: string;
+}): PropertyDepositProof {
+  return {
+    id: db.id,
+    propertyId: db.property_id,
+    proofType: db.proof_type as 'payment' | 'return',
+    bucket: db.bucket,
+    filePath: db.file_path,
+    originalFilename: db.original_filename ?? undefined,
+    mimeType: db.mime_type ?? undefined,
+    createdAt: db.created_at,
+  };
+}
+
+export const propertyDepositProofsService = {
+  async getLatest(propertyId: string, proofType: 'payment' | 'return'): Promise<PropertyDepositProof | null> {
+    const { data, error } = await supabase
+      .from('property_deposit_proofs')
+      .select('id, property_id, proof_type, bucket, file_path, original_filename, mime_type, created_at')
+      .eq('property_id', propertyId)
+      .eq('proof_type', proofType)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message || 'Failed to get deposit proof');
+    return data ? transformDepositProofFromDB(data) : null;
+  },
+
+  async create(propertyId: string, proofType: 'payment' | 'return', file: File): Promise<PropertyDepositProof> {
+    const id = crypto.randomUUID();
+    const safeName = file.name.replace(/[/\\]/g, '_');
+    const filePath = `deposit_proofs/${propertyId}/${proofType}/${id}_${safeName}`;
+    const { error: uploadError } = await supabase.storage
+      .from(DEPOSIT_PROOFS_BUCKET)
+      .upload(filePath, file, { cacheControl: '3600', upsert: false });
+    if (uploadError) throw new Error(uploadError.message || 'Storage upload failed');
+
+    const { data } = await supabase.auth.getSession();
+    const createdBy = data?.session?.user?.id ?? null;
+
+    const { data, error } = await supabase
+      .from('property_deposit_proofs')
+      .insert({
+        id,
+        property_id: propertyId,
+        proof_type: proofType,
+        bucket: DEPOSIT_PROOFS_BUCKET,
+        file_path: filePath,
+        original_filename: file.name || null,
+        mime_type: file.type || null,
+        created_by: createdBy,
+      })
+      .select('id, property_id, proof_type, bucket, file_path, original_filename, mime_type, created_at')
+      .single();
+    if (error) {
+      await supabase.storage.from(DEPOSIT_PROOFS_BUCKET).remove([filePath]);
+      throw new Error(error.message || 'Failed to create deposit proof record');
+    }
+    return transformDepositProofFromDB(data);
+  },
+
+  async delete(proofId: string): Promise<void> {
+    const { data: row, error: fetchError } = await supabase
+      .from('property_deposit_proofs')
+      .select('bucket, file_path')
+      .eq('id', proofId)
+      .single();
+    if (fetchError || !row) throw new Error('Deposit proof not found');
+    const { error: storageError } = await supabase.storage.from(row.bucket).remove([row.file_path]);
+    if (storageError) throw new Error(storageError.message || 'Failed to delete file from storage');
+    const { error: dbError } = await supabase.from('property_deposit_proofs').delete().eq('id', proofId);
+    if (dbError) throw new Error(dbError.message || 'Failed to delete deposit proof record');
+  },
+
+  async getSignedUrl(filePath: string, expirySeconds: number = 3600): Promise<string> {
+    const { data, error } = await supabase.storage
+      .from(DEPOSIT_PROOFS_BUCKET)
+      .createSignedUrl(filePath, expirySeconds);
+    if (error) throw new Error(error.message || 'Failed to get document URL');
+    if (!data?.signedUrl) throw new Error('No signed URL returned');
+    return data.signedUrl;
   },
 };
 
