@@ -32,6 +32,21 @@ export interface MeterReading {
   lastReadDate?: string;
 }
 
+/** Reusable contact shape for Landlord, Management, and extended Tenant (Card 1). */
+export interface ContactParty {
+  name: string;
+  address: {
+    street: string;
+    houseNumber: string;
+    zip: string;
+    city: string;
+    country: string;
+  };
+  phones: string[];
+  emails: string[];
+  iban?: string;
+}
+
 export interface TenantDetails {
   name: string;
   phone: string;
@@ -42,7 +57,19 @@ export interface TenantDetails {
   km: number; // Kaltmiete
   bk: number; // Betriebskosten
   hk: number; // Heizkosten
+  /** Extended: full address (Card 1). */
+  address?: ContactParty['address'];
+  /** Extended: multiple phones; prefer over phone when present. */
+  phones?: string[];
+  /** Extended: multiple emails; prefer over email when present. */
+  emails?: string[];
+  iban?: string;
+  /** Payment day of month (1–31) for current lease. */
+  paymentDayOfMonth?: number;
 }
+
+/** In Card 1 (master lease): our company as tenant. Future: external client/occupant will be a separate concept. */
+export type MasterTenantDetails = TenantDetails;
 
 export interface RentalAgreement {
   id: string;
@@ -63,11 +90,49 @@ export interface RentPayment {
   status: 'PAID' | 'PENDING' | 'OVERDUE';
 }
 
+export type PropertyDocumentType =
+  | 'lease_contract'
+  | 'handover_protocol'
+  | 'acceptance_act'
+  | 'supplier_electricity'
+  | 'supplier_gas'
+  | 'supplier_water'
+  | 'supplier_internet'
+  | 'supplier_waste'
+  | 'supplier_cleaning'
+  | 'supplier_hausmeister'
+  | 'supplier_heating'
+  | 'supplier_other'
+  | 'deposit_payment_proof'
+  | 'deposit_return_proof'
+  | 'other_document';
+
+export interface PropertyDocument {
+  id: string;
+  propertyId: string;
+  type: PropertyDocumentType;
+  filePath: string;
+  title?: string | null;
+  docDate?: string | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
 export interface OwnerExpense {
   mortgage: number;
   management: number;
   taxIns: number;
   reserve: number;
+}
+
+/** Card 1: Kaution (deposit) — deposit paid by our company to landlord (master lease). */
+export interface PropertyDeposit {
+  amount: number;
+  paidAt?: string;
+  paidTo?: string;
+  status: 'unpaid' | 'paid' | 'partially_returned' | 'returned';
+  returnedAt?: string;
+  returnedAmount?: number;
 }
 
 export interface FuturePayment {
@@ -235,6 +300,14 @@ export interface Property {
   rentalHistory?: RentalAgreement[]; // New field for list of agreements
   rentPayments?: RentPayment[]; // New field for rent payments
   ownerExpense?: OwnerExpense;
+  /** Card 1: apartment/lease status (active, ooo, preparation, rented_worker). Stored in apartment_status column. */
+  apartmentStatus?: 'active' | 'ooo' | 'preparation' | 'rented_worker';
+  /** Card 1: landlord contact (JSONB). */
+  landlord?: ContactParty;
+  /** Card 1: management company contact (JSONB). */
+  management?: ContactParty;
+  /** Card 1: Kaution (deposit) — our company's deposit to landlord. Stored in deposit JSONB. */
+  deposit?: PropertyDeposit;
   futurePayments?: FuturePayment[];
   repairRequests?: RepairRequest[];
   events?: PropertyEvent[];

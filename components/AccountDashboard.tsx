@@ -20,8 +20,8 @@ import UserManagement from './admin/UserManagement';
 // Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks tab.
 // This avoids "X is not a constructor" on /account (CJS/ESM + esbuild minification issue with dnd).
 const KanbanBoard = React.lazy(() => import('./kanban/KanbanBoard'));
-import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, leadsService, paymentProofsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem } from '../services/supabaseService';
-import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, PropertyDetails, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation, PaymentProof } from '../types';
+import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, leadsService, paymentProofsService, propertyDocumentsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem } from '../services/supabaseService';
+import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, PropertyDetails, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation, PaymentProof, ContactParty, TenantDetails, PropertyDocument, PropertyDocumentType, PropertyDeposit } from '../types';
 import { MOCK_PROPERTIES } from '../constants';
 import { createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 import { supabase } from '../utils/supabase/client';
@@ -97,6 +97,24 @@ const INITIAL_LEADS: Lead[] = [
 ];
 
 const DOC_LINK_PILL = 'inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 text-xs text-indigo-300';
+
+const DOCUMENT_TYPE_LABELS: Record<PropertyDocumentType, string> = {
+  lease_contract: 'Договір оренди',
+  handover_protocol: 'Акт прийому-передачі',
+  acceptance_act: 'Акт приймання',
+  supplier_electricity: 'Постачальник: електрика',
+  supplier_gas: 'Постачальник: газ',
+  supplier_water: 'Постачальник: вода',
+  supplier_internet: 'Постачальник: інтернет',
+  supplier_waste: 'Постачальник: сміття',
+  supplier_cleaning: 'Постачальник: прибирання',
+  supplier_hausmeister: 'Постачальник: hausmeister',
+  supplier_heating: 'Постачальник: опалення',
+  supplier_other: 'Постачальник: інше',
+  deposit_payment_proof: 'Підтвердження оплати застави',
+  deposit_return_proof: 'Підтвердження повернення застави',
+  other_document: 'Інший документ',
+};
 
 function formatDateEU(value: string | undefined): string {
   if (!value) return '—';
@@ -325,6 +343,36 @@ const AccountDashboard: React.FC = () => {
   const [propertyToEdit, setPropertyToEdit] = useState<Property | undefined>(undefined);
   const [isCard2Editing, setIsCard2Editing] = useState(false);
   const [card2Draft, setCard2Draft] = useState<{ details: PropertyDetails; amenities: Record<string, boolean> } | null>(null);
+  const [isEditingCard1, setIsEditingCard1] = useState(false);
+  const [card1Documents, setCard1Documents] = useState<PropertyDocument[]>([]);
+  const [card1DocumentsLoading, setCard1DocumentsLoading] = useState(false);
+  const [card1DocumentsError, setCard1DocumentsError] = useState<string | null>(null);
+  const [showAddDocumentForm, setShowAddDocumentForm] = useState(false);
+  const [newDocType, setNewDocType] = useState<PropertyDocumentType>('lease_contract');
+  const [newDocTitle, setNewDocTitle] = useState('');
+  const [newDocDate, setNewDocDate] = useState('');
+  const [newDocFile, setNewDocFile] = useState<File | null>(null);
+  const [addingDocument, setAddingDocument] = useState(false);
+  const [addDocumentError, setAddDocumentError] = useState<string | null>(null);
+  const [card1Draft, setCard1Draft] = useState<{
+    apartmentStatus: 'active' | 'ooo' | 'preparation' | 'rented_worker';
+    address: string;
+    zip: string;
+    city: string;
+    country: string;
+    title: string;
+    floor: number;
+    buildingFloors: number;
+    landlord: ContactParty | null;
+    management: ContactParty | null;
+    tenant: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number };
+    deposit: PropertyDeposit | null;
+  } | null>(null);
+  const [card1DepositError, setCard1DepositError] = useState<string | null>(null);
+  const [showAddRentIncreaseForm, setShowAddRentIncreaseForm] = useState(false);
+  const [rentIncreaseForm, setRentIncreaseForm] = useState<{ validFrom: string; validTo: string; km: string; bk: string; hk: string }>({ validFrom: '', validTo: '', km: '', bk: '', hk: '' });
+  const [rentIncreaseFormError, setRentIncreaseFormError] = useState<string | null>(null);
+  const [isAddingRentIncrease, setIsAddingRentIncrease] = useState(false);
   const [isInventoryEditing, setIsInventoryEditing] = useState(false);
   const [expandedMeterGroups, setExpandedMeterGroups] = useState<Set<string>>(new Set());
   const [warehouseTab, setWarehouseTab] = useState<'warehouses' | 'stock' | 'addInventory'>('warehouses');
@@ -1839,9 +1887,236 @@ const AccountDashboard: React.FC = () => {
     setCard2Draft(null);
   };
 
+  const defaultContactParty = (): ContactParty => ({
+    name: '',
+    address: { street: '', houseNumber: '', zip: '', city: '', country: '' },
+    phones: [''],
+    emails: [''],
+    iban: ''
+  });
+
+  const startCard1Edit = () => {
+    if (!selectedProperty) return;
+    const p = selectedProperty;
+    const landlord = p.landlord ? {
+      name: p.landlord.name || '',
+      address: p.landlord.address || defaultContactParty().address,
+      phones: (p.landlord.phones?.length ? [...p.landlord.phones] : ['']),
+      emails: (p.landlord.emails?.length ? [...p.landlord.emails] : ['']),
+      iban: p.landlord.iban || ''
+    } : null;
+    const management = p.management ? {
+      name: p.management.name || '',
+      address: p.management.address || defaultContactParty().address,
+      phones: (p.management.phones?.length ? [...p.management.phones] : ['']),
+      emails: (p.management.emails?.length ? [...p.management.emails] : ['']),
+      iban: p.management.iban
+    } : null;
+    const tenant: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number } = p.tenant ? {
+      ...p.tenant,
+      address: p.tenant.address || defaultContactParty().address,
+      phones: (p.tenant.phones?.length ? [...p.tenant.phones] : (p.tenant.phone ? [p.tenant.phone] : [''])),
+      emails: (p.tenant.emails?.length ? [...p.tenant.emails] : (p.tenant.email ? [p.tenant.email] : [''])),
+      paymentDayOfMonth: p.tenant.paymentDayOfMonth
+    } : {
+      name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0,
+      address: defaultContactParty().address,
+      phones: [''],
+      emails: [''],
+      paymentDayOfMonth: undefined
+    };
+    const deposit: PropertyDeposit | null = p.deposit ? {
+      amount: p.deposit.amount ?? 0,
+      status: p.deposit.status || 'unpaid',
+      paidAt: p.deposit.paidAt ?? '',
+      paidTo: p.deposit.paidTo ?? '',
+      returnedAt: p.deposit.returnedAt ?? '',
+      returnedAmount: p.deposit.returnedAmount ?? undefined
+    } : null;
+    setCard1Draft({
+      apartmentStatus: (p.apartmentStatus || 'active') as 'active' | 'ooo' | 'preparation' | 'rented_worker',
+      address: p.address ?? '',
+      zip: p.zip ?? '',
+      city: p.city ?? '',
+      country: p.country ?? '',
+      title: p.title ?? '',
+      floor: p.details?.floor ?? 0,
+      buildingFloors: p.details?.buildingFloors ?? 0,
+      landlord,
+      management,
+      tenant,
+      deposit
+    });
+    setCard1DepositError(null);
+    setIsEditingCard1(true);
+  };
+
+  const cancelCard1Edit = () => {
+    setIsEditingCard1(false);
+    setCard1Draft(null);
+    setCard1DepositError(null);
+  };
+
+  const isCard1LandlordValid = (l: ContactParty | null): boolean => {
+    if (!l) return true;
+    const a = l.address;
+    const hasContact = (l.phones?.some(ph => ph?.trim()) || l.emails?.some(em => em?.trim())) ?? false;
+    return !!(l.name?.trim() && l.iban?.trim() && a?.street?.trim() && a?.houseNumber?.trim() && a?.zip?.trim() && a?.city?.trim() && a?.country?.trim() && hasContact);
+  };
+
+  const isCard1DepositValid = (d: PropertyDeposit | null): { valid: boolean; message: string | null } => {
+    if (!d) return { valid: true, message: null };
+    if (typeof d.amount !== 'number' || d.amount <= 0) return { valid: false, message: 'Сума застави має бути числом > 0.' };
+    if (d.status !== 'unpaid' && !d.paidAt?.trim()) return { valid: false, message: 'Для обраного статусу потрібна дата оплати.' };
+    if (d.status === 'partially_returned' || d.status === 'returned') {
+      if (!d.returnedAt?.trim()) return { valid: false, message: 'Потрібна дата повернення.' };
+      if (typeof d.returnedAmount !== 'number' || d.returnedAmount < 0) return { valid: false, message: 'Потрібна сума повернення (≥ 0).' };
+      if (d.returnedAmount > d.amount) return { valid: false, message: 'Сума повернення не може перевищувати суму застави.' };
+    }
+    return { valid: true, message: null };
+  };
+
+  const saveCard1 = async () => {
+    if (!selectedProperty || !card1Draft) return;
+    if (!isCard1LandlordValid(card1Draft.landlord)) {
+      alert('Орендодавець: заповніть назву, IBAN, адресу та хоча б один телефон або email.');
+      return;
+    }
+    const depositCheck = isCard1DepositValid(card1Draft.deposit);
+    if (!depositCheck.valid) {
+      setCard1DepositError(depositCheck.message);
+      return;
+    }
+    setCard1DepositError(null);
+    const paymentDay = card1Draft.tenant.paymentDayOfMonth;
+    if (paymentDay != null && (paymentDay < 1 || paymentDay > 31 || !Number.isInteger(paymentDay))) {
+      alert('День оплати має бути числом від 1 до 31.');
+      return;
+    }
+    try {
+      const base = selectedProperty.tenant || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0 };
+      const tenantPayload: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number } = {
+        ...base,
+        ...card1Draft.tenant,
+        phone: (card1Draft.tenant.phones?.[0] ?? card1Draft.tenant.phone) || '',
+        email: (card1Draft.tenant.emails?.[0] ?? card1Draft.tenant.email) || '',
+        phones: card1Draft.tenant.phones?.filter(Boolean).length ? card1Draft.tenant.phones : undefined,
+        emails: card1Draft.tenant.emails?.filter(Boolean).length ? card1Draft.tenant.emails : undefined,
+        address: card1Draft.tenant.address,
+        iban: card1Draft.tenant.iban,
+        paymentDayOfMonth: paymentDay
+      };
+      const depositPayload: PropertyDeposit | null = card1Draft.deposit && card1Draft.deposit.amount > 0
+        ? {
+            amount: card1Draft.deposit.amount,
+            status: card1Draft.deposit.status,
+            paidAt: card1Draft.deposit.paidAt?.trim() || undefined,
+            paidTo: card1Draft.deposit.paidTo?.trim() || undefined,
+            returnedAt: card1Draft.deposit.returnedAt?.trim() || undefined,
+            returnedAmount: card1Draft.deposit.returnedAmount
+          }
+        : null;
+      const updated = await propertiesService.update(selectedProperty.id, {
+        address: card1Draft.address,
+        zip: card1Draft.zip,
+        city: card1Draft.city,
+        country: card1Draft.country,
+        title: card1Draft.title,
+        details: { ...(selectedProperty.details ?? {}), floor: card1Draft.floor, buildingFloors: card1Draft.buildingFloors },
+        apartmentStatus: card1Draft.apartmentStatus,
+        landlord: card1Draft.landlord,
+        management: card1Draft.management,
+        tenant: tenantPayload,
+        deposit: depositPayload
+      });
+      setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+      setSelectedPropertyId(updated.id);
+      setIsEditingCard1(false);
+      setCard1Draft(null);
+    } catch (err) {
+      console.error('Card 1 save error:', err);
+      alert('Помилка збереження. Спробуйте ще раз.');
+    }
+  };
+
+  const addRentIncrease = async () => {
+    const prop = properties.find(p => p.id === selectedPropertyId);
+    if (!prop) return;
+    const { validFrom, validTo, km, bk, hk } = rentIncreaseForm;
+    setRentIncreaseFormError(null);
+    if (!validFrom?.trim()) {
+      setRentIncreaseFormError('Дата «Дійсний з» обовʼязкова.');
+      return;
+    }
+    const kmNum = parseFloat(km);
+    const bkNum = parseFloat(bk);
+    const hkNum = parseFloat(hk);
+    if (Number.isNaN(kmNum) || kmNum < 0 || Number.isNaN(bkNum) || bkNum < 0 || Number.isNaN(hkNum) || hkNum < 0) {
+      setRentIncreaseFormError('Kaltmiete, BK та HK мають бути числами ≥ 0.');
+      return;
+    }
+    if (validTo?.trim()) {
+      if (validTo < validFrom) {
+        setRentIncreaseFormError('Дата «Дійсний по» не може бути раніше за «Дійсний з».');
+        return;
+      }
+    }
+    setIsAddingRentIncrease(true);
+    try {
+      const newAgreement: RentalAgreement = {
+        id: crypto.randomUUID(),
+        tenantName: prop.tenant?.name ?? '',
+        startDate: validFrom.trim(),
+        endDate: (validTo?.trim() || '') || '',
+        km: kmNum,
+        bk: bkNum,
+        hk: hkNum,
+        status: 'ACTIVE'
+      };
+      const updatedHistory = [...(prop.rentalHistory || []), newAgreement].sort(
+        (a, b) => (a.startDate || '').localeCompare(b.startDate || '')
+      );
+      const updated = await propertiesService.update(prop.id, { rentalHistory: updatedHistory });
+      setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+      setSelectedPropertyId(updated.id);
+      setShowAddRentIncreaseForm(false);
+      setRentIncreaseForm({ validFrom: '', validTo: '', km: '', bk: '', hk: '' });
+    } catch (err) {
+      console.error('Add rent increase error:', err);
+      alert(err instanceof Error ? err.message : 'Помилка збереження. Спробуйте ще раз.');
+    } finally {
+      setIsAddingRentIncrease(false);
+    }
+  };
+
   useEffect(() => {
     setIsCard2Editing(false);
     setCard2Draft(null);
+  }, [selectedPropertyId]);
+
+  useEffect(() => {
+    setIsEditingCard1(false);
+    setCard1Draft(null);
+    setShowAddRentIncreaseForm(false);
+    setRentIncreaseForm({ validFrom: '', validTo: '', km: '', bk: '', hk: '' });
+    setRentIncreaseFormError(null);
+  }, [selectedPropertyId]);
+
+  useEffect(() => {
+    if (!selectedPropertyId) {
+      setCard1Documents([]);
+      setCard1DocumentsError(null);
+      return;
+    }
+    setCard1DocumentsLoading(true);
+    setCard1DocumentsError(null);
+    propertyDocumentsService.listPropertyDocuments(selectedPropertyId)
+      .then(setCard1Documents)
+      .catch((e) => {
+        setCard1DocumentsError(e?.message || 'Не вдалося завантажити документи');
+        setCard1Documents([]);
+      })
+      .finally(() => setCard1DocumentsLoading(false));
   }, [selectedPropertyId]);
 
   const handleAddInventoryRow = () => {
@@ -3895,112 +4170,238 @@ ${internalCompany} Team`;
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold text-white">Оренда квартири</h2>
-                    <button
-                        type="button"
-                        onClick={() => { /* Create-only: no edit modal; future inline edit */ }}
-                        className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-                    >
-                        <Edit className="w-4 h-4 mr-1 inline" /> Редагувати
-                    </button>
+                    {!isEditingCard1 ? (
+                        <button type="button" onClick={startCard1Edit} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+                            <Edit className="w-4 h-4 mr-1 inline" /> Редагувати
+                        </button>
+                    ) : null}
                 </div>
                 <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
-                        <div>
-                            <span className="text-xs text-gray-500 block mb-1">Адреса</span>
-                            <span className="text-sm text-white font-bold">{selectedProperty.fullAddress || [selectedProperty.address, selectedProperty.zip, selectedProperty.city].filter(Boolean).join(', ') || '—'}</span>
-                        </div>
-                        <div>
-                            <span className="text-xs text-gray-500 block mb-1">Поверх / Сторона</span>
-                            <span className="text-sm text-white">{selectedProperty.details?.floor != null ? `${selectedProperty.details.floor} OG` : '—'} {selectedProperty.details?.buildingFloors != null ? ` / ${selectedProperty.details.buildingFloors} поверхов` : ''}</span>
-                        </div>
-                        <div>
-                            <span className="text-xs text-gray-500 block mb-1">Квартира / Код</span>
-                            <span className="text-sm text-white">{selectedProperty.title || '—'}</span>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
-                        <div>
-                            <span className="text-xs text-gray-500 block mb-1">Термін оренди</span>
-                            <span className="text-lg font-bold text-emerald-500">{selectedProperty.term || '—'}</span>
-                        </div>
-                        <div>
-                            <span className="text-xs text-gray-500 block mb-1">Статус</span>
-                            <span className={`text-sm font-medium ${selectedProperty.termStatus === 'green' ? 'text-emerald-500' : 'text-amber-500'}`}>{selectedProperty.termStatus === 'green' ? 'Активний' : 'Завершується'}</span>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
-                        <div>
-                            <span className="text-xs text-gray-500 block mb-1">Орендодавець</span>
-                            <span className="text-sm text-white">—</span>
-                        </div>
-                        <div>
-                            <span className="text-xs text-gray-500 block mb-1">Орендар</span>
-                            <span className="text-sm text-white">{selectedProperty.tenant?.name || '—'}</span>
-                        </div>
-                        <div>
-                            <span className="text-xs text-gray-500 block mb-1">Управління</span>
-                            <span className="text-sm text-white">—</span>
-                        </div>
-                    </div>
-                    <div>
-                        <span className="text-xs text-gray-500 block mb-2">Рентний таймлайн</span>
-                        <div className="overflow-hidden border border-gray-700 rounded-lg">
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
-                                    <tr>
-                                        <th className="p-2 font-bold text-xs uppercase">Дійсний з</th>
-                                        <th className="p-2 font-bold text-xs uppercase">Дійсний по</th>
-                                        <th className="p-2 font-bold text-xs uppercase text-right">Kaltmiete</th>
-                                        <th className="p-2 font-bold text-xs uppercase text-right">BK</th>
-                                        <th className="p-2 font-bold text-xs uppercase text-right">HK</th>
-                                        <th className="p-2 font-bold text-xs uppercase text-right">Warmmiete</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                                    {(() => {
-                                        const history = selectedProperty.rentalHistory || [];
-                                        const tenant = selectedProperty.tenant;
-                                        const rows = history.length > 0
-                                            ? history.map(a => ({ validFrom: a.startDate, validTo: a.endDate || '∞', km: a.km, bk: a.bk, hk: a.hk, warm: a.km + a.bk + a.hk }))
-                                            : (tenant ? [{ validFrom: tenant.startDate || '—', validTo: '∞', km: tenant.km ?? 0, bk: tenant.bk ?? 0, hk: tenant.hk ?? 0, warm: (tenant.km ?? 0) + (tenant.bk ?? 0) + (tenant.hk ?? 0) }] : []);
-                                        if (rows.length === 0) {
-                                            return (
-                                                <tr><td colSpan={6} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr>
-                                            );
-                                        }
-                                        return rows.map((r, i) => (
-                                            <tr key={i} className="hover:bg-[#1C1F24]">
-                                                <td className="p-2 text-white">{r.validFrom}</td>
-                                                <td className="p-2 text-white">{r.validTo}</td>
-                                                <td className="p-2 text-right text-white font-mono">€{r.km.toFixed(2)}</td>
-                                                <td className="p-2 text-right text-white font-mono">€{r.bk.toFixed(2)}</td>
-                                                <td className="p-2 text-right text-white font-mono">€{r.hk.toFixed(2)}</td>
-                                                <td className="p-2 text-right text-emerald-400 font-mono font-bold">€{r.warm.toFixed(2)}</td>
-                                            </tr>
-                                        ));
-                                    })()}
-                                </tbody>
-                            </table>
-                        </div>
-                        <button type="button" className="mt-2 text-sm text-emerald-500 hover:text-emerald-400 font-medium">+ Додати підвищення оренди</button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4 border-b border-gray-700">
-                        <div>
-                            <span className="text-xs text-gray-500 block mb-1">Застава (Kaution)</span>
-                            <span className="text-sm text-white font-bold">{selectedProperty.tenant?.deposit != null ? `€${Number(selectedProperty.tenant.deposit).toFixed(2)}` : '—'}</span>
-                        </div>
-                        <div>
-                            <span className="text-xs text-gray-500 block mb-1">Статус застави</span>
-                            <span className="text-sm text-white">—</span>
-                        </div>
-                    </div>
-                    <div>
-                        <span className="text-xs text-gray-500 block mb-1">Договір (PDF)</span>
-                        <div className="flex gap-2">
-                            <button type="button" className="text-sm text-gray-400 hover:text-white border border-gray-700 rounded px-2 py-1">Переглянути</button>
-                            <button type="button" className="text-sm text-gray-400 hover:text-white border border-gray-700 rounded px-2 py-1">Замінити</button>
-                        </div>
-                    </div>
+                    {isEditingCard1 && card1Draft ? (
+                        <>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
+                                <div className="md:col-span-2"><label className="text-xs text-gray-500 block mb-1">Вулиця + номер</label><input value={card1Draft.address} onChange={e => setCard1Draft(d => d ? { ...d, address: e.target.value } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="Вулиця, номер будинку" /></div>
+                                <div><label className="text-xs text-gray-500 block mb-1">Індекс</label><input value={card1Draft.zip} onChange={e => setCard1Draft(d => d ? { ...d, zip: e.target.value } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                                <div><label className="text-xs text-gray-500 block mb-1">Місто</label><input value={card1Draft.city} onChange={e => setCard1Draft(d => d ? { ...d, city: e.target.value } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                                <div><label className="text-xs text-gray-500 block mb-1">Країна</label><input value={card1Draft.country} onChange={e => setCard1Draft(d => d ? { ...d, country: e.target.value } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                                <div><label className="text-xs text-gray-500 block mb-1">Поверх (поточний)</label><input type="number" min={0} value={card1Draft.floor} onChange={e => setCard1Draft(d => d ? { ...d, floor: parseInt(e.target.value || '0', 10) } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                <div><label className="text-xs text-gray-500 block mb-1">Поверх (всього)</label><input type="number" min={0} value={card1Draft.buildingFloors} onChange={e => setCard1Draft(d => d ? { ...d, buildingFloors: parseInt(e.target.value || '0', 10) } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                <div className="md:col-span-2"><label className="text-xs text-gray-500 block mb-1">Квартира / Код</label><input value={card1Draft.title} onChange={e => setCard1Draft(d => d ? { ...d, title: e.target.value } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4 border-b border-gray-700">
+                                <div>
+                                    <span className="text-xs text-gray-500 block mb-1">Статус квартири</span>
+                                    <select value={card1Draft.apartmentStatus} onChange={e => setCard1Draft(d => d ? { ...d, apartmentStatus: e.target.value as 'active' | 'ooo' | 'preparation' | 'rented_worker' } : null)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 focus:outline-none">
+                                        <option value="active">Активна</option>
+                                        <option value="ooo">Out of order (OOO)</option>
+                                        <option value="preparation">В підготовці</option>
+                                        <option value="rented_worker">Здана працівнику</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="pb-4 border-b border-gray-700">
+                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Орендодавець</h3>
+                                <div className="grid grid-cols-1 gap-3">
+                                    <div><label className="text-xs text-gray-500 block mb-1">Назва</label><input value={card1Draft.landlord?.name ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, landlord: d.landlord ? { ...d.landlord, name: e.target.value } : { ...defaultContactParty(), name: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="Імʼя або компанія" /></div>
+                                    <div className="grid grid-cols-2 gap-2"><div><label className="text-xs text-gray-500 block mb-1">Вулиця</label><input value={card1Draft.landlord?.address?.street ?? ''} onChange={e => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, address: { ...d.landlord.address!, street: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div><div><label className="text-xs text-gray-500 block mb-1">Номер будинку</label><input value={card1Draft.landlord?.address?.houseNumber ?? ''} onChange={e => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, address: { ...d.landlord.address!, houseNumber: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div></div>
+                                    <div className="grid grid-cols-3 gap-2"><div><label className="text-xs text-gray-500 block mb-1">Індекс</label><input value={card1Draft.landlord?.address?.zip ?? ''} onChange={e => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, address: { ...d.landlord.address!, zip: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div><div><label className="text-xs text-gray-500 block mb-1">Місто</label><input value={card1Draft.landlord?.address?.city ?? ''} onChange={e => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, address: { ...d.landlord.address!, city: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div><div><label className="text-xs text-gray-500 block mb-1">Країна</label><input value={card1Draft.landlord?.address?.country ?? ''} onChange={e => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, address: { ...d.landlord.address!, country: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">IBAN</label><input value={card1Draft.landlord?.iban ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, landlord: (d.landlord || defaultContactParty()).iban !== undefined ? { ...(d.landlord || defaultContactParty()), iban: e.target.value } : { ...(d.landlord || defaultContactParty()), iban: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white font-mono" placeholder="IBAN" /></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">Телефони</label>{(card1Draft.landlord?.phones ?? ['']).map((ph, i) => (<div key={i} className="flex gap-2 mb-1"><input value={ph} onChange={e => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, phones: (d.landlord.phones ?? ['']).map((p, j) => j === i ? e.target.value : p) } } : null)} className="flex-1 bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="Телефон" /><button type="button" onClick={() => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, phones: (d.landlord.phones ?? ['']).filter((_, j) => j !== i) } } : null)} className="text-red-400 hover:text-red-300 text-sm">Видалити</button></div>))}<button type="button" onClick={() => setCard1Draft(d => d ? { ...d, landlord: { ...(d.landlord || defaultContactParty()), phones: [...(d.landlord?.phones ?? ['']), ''] } } : null)} className="text-sm text-emerald-500 hover:text-emerald-400">+ Додати телефон</button></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">Email</label>{(card1Draft.landlord?.emails ?? ['']).map((em, i) => (<div key={i} className="flex gap-2 mb-1"><input type="email" value={em} onChange={e => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, emails: (d.landlord.emails ?? []).map((x, j) => j === i ? e.target.value : x) } } : null)} className="flex-1 bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="Email" /><button type="button" onClick={() => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, emails: (d.landlord.emails ?? []).filter((_, j) => j !== i) } } : null)} className="text-red-400 hover:text-red-300 text-sm">Видалити</button></div>))}<button type="button" onClick={() => setCard1Draft(d => d ? { ...d, landlord: { ...(d.landlord || defaultContactParty()), emails: [...(d.landlord?.emails ?? ['']), ''] } } : null)} className="text-sm text-emerald-500 hover:text-emerald-400">+ Додати email</button></div>
+                                </div>
+                            </div>
+                            {/* Card 1 tenant = master-lease tenant (our company). Future occupant/client is separate. */}
+                            <div className="pb-4 border-b border-gray-700">
+                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Орендар (наша фірма)</h3>
+                                <div className="grid grid-cols-1 gap-3">
+                                    <div><label className="text-xs text-gray-500 block mb-1">Імʼя</label><input value={card1Draft.tenant.name} onChange={e => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, name: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                    <div className="grid grid-cols-2 gap-2"><div><label className="text-xs text-gray-500 block mb-1">Вулиця</label><input value={card1Draft.tenant.address?.street ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, address: { ...(d.tenant.address || defaultContactParty().address), street: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div><div><label className="text-xs text-gray-500 block mb-1">Номер будинку</label><input value={card1Draft.tenant.address?.houseNumber ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, address: { ...(d.tenant.address || defaultContactParty().address), houseNumber: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div></div>
+                                    <div className="grid grid-cols-3 gap-2"><div><label className="text-xs text-gray-500 block mb-1">Індекс</label><input value={card1Draft.tenant.address?.zip ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, address: { ...(d.tenant.address || defaultContactParty().address), zip: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div><div><label className="text-xs text-gray-500 block mb-1">Місто</label><input value={card1Draft.tenant.address?.city ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, address: { ...(d.tenant.address || defaultContactParty().address), city: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div><div><label className="text-xs text-gray-500 block mb-1">Країна</label><input value={card1Draft.tenant.address?.country ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, address: { ...(d.tenant.address || defaultContactParty().address), country: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">День оплати (1–31)</label><input type="number" min={1} max={31} value={card1Draft.tenant.paymentDayOfMonth ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, paymentDayOfMonth: e.target.value === '' ? undefined : Math.min(31, Math.max(1, parseInt(e.target.value, 10) || 1)) } } : null)} className="w-24 bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">Телефони</label>{(card1Draft.tenant.phones ?? ['']).map((ph, i) => (<div key={i} className="flex gap-2 mb-1"><input value={ph} onChange={e => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, phones: (d.tenant.phones ?? ['']).map((p, j) => j === i ? e.target.value : p) } } : null)} className="flex-1 bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /><button type="button" onClick={() => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, phones: (d.tenant.phones ?? ['']).filter((_, j) => j !== i) } } : null)} className="text-red-400 hover:text-red-300 text-sm">Видалити</button></div>))}<button type="button" onClick={() => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, phones: [...(d.tenant.phones ?? ['']), ''] } } : null)} className="text-sm text-emerald-500 hover:text-emerald-400">+ Додати телефон</button></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">Email</label>{(card1Draft.tenant.emails ?? ['']).map((em, i) => (<div key={i} className="flex gap-2 mb-1"><input type="email" value={em} onChange={e => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, emails: (d.tenant.emails ?? []).map((x, j) => j === i ? e.target.value : x) } } : null)} className="flex-1 bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /><button type="button" onClick={() => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, emails: (d.tenant.emails ?? []).filter((_, j) => j !== i) } } : null)} className="text-red-400 hover:text-red-300 text-sm">Видалити</button></div>))}<button type="button" onClick={() => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, emails: [...(d.tenant.emails ?? ['']), ''] } } : null)} className="text-sm text-emerald-500 hover:text-emerald-400">+ Додати email</button></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">IBAN (необовʼязково)</label><input value={card1Draft.tenant.iban ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, iban: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white font-mono" /></div>
+                                </div>
+                            </div>
+                            <div className="pb-4 border-b border-gray-700">
+                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Управління</h3>
+                                <div className="grid grid-cols-1 gap-3">
+                                    <div><label className="text-xs text-gray-500 block mb-1">Назва</label><input value={card1Draft.management?.name ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, management: (d.management || defaultContactParty()).name !== undefined ? { ...(d.management || defaultContactParty()), name: e.target.value } : { ...defaultContactParty(), name: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                    <div className="grid grid-cols-2 gap-2"><div><label className="text-xs text-gray-500 block mb-1">Вулиця</label><input value={card1Draft.management?.address?.street ?? ''} onChange={e => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, address: { ...d.management.address!, street: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div><div><label className="text-xs text-gray-500 block mb-1">Номер будинку</label><input value={card1Draft.management?.address?.houseNumber ?? ''} onChange={e => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, address: { ...d.management.address!, houseNumber: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div></div>
+                                    <div className="grid grid-cols-3 gap-2"><div><label className="text-xs text-gray-500 block mb-1">Індекс</label><input value={card1Draft.management?.address?.zip ?? ''} onChange={e => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, address: { ...d.management.address!, zip: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div><div><label className="text-xs text-gray-500 block mb-1">Місто</label><input value={card1Draft.management?.address?.city ?? ''} onChange={e => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, address: { ...d.management.address!, city: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div><div><label className="text-xs text-gray-500 block mb-1">Країна</label><input value={card1Draft.management?.address?.country ?? ''} onChange={e => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, address: { ...d.management.address!, country: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">Телефони</label>{(card1Draft.management?.phones ?? ['']).map((ph, i) => (<div key={i} className="flex gap-2 mb-1"><input value={ph} onChange={e => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, phones: (d.management.phones ?? []).map((p, j) => j === i ? e.target.value : p) } } : null)} className="flex-1 bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /><button type="button" onClick={() => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, phones: (d.management.phones ?? []).filter((_, j) => j !== i) } } : null)} className="text-red-400 hover:text-red-300 text-sm">Видалити</button></div>))}<button type="button" onClick={() => setCard1Draft(d => d ? { ...d, management: { ...(d.management || defaultContactParty()), phones: [...(d.management?.phones ?? ['']), ''] } } : null)} className="text-sm text-emerald-500 hover:text-emerald-400">+ Додати телефон</button></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">Email</label>{(card1Draft.management?.emails ?? ['']).map((em, i) => (<div key={i} className="flex gap-2 mb-1"><input type="email" value={em} onChange={e => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, emails: (d.management.emails ?? []).map((x, j) => j === i ? e.target.value : x) } } : null)} className="flex-1 bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /><button type="button" onClick={() => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, emails: (d.management.emails ?? []).filter((_, j) => j !== i) } } : null)} className="text-red-400 hover:text-red-300 text-sm">Видалити</button></div>))}<button type="button" onClick={() => setCard1Draft(d => d ? { ...d, management: { ...(d.management || defaultContactParty()), emails: [...(d.management?.emails ?? ['']), ''] } } : null)} className="text-sm text-emerald-500 hover:text-emerald-400">+ Додати email</button></div>
+                                </div>
+                            </div>
+                            <div>
+                                <span className="text-xs text-gray-500 block mb-2">Рентний таймлайн</span>
+                                <div className="overflow-hidden border border-gray-700 rounded-lg">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700"><tr><th className="p-2 font-bold text-xs uppercase">Дійсний з</th><th className="p-2 font-bold text-xs uppercase">Дійсний по</th><th className="p-2 font-bold text-xs uppercase text-right">Kaltmiete</th><th className="p-2 font-bold text-xs uppercase text-right">BK</th><th className="p-2 font-bold text-xs uppercase text-right">HK</th><th className="p-2 font-bold text-xs uppercase text-right">Warmmiete</th></tr></thead>
+                                        <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
+                                            {(() => {
+                                                const history = (selectedProperty.rentalHistory || []).slice().sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+                                                const tenant = selectedProperty.tenant;
+                                                const rows = history.length > 0 ? history.map(a => ({ validFrom: a.startDate, validTo: a.endDate || '∞', km: a.km, bk: a.bk, hk: a.hk, warm: a.km + a.bk + a.hk })) : (tenant ? [{ validFrom: tenant.startDate || '—', validTo: '∞', km: tenant.km ?? 0, bk: tenant.bk ?? 0, hk: tenant.hk ?? 0, warm: (tenant.km ?? 0) + (tenant.bk ?? 0) + (tenant.hk ?? 0) }] : []);
+                                                if (rows.length === 0) return <tr><td colSpan={6} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr>;
+                                                return rows.map((r, i) => <tr key={i}><td className="p-2 text-white">{r.validFrom}</td><td className="p-2 text-white">{r.validTo}</td><td className="p-2 text-right text-white font-mono">€{r.km.toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{r.bk.toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{r.hk.toFixed(2)}</td><td className="p-2 text-right text-emerald-400 font-mono font-bold">€{r.warm.toFixed(2)}</td></tr>);
+                                            })()}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {showAddRentIncreaseForm ? (
+                                    <div className="mt-2 p-3 bg-[#111315] border border-gray-700 rounded-lg space-y-2">
+                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 items-end">
+                                            <div><label className="text-xs text-gray-500 block mb-1">Дійсний з</label><input type="date" value={rentIncreaseForm.validFrom} onChange={e => setRentIncreaseForm(f => ({ ...f, validFrom: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                            <div><label className="text-xs text-gray-500 block mb-1">Дійсний по (необовʼязково)</label><input type="date" value={rentIncreaseForm.validTo} onChange={e => setRentIncreaseForm(f => ({ ...f, validTo: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                            <div><label className="text-xs text-gray-500 block mb-1">Kaltmiete (km)</label><input type="number" min={0} step={0.01} value={rentIncreaseForm.km} onChange={e => setRentIncreaseForm(f => ({ ...f, km: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
+                                            <div><label className="text-xs text-gray-500 block mb-1">BK</label><input type="number" min={0} step={0.01} value={rentIncreaseForm.bk} onChange={e => setRentIncreaseForm(f => ({ ...f, bk: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
+                                            <div><label className="text-xs text-gray-500 block mb-1">HK</label><input type="number" min={0} step={0.01} value={rentIncreaseForm.hk} onChange={e => setRentIncreaseForm(f => ({ ...f, hk: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
+                                        </div>
+                                        <p className="text-xs text-gray-400">Warmmiete = {(parseFloat(rentIncreaseForm.km) || 0) + (parseFloat(rentIncreaseForm.bk) || 0) + (parseFloat(rentIncreaseForm.hk) || 0)} €</p>
+                                        {rentIncreaseFormError && <p className="text-sm text-red-400">{rentIncreaseFormError}</p>}
+                                        <div className="flex gap-2">
+                                            <button type="button" disabled={isAddingRentIncrease} onClick={addRentIncrease} className="px-3 py-1.5 rounded text-sm font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white">Додати</button>
+                                            <button type="button" disabled={isAddingRentIncrease} onClick={() => { setShowAddRentIncreaseForm(false); setRentIncreaseForm({ validFrom: '', validTo: '', km: '', bk: '', hk: '' }); setRentIncreaseFormError(null); }} className="px-3 py-1.5 rounded text-sm text-gray-400 hover:text-white">Скасувати</button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <button type="button" onClick={() => setShowAddRentIncreaseForm(true)} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400 font-medium">+ Додати підвищення оренди</button>
+                                )}
+                            </div>
+                            <div className="pb-4 border-b border-gray-700">
+                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Застава (Kaution)</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div><label className="text-xs text-gray-500 block mb-1">Сума (€)</label><input type="number" min={0} step={0.01} value={card1Draft.deposit?.amount ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid' }), amount: parseFloat(e.target.value) || 0 } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">Статус</label><select value={card1Draft.deposit?.status ?? 'unpaid'} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid' }), status: e.target.value as PropertyDeposit['status'] } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white"><option value="unpaid">Не оплачено</option><option value="paid">Оплачено</option><option value="partially_returned">Частково повернено</option><option value="returned">Повернено</option></select></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">Дата оплати</label><input type="date" value={card1Draft.deposit?.paidAt ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid' }), paidAt: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">Оплачено кому</label><input value={card1Draft.deposit?.paidTo ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid' }), paidTo: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">Дата повернення</label><input type="date" value={card1Draft.deposit?.returnedAt ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid' }), returnedAt: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                    <div><label className="text-xs text-gray-500 block mb-1">Сума повернення (€)</label><input type="number" min={0} step={0.01} value={card1Draft.deposit?.returnedAmount ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid' }), returnedAmount: e.target.value === '' ? undefined : parseFloat(e.target.value) || 0 } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                                </div>
+                                {card1DepositError && <p className="text-sm text-red-400 mt-2">{card1DepositError}</p>}
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    <button type="button" onClick={() => { setNewDocType('deposit_payment_proof'); setShowAddDocumentForm(true); }} className="text-sm text-emerald-500 hover:text-emerald-400 font-medium">+ Додати підтвердження оплати</button>
+                                    <button type="button" onClick={() => { setNewDocType('deposit_return_proof'); setShowAddDocumentForm(true); }} className="text-sm text-emerald-500 hover:text-emerald-400 font-medium">+ Додати підтвердження повернення</button>
+                                    <button type="button" onClick={() => { if (window.confirm('Очистити заставу повністю? Це видалить дані застави (deposit) з цієї квартири.')) { setCard1Draft(d => d ? { ...d, deposit: null } : null); setCard1DepositError(null); } }} className="text-sm text-amber-400 hover:text-amber-300 font-medium">Очистити заставу</button>
+                                </div>
+                            </div>
+                            <div className="pb-4 border-b border-gray-700">
+                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Документи та договори</h3>
+                                {card1DocumentsLoading ? <p className="text-sm text-gray-500">Завантаження…</p> : card1DocumentsError ? <p className="text-sm text-red-400">{card1DocumentsError}</p> : (
+                                    <ul className="space-y-2 mb-4">
+                                        {card1Documents.length === 0 ? <li className="text-sm text-gray-500">Немає документів.</li> : card1Documents.map((doc) => (
+                                            <li key={doc.id} className="flex flex-wrap items-center gap-2 text-sm">
+                                                <span className="text-white font-medium">{DOCUMENT_TYPE_LABELS[doc.type]}</span>
+                                                {doc.title && <span className="text-gray-400">— {doc.title}</span>}
+                                                {doc.docDate && <span className="text-gray-500">({doc.docDate})</span>}
+                                                <button type="button" onClick={async () => { try { const url = await propertyDocumentsService.getDocumentSignedUrl(doc.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); }} className="text-emerald-500 hover:text-emerald-400 text-xs">Відкрити</button>
+                                                <button type="button" onClick={() => { if (window.confirm('Видалити документ безповоротно?')) { const pid = selectedProperty!.id; propertyDocumentsService.deletePropertyDocumentHard(doc).then(() => {}).catch((e) => { alert(e?.message || 'Помилка видалення'); }).finally(() => { propertyDocumentsService.listPropertyDocuments(pid).then(setCard1Documents); }); }} className="text-red-400 hover:text-red-300 text-xs">Видалити</button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                                {showAddDocumentForm ? (
+                                    <div className="bg-[#111315] border border-gray-700 rounded-lg p-3 space-y-3">
+                                        <div><label className="text-xs text-gray-500 block mb-1">Тип</label><select value={newDocType} onChange={e => setNewDocType(e.target.value as PropertyDocumentType)} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white">{Object.entries(DOCUMENT_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
+                                        <div><label className="text-xs text-gray-500 block mb-1">Назва (необовʼязково)</label><input value={newDocTitle} onChange={e => setNewDocTitle(e.target.value)} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-1">Дата (необовʼязково)</label><input type="date" value={newDocDate} onChange={e => setNewDocDate(e.target.value)} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-1">Файл (обовʼязково)</label><input type="file" accept=".pdf,image/*" onChange={e => setNewDocFile(e.target.files?.[0] ?? null)} className="w-full text-sm text-gray-400" /></div>
+                                        {addDocumentError && <p className="text-sm text-red-400">{addDocumentError}</p>}
+                                        <div className="flex gap-2">
+                                            <button type="button" disabled={addingDocument || !newDocFile} onClick={async () => { if (!selectedProperty || !newDocFile) return; setAddingDocument(true); setAddDocumentError(null); const docId = crypto.randomUUID(); let filePath: string | null = null; try { filePath = await propertyDocumentsService.uploadPropertyDocumentFile(newDocFile, selectedProperty.id, newDocType, docId); await propertyDocumentsService.createPropertyDocument({ id: docId, propertyId: selectedProperty.id, type: newDocType, filePath, title: newDocTitle || null, docDate: newDocDate || null }); const list = await propertyDocumentsService.listPropertyDocuments(selectedProperty.id); setCard1Documents(list); setNewDocTitle(''); setNewDocDate(''); setNewDocFile(null); setShowAddDocumentForm(false); } catch (e) { if (filePath) propertyDocumentsService.removePropertyDocumentFile(filePath).catch(() => {}); setAddDocumentError(e instanceof Error ? e.message : 'Помилка'); } finally { setAddingDocument(false); }} className="px-3 py-1.5 rounded text-sm font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white">Зберегти</button>
+                                            <button type="button" onClick={() => { setShowAddDocumentForm(false); setAddDocumentError(null); setNewDocTitle(''); setNewDocDate(''); setNewDocFile(null); }} className="px-3 py-1.5 rounded text-sm text-gray-400 hover:text-white">Скасувати</button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <button type="button" onClick={() => setShowAddDocumentForm(true)} className="text-sm text-emerald-500 hover:text-emerald-400 font-medium">+ Додати документ</button>
+                                )}
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={saveCard1} disabled={!isCard1LandlordValid(card1Draft.landlord) || !isCard1DepositValid(card1Draft.deposit).valid} className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white">Зберегти</button>
+                                <button type="button" onClick={cancelCard1Edit} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-400 hover:text-white hover:bg-gray-800">Скасувати</button>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
+                                <div><span className="text-xs text-gray-500 block mb-1">Адреса</span><span className="text-sm text-white font-bold">{selectedProperty.fullAddress || [selectedProperty.address, selectedProperty.zip, selectedProperty.city].filter(Boolean).join(', ') || '—'}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Поверх / Сторона</span><span className="text-sm text-white">{selectedProperty.details?.floor != null ? `${selectedProperty.details.floor} OG` : '—'} {selectedProperty.details?.buildingFloors != null ? ` / ${selectedProperty.details.buildingFloors} поверхов` : ''}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Квартира / Код</span><span className="text-sm text-white">{selectedProperty.title || '—'}</span></div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
+                                <div><span className="text-xs text-gray-500 block mb-1">Термін оренди</span><span className="text-lg font-bold text-emerald-500">{selectedProperty.term || '—'}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Статус квартири</span><span className="text-sm font-medium text-white">{selectedProperty.apartmentStatus === 'ooo' ? 'Out of order' : selectedProperty.apartmentStatus === 'preparation' ? 'В підготовці' : selectedProperty.apartmentStatus === 'rented_worker' ? 'Здана працівнику' : 'Активна'}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Термін (зелений/червоний)</span><span className={`text-sm font-medium ${selectedProperty.termStatus === 'green' ? 'text-emerald-500' : 'text-amber-500'}`}>{selectedProperty.termStatus === 'green' ? 'Активний' : 'Завершується'}</span></div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
+                                <div><span className="text-xs text-gray-500 block mb-1">Орендодавець</span><span className="text-sm text-white">{selectedProperty.landlord?.name || '—'}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Орендар (наша фірма)</span><span className="text-sm text-white">{selectedProperty.tenant?.name || '—'}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Управління</span><span className="text-sm text-white">{selectedProperty.management?.name || '—'}</span></div>
+                            </div>
+                            {selectedProperty.tenant?.paymentDayOfMonth != null && selectedProperty.tenant.paymentDayOfMonth >= 1 && selectedProperty.tenant.paymentDayOfMonth <= 31 && (
+                                <div className="pb-4 border-b border-gray-700"><span className="text-xs text-gray-500 block mb-1">День оплати оренди</span><span className="text-sm text-white">Щомісяця до {selectedProperty.tenant.paymentDayOfMonth}-го</span></div>
+                            )}
+                            <div>
+                                <span className="text-xs text-gray-500 block mb-2">Рентний таймлайн</span>
+                                <div className="overflow-hidden border border-gray-700 rounded-lg">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700"><tr><th className="p-2 font-bold text-xs uppercase">Дійсний з</th><th className="p-2 font-bold text-xs uppercase">Дійсний по</th><th className="p-2 font-bold text-xs uppercase text-right">Kaltmiete</th><th className="p-2 font-bold text-xs uppercase text-right">BK</th><th className="p-2 font-bold text-xs uppercase text-right">HK</th><th className="p-2 font-bold text-xs uppercase text-right">Warmmiete</th></tr></thead>
+                                        <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
+                                            {(() => {
+                                                const history = (selectedProperty.rentalHistory || []).slice().sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
+                                                const tenant = selectedProperty.tenant;
+                                                const rows = history.length > 0 ? history.map(a => ({ validFrom: a.startDate, validTo: a.endDate || '∞', km: a.km, bk: a.bk, hk: a.hk, warm: a.km + a.bk + a.hk })) : (tenant ? [{ validFrom: tenant.startDate || '—', validTo: '∞', km: tenant.km ?? 0, bk: tenant.bk ?? 0, hk: tenant.hk ?? 0, warm: (tenant.km ?? 0) + (tenant.bk ?? 0) + (tenant.hk ?? 0) }] : []);
+                                                if (rows.length === 0) return <tr><td colSpan={6} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr>;
+                                                return rows.map((r, i) => <tr key={i} className="hover:bg-[#1C1F24]"><td className="p-2 text-white">{r.validFrom}</td><td className="p-2 text-white">{r.validTo}</td><td className="p-2 text-right text-white font-mono">€{r.km.toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{r.bk.toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{r.hk.toFixed(2)}</td><td className="p-2 text-right text-emerald-400 font-mono font-bold">€{r.warm.toFixed(2)}</td></tr>);
+                                            })()}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <button type="button" onClick={() => { startCard1Edit(); setShowAddRentIncreaseForm(true); }} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400 font-medium">+ Додати підвищення оренди</button>
+                            </div>
+                            <div className="pb-4 border-b border-gray-700">
+                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Застава (Kaution)</h3>
+                                {selectedProperty.deposit ? (
+                                    <>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
+                                            <div><span className="text-xs text-gray-500 block mb-1">Сума</span><span className="text-sm text-white font-bold">€{Number(selectedProperty.deposit.amount).toFixed(2)}</span></div>
+                                            <div><span className="text-xs text-gray-500 block mb-1">Статус</span><span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${selectedProperty.deposit.status === 'returned' ? 'bg-emerald-500/20 text-emerald-400' : selectedProperty.deposit.status === 'paid' ? 'bg-blue-500/20 text-blue-400' : selectedProperty.deposit.status === 'partially_returned' ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/20 text-gray-400'}`}>{selectedProperty.deposit.status === 'unpaid' ? 'Не оплачено' : selectedProperty.deposit.status === 'paid' ? 'Оплачено' : selectedProperty.deposit.status === 'partially_returned' ? 'Частково повернено' : 'Повернено'}</span></div>
+                                            {selectedProperty.deposit.paidAt && <div><span className="text-xs text-gray-500 block mb-1">Дата оплати</span><span className="text-sm text-white">{selectedProperty.deposit.paidAt}</span></div>}
+                                            {selectedProperty.deposit.paidTo && <div><span className="text-xs text-gray-500 block mb-1">Оплачено кому</span><span className="text-sm text-white">{selectedProperty.deposit.paidTo}</span></div>}
+                                            {(selectedProperty.deposit.returnedAt || selectedProperty.deposit.returnedAmount != null) && <div><span className="text-xs text-gray-500 block mb-1">Повернення</span><span className="text-sm text-white">{selectedProperty.deposit.returnedAt || '—'} {selectedProperty.deposit.returnedAmount != null ? `€${Number(selectedProperty.deposit.returnedAmount).toFixed(2)}` : ''}</span></div>}
+                                        </div>
+                                        {(card1Documents.some(d => d.type === 'deposit_payment_proof') || card1Documents.some(d => d.type === 'deposit_return_proof')) && (
+                                            <div className="mt-2 space-y-2">
+                                                {card1Documents.filter(d => d.type === 'deposit_payment_proof').length > 0 && (
+                                                    <div><span className="text-xs text-gray-500 block mb-1">Підтвердження оплати</span><ul className="space-y-1">{card1Documents.filter(d => d.type === 'deposit_payment_proof').map((doc) => (<li key={doc.id} className="flex flex-wrap items-center gap-2 text-sm"><span className="text-white">{DOCUMENT_TYPE_LABELS[doc.type]}</span>{doc.title && <span className="text-gray-400">— {doc.title}</span>}<button type="button" onClick={async () => { try { const url = await propertyDocumentsService.getDocumentSignedUrl(doc.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); }} className="text-emerald-500 hover:text-emerald-400 text-xs">Відкрити</button></li>))}</ul></div>
+                                                )}
+                                                {card1Documents.filter(d => d.type === 'deposit_return_proof').length > 0 && (
+                                                    <div><span className="text-xs text-gray-500 block mb-1">Підтвердження повернення</span><ul className="space-y-1">{card1Documents.filter(d => d.type === 'deposit_return_proof').map((doc) => (<li key={doc.id} className="flex flex-wrap items-center gap-2 text-sm"><span className="text-white">{DOCUMENT_TYPE_LABELS[doc.type]}</span>{doc.title && <span className="text-gray-400">— {doc.title}</span>}<button type="button" onClick={async () => { try { const url = await propertyDocumentsService.getDocumentSignedUrl(doc.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); }} className="text-emerald-500 hover:text-emerald-400 text-xs">Відкрити</button></li>))}</ul></div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </>
+                                ) : <p className="text-sm text-gray-500">Немає даних про заставу.</p>}
+                            </div>
+                            <div className="pb-4 border-b border-gray-700">
+                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Документи та договори</h3>
+                                {card1DocumentsLoading ? <p className="text-sm text-gray-500">Завантаження…</p> : card1DocumentsError ? <p className="text-sm text-red-400">{card1DocumentsError}</p> : (
+                                    <ul className="space-y-2">
+                                        {card1Documents.length === 0 ? <li className="text-sm text-gray-500">Немає документів.</li> : card1Documents.map((doc) => (
+                                            <li key={doc.id} className="flex flex-wrap items-center gap-2 text-sm">
+                                                <span className="text-white font-medium">{DOCUMENT_TYPE_LABELS[doc.type]}</span>
+                                                {doc.title && <span className="text-gray-400">— {doc.title}</span>}
+                                                {doc.docDate && <span className="text-gray-500">({doc.docDate})</span>}
+                                                <button type="button" onClick={async () => { try { const url = await propertyDocumentsService.getDocumentSignedUrl(doc.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); }} className="text-emerald-500 hover:text-emerald-400 text-xs">Відкрити</button>
+                                                <button type="button" onClick={() => { if (window.confirm('Видалити документ безповоротно?')) { const pid = selectedProperty!.id; propertyDocumentsService.deletePropertyDocumentHard(doc).then(() => {}).catch((e) => { alert(e?.message || 'Помилка видалення'); }).finally(() => { propertyDocumentsService.listPropertyDocuments(pid).then(setCard1Documents); }); }} className="text-red-400 hover:text-red-300 text-xs">Видалити</button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        </>
+                    )}
                 </div>
             </section>
 

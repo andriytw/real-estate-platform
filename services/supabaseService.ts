@@ -21,6 +21,8 @@ import {
   WarehouseInvoice,
   WarehouseInvoiceLine,
   Reservation,
+  PropertyDocument,
+  PropertyDocumentType,
 } from '../types';
 
 // Lightweight type for joined stock + item for UI
@@ -1824,6 +1826,10 @@ function transformPropertyFromDB(db: any): Property {
     meterLog: db.meter_log || db.meterLog || [],
     tenant: db.tenant,
     rentalHistory: db.rental_history || db.rentalHistory || [],
+    apartmentStatus: db.apartment_status || db.apartmentStatus || 'active',
+    landlord: db.landlord,
+    management: db.management,
+    deposit: db.deposit ?? db.kaution ?? undefined,
     rentPayments: db.rent_payments || db.rentPayments || [],
     ownerExpense: db.owner_expense || db.ownerExpense,
     futurePayments: db.future_payments || db.futurePayments || [],
@@ -1839,7 +1845,6 @@ function transformPropertyFromDB(db: any): Property {
     ancillaryCosts: db.ancillary_costs != null ? parseFloat(db.ancillary_costs) : (db.ancillaryCosts != null ? parseFloat(db.ancillaryCosts) : undefined),
     heatingCosts: db.heating_costs != null ? parseFloat(db.heating_costs) : (db.heatingCosts != null ? parseFloat(db.heatingCosts) : undefined),
     heatingIncluded: db.heating_included || db.heatingIncluded || false,
-    deposit: db.deposit,
     buildingType: db.building_type || db.buildingType,
     heatingType: db.heating_type || db.heatingType,
     energyCertificate: db.energy_certificate || db.energyCertificate,
@@ -1885,6 +1890,10 @@ function transformPropertyToDB(property: Property): any {
   if (property.meterLog !== undefined) result.meter_log = property.meterLog;
   if (property.tenant !== undefined) result.tenant = property.tenant;
   if (property.rentalHistory !== undefined) result.rental_history = property.rentalHistory;
+  if (property.apartmentStatus !== undefined) result.apartment_status = property.apartmentStatus;
+  if (property.landlord !== undefined) result.landlord = property.landlord;
+  if (property.management !== undefined) result.management = property.management;
+  if (property.deposit !== undefined) result.deposit = property.deposit;
   if (property.rentPayments !== undefined) result.rent_payments = property.rentPayments;
   if (property.ownerExpense !== undefined) result.owner_expense = property.ownerExpense;
   if (property.futurePayments !== undefined) result.future_payments = property.futurePayments;
@@ -1900,7 +1909,6 @@ function transformPropertyToDB(property: Property): any {
   if (property.ancillaryCosts !== undefined) result.ancillary_costs = property.ancillaryCosts;
   if (property.heatingCosts !== undefined) result.heating_costs = property.heatingCosts;
   if (property.heatingIncluded !== undefined) result.heating_included = property.heatingIncluded;
-  if (property.deposit !== undefined) result.deposit = property.deposit;
   if (property.buildingType !== undefined) result.building_type = property.buildingType;
   if (property.heatingType !== undefined) result.heating_type = property.heatingType;
   if (property.energyCertificate !== undefined) result.energy_certificate = property.energyCertificate;
@@ -2394,6 +2402,114 @@ export const fileUploadService = {
       .getPublicUrl(filePath);
     return data.publicUrl;
   }
+};
+
+// ==================== PROPERTY DOCUMENTS (Card 1 Documents Center) ====================
+const PROPERTY_DOCS_BUCKET = 'property-docs';
+
+function transformPropertyDocumentFromDB(db: {
+  id: string;
+  property_id: string;
+  type: string;
+  file_path: string;
+  title?: string | null;
+  doc_date?: string | null;
+  notes?: string | null;
+  created_at: string;
+}): PropertyDocument {
+  return {
+    id: db.id,
+    propertyId: db.property_id,
+    type: db.type as PropertyDocumentType,
+    filePath: db.file_path,
+    title: db.title ?? undefined,
+    docDate: db.doc_date ?? undefined,
+    createdAt: db.created_at,
+    notes: db.notes ?? undefined,
+  };
+}
+
+export const propertyDocumentsService = {
+  async listPropertyDocuments(propertyId: string): Promise<PropertyDocument[]> {
+    const { data, error } = await supabase
+      .from('property_documents')
+      .select('id, property_id, type, file_path, title, doc_date, notes, created_at')
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message || 'Failed to list property documents');
+    return (data || []).map(transformPropertyDocumentFromDB);
+  },
+
+  /** Create DB row with explicit id (same id used in storage path to avoid orphans). */
+  async createPropertyDocument(params: {
+    id: string;
+    propertyId: string;
+    type: PropertyDocumentType;
+    filePath: string;
+    title?: string | null;
+    docDate?: string | null;
+    notes?: string | null;
+  }): Promise<PropertyDocument> {
+    const { data, error } = await supabase
+      .from('property_documents')
+      .insert({
+        id: params.id,
+        property_id: params.propertyId,
+        type: params.type,
+        file_path: params.filePath,
+        title: params.title ?? null,
+        doc_date: params.docDate ?? null,
+        notes: params.notes ?? null,
+      })
+      .select('id, property_id, type, file_path, title, doc_date, notes, created_at')
+      .single();
+    if (error) throw new Error(error.message || 'Failed to create property document');
+    return transformPropertyDocumentFromDB(data);
+  },
+
+  /** Best-effort remove file from storage (e.g. after failed insert to avoid orphan). */
+  async removePropertyDocumentFile(filePath: string): Promise<void> {
+    await supabase.storage.from(PROPERTY_DOCS_BUCKET).remove([filePath]);
+  },
+
+  /** Hard delete: 1) remove file from Storage, 2) delete DB row. If storage delete fails, DB is not touched and error is thrown. */
+  async deletePropertyDocumentHard(doc: PropertyDocument): Promise<void> {
+    const { error: storageError } = await supabase.storage
+      .from(PROPERTY_DOCS_BUCKET)
+      .remove([doc.filePath]);
+    if (storageError) throw new Error(storageError.message || 'Failed to delete file from storage');
+    const { error: dbError } = await supabase
+      .from('property_documents')
+      .delete()
+      .eq('id', doc.id);
+    if (dbError) throw new Error(dbError.message || 'Failed to delete document record');
+  },
+
+  /** Create signed URL for viewing/downloading (bucket is private). Expiry in seconds. */
+  async getDocumentSignedUrl(filePath: string, expirySeconds: number = 3600): Promise<string> {
+    const { data, error } = await supabase.storage
+      .from(PROPERTY_DOCS_BUCKET)
+      .createSignedUrl(filePath, expirySeconds);
+    if (error) throw new Error(error.message || 'Failed to get document URL');
+    if (!data?.signedUrl) throw new Error('No signed URL returned');
+    return data.signedUrl;
+  },
+
+  /** Upload file to property-docs; returns storage path. Path: properties/{propertyId}/{type}/{docId}_{filename}. Use same docId as row id when inserting. */
+  async uploadPropertyDocumentFile(
+    file: File,
+    propertyId: string,
+    type: PropertyDocumentType,
+    docId: string
+  ): Promise<string> {
+    const safeName = file.name.replace(/[/\\]/g, '_');
+    const filePath = `properties/${propertyId}/${type}/${docId}_${safeName}`;
+    const { error } = await supabase.storage
+      .from(PROPERTY_DOCS_BUCKET)
+      .upload(filePath, file, { cacheControl: '3600', upsert: false });
+    if (error) throw new Error(error.message || 'Storage upload failed');
+    return filePath;
+  },
 };
 
 // ==================== RESERVATION TRANSFORMS ====================
