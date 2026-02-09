@@ -1298,18 +1298,21 @@ export const addressBookPartiesService = {
     return (data ?? []).map(addressBookRowFromDB);
   },
 
-  /** Upsert by (owner_user_id, role, name, iban, street, zip, city). Normalizes key fields to '' and phones/emails to non-empty arrays. */
+  /** Upsert by (owner_user_id, role, name, iban, street, zip, city). Gets user inside for RLS; normalizes key fields; only includes rows with non-empty name. */
   async upsertMany(entries: AddressBookPartyEntry[]): Promise<void> {
-    if (!entries.length) return;
-    const rows = entries.map((e) => ({
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+    const filtered = entries.filter((e) => (e.name ?? '').trim() !== '');
+    if (!filtered.length) return;
+    const rows = filtered.map((e) => ({
       id: e.id ?? undefined,
-      owner_user_id: e.ownerUserId,
+      owner_user_id: user.id,
       role: e.role,
-      name: (e.name ?? '').trim() || '',
-      iban: e.iban != null ? String(e.iban).trim() : '',
-      street: e.street != null ? String(e.street).trim() : '',
-      zip: e.zip != null ? String(e.zip).trim() : '',
-      city: e.city != null ? String(e.city).trim() : '',
+      name: (e.name ?? '').trim(),
+      iban: e.iban != null && e.iban !== undefined ? String(e.iban).trim() : '',
+      street: e.street != null && e.street !== undefined ? String(e.street).trim() : '',
+      zip: e.zip != null && e.zip !== undefined ? String(e.zip).trim() : '',
+      city: e.city != null && e.city !== undefined ? String(e.city).trim() : '',
       house_number: e.houseNumber ?? null,
       country: e.country ?? null,
       phones: Array.isArray(e.phones) ? e.phones.map((s) => String(s).trim()).filter(Boolean) : [],

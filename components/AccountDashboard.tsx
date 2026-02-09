@@ -407,6 +407,7 @@ const AccountDashboard: React.FC = () => {
   const [isAddressBookModalOpen, setIsAddressBookModalOpen] = useState(false);
   const [addressBookEntries, setAddressBookEntries] = useState<AddressBookPartyEntry[]>([]);
   const [addressBookLoading, setAddressBookLoading] = useState(false);
+  const [addressBookLastError, setAddressBookLastError] = useState<string | null>(null);
   const [depositProofFile, setDepositProofFile] = useState<File | null>(null);
   const [depositProofError, setDepositProofError] = useState<string | null>(null);
   const [depositProofUploading, setDepositProofUploading] = useState(false);
@@ -2046,23 +2047,24 @@ const AccountDashboard: React.FC = () => {
 
   const saveCard1 = async () => {
     const prop = properties.find(p => p.id === selectedPropertyId) ?? null;
-    if (!prop || !card1Draft) return;
-    if (!isCard1LandlordValid(card1Draft.landlord)) {
+    const draftSnapshot = card1Draft;
+    if (!prop || !draftSnapshot) return;
+    if (!isCard1LandlordValid(draftSnapshot.landlord)) {
       alert('Орендодавець: заповніть назву, IBAN, адресу та хоча б один телефон або email.');
       return;
     }
-    const depositCheck = isCard1DepositValid(card1Draft.deposit);
+    const depositCheck = isCard1DepositValid(draftSnapshot.deposit);
     if (!depositCheck.valid) {
       setCard1DepositError(depositCheck.message);
       return;
     }
     setCard1DepositError(null);
-    const paymentDay = card1Draft.tenant.paymentDayOfMonth;
+    const paymentDay = draftSnapshot.tenant.paymentDayOfMonth;
     if (paymentDay != null && (paymentDay < 1 || paymentDay > 31 || !Number.isInteger(paymentDay))) {
       alert('День оплати має бути числом від 1 до 31.');
       return;
     }
-    const scPaymentDay = card1Draft.secondCompany?.paymentDayOfMonth;
+    const scPaymentDay = draftSnapshot.secondCompany?.paymentDayOfMonth;
     if (scPaymentDay != null && (scPaymentDay < 1 || scPaymentDay > 31 || !Number.isInteger(scPaymentDay))) {
       alert('День оплати (2-га фірма) має бути числом від 1 до 31.');
       return;
@@ -2071,60 +2073,73 @@ const AccountDashboard: React.FC = () => {
       const base = prop.tenant || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0 };
       const tenantPayload: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number } = {
         ...base,
-        ...card1Draft.tenant,
-        phone: (card1Draft.tenant.phones?.[0] ?? card1Draft.tenant.phone) || '',
-        email: (card1Draft.tenant.emails?.[0] ?? card1Draft.tenant.email) || '',
-        phones: card1Draft.tenant.phones?.filter(Boolean).length ? card1Draft.tenant.phones : undefined,
-        emails: card1Draft.tenant.emails?.filter(Boolean).length ? card1Draft.tenant.emails : undefined,
-        address: card1Draft.tenant.address,
-        iban: card1Draft.tenant.iban,
+        ...draftSnapshot.tenant,
+        phone: (draftSnapshot.tenant.phones?.[0] ?? draftSnapshot.tenant.phone) || '',
+        email: (draftSnapshot.tenant.emails?.[0] ?? draftSnapshot.tenant.email) || '',
+        phones: draftSnapshot.tenant.phones?.filter(Boolean).length ? draftSnapshot.tenant.phones : undefined,
+        emails: draftSnapshot.tenant.emails?.filter(Boolean).length ? draftSnapshot.tenant.emails : undefined,
+        address: draftSnapshot.tenant.address,
+        iban: draftSnapshot.tenant.iban,
         paymentDayOfMonth: paymentDay
       };
       const scBase = prop.secondCompany || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0 };
-      const secondCompanyPayload: (TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number }) | null = card1Draft.secondCompany?.name?.trim() ? {
+      const secondCompanyPayload: (TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number }) | null = draftSnapshot.secondCompany?.name?.trim() ? {
         ...scBase,
-        ...card1Draft.secondCompany,
-        phone: (card1Draft.secondCompany.phones?.[0] ?? card1Draft.secondCompany.phone) || '',
-        email: (card1Draft.secondCompany.emails?.[0] ?? card1Draft.secondCompany.email) || '',
-        phones: card1Draft.secondCompany.phones?.filter(Boolean).length ? card1Draft.secondCompany.phones : undefined,
-        emails: card1Draft.secondCompany.emails?.filter(Boolean).length ? card1Draft.secondCompany.emails : undefined,
-        address: card1Draft.secondCompany.address,
-        iban: card1Draft.secondCompany.iban,
+        ...draftSnapshot.secondCompany,
+        phone: (draftSnapshot.secondCompany.phones?.[0] ?? draftSnapshot.secondCompany.phone) || '',
+        email: (draftSnapshot.secondCompany.emails?.[0] ?? draftSnapshot.secondCompany.email) || '',
+        phones: draftSnapshot.secondCompany.phones?.filter(Boolean).length ? draftSnapshot.secondCompany.phones : undefined,
+        emails: draftSnapshot.secondCompany.emails?.filter(Boolean).length ? draftSnapshot.secondCompany.emails : undefined,
+        address: draftSnapshot.secondCompany.address,
+        iban: draftSnapshot.secondCompany.iban,
         paymentDayOfMonth: scPaymentDay ?? undefined
       } : null;
-      const depositPayload: PropertyDeposit | null = card1Draft.deposit != null
+      const depositPayload: PropertyDeposit | null = draftSnapshot.deposit != null
         ? {
-            amount: typeof card1Draft.deposit.amount === 'number' ? card1Draft.deposit.amount : 0,
-            status: card1Draft.deposit.status ?? 'unpaid',
-            paidAt: card1Draft.deposit.paidAt?.trim() || undefined,
-            paidTo: card1Draft.deposit.paidTo?.trim() || undefined,
-            returnedAt: card1Draft.deposit.returnedAt?.trim() || undefined,
-            returnedAmount: card1Draft.deposit.returnedAmount,
-            returnStatus: card1Draft.deposit.returnStatus ?? 'unpaid'
+            amount: typeof draftSnapshot.deposit.amount === 'number' ? draftSnapshot.deposit.amount : 0,
+            status: draftSnapshot.deposit.status ?? 'unpaid',
+            paidAt: draftSnapshot.deposit.paidAt?.trim() || undefined,
+            paidTo: draftSnapshot.deposit.paidTo?.trim() || undefined,
+            returnedAt: draftSnapshot.deposit.returnedAt?.trim() || undefined,
+            returnedAmount: draftSnapshot.deposit.returnedAmount,
+            returnStatus: draftSnapshot.deposit.returnStatus ?? 'unpaid'
           }
         : null;
       const updated = await propertiesService.update(prop.id, {
-        address: card1Draft.address,
-        zip: card1Draft.zip,
-        city: card1Draft.city,
-        country: card1Draft.country,
-        title: card1Draft.title,
-        details: { ...(prop.details ?? {}), floor: card1Draft.floor, buildingFloors: card1Draft.buildingFloors },
-        apartmentStatus: card1Draft.apartmentStatus,
-        landlord: card1Draft.landlord,
-        management: card1Draft.management,
+        address: draftSnapshot.address,
+        zip: draftSnapshot.zip,
+        city: draftSnapshot.city,
+        country: draftSnapshot.country,
+        title: draftSnapshot.title,
+        details: { ...(prop.details ?? {}), floor: draftSnapshot.floor, buildingFloors: draftSnapshot.buildingFloors },
+        apartmentStatus: draftSnapshot.apartmentStatus,
+        landlord: draftSnapshot.landlord,
+        management: draftSnapshot.management,
         tenant: tenantPayload,
         secondCompany: secondCompanyPayload === null ? null : (secondCompanyPayload ?? undefined),
         deposit: depositPayload
       });
+      const { data: { user } } = await supabase.auth.getUser();
+      const entries = user?.id
+        ? propertyToPartiesAddressBookEntries(user.id, {
+            landlord: draftSnapshot.landlord,
+            tenant: tenantPayload,
+            secondCompany: secondCompanyPayload ?? undefined,
+            management: draftSnapshot.management,
+          })
+        : [];
       setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
       setSelectedPropertyId(updated.id);
       setIsEditingCard1(false);
       setCard1Draft(null);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user?.id) {
-        const entries = propertyToPartiesAddressBookEntries(user.id, updated);
-        if (entries.length) addressBookPartiesService.upsertMany(entries).catch(e => console.error('[AddressBook upsertMany]', e));
+      if (user?.id && entries.length > 0) {
+        try {
+          setAddressBookLastError(null);
+          await addressBookPartiesService.upsertMany(entries);
+        } catch (e) {
+          console.error('[AddressBook upsertMany]', e);
+          setAddressBookLastError(String((e as Error)?.message ?? e));
+        }
       }
     } catch (err) {
       console.error('Card 1 save error:', err);
@@ -4568,6 +4583,7 @@ ${internalCompany} Team`;
                                     type="button"
                                     onClick={async () => {
                                         setIsAddressBookModalOpen(true);
+                                        setAddressBookLastError(null);
                                         setAddressBookLoading(true);
                                         setAddressBookEntries([]);
                                         try {
@@ -4588,6 +4604,9 @@ ${internalCompany} Team`;
                                     <BookOpen size={18} />
                                 </button>
                             </div>
+                            {addressBookLastError && (
+                                <p className="text-xs text-amber-500 mt-1">Address Book sync failed</p>
+                            )}
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-4 border-b border-gray-700">
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Власник (орендодавець)</h3>
