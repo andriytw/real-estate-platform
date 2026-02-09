@@ -41,8 +41,6 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
   const [street, setStreet] = useState('');
   const [houseNumber, setHouseNumber] = useState('');
   const [title, setTitle] = useState('');
-  const [area, setArea] = useState('');
-  const [rooms, setRooms] = useState<number>(0);
 
   useEffect(() => {
     if (isOpen) {
@@ -52,13 +50,8 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
       setStreet('');
       setHouseNumber('');
       setTitle('');
-      setArea('');
-      setRooms(0);
     }
   }, [isOpen]);
-
-  const areaNumber = Number(area);
-  const isAreaValid = !Number.isNaN(areaNumber) && areaNumber > 0;
 
   const isAllValid =
     country.trim() !== '' &&
@@ -66,9 +59,7 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
     city.trim() !== '' &&
     street.trim() !== '' &&
     houseNumber.trim() !== '' &&
-    title.trim() !== '' &&
-    isAreaValid &&
-    rooms >= 1;
+    title.trim() !== '';
 
   const handleSubmit = () => {
     if (!isAllValid) return;
@@ -78,7 +69,7 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
     const st = street.trim();
     const hn = houseNumber.trim();
     const t = title.trim();
-    if (c === '' || z === '' || ci === '' || st === '' || hn === '' || t === '' || !isAreaValid || rooms < 1) return;
+    if (c === '' || z === '' || ci === '' || st === '' || hn === '' || t === '') return;
 
     const address = `${st} ${hn}`;
     const fullAddress = [st, hn, z, ci, c].join(', ');
@@ -94,12 +85,12 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
       fullAddress,
       price: 0,
       pricePerSqm: 0,
-      rooms,
-      area: areaNumber,
+      rooms: 0,
+      area: 0,
       image: '',
       images: [],
       status: 'Available',
-      details: { ...defaultDetails, area: areaNumber, rooms },
+      details: { ...defaultDetails, area: 0, rooms: 0 },
       building: defaultBuilding,
       inventory: [],
       meterReadings: [],
@@ -188,38 +179,6 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
-            </div>
-          </div>
-
-          {/* Section C — Basic parameters */}
-          <div>
-            <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Основні параметри</h4>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Площа</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={0.1}
-                    step={0.1}
-                    value={area}
-                    onChange={(e) => setArea(e.target.value)}
-                    className="w-full bg-[#1C1F24] border border-gray-800 rounded px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
-                    placeholder="Площа"
-                  />
-                  <span className="text-gray-400 whitespace-nowrap">м²</span>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Кількість кімнат</label>
-                <input
-                  type="number"
-                  min={1}
-                  className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
-                  value={rooms}
-                  onChange={(e) => setRooms(parseInt(e.target.value, 10) || 0)}
-                />
-              </div>
             </div>
           </div>
         </div>
