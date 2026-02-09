@@ -150,6 +150,27 @@ export interface PropertyDepositProof {
   createdAt: string;
 }
 
+/** Lease term from DB (unit_lease_terms). Dates in YYYY-MM-DD. */
+export interface UnitLeaseTermDb {
+  id: string;
+  unit_id: string;
+  contract_start: string;
+  contract_end: string | null;
+  contract_type: 'befristet' | 'unbefristet' | 'mit automatischer Verlängerung';
+  first_payment_date: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+/** Lease term for UI (form/view). Dates in DD.MM.YYYY. */
+export interface LeaseTermDraftUi {
+  contractStart: string;
+  contractEnd: string;
+  contractType: 'befristet' | 'unbefristet' | 'mit automatischer Verlängerung';
+  firstPaymentDate: string;
+  note: string;
+}
+
 export interface FuturePayment {
   date: string;
   recipient: string;

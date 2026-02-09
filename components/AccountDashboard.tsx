@@ -20,8 +20,9 @@ import UserManagement from './admin/UserManagement';
 // Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks tab.
 // This avoids "X is not a constructor" on /account (CJS/ESM + esbuild minification issue with dnd).
 const KanbanBoard = React.lazy(() => import('./kanban/KanbanBoard'));
-import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, leadsService, paymentProofsService, propertyDocumentsService, propertyDepositProofsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem } from '../services/supabaseService';
-import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, PropertyDetails, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation, PaymentProof, ContactParty, TenantDetails, PropertyDocument, PropertyDocumentType, PropertyDeposit, PropertyDepositProof } from '../types';
+import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, leadsService, paymentProofsService, propertyDocumentsService, propertyDepositProofsService, unitLeaseTermsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem, UnitLeaseTermUi } from '../services/supabaseService';
+import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, PropertyDetails, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation, PaymentProof, ContactParty, TenantDetails, PropertyDocument, PropertyDocumentType, PropertyDeposit, PropertyDepositProof, LeaseTermDraftUi } from '../types';
+import { euToIso, validateEuDate } from '../utils/leaseTermDates';
 import { MOCK_PROPERTIES } from '../constants';
 import { createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 import { supabase } from '../utils/supabase/client';
@@ -372,6 +373,10 @@ const AccountDashboard: React.FC = () => {
   const [isDepositProofModalOpen, setIsDepositProofModalOpen] = useState(false);
   const [depositProofType, setDepositProofType] = useState<'payment' | 'return' | null>(null);
   const [kautionProofs, setKautionProofs] = useState<{ payment: PropertyDepositProof | null; return: PropertyDepositProof | null }>({ payment: null, return: null });
+  const [leaseTerm, setLeaseTerm] = useState<UnitLeaseTermUi | null>(null);
+  const [leaseTermDraft, setLeaseTermDraft] = useState<LeaseTermDraftUi | null>(null);
+  const [leaseTermSaving, setLeaseTermSaving] = useState(false);
+  const [leaseTermSaveError, setLeaseTermSaveError] = useState<string | null>(null);
   const [depositProofFile, setDepositProofFile] = useState<File | null>(null);
   const [depositProofError, setDepositProofError] = useState<string | null>(null);
   const [depositProofUploading, setDepositProofUploading] = useState(false);
@@ -1959,12 +1964,14 @@ const AccountDashboard: React.FC = () => {
       deposit
     });
     setCard1DepositError(null);
+    setLeaseTermDraft(leaseTerm ? { contractStart: leaseTerm.contract_start, contractEnd: leaseTerm.contract_end ?? '', contractType: leaseTerm.contract_type, firstPaymentDate: leaseTerm.first_payment_date ?? '', note: leaseTerm.note ?? '' } : { contractStart: '', contractEnd: '', contractType: 'befristet', firstPaymentDate: '', note: '' });
     setIsEditingCard1(true);
   };
 
   const cancelCard1Edit = () => {
     setIsEditingCard1(false);
     setCard1Draft(null);
+    setLeaseTermDraft(null);
     setCard1DepositError(null);
   };
 
@@ -2112,6 +2119,7 @@ const AccountDashboard: React.FC = () => {
   useEffect(() => {
     setIsEditingCard1(false);
     setCard1Draft(null);
+    setLeaseTermDraft(null);
     setShowAddRentIncreaseForm(false);
     setRentIncreaseForm({ validFrom: '', validTo: '', km: '', bk: '', hk: '' });
     setRentIncreaseFormError(null);
@@ -2143,6 +2151,16 @@ const AccountDashboard: React.FC = () => {
       propertyDepositProofsService.getLatest(selectedPropertyId, 'payment'),
       propertyDepositProofsService.getLatest(selectedPropertyId, 'return'),
     ]).then(([payment, ret]) => setKautionProofs({ payment, return: ret })).catch(() => setKautionProofs({ payment: null, return: null }));
+  }, [selectedPropertyId]);
+
+  useEffect(() => {
+    if (!selectedPropertyId) {
+      setLeaseTerm(null);
+      return;
+    }
+    unitLeaseTermsService.getByPropertyId(selectedPropertyId)
+      .then(setLeaseTerm)
+      .catch(() => setLeaseTerm(null));
   }, [selectedPropertyId]);
 
   const refreshKautionProofs = () => {
@@ -4240,6 +4258,22 @@ ${internalCompany} Team`;
                                     </select>
                                 </div>
                             </div>
+                            <div className="pb-4 border-b border-gray-700">
+                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Термін договору</h3>
+                                {leaseTermDraft != null ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div><label className="text-xs text-gray-500 block mb-1">Gültig von (DD.MM.YYYY)</label><input type="text" value={leaseTermDraft.contractStart ?? ''} onChange={e => setLeaseTermDraft(d => d ? { ...d, contractStart: e.target.value } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="DD.MM.YYYY" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-1">Gültig bis (DD.MM.YYYY)</label><input type="text" value={leaseTermDraft.contractEnd ?? ''} onChange={e => setLeaseTermDraft(d => d ? { ...d, contractEnd: e.target.value } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="DD.MM.YYYY" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-1">Vertragstyp</label><select value={leaseTermDraft.contractType} onChange={e => setLeaseTermDraft(d => d ? { ...d, contractType: e.target.value as LeaseTermDraftUi['contractType'] } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white"><option value="befristet">befristet</option><option value="unbefristet">unbefristet</option><option value="mit automatischer Verlängerung">mit automatischer Verlängerung</option></select></div>
+                                        <div><label className="text-xs text-gray-500 block mb-1">Erste Mietzahlung ab</label><input type="text" value={leaseTermDraft.firstPaymentDate ?? ''} onChange={e => setLeaseTermDraft(d => d ? { ...d, firstPaymentDate: e.target.value } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="DD.MM.YYYY" /><p className="text-xs text-gray-500 mt-1">Start der Mietzahlung (z. B. nach Renovierung/Freimonat)</p></div>
+                                        <div className="md:col-span-2"><label className="text-xs text-gray-500 block mb-1">Notiz</label><textarea value={leaseTermDraft.note ?? ''} onChange={e => setLeaseTermDraft(d => d ? { ...d, note: e.target.value } : null)} rows={2} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white resize-y" placeholder="—" /></div>
+                                    </div>
+                                ) : null}
+                                {leaseTermSaveError && <p className="text-sm text-red-400 mt-2">{leaseTermSaveError}</p>}
+                                <div className="mt-3">
+                                    <button type="button" disabled={leaseTermSaving || !leaseTermDraft || !leaseTermDraft.contractStart?.trim()} onClick={async () => { if (!selectedPropertyId || !leaseTermDraft) return; const d = leaseTermDraft; if (!d.contractStart?.trim()) { setLeaseTermSaveError('Gültig von ist erforderlich.'); return; } const errStart = validateEuDate(d.contractStart, 'Gültig von'); if (errStart) { setLeaseTermSaveError(errStart); return; } const errEnd = d.contractEnd?.trim() ? validateEuDate(d.contractEnd, 'Gültig bis') : null; if (errEnd) { setLeaseTermSaveError(errEnd); return; } const errFirst = d.firstPaymentDate?.trim() ? validateEuDate(d.firstPaymentDate, 'Erste Mietzahlung ab') : null; if (errFirst) { setLeaseTermSaveError(errFirst); return; } const isoStart = euToIso(d.contractStart); if (!isoStart) { setLeaseTermSaveError('Ungültiges Datum bei Gültig von.'); return; } const isoEnd = d.contractEnd?.trim() ? euToIso(d.contractEnd) : null; const isoFirst = d.firstPaymentDate?.trim() ? euToIso(d.firstPaymentDate) : null; if (isoEnd && isoEnd < isoStart) { setLeaseTermSaveError('Gültig bis muss am oder nach Gültig von liegen.'); return; } if (isoFirst && isoFirst < isoStart) { setLeaseTermSaveError('Erste Mietzahlung ab darf nicht vor Gültig von liegen.'); return; } setLeaseTermSaveError(null); setLeaseTermSaving(true); try { const saved = await unitLeaseTermsService.upsertByPropertyId(selectedPropertyId, { contract_start: isoStart, contract_end: isoEnd ?? undefined, contract_type: d.contractType, first_payment_date: isoFirst ?? undefined, note: d.note?.trim() || undefined }); setLeaseTerm(saved); } catch (e) { setLeaseTermSaveError(e instanceof Error ? e.message : 'Fehler beim Speichern.'); } finally { setLeaseTermSaving(false); } }} className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white">Зберегти термін договору</button>
+                                </div>
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start pb-4 border-b border-gray-700">
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Орендодавець</h3>
@@ -4426,10 +4460,17 @@ ${internalCompany} Team`;
                                 <div><span className="text-xs text-gray-500 block mb-1">Поверх / Сторона</span><span className="text-sm text-white">{selectedProperty.details?.floor != null ? `${selectedProperty.details.floor} OG` : '—'} {selectedProperty.details?.buildingFloors != null ? ` / ${selectedProperty.details.buildingFloors} поверхов` : ''}</span></div>
                                 <div><span className="text-xs text-gray-500 block mb-1">Квартира / Код</span><span className="text-sm text-white">{selectedProperty.title || '—'}</span></div>
                             </div>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-4 border-b border-gray-700">
+                                <div><span className="text-xs text-gray-500 block mb-1">Gültig von</span><span className="text-sm text-white">{leaseTerm?.contract_start || '—'}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Gültig bis</span><span className="text-sm text-white">{leaseTerm?.contract_end ?? '—'}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Vertragstyp</span><span className="text-sm text-white">{leaseTerm?.contract_type || '—'}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Erste Mietzahlung ab</span><span className="text-sm text-white">{leaseTerm?.first_payment_date ?? '—'}</span></div>
+                            </div>
+                            {(leaseTerm?.note != null && leaseTerm.note.trim() !== '') && (
+                                <div className="pb-4 border-b border-gray-700"><span className="text-xs text-gray-500 block mb-1">Notiz</span><span className="text-sm text-white">{leaseTerm.note}</span></div>
+                            )}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
-                                <div><span className="text-xs text-gray-500 block mb-1">Термін оренди</span><span className="text-lg font-bold text-emerald-500">{selectedProperty.term || '—'}</span></div>
                                 <div><span className="text-xs text-gray-500 block mb-1">Статус квартири</span><span className="text-sm font-medium text-white">{selectedProperty.apartmentStatus === 'ooo' ? 'Out of order' : selectedProperty.apartmentStatus === 'preparation' ? 'В підготовці' : selectedProperty.apartmentStatus === 'rented_worker' ? 'Здана працівнику' : 'Активна'}</span></div>
-                                <div><span className="text-xs text-gray-500 block mb-1">Термін (зелений/червоний)</span><span className={`text-sm font-medium ${selectedProperty.termStatus === 'green' ? 'text-emerald-500' : 'text-amber-500'}`}>{selectedProperty.termStatus === 'green' ? 'Активний' : 'Завершується'}</span></div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
                                 <div><span className="text-xs text-gray-500 block mb-1">Орендодавець</span><span className="text-sm text-white">{selectedProperty.landlord?.name || '—'}</span></div>

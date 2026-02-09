@@ -24,7 +24,10 @@ import {
   PropertyDocument,
   PropertyDocumentType,
   PropertyDepositProof,
+  UnitLeaseTermDb,
+  LeaseTermDraftUi,
 } from '../types';
+import { isoToEu } from '../utils/leaseTermDates';
 
 // Lightweight type for joined stock + item for UI
 export interface WarehouseStockItem {
@@ -2613,6 +2616,76 @@ export const propertyDepositProofsService = {
     if (error) throw new Error(error.message || 'Failed to get document URL');
     if (!data?.signedUrl) throw new Error('No signed URL returned');
     return data.signedUrl;
+  },
+};
+
+// ==================== UNIT LEASE TERMS ====================
+
+/** Lease term for UI: DB row with dates in DD.MM.YYYY. */
+export type UnitLeaseTermUi = Omit<UnitLeaseTermDb, 'contract_start' | 'contract_end' | 'first_payment_date'> & {
+  contract_start: string;
+  contract_end: string | null;
+  first_payment_date: string | null;
+};
+
+export const unitLeaseTermsService = {
+  /**
+   * Get lease term by property id. Returns null if none. Dates converted to DD.MM.YYYY for UI.
+   */
+  async getByPropertyId(propertyId: string): Promise<UnitLeaseTermUi | null> {
+    const { data, error } = await supabase
+      .from('unit_lease_terms')
+      .select('*')
+      .eq('unit_id', propertyId)
+      .maybeSingle();
+    if (error) throw new Error(error.message || 'Failed to fetch lease term');
+    if (!data) return null;
+    const row = data as UnitLeaseTermDb;
+    return {
+      ...row,
+      contract_start: isoToEu(row.contract_start),
+      contract_end: row.contract_end != null ? isoToEu(row.contract_end) : null,
+      first_payment_date: row.first_payment_date != null ? isoToEu(row.first_payment_date) : null,
+    };
+  },
+
+  /**
+   * Upsert lease term for property. One call; onConflict unit_id.
+   * row dates must be in YYYY-MM-DD.
+   */
+  async upsertByPropertyId(
+    propertyId: string,
+    row: {
+      contract_start: string;
+      contract_end?: string | null;
+      contract_type: 'befristet' | 'unbefristet' | 'mit automatischer Verlängerung';
+      first_payment_date?: string | null;
+      note?: string | null;
+    }
+  ): Promise<UnitLeaseTermUi> {
+    const { data, error } = await supabase
+      .from('unit_lease_terms')
+      .upsert(
+        {
+          unit_id: propertyId,
+          contract_start: row.contract_start,
+          contract_end: row.contract_end ?? null,
+          contract_type: row.contract_type,
+          first_payment_date: row.first_payment_date ?? null,
+          note: row.note ?? null,
+        },
+        { onConflict: 'unit_id' }
+      )
+      .select()
+      .single();
+    if (error) throw new Error(error.message || 'Failed to save lease term');
+    const dbRow = data as UnitLeaseTermDb;
+    return {
+      ...dbRow,
+      contract_start: isoToEu(dbRow.contract_start),
+      contract_end: dbRow.contract_end != null ? isoToEu(dbRow.contract_end) : null,
+      first_payment_date: dbRow.first_payment_date != null ? isoToEu(dbRow.first_payment_date) : null,
+    };
   },
 };
 
