@@ -1976,12 +1976,13 @@ const AccountDashboard: React.FC = () => {
 
   const isCard1DepositValid = (d: PropertyDeposit | null): { valid: boolean; message: string | null } => {
     if (!d) return { valid: true, message: null };
-    if (typeof d.amount !== 'number' || d.amount <= 0) return { valid: false, message: 'Сума застави має бути числом > 0.' };
+    const amount = typeof d.amount === 'number' ? d.amount : 0;
+    if (amount < 0) return { valid: false, message: 'Сума застави не може бути від\'ємною.' };
     if (d.status !== 'unpaid' && !d.paidAt?.trim()) return { valid: false, message: 'Для обраного статусу потрібна дата оплати.' };
     if (d.status === 'partially_returned' || d.status === 'returned') {
       if (!d.returnedAt?.trim()) return { valid: false, message: 'Потрібна дата повернення.' };
       if (typeof d.returnedAmount !== 'number' || d.returnedAmount < 0) return { valid: false, message: 'Потрібна сума повернення (≥ 0).' };
-      if (d.returnedAmount > d.amount) return { valid: false, message: 'Сума повернення не може перевищувати суму застави.' };
+      if (d.returnedAmount > amount) return { valid: false, message: 'Сума повернення не може перевищувати суму застави.' };
     }
     return { valid: true, message: null };
   };
@@ -2017,10 +2018,10 @@ const AccountDashboard: React.FC = () => {
         iban: card1Draft.tenant.iban,
         paymentDayOfMonth: paymentDay
       };
-      const depositPayload: PropertyDeposit | null = card1Draft.deposit && card1Draft.deposit.amount > 0
+      const depositPayload: PropertyDeposit | null = card1Draft.deposit != null
         ? {
-            amount: card1Draft.deposit.amount,
-            status: card1Draft.deposit.status,
+            amount: typeof card1Draft.deposit.amount === 'number' ? card1Draft.deposit.amount : 0,
+            status: card1Draft.deposit.status ?? 'unpaid',
             paidAt: card1Draft.deposit.paidAt?.trim() || undefined,
             paidTo: card1Draft.deposit.paidTo?.trim() || undefined,
             returnedAt: card1Draft.deposit.returnedAt?.trim() || undefined,
@@ -4455,27 +4456,45 @@ ${internalCompany} Team`;
                             </div>
                             <div className="pb-4 border-b border-gray-700">
                                 <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Застава (Kaution)</h3>
-                                {selectedProperty.deposit ? (
+                                {(selectedProperty.deposit || kautionProofs.payment || kautionProofs.return) ? (
                                     <>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
-                                            <div><span className="text-xs text-gray-500 block mb-1">Сума</span><span className="text-sm text-white font-bold">{(() => { const n = Number(selectedProperty.deposit.amount); return (n != null && !Number.isNaN(n)) ? `€${n.toFixed(2)}` : '—'; })()}</span></div>
-                                            <div><span className="text-xs text-gray-500 block mb-1">Статус</span><span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${selectedProperty.deposit.status === 'returned' ? 'bg-emerald-500/20 text-emerald-400' : selectedProperty.deposit.status === 'paid' ? 'bg-blue-500/20 text-blue-400' : selectedProperty.deposit.status === 'partially_returned' ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/20 text-gray-400'}`}>{selectedProperty.deposit.status === 'unpaid' ? 'Не оплачено' : selectedProperty.deposit.status === 'paid' ? 'Оплачено' : selectedProperty.deposit.status === 'partially_returned' ? 'Частково повернено' : 'Повернено'}</span></div>
-                                            {selectedProperty.deposit.paidAt && <div><span className="text-xs text-gray-500 block mb-1">Дата оплати</span><span className="text-sm text-white">{selectedProperty.deposit.paidAt}</span></div>}
-                                            {selectedProperty.deposit.paidTo && <div><span className="text-xs text-gray-500 block mb-1">Оплачено кому</span><span className="text-sm text-white">{selectedProperty.deposit.paidTo}</span></div>}
-                                            {(selectedProperty.deposit.returnedAt || selectedProperty.deposit.returnedAmount != null) && <div><span className="text-xs text-gray-500 block mb-1">Повернення</span><span className="text-sm text-white">{selectedProperty.deposit.returnedAt || '—'} {selectedProperty.deposit.returnedAmount != null ? (() => { const n = Number(selectedProperty.deposit!.returnedAmount); return !Number.isNaN(n) ? `€${n.toFixed(2)}` : '—'; })() : ''}</span></div>}
-                                        </div>
-                                        {(kautionProofs.payment || kautionProofs.return) && (
-                                            <div className="mt-2 space-y-2">
-                                                {kautionProofs.payment && (
-                                                    <div><span className="text-xs text-gray-500 block mb-1">Підтвердження оплати</span><div className="flex items-center gap-2 text-sm"><span className="text-white">Підтвердження оплати застави</span><button type="button" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.payment!.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="text-emerald-500 hover:text-emerald-400 text-xs">Відкрити</button></div></div>
-                                                )}
-                                                {kautionProofs.return && (
-                                                    <div><span className="text-xs text-gray-500 block mb-1">Підтвердження повернення</span><div className="flex items-center gap-2 text-sm"><span className="text-white">Підтвердження повернення застави</span><button type="button" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.return!.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="text-emerald-500 hover:text-emerald-400 text-xs">Відкрити</button></div></div>
-                                                )}
+                                        <div className="grid grid-cols-12 gap-4 items-center">
+                                            {/* Row 1: Deposit payment */}
+                                            <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Дата оплати</span><span className="text-sm text-white">{selectedProperty.deposit?.paidAt?.trim() || '—'}</span></div>
+                                            <div className="col-span-3"><span className="text-xs text-gray-500 block mb-1">Оплачено кому</span><span className="text-sm text-white">{selectedProperty.deposit?.paidTo?.trim() || '—'}</span></div>
+                                            <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Сума (€)</span><span className="text-sm text-white font-bold">{(() => { const n = Number(selectedProperty.deposit?.amount); return (n != null && !Number.isNaN(n)) ? `€${n.toFixed(2)}` : '—'; })()}</span></div>
+                                            <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Статус</span><span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${(selectedProperty.deposit?.status ?? 'unpaid') === 'returned' ? 'bg-emerald-500/20 text-emerald-400' : (selectedProperty.deposit?.status ?? 'unpaid') === 'paid' ? 'bg-blue-500/20 text-blue-400' : (selectedProperty.deposit?.status ?? 'unpaid') === 'partially_returned' ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/20 text-gray-400'}`}>{(selectedProperty.deposit?.status ?? 'unpaid') === 'unpaid' ? 'Не оплачено' : (selectedProperty.deposit?.status ?? 'unpaid') === 'paid' ? 'Оплачено' : (selectedProperty.deposit?.status ?? 'unpaid') === 'partially_returned' ? 'Частково повернено' : 'Повернено'}</span></div>
+                                            <div className="col-span-3 flex items-center justify-end">
+                                                {kautionProofs.payment ? (
+                                                    <div className="flex items-center gap-2 text-sm"><span className="text-white">Підтвердження оплати застави</span><button type="button" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.payment!.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="text-emerald-500 hover:text-emerald-400 text-xs">Відкрити</button></div>
+                                                ) : <span className="text-sm text-gray-500">—</span>}
                                             </div>
-                                        )}
+                                            {/* Row 2: Deposit return */}
+                                            <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Дата повернення</span><span className="text-sm text-white">{selectedProperty.deposit?.returnedAt?.trim() || '—'}</span></div>
+                                            <div className="col-span-3"><span className="text-xs text-gray-500 block mb-1">Повернув хто / від кого</span><span className="text-sm text-gray-500">—</span></div>
+                                            <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Сума повернення (€)</span><span className="text-sm text-white">{selectedProperty.deposit?.returnedAmount != null ? (() => { const n = Number(selectedProperty.deposit!.returnedAmount); return !Number.isNaN(n) ? `€${n.toFixed(2)}` : '—'; })() : '—'}</span></div>
+                                            <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Статус</span><span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${(selectedProperty.deposit?.status ?? 'unpaid') === 'returned' ? 'bg-emerald-500/20 text-emerald-400' : (selectedProperty.deposit?.status ?? 'unpaid') === 'paid' ? 'bg-blue-500/20 text-blue-400' : (selectedProperty.deposit?.status ?? 'unpaid') === 'partially_returned' ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/20 text-gray-400'}`}>{(selectedProperty.deposit?.status ?? 'unpaid') === 'unpaid' ? 'Не оплачено' : (selectedProperty.deposit?.status ?? 'unpaid') === 'paid' ? 'Оплачено' : (selectedProperty.deposit?.status ?? 'unpaid') === 'partially_returned' ? 'Частково повернено' : 'Повернено'}</span></div>
+                                            <div className="col-span-3 flex items-center justify-end">
+                                                {kautionProofs.return ? (
+                                                    <div className="flex items-center gap-2 text-sm"><span className="text-white">Підтвердження повернення застави</span><button type="button" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.return!.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="text-emerald-500 hover:text-emerald-400 text-xs">Відкрити</button></div>
+                                                ) : <span className="text-sm text-gray-500">—</span>}
+                                            </div>
+                                        </div>
                                     </>
-                                ) : <p className="text-sm text-gray-500">Немає даних про заставу.</p>}
+                                ) : (
+                                    <div className="grid grid-cols-12 gap-4 items-center">
+                                        <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Дата оплати</span><span className="text-sm text-gray-500">—</span></div>
+                                        <div className="col-span-3"><span className="text-xs text-gray-500 block mb-1">Оплачено кому</span><span className="text-sm text-gray-500">—</span></div>
+                                        <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Сума (€)</span><span className="text-sm text-gray-500">—</span></div>
+                                        <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Статус</span><span className="text-sm text-gray-500">—</span></div>
+                                        <div className="col-span-3" />
+                                        <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Дата повернення</span><span className="text-sm text-gray-500">—</span></div>
+                                        <div className="col-span-3"><span className="text-xs text-gray-500 block mb-1">Повернув хто / від кого</span><span className="text-sm text-gray-500">—</span></div>
+                                        <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Сума повернення (€)</span><span className="text-sm text-gray-500">—</span></div>
+                                        <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Статус</span><span className="text-sm text-gray-500">—</span></div>
+                                        <div className="col-span-3" />
+                                    </div>
+                                )}
                             </div>
                             <div className="pb-4 border-b border-gray-700">
                                 <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Документи та договори</h3>
