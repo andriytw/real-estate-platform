@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video } from 'lucide-react';
+import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 import AdminCalendar from './AdminCalendar';
 import AdminMessages from './AdminMessages';
@@ -125,6 +125,32 @@ function formatDateEU(value: string | undefined): string {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const year = d.getFullYear();
   return `${day}.${month}.${year}`;
+}
+
+/** VIEW only: trim, filter empty, join array. */
+function normalizeArray(arr?: string[]): string {
+  if (!arr?.length) return '';
+  return arr.map((s) => String(s).trim()).filter(Boolean).join(', ');
+}
+
+/** VIEW only: build single-line address string. */
+function formatAddress(addr?: { street?: string; houseNumber?: string; zip?: string; city?: string; country?: string }): string {
+  if (!addr) return '';
+  const streetPart = [addr.street?.trim(), addr.houseNumber?.trim()].filter(Boolean).join(' ');
+  const zipCity = [addr.zip?.trim(), addr.city?.trim()].filter(Boolean).join(' ');
+  const parts = [streetPart, zipCity, addr.country?.trim()].filter(Boolean);
+  return parts.join(', ');
+}
+
+/** VIEW only: one label + value row; empty value => "—". */
+function renderPartyRow(label: string, value: string | number | null | undefined): React.ReactNode {
+  const display = value === null || value === undefined || value === '' ? '—' : String(value);
+  return (
+    <div className="mb-1.5">
+      <span className="text-xs text-gray-500 block mb-1">{label}</span>
+      <span className="text-sm text-white">{display}</span>
+    </div>
+  );
 }
 
 /** Renders a document link that fetches signed URL for the given storage path (pill style). */
@@ -4275,14 +4301,9 @@ ${internalCompany} Team`;
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold text-white">Оренда квартири</h2>
                     {!isEditingCard1 ? (
-                        <>
                         <button type="button" onClick={startCard1Edit} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
                             <Edit className="w-4 h-4 mr-1 inline" /> Редагувати
                         </button>
-                        <button type="button" onClick={async () => { setIsAddressBookModalOpen(true); setAddressBookLoading(true); setAddressBookEntries([]); try { const { data: { user } } = await supabase.auth.getUser(); if (user?.id) { const list = await addressBookPartiesService.listByRole(user.id); setAddressBookEntries(list); } } catch (e) { console.error('[AddressBook list]', e); } finally { setAddressBookLoading(false); } }} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors ml-2">
-                            <Users className="w-4 h-4 mr-1 inline" /> Address Book
-                        </button>
-                        </>
                     ) : null}
                 </div>
                 <div className="space-y-4">
@@ -4328,7 +4349,7 @@ ${internalCompany} Team`;
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Власник (орендодавець)</h3>
                                     <div className="grid grid-cols-1 gap-2 items-start">
-                                        <div><label className="text-xs text-gray-500 block mb-1">Ідентифікатор квартири (Власник)</label><input value={card1Draft.landlord?.unitIdentifier ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, landlord: { ...(d.landlord || defaultContactParty()), unitIdentifier: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-1">ID</label><input value={card1Draft.landlord?.unitIdentifier ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, landlord: { ...(d.landlord || defaultContactParty()), unitIdentifier: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Назва</label><input value={card1Draft.landlord?.name ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, landlord: d.landlord ? { ...d.landlord, name: e.target.value } : { ...defaultContactParty(), name: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="Імʼя або компанія" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Контактна персона</label><input value={card1Draft.landlord?.contactPerson ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, landlord: { ...(d.landlord || defaultContactParty()), contactPerson: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">IBAN</label><input value={card1Draft.landlord?.iban ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, landlord: (d.landlord || defaultContactParty()).iban !== undefined ? { ...(d.landlord || defaultContactParty()), iban: e.target.value } : { ...(d.landlord || defaultContactParty()), iban: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white font-mono" placeholder="IBAN" /></div>
@@ -4374,7 +4395,7 @@ ${internalCompany} Team`;
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Управління</h3>
                                     <div className="grid grid-cols-1 gap-2 items-start">
-                                        <div><label className="text-xs text-gray-500 block mb-1">Ідентифікатор квартири (Управління)</label><input value={card1Draft.management?.unitIdentifier ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, management: { ...(d.management || defaultContactParty()), unitIdentifier: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-1">ID</label><input value={card1Draft.management?.unitIdentifier ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, management: { ...(d.management || defaultContactParty()), unitIdentifier: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Назва</label><input value={card1Draft.management?.name ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, management: (d.management || defaultContactParty()).name !== undefined ? { ...(d.management || defaultContactParty()), name: e.target.value } : { ...defaultContactParty(), name: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Контактна персона</label><input value={card1Draft.management?.contactPerson ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, management: { ...(d.management || defaultContactParty()), contactPerson: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Вулиця</label><input value={card1Draft.management?.address?.street ?? ''} onChange={e => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, address: { ...d.management.address!, street: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
@@ -4486,44 +4507,6 @@ ${internalCompany} Team`;
                                     </div>
                                 </div>
                             )}
-                            {isAddressBookModalOpen && (
-                                <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4" onClick={() => setIsAddressBookModalOpen(false)}>
-                                    <div className="bg-[#1C1F24] w-full max-w-2xl max-h-[80vh] rounded-xl border border-gray-700 shadow-xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-                                        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
-                                            <h3 className="text-lg font-bold text-white">Address Book</h3>
-                                            <button type="button" onClick={() => setIsAddressBookModalOpen(false)} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
-                                        </div>
-                                        <div className="p-4 overflow-y-auto flex-1">
-                                            {addressBookLoading ? <p className="text-sm text-gray-500">Завантаження…</p> : addressBookEntries.length === 0 ? <p className="text-sm text-gray-500">Немає записів. Збережіть картку обʼєкта (сторони угоди), щоб додати контакти в Address Book.</p> : (
-                                                <div className="space-y-4">
-                                                    {(['owner', 'company1', 'company2', 'management'] as const).map(role => {
-                                                        const byRole = addressBookEntries.filter(e => e.role === role);
-                                                        if (byRole.length === 0) return null;
-                                                        const roleLabel = role === 'owner' ? 'Власник' : role === 'company1' ? '1-ша фірма' : role === 'company2' ? '2-га фірма' : 'Управління';
-                                                        return (
-                                                            <div key={role}>
-                                                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">{roleLabel}</h4>
-                                                                <ul className="space-y-2">
-                                                                    {byRole.map(entry => (
-                                                                        <li key={entry.id ?? `${entry.role}-${entry.name}-${entry.street}-${entry.zip}`} className="p-3 rounded-lg bg-[#111315] border border-gray-700 text-sm">
-                                                                            <div className="font-medium text-white">{entry.name}</div>
-                                                                            {(entry.street || entry.zip || entry.city) && <div className="text-gray-400 mt-0.5">{[entry.street, entry.zip, entry.city].filter(Boolean).join(', ')}</div>}
-                                                                            {entry.iban && <div className="text-gray-500 font-mono text-xs mt-0.5">{entry.iban}</div>}
-                                                                            {(entry.unitIdentifier || entry.contactPerson) && <div className="text-gray-500 text-xs mt-0.5">{entry.unitIdentifier && `ID: ${entry.unitIdentifier}`}{entry.unitIdentifier && entry.contactPerson ? ' · ' : ''}{entry.contactPerson && `Контакт: ${entry.contactPerson}`}</div>}
-                                                                            {entry.paymentDay != null && entry.paymentDay >= 1 && entry.paymentDay <= 31 && <div className="text-gray-500 text-xs mt-0.5">День оплати: до {entry.paymentDay}-го</div>}
-                                                                            {((entry.phones?.length ?? 0) > 0 || (entry.emails?.length ?? 0) > 0) && <div className="text-gray-500 text-xs mt-1">{(entry.phones ?? []).filter(Boolean).join(' · ')}{(entry.phones?.length && entry.emails?.length) ? ' · ' : ''}{(entry.emails ?? []).filter(Boolean).join(' · ')}</div>}
-                                                                        </li>
-                                                                    ))}
-                                                                </ul>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
                             <div className="pb-4 border-b border-gray-700">
                                 <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Документи та договори</h3>
                                 {card1DocumentsLoading ? <p className="text-sm text-gray-500">Завантаження…</p> : card1DocumentsError ? <p className="text-sm text-red-400">{card1DocumentsError}</p> : (
@@ -4579,11 +4562,71 @@ ${internalCompany} Team`;
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
                                 <div><span className="text-xs text-gray-500 block mb-1">Статус квартири</span><span className="text-sm font-medium text-white">{selectedProperty.apartmentStatus === 'ooo' ? 'Out of order' : selectedProperty.apartmentStatus === 'preparation' ? 'В підготовці' : selectedProperty.apartmentStatus === 'rented_worker' ? 'Здана працівнику' : 'Активна'}</span></div>
                             </div>
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-semibold text-white">Контрагенти</span>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        setIsAddressBookModalOpen(true);
+                                        setAddressBookLoading(true);
+                                        setAddressBookEntries([]);
+                                        try {
+                                            const { data: { user } } = await supabase.auth.getUser();
+                                            if (user?.id) {
+                                                const list = await addressBookPartiesService.listByRole(user.id);
+                                                setAddressBookEntries(list);
+                                            }
+                                        } catch (e) {
+                                            console.error('[AddressBook list]', e);
+                                        } finally {
+                                            setAddressBookLoading(false);
+                                        }
+                                    }}
+                                    className="p-2 rounded-md border border-gray-700 bg-[#111315] hover:bg-[#15181b] text-gray-200"
+                                    title="Address Book"
+                                >
+                                    <BookOpen size={18} />
+                                </button>
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-4 border-b border-gray-700">
-                                <div><span className="text-xs text-gray-500 block mb-1">Власник (орендодавець)</span><span className="text-sm text-white">{selectedProperty.landlord?.name || '—'}</span><span className="text-xs text-gray-400 block mt-0.5">Ідентифікатор квартири (Власник): {selectedProperty.landlord?.unitIdentifier?.trim() || '—'}</span>{selectedProperty.landlord?.contactPerson ? <span className="text-xs text-gray-400 block mt-0.5">Контакт: {selectedProperty.landlord.contactPerson}</span> : null}</div>
-                                <div><span className="text-xs text-gray-500 block mb-1">1-ша фірма</span><span className="text-sm text-white">{selectedProperty.tenant?.name || '—'}</span>{selectedProperty.tenant?.paymentDayOfMonth != null && selectedProperty.tenant.paymentDayOfMonth >= 1 && selectedProperty.tenant.paymentDayOfMonth <= 31 ? <span className="text-xs text-gray-400 block mt-0.5">День оплати: до {selectedProperty.tenant.paymentDayOfMonth}-го</span> : null}</div>
-                                <div><span className="text-xs text-gray-500 block mb-1">2-га фірма</span><span className="text-sm text-white">{selectedProperty.secondCompany?.name || '—'}</span>{selectedProperty.secondCompany?.paymentDayOfMonth != null && selectedProperty.secondCompany.paymentDayOfMonth >= 1 && selectedProperty.secondCompany.paymentDayOfMonth <= 31 ? <span className="text-xs text-gray-400 block mt-0.5">День оплати: до {selectedProperty.secondCompany.paymentDayOfMonth}-го</span> : null}</div>
-                                <div><span className="text-xs text-gray-500 block mb-1">Управління</span><span className="text-sm text-white">{selectedProperty.management?.name || '—'}</span><span className="text-xs text-gray-400 block mt-0.5">Ідентифікатор квартири (Управління): {selectedProperty.management?.unitIdentifier?.trim() || '—'}</span>{selectedProperty.management?.contactPerson ? <span className="text-xs text-gray-400 block mt-0.5">Контакт: {selectedProperty.management.contactPerson}</span> : null}</div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Власник (орендодавець)</h3>
+                                    {renderPartyRow('Назва', selectedProperty.landlord?.name)}
+                                    {renderPartyRow('ID', selectedProperty.landlord?.unitIdentifier?.trim() || undefined)}
+                                    {renderPartyRow('Контакт', selectedProperty.landlord?.contactPerson)}
+                                    {renderPartyRow('IBAN', selectedProperty.landlord?.iban)}
+                                    {renderPartyRow('Адреса', formatAddress(selectedProperty.landlord?.address) || undefined)}
+                                    {renderPartyRow('Телефони', normalizeArray(selectedProperty.landlord?.phones) || undefined)}
+                                    {renderPartyRow('Email', normalizeArray(selectedProperty.landlord?.emails) || undefined)}
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">1-ша фірма</h3>
+                                    {renderPartyRow('Назва', selectedProperty.tenant?.name)}
+                                    {renderPartyRow('IBAN', selectedProperty.tenant?.iban)}
+                                    {renderPartyRow('Адреса', formatAddress(selectedProperty.tenant?.address) || undefined)}
+                                    {renderPartyRow('День оплати', (selectedProperty.tenant?.paymentDayOfMonth != null && selectedProperty.tenant.paymentDayOfMonth >= 1 && selectedProperty.tenant.paymentDayOfMonth <= 31) ? selectedProperty.tenant.paymentDayOfMonth : undefined)}
+                                    {renderPartyRow('Телефони', normalizeArray(selectedProperty.tenant?.phones ?? (selectedProperty.tenant?.phone ? [selectedProperty.tenant.phone] : undefined)) || undefined)}
+                                    {renderPartyRow('Email', normalizeArray(selectedProperty.tenant?.emails ?? (selectedProperty.tenant?.email ? [selectedProperty.tenant.email] : undefined)) || undefined)}
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">2-га фірма</h3>
+                                    {renderPartyRow('Назва', selectedProperty.secondCompany?.name)}
+                                    {renderPartyRow('IBAN', selectedProperty.secondCompany?.iban)}
+                                    {renderPartyRow('Адреса', formatAddress(selectedProperty.secondCompany?.address) || undefined)}
+                                    {renderPartyRow('День оплати', (selectedProperty.secondCompany?.paymentDayOfMonth != null && selectedProperty.secondCompany.paymentDayOfMonth >= 1 && selectedProperty.secondCompany.paymentDayOfMonth <= 31) ? selectedProperty.secondCompany.paymentDayOfMonth : undefined)}
+                                    {renderPartyRow('Телефони', normalizeArray(selectedProperty.secondCompany?.phones ?? (selectedProperty.secondCompany?.phone ? [selectedProperty.secondCompany.phone] : undefined)) || undefined)}
+                                    {renderPartyRow('Email', normalizeArray(selectedProperty.secondCompany?.emails ?? (selectedProperty.secondCompany?.email ? [selectedProperty.secondCompany.email] : undefined)) || undefined)}
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Управління</h3>
+                                    {renderPartyRow('Назва', selectedProperty.management?.name)}
+                                    {renderPartyRow('ID', selectedProperty.management?.unitIdentifier?.trim() || undefined)}
+                                    {renderPartyRow('Контакт', selectedProperty.management?.contactPerson)}
+                                    {renderPartyRow('IBAN', selectedProperty.management?.iban)}
+                                    {renderPartyRow('Адреса', formatAddress(selectedProperty.management?.address) || undefined)}
+                                    {renderPartyRow('Телефони', normalizeArray(selectedProperty.management?.phones) || undefined)}
+                                    {renderPartyRow('Email', normalizeArray(selectedProperty.management?.emails) || undefined)}
+                                </div>
                             </div>
                             <div>
                                 <span className="text-xs text-gray-500 block mb-2">Рентний таймлайн</span>
@@ -4662,6 +4705,44 @@ ${internalCompany} Team`;
                                 )}
                             </div>
                         </>
+                    )}
+                    {isAddressBookModalOpen && (
+                        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4" onClick={() => setIsAddressBookModalOpen(false)}>
+                            <div className="bg-[#1C1F24] w-full max-w-2xl max-h-[80vh] rounded-xl border border-gray-700 shadow-xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                                <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+                                    <h3 className="text-lg font-bold text-white">Address Book</h3>
+                                    <button type="button" onClick={() => setIsAddressBookModalOpen(false)} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
+                                </div>
+                                <div className="p-4 overflow-y-auto flex-1">
+                                    {addressBookLoading ? <p className="text-sm text-gray-500">Завантаження…</p> : addressBookEntries.length === 0 ? <p className="text-sm text-gray-500">Немає записів. Збережіть картку обʼєкта (сторони угоди), щоб додати контакти в Address Book.</p> : (
+                                        <div className="space-y-4">
+                                            {(['owner', 'company1', 'company2', 'management'] as const).map(role => {
+                                                const byRole = addressBookEntries.filter(e => e.role === role);
+                                                if (byRole.length === 0) return null;
+                                                const roleLabel = role === 'owner' ? 'Власник' : role === 'company1' ? '1-ша фірма' : role === 'company2' ? '2-га фірма' : 'Управління';
+                                                return (
+                                                    <div key={role}>
+                                                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">{roleLabel}</h4>
+                                                        <ul className="space-y-2">
+                                                            {byRole.map(entry => (
+                                                                <li key={entry.id ?? `${entry.role}-${entry.name}-${entry.street}-${entry.zip}`} className="p-3 rounded-lg bg-[#111315] border border-gray-700 text-sm">
+                                                                    <div className="font-medium text-white">{entry.name}</div>
+                                                                    {(entry.street || entry.zip || entry.city) && <div className="text-gray-400 mt-0.5">{[entry.street, entry.zip, entry.city].filter(Boolean).join(', ')}</div>}
+                                                                    {entry.iban && <div className="text-gray-500 font-mono text-xs mt-0.5">{entry.iban}</div>}
+                                                                    {(entry.unitIdentifier || entry.contactPerson) && <div className="text-gray-500 text-xs mt-0.5">{entry.unitIdentifier && `ID: ${entry.unitIdentifier}`}{entry.unitIdentifier && entry.contactPerson ? ' · ' : ''}{entry.contactPerson && `Контакт: ${entry.contactPerson}`}</div>}
+                                                                    {entry.paymentDay != null && entry.paymentDay >= 1 && entry.paymentDay <= 31 && <div className="text-gray-500 text-xs mt-0.5">День оплати: до {entry.paymentDay}-го</div>}
+                                                                    {((entry.phones?.length ?? 0) > 0 || (entry.emails?.length ?? 0) > 0) && <div className="text-gray-500 text-xs mt-1">{(entry.phones ?? []).filter(Boolean).join(' · ')}{(entry.phones?.length && entry.emails?.length) ? ' · ' : ''}{(entry.emails ?? []).filter(Boolean).join(' · ')}</div>}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
                     )}
                 </div>
             </section>
