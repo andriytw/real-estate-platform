@@ -26,6 +26,10 @@ import {
   PropertyDepositProof,
   UnitLeaseTermDb,
   LeaseTermDraftUi,
+  AddressBookPartyEntry,
+  AddressBookPartyRole,
+  ContactParty,
+  TenantDetails,
 } from '../types';
 import { isoToEu } from '../utils/leaseTermDates';
 
@@ -1237,6 +1241,186 @@ export const propertiesService = {
   }
 };
 
+// ==================== ADDRESS BOOK (parties auto-capture) ====================
+function addressBookRowFromDB(db: any): AddressBookPartyEntry {
+  return {
+    id: db.id,
+    ownerUserId: db.owner_user_id,
+    role: db.role as AddressBookPartyRole,
+    name: db.name ?? '',
+    iban: db.iban ?? '',
+    street: db.street ?? '',
+    zip: db.zip ?? '',
+    city: db.city ?? '',
+    houseNumber: db.house_number ?? null,
+    country: db.country ?? null,
+    phones: db.phones ?? null,
+    emails: db.emails ?? null,
+    paymentDay: db.payment_day ?? null,
+    unitIdentifier: db.unit_identifier ?? null,
+    contactPerson: db.contact_person ?? null,
+    createdAt: db.created_at,
+    updatedAt: db.updated_at,
+  };
+}
+
+function toPhonesArray(party: { phone?: string; phones?: string[] }): string[] {
+  if (Array.isArray(party.phones) && party.phones.length) {
+    return party.phones.map((s) => String(s).trim()).filter(Boolean);
+  }
+  if (party.phone != null && String(party.phone).trim()) {
+    return [String(party.phone).trim()];
+  }
+  return [];
+}
+
+function toEmailsArray(party: { email?: string; emails?: string[] }): string[] {
+  if (Array.isArray(party.emails) && party.emails.length) {
+    return party.emails.map((s) => String(s).trim()).filter(Boolean);
+  }
+  if (party.email != null && String(party.email).trim()) {
+    return [String(party.email).trim()];
+  }
+  return [];
+}
+
+export const addressBookPartiesService = {
+  async listByRole(ownerUserId: string, role?: AddressBookPartyRole): Promise<AddressBookPartyEntry[]> {
+    let q = supabase
+      .from('address_book_parties')
+      .select('*')
+      .eq('owner_user_id', ownerUserId)
+      .order('role', { ascending: true })
+      .order('name', { ascending: true });
+    if (role) q = q.eq('role', role);
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data ?? []).map(addressBookRowFromDB);
+  },
+
+  /** Upsert by (owner_user_id, role, name, iban, street, zip, city). Normalizes key fields to '' and phones/emails to non-empty arrays. */
+  async upsertMany(entries: AddressBookPartyEntry[]): Promise<void> {
+    if (!entries.length) return;
+    const rows = entries.map((e) => ({
+      id: e.id ?? undefined,
+      owner_user_id: e.ownerUserId,
+      role: e.role,
+      name: (e.name ?? '').trim() || '',
+      iban: e.iban != null ? String(e.iban).trim() : '',
+      street: e.street != null ? String(e.street).trim() : '',
+      zip: e.zip != null ? String(e.zip).trim() : '',
+      city: e.city != null ? String(e.city).trim() : '',
+      house_number: e.houseNumber ?? null,
+      country: e.country ?? null,
+      phones: Array.isArray(e.phones) ? e.phones.map((s) => String(s).trim()).filter(Boolean) : [],
+      emails: Array.isArray(e.emails) ? e.emails.map((s) => String(s).trim()).filter(Boolean) : [],
+      payment_day: e.paymentDay ?? null,
+      unit_identifier: e.unitIdentifier ?? null,
+      contact_person: e.contactPerson ?? null,
+    }));
+    const { error } = await supabase
+      .from('address_book_parties')
+      .upsert(rows, { onConflict: 'owner_user_id,role,name,iban,street,zip,city' });
+    if (error) throw error;
+  },
+};
+
+/** Build Address Book entries from a property (for auto-capture after save). Owner = landlord, company1 = tenant, company2 = secondCompany, management = management. */
+export function propertyToPartiesAddressBookEntries(
+  ownerUserId: string,
+  property: {
+    landlord?: ContactParty | null;
+    tenant?: TenantDetails | null;
+    secondCompany?: TenantDetails | null;
+    management?: ContactParty | null;
+  }
+): AddressBookPartyEntry[] {
+  const entries: AddressBookPartyEntry[] = [];
+  const emptyAddr = { street: '', houseNumber: '', zip: '', city: '', country: '' };
+
+  if (property.landlord?.name) {
+    const a = property.landlord.address ?? emptyAddr;
+    entries.push({
+      ownerUserId,
+      role: 'owner',
+      name: property.landlord.name.trim() || '',
+      iban: property.landlord.iban ?? '',
+      street: a.street ?? '',
+      zip: a.zip ?? '',
+      city: a.city ?? '',
+      houseNumber: a.houseNumber ?? null,
+      country: a.country ?? null,
+      phones: toPhonesArray(property.landlord) as string[] | null,
+      emails: toEmailsArray(property.landlord) as string[] | null,
+      paymentDay: null,
+      unitIdentifier: property.landlord.unitIdentifier ?? null,
+      contactPerson: property.landlord.contactPerson ?? null,
+    });
+  }
+
+  if (property.tenant?.name) {
+    const a = property.tenant.address ?? emptyAddr;
+    entries.push({
+      ownerUserId,
+      role: 'company1',
+      name: property.tenant.name.trim() || '',
+      iban: property.tenant.iban ?? '',
+      street: a.street ?? '',
+      zip: a.zip ?? '',
+      city: a.city ?? '',
+      houseNumber: a.houseNumber ?? null,
+      country: a.country ?? null,
+      phones: toPhonesArray(property.tenant) as string[] | null,
+      emails: toEmailsArray(property.tenant) as string[] | null,
+      paymentDay: property.tenant.paymentDayOfMonth ?? null,
+      unitIdentifier: null,
+      contactPerson: null,
+    });
+  }
+
+  if (property.secondCompany?.name) {
+    const a = property.secondCompany.address ?? emptyAddr;
+    entries.push({
+      ownerUserId,
+      role: 'company2',
+      name: property.secondCompany.name.trim() || '',
+      iban: property.secondCompany.iban ?? '',
+      street: a.street ?? '',
+      zip: a.zip ?? '',
+      city: a.city ?? '',
+      houseNumber: a.houseNumber ?? null,
+      country: a.country ?? null,
+      phones: toPhonesArray(property.secondCompany) as string[] | null,
+      emails: toEmailsArray(property.secondCompany) as string[] | null,
+      paymentDay: property.secondCompany.paymentDayOfMonth ?? null,
+      unitIdentifier: null,
+      contactPerson: null,
+    });
+  }
+
+  if (property.management?.name) {
+    const a = property.management.address ?? emptyAddr;
+    entries.push({
+      ownerUserId,
+      role: 'management',
+      name: property.management.name.trim() || '',
+      iban: property.management.iban ?? '',
+      street: a.street ?? '',
+      zip: a.zip ?? '',
+      city: a.city ?? '',
+      houseNumber: a.houseNumber ?? null,
+      country: a.country ?? null,
+      phones: toPhonesArray(property.management) as string[] | null,
+      emails: toEmailsArray(property.management) as string[] | null,
+      paymentDay: null,
+      unitIdentifier: property.management.unitIdentifier ?? null,
+      contactPerson: property.management.contactPerson ?? null,
+    });
+  }
+
+  return entries.filter((e) => e.name !== '');
+}
+
 // ==================== RESERVATIONS ====================
 export const reservationsService = {
   async getAll(): Promise<Reservation[]> {
@@ -1833,6 +2017,7 @@ function transformPropertyFromDB(db: any): Property {
     apartmentStatus: db.apartment_status || db.apartmentStatus || 'active',
     landlord: db.landlord,
     management: db.management,
+    secondCompany: db.second_company ?? undefined,
     deposit: (() => {
       const raw = db.deposit ?? db.kaution;
       if (raw == null) return undefined;
@@ -1905,6 +2090,7 @@ function transformPropertyToDB(property: Property): any {
   if (property.apartmentStatus !== undefined) result.apartment_status = property.apartmentStatus;
   if (property.landlord !== undefined) result.landlord = property.landlord;
   if (property.management !== undefined) result.management = property.management;
+  if (property.secondCompany !== undefined) result.second_company = property.secondCompany;
   if (property.deposit !== undefined) result.deposit = property.deposit;
   if (property.rentPayments !== undefined) result.rent_payments = property.rentPayments;
   if (property.ownerExpense !== undefined) result.owner_expense = property.ownerExpense;

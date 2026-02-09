@@ -45,6 +45,10 @@ export interface ContactParty {
   phones: string[];
   emails: string[];
   iban?: string;
+  /** External unit ID in owner/management system (persisted). DO NOT use property.code. */
+  unitIdentifier?: string;
+  /** Contact person name (PIB) for owner/management (persisted). */
+  contactPerson?: string;
 }
 
 export interface TenantDetails {
@@ -169,6 +173,30 @@ export interface LeaseTermDraftUi {
   contractType: 'befristet' | 'unbefristet' | 'mit automatischer Verlängerung';
   firstPaymentDate: string;
   note: string;
+}
+
+/** Address Book for Parties block only. Role for address_book_parties. */
+export type AddressBookPartyRole = 'owner' | 'company1' | 'company2' | 'management';
+
+/** One row in address_book_parties (camelCase for app). */
+export interface AddressBookPartyEntry {
+  id?: string;
+  ownerUserId: string;
+  role: AddressBookPartyRole;
+  name: string;
+  iban: string;
+  street: string;
+  zip: string;
+  city: string;
+  houseNumber?: string | null;
+  country?: string | null;
+  phones: string[] | null;
+  emails: string[] | null;
+  paymentDay: number | null;
+  unitIdentifier: string | null;
+  contactPerson: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface FuturePayment {
@@ -342,6 +370,8 @@ export interface Property {
   landlord?: ContactParty;
   /** Card 1: management company contact (JSONB). */
   management?: ContactParty;
+  /** Card 1: second company (2-ga firma). Stored in second_company JSONB. */
+  secondCompany?: TenantDetails;
   /** Card 1: Kaution (deposit) — our company's deposit to landlord. Stored in deposit JSONB. */
   deposit?: PropertyDeposit;
   futurePayments?: FuturePayment[];
