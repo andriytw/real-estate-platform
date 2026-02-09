@@ -1830,7 +1830,15 @@ function transformPropertyFromDB(db: any): Property {
     apartmentStatus: db.apartment_status || db.apartmentStatus || 'active',
     landlord: db.landlord,
     management: db.management,
-    deposit: db.deposit ?? db.kaution ?? undefined,
+    deposit: (() => {
+      const raw = db.deposit ?? db.kaution;
+      if (raw == null) return undefined;
+      if (typeof raw === 'string') {
+        try { return JSON.parse(raw); } catch { return undefined; }
+      }
+      if (typeof raw === 'object') return raw;
+      return undefined;
+    })(),
     rentPayments: db.rent_payments || db.rentPayments || [],
     ownerExpense: db.owner_expense || db.ownerExpense,
     futurePayments: db.future_payments || db.futurePayments || [],

@@ -130,9 +130,12 @@ export interface PropertyDeposit {
   amount: number;
   paidAt?: string;
   paidTo?: string;
-  status: 'unpaid' | 'paid' | 'partially_returned' | 'returned';
+  /** Payment row: unpaid | paid */
+  status: 'unpaid' | 'paid';
   returnedAt?: string;
   returnedAmount?: number;
+  /** Return row: unpaid | partially_returned | returned */
+  returnStatus?: 'unpaid' | 'partially_returned' | 'returned';
 }
 
 /** Kaution proof document — stored in property_deposit_proofs (independent from property_documents). */
