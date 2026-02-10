@@ -1330,6 +1330,17 @@ export const addressBookPartiesService = {
       .upsert(rows, { onConflict: 'owner_user_id,role,name,iban,street,zip,city' });
     if (error) throw error;
   },
+
+  async deleteById(id: string): Promise<void> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+    const { error } = await supabase
+      .from('address_book_parties')
+      .delete()
+      .eq('id', id)
+      .eq('owner_user_id', user.id);
+    if (error) throw error;
+  },
 };
 
 /** Build Address Book entries from a property (for auto-capture after save). Owner = landlord, company1 = tenant, company2 = secondCompany, management = management. */

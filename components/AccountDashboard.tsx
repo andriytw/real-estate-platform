@@ -417,6 +417,8 @@ const AccountDashboard: React.FC = () => {
   const [addressBookLastError, setAddressBookLastError] = useState<string | null>(null);
   const [addressBookDropdownOpen, setAddressBookDropdownOpen] = useState<'owner' | 'company1' | 'company2' | 'management' | null>(null);
   const [addressBookSearch, setAddressBookSearch] = useState<{ owner: string; company1: string; company2: string; management: string }>({ owner: '', company1: '', company2: '', management: '' });
+  const [addressBookDeletingId, setAddressBookDeletingId] = useState<string | null>(null);
+  const [addressBookDeleteError, setAddressBookDeleteError] = useState<string | null>(null);
   const [depositProofFile, setDepositProofFile] = useState<File | null>(null);
   const [depositProofError, setDepositProofError] = useState<string | null>(null);
   const [depositProofUploading, setDepositProofUploading] = useState(false);
@@ -4845,33 +4847,41 @@ ${internalCompany} Team`;
                                     <button type="button" onClick={() => setIsAddressBookModalOpen(false)} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
                                 </div>
                                 <div className="flex-1 min-h-0 overflow-y-auto p-4">
+                                    {addressBookDeleteError && <p className="text-xs text-amber-500 mb-3">Delete failed: {addressBookDeleteError}</p>}
                                     {addressBookLoading ? <p className="text-sm text-gray-500">Завантаження…</p> : addressBookEntries.length === 0 ? <p className="text-sm text-gray-500">Немає записів. Збережіть картку обʼєкта (сторони угоди), щоб додати контакти в Address Book.</p> : (
                                         <div className="space-y-4">
                                             {(['owner', 'company1', 'company2', 'management'] as const).map(role => {
                                                 const byRole = addressBookEntries.filter(e => e.role === role);
-                                                if (byRole.length === 0) return null;
                                                 const roleLabel = role === 'owner' ? 'Власник' : role === 'company1' ? '1-ша фірма' : role === 'company2' ? '2-га фірма' : 'Управління';
                                                 return (
                                                     <div key={role}>
                                                         <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">{roleLabel}</h4>
+                                                        {byRole.length === 0 ? <p className="text-sm text-gray-500">—</p> : (
                                                         <ul className="space-y-2">
                                                             {byRole.map(entry => {
                                                                 const addressLine = formatAddress({ street: entry.street, houseNumber: entry.houseNumber ?? '', zip: entry.zip, city: entry.city, country: entry.country ?? '' });
                                                                 const phonesLine = normalizeArray(entry.phones ?? []);
                                                                 const emailsLine = normalizeArray(entry.emails ?? []);
                                                                 const meta = joinMeta([addressLine, phonesLine, emailsLine]);
+                                                                const isDeleting = entry.id != null && addressBookDeletingId === entry.id;
                                                                 return (
-                                                                    <li key={entry.id ?? `${entry.role}-${entry.name}-${entry.street}-${entry.zip}`} className="p-3 rounded-lg bg-[#111315] border border-gray-700 text-sm">
-                                                                        <div className="font-semibold text-white">
-                                                                            {entry.name}
-                                                                            {(role === 'owner' || role === 'management') && (entry.unitIdentifier ?? '').trim() && <span className="ml-1.5 text-xs font-normal text-gray-400">ID: {(entry.unitIdentifier ?? '').trim()}</span>}
-                                                                            {(role === 'company1' || role === 'company2') && entry.paymentDay != null && entry.paymentDay >= 1 && entry.paymentDay <= 31 && <span className="ml-1.5 text-xs font-normal text-gray-400">Pay: {entry.paymentDay}</span>}
+                                                                    <li key={entry.id ?? `${entry.role}-${entry.name}-${entry.street}-${entry.zip}`} className="p-3 rounded-lg bg-[#111315] border border-gray-700 text-sm flex items-start justify-between gap-2">
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <div className="font-semibold text-white">
+                                                                                {entry.name}
+                                                                                {(role === 'owner' || role === 'management') && (entry.unitIdentifier ?? '').trim() && <span className="ml-1.5 text-xs font-normal text-gray-400">ID: {(entry.unitIdentifier ?? '').trim()}</span>}
+                                                                                {(role === 'company1' || role === 'company2') && entry.paymentDay != null && entry.paymentDay >= 1 && entry.paymentDay <= 31 && <span className="ml-1.5 text-xs font-normal text-gray-400">Pay: {entry.paymentDay}</span>}
+                                                                            </div>
+                                                                            <div className={meta ? 'text-gray-400 text-xs mt-0.5' : 'text-gray-500 text-xs mt-0.5'}>{meta || '—'}</div>
                                                                         </div>
-                                                                        <div className={meta ? 'text-gray-400 text-xs mt-0.5' : 'text-gray-500 text-xs mt-0.5'}>{meta || '—'}</div>
+                                                                        {entry.id != null && (
+                                                                            <button type="button" title="Видалити з Address Book" disabled={isDeleting} onClick={async () => { if (!window.confirm('Видалити цей контакт з Address Book?')) return; setAddressBookDeleteError(null); setAddressBookDeletingId(entry.id!); const removed = entry; setAddressBookEntries(prev => prev.filter(e => e.id !== entry.id)); try { await addressBookPartiesService.deleteById(entry.id!); } catch (e) { console.error('[AddressBook deleteById]', e); setAddressBookDeleteError(String((e as Error)?.message ?? e)); const { data: { user } } = await supabase.auth.getUser(); if (user?.id) { const list = await addressBookPartiesService.listByRole(user.id); setAddressBookEntries(list); } else { setAddressBookEntries(prev => [...prev, removed]); } } finally { setAddressBookDeletingId(null); } }} className={`p-2 rounded-md border border-gray-700 text-gray-200 shrink-0 ${isDeleting ? 'opacity-50 cursor-not-allowed' : 'bg-[#111315] hover:bg-[#15181b]'}`}><Trash2 className="w-4 h-4" size={16} /></button>
+                                                                        )}
                                                                     </li>
                                                                 );
                                                             })}
                                                         </ul>
+                                                        )}
                                                     </div>
                                                 );
                                             })}
