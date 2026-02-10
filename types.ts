@@ -355,6 +355,43 @@ export interface PaymentChain {
   company2?: PaymentChainTile;
 }
 
+/** Edge key for payment_chain_edges table. */
+export type PaymentChainEdgeKey = 'C2_TO_C1' | 'C1_TO_OWNER';
+/** Tile key for payment_chain_files (includes owner receipt). */
+export type PaymentChainTileKey = 'C2_TO_C1' | 'C1_TO_OWNER' | 'OWNER_RECEIPT';
+
+/** One row from payment_chain_edges. */
+export interface PaymentChainEdge {
+  id: string;
+  property_id: string;
+  edge_key: PaymentChainEdgeKey;
+  pay_by_day_of_month: number | null;
+  amount_total: number | string | null;
+  description: string | null;
+  breakdown: Record<string, string> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One row from payment_chain_files. */
+export interface PaymentChainFile {
+  id: string;
+  property_id: string;
+  tile_key: PaymentChainTileKey;
+  storage_path: string;
+  file_name: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
+/** Aggregated state for UI: edges by key, files by tile. */
+export interface PaymentChainState {
+  edges: Record<PaymentChainEdgeKey, PaymentChainEdge | null>;
+  filesByTile: Record<PaymentChainTileKey, PaymentChainFile[]>;
+}
+
 export interface Property {
   id: string; 
   title: string;

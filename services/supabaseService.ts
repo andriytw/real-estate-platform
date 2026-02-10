@@ -33,6 +33,11 @@ import {
   PaymentChain,
   PaymentChainTile,
   PaymentChainAttachment,
+  PaymentChainEdge,
+  PaymentChainFile,
+  PaymentChainState,
+  PaymentChainEdgeKey,
+  PaymentChainTileKey,
 } from '../types';
 import { isoToEu } from '../utils/leaseTermDates';
 
@@ -2889,6 +2894,211 @@ export const paymentChainFilesService = {
   async remove(filePath: string): Promise<void> {
     const { error } = await supabase.storage.from(PROPERTY_FILES_BUCKET).remove([filePath]);
     if (error) throw new Error(error.message || 'Failed to delete file');
+  },
+};
+
+// ==================== PAYMENT CHAIN (new tables: edges + files) ====================
+const PAYMENT_CHAIN_BUCKET = 'property-files';
+
+function paymentChainEdgeFromRow(r: any): PaymentChainEdge {
+  return {
+    id: r.id,
+    property_id: r.property_id,
+    edge_key: r.edge_key,
+    pay_by_day_of_month: r.pay_by_day_of_month,
+    amount_total: r.amount_total != null ? Number(r.amount_total) : null,
+    description: r.description,
+    breakdown: r.breakdown,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  };
+}
+
+function paymentChainFileFromRow(r: any): PaymentChainFile {
+  return {
+    id: r.id,
+    property_id: r.property_id,
+    tile_key: r.tile_key,
+    storage_path: r.storage_path,
+    file_name: r.file_name,
+    mime_type: r.mime_type,
+    size_bytes: r.size_bytes,
+    uploaded_by: r.uploaded_by,
+    created_at: r.created_at,
+  };
+}
+
+export const paymentChainService = {
+  async getPaymentChain(propertyId: string): Promise<PaymentChainState> {
+    const [edgesRes, filesRes] = await Promise.all([
+      supabase.from('payment_chain_edges').select('*').eq('property_id', propertyId),
+      supabase.from('payment_chain_files').select('*').eq('property_id', propertyId).order('created_at', { ascending: false }),
+    ]);
+    if (edgesRes.error) throw new Error(edgesRes.error.message || 'Failed to fetch payment chain edges');
+    if (filesRes.error) throw new Error(filesRes.error.message || 'Failed to fetch payment chain files');
+
+    const edgeRows = (edgesRes.data || []) as any[];
+    const fileRows = (filesRes.data || []) as any[];
+
+    const edges: Record<PaymentChainEdgeKey, PaymentChainEdge | null> = {
+      C1_TO_OWNER: null,
+      C2_TO_C1: null,
+    };
+    edgeRows.forEach(r => {
+      if (r.edge_key === 'C1_TO_OWNER' || r.edge_key === 'C2_TO_C1') edges[r.edge_key] = paymentChainEdgeFromRow(r);
+    });
+
+    const filesByTile: Record<PaymentChainTileKey, PaymentChainFile[]> = {
+      C1_TO_OWNER: [],
+      C2_TO_C1: [],
+      OWNER_RECEIPT: [],
+    };
+    fileRows.forEach(r => {
+      if (r.tile_key in filesByTile) filesByTile[r.tile_key as PaymentChainTileKey].push(paymentChainFileFromRow(r));
+    });
+
+    const hasAny = edgeRows.length > 0 || fileRows.length > 0;
+    if (hasAny) return { edges, filesByTile };
+
+    const { data: propRow } = await supabase.from('properties').select('payment_chain').eq('id', propertyId).single();
+    const raw = (propRow as any)?.payment_chain;
+    const legacy = normalizePaymentChainFromDB(raw);
+    if (!legacy) return { edges, filesByTile };
+
+    const t = (legacy.company1?.payByDayOfMonth != null && legacy.company1.payByDayOfMonth >= 1 && legacy.company1.payByDayOfMonth <= 31) ? legacy.company1.payByDayOfMonth : null;
+    const amt1 = legacy.company1?.total != null ? legacy.company1.total : null;
+    if (legacy.company1) {
+      edges.C1_TO_OWNER = {
+        id: `legacy-${propertyId}-C1_TO_OWNER`,
+        property_id: propertyId,
+        edge_key: 'C1_TO_OWNER',
+        pay_by_day_of_month: t,
+        amount_total: amt1,
+        description: legacy.company1.description ?? null,
+        breakdown: legacy.company1.breakdown ?? null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    }
+    const t2 = (legacy.company2?.payByDayOfMonth != null && legacy.company2.payByDayOfMonth >= 1 && legacy.company2.payByDayOfMonth <= 31) ? legacy.company2.payByDayOfMonth : null;
+    const amt2 = legacy.company2?.total != null ? legacy.company2.total : null;
+    if (legacy.company2) {
+      edges.C2_TO_C1 = {
+        id: `legacy-${propertyId}-C2_TO_C1`,
+        property_id: propertyId,
+        edge_key: 'C2_TO_C1',
+        pay_by_day_of_month: t2,
+        amount_total: amt2,
+        description: legacy.company2.description ?? null,
+        breakdown: legacy.company2.breakdown ?? null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    }
+    (legacy.owner?.attachments || []).forEach((a: PaymentChainAttachment) => {
+      filesByTile.OWNER_RECEIPT.push({
+        id: `legacy-${a.path}`,
+        property_id: propertyId,
+        tile_key: 'OWNER_RECEIPT',
+        storage_path: a.path,
+        file_name: a.name,
+        mime_type: a.mime ?? null,
+        size_bytes: a.size ?? null,
+        uploaded_by: null,
+        created_at: a.uploadedAt || new Date().toISOString(),
+      });
+    });
+    (legacy.company1?.attachments || []).forEach((a: PaymentChainAttachment) => {
+      filesByTile.C1_TO_OWNER.push({
+        id: `legacy-${a.path}`,
+        property_id: propertyId,
+        tile_key: 'C1_TO_OWNER',
+        storage_path: a.path,
+        file_name: a.name,
+        mime_type: a.mime ?? null,
+        size_bytes: a.size ?? null,
+        uploaded_by: null,
+        created_at: a.uploadedAt || new Date().toISOString(),
+      });
+    });
+    (legacy.company2?.attachments || []).forEach((a: PaymentChainAttachment) => {
+      filesByTile.C2_TO_C1.push({
+        id: `legacy-${a.path}`,
+        property_id: propertyId,
+        tile_key: 'C2_TO_C1',
+        storage_path: a.path,
+        file_name: a.name,
+        mime_type: a.mime ?? null,
+        size_bytes: a.size ?? null,
+        uploaded_by: null,
+        created_at: a.uploadedAt || new Date().toISOString(),
+      });
+    });
+    return { edges, filesByTile };
+  },
+
+  async upsertEdge(
+    propertyId: string,
+    edge_key: PaymentChainEdgeKey,
+    payload: { payByDayOfMonth?: number | null; amount_total?: string | null; description?: string | null; breakdown?: Record<string, string> | null }
+  ): Promise<PaymentChainEdge> {
+    const row = {
+      property_id: propertyId,
+      edge_key,
+      pay_by_day_of_month: payload.payByDayOfMonth ?? null,
+      amount_total: payload.amount_total != null ? String(payload.amount_total) : null,
+      description: payload.description ?? null,
+      breakdown: payload.breakdown ?? null,
+    };
+    const { data, error } = await supabase
+      .from('payment_chain_edges')
+      .upsert(row, { onConflict: 'property_id,edge_key', ignoreDuplicates: false })
+      .select()
+      .single();
+    if (error) throw new Error(error.message || 'Failed to upsert payment chain edge');
+    return paymentChainEdgeFromRow(data);
+  },
+
+  async uploadFile(
+    propertyId: string,
+    tile_key: PaymentChainTileKey,
+    file: File,
+    uploadedBy?: string | null
+  ): Promise<PaymentChainFile> {
+    const id = crypto.randomUUID();
+    const safe = (file.name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+    const storage_path = `${propertyId}/payment-chain/${tile_key}/${id}_${safe}`;
+    const { error: storageError } = await supabase.storage.from(PAYMENT_CHAIN_BUCKET).upload(storage_path, file, { upsert: false });
+    if (storageError) throw new Error(storageError.message || 'Failed to upload file');
+    const fileRow = {
+      property_id: propertyId,
+      tile_key,
+      storage_path,
+      file_name: file.name || safe,
+      mime_type: file.type || null,
+      size_bytes: file.size,
+      uploaded_by: uploadedBy ?? null,
+    };
+    const { data, error } = await supabase.from('payment_chain_files').insert(fileRow).select().single();
+    if (error) throw new Error(error.message || 'Failed to insert payment chain file');
+    return paymentChainFileFromRow(data);
+  },
+
+  async getFileSignedUrl(storage_path: string, expirySeconds: number = 3600): Promise<string> {
+    const { data, error } = await supabase.storage.from(PAYMENT_CHAIN_BUCKET).createSignedUrl(storage_path, expirySeconds);
+    if (error) throw new Error(error.message || 'Failed to create signed URL');
+    if (!data?.signedUrl) throw new Error('No signed URL returned');
+    return data.signedUrl;
+  },
+
+  async deleteFileById(id: string): Promise<void> {
+    const { data, error: fetchError } = await supabase.from('payment_chain_files').select('storage_path').eq('id', id).single();
+    if (fetchError || !data) throw new Error('File not found');
+    const path = (data as any).storage_path;
+    const { error: storageError } = await supabase.storage.from(PAYMENT_CHAIN_BUCKET).remove([path]);
+    if (storageError) throw new Error(storageError.message || 'Failed to delete file from storage');
+    const { error: deleteError } = await supabase.from('payment_chain_files').delete().eq('id', id);
+    if (deleteError) throw new Error(deleteError.message || 'Failed to delete file record');
   },
 };
 

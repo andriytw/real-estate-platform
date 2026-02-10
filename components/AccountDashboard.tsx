@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 import AdminCalendar from './AdminCalendar';
@@ -20,8 +20,8 @@ import UserManagement from './admin/UserManagement';
 // Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks tab.
 // This avoids "X is not a constructor" on /account (CJS/ESM + esbuild minification issue with dnd).
 const KanbanBoard = React.lazy(() => import('./kanban/KanbanBoard'));
-import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, leadsService, paymentProofsService, propertyDocumentsService, propertyDepositProofsService, unitLeaseTermsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem, UnitLeaseTermUi, addressBookPartiesService, propertyToPartiesAddressBookEntries, paymentChainFilesService } from '../services/supabaseService';
-import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, PropertyDetails, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation, PaymentProof, ContactParty, TenantDetails, PropertyDocument, PropertyDocumentType, PropertyDeposit, PropertyDepositProof, LeaseTermDraftUi, AddressBookPartyEntry, PaymentChainAttachment, PaymentChain } from '../types';
+import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, leadsService, paymentProofsService, propertyDocumentsService, propertyDepositProofsService, unitLeaseTermsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem, UnitLeaseTermUi, addressBookPartiesService, propertyToPartiesAddressBookEntries, paymentChainService, paymentChainFilesService } from '../services/supabaseService';
+import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, PropertyDetails, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation, PaymentProof, ContactParty, TenantDetails, PropertyDocument, PropertyDocumentType, PropertyDeposit, PropertyDepositProof, LeaseTermDraftUi, AddressBookPartyEntry, PaymentChainAttachment, PaymentChain, PaymentChainFile } from '../types';
 import { euToIso, validateEuDate } from '../utils/leaseTermDates';
 import { MOCK_PROPERTIES } from '../constants';
 import { createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
@@ -453,35 +453,86 @@ const AccountDashboard: React.FC = () => {
     from_company1_to_owner: { payByDayOfMonth: undefined, total: '', description: '', breakdown: {}, attachments: [] },
     from_company2_to_company1: { payByDayOfMonth: undefined, total: '', description: '', breakdown: {}, attachments: [] },
   });
-  const lastLoadedPaymentChainForPropertyId = useRef<string | null>(null);
+  const [paymentChainLoading, setPaymentChainLoading] = useState(false);
+  const [paymentChainError, setPaymentChainError] = useState<string | null>(null);
+  const [paymentChainFiles, setPaymentChainFiles] = useState<Record<PaymentTileKey, PaymentChainFile[]>>({
+    owner_control: [],
+    from_company1_to_owner: [],
+    from_company2_to_company1: [],
+  });
   const [paymentChainUploadingTile, setPaymentChainUploadingTile] = useState<PaymentTileKey | null>(null);
-  const paymentChainStorageKey = (k: PaymentTileKey): 'owner' | 'company1' | 'company2' => (k === 'owner_control' ? 'owner' : k === 'from_company1_to_owner' ? 'company1' : 'company2');
+  const tileKeyToDb = (k: PaymentTileKey): 'OWNER_RECEIPT' | 'C1_TO_OWNER' | 'C2_TO_C1' => (k === 'owner_control' ? 'OWNER_RECEIPT' : k === 'from_company1_to_owner' ? 'C1_TO_OWNER' : 'C2_TO_C1');
+  const dbTileToKey = (t: 'OWNER_RECEIPT' | 'C1_TO_OWNER' | 'C2_TO_C1'): PaymentTileKey => (t === 'OWNER_RECEIPT' ? 'owner_control' : t === 'C1_TO_OWNER' ? 'from_company1_to_owner' : 'from_company2_to_company1');
+  const loadPaymentChain = useCallback(async (propertyId: string) => {
+    setPaymentChainLoading(true);
+    setPaymentChainError(null);
+    try {
+      const state = await paymentChainService.getPaymentChain(propertyId);
+      setPaymentTiles(prev => {
+        const next = { ...prev };
+        const e1 = state.edges.C1_TO_OWNER;
+        if (e1) {
+          next.from_company1_to_owner = {
+            ...prev.from_company1_to_owner,
+            payByDayOfMonth: e1.pay_by_day_of_month ?? undefined,
+            total: e1.amount_total != null ? String(e1.amount_total) : '',
+            description: e1.description ?? '',
+            breakdown: e1.breakdown && typeof e1.breakdown === 'object' ? { ...e1.breakdown } : {},
+          };
+        }
+        const e2 = state.edges.C2_TO_C1;
+        if (e2) {
+          next.from_company2_to_company1 = {
+            ...prev.from_company2_to_company1,
+            payByDayOfMonth: e2.pay_by_day_of_month ?? undefined,
+            total: e2.amount_total != null ? String(e2.amount_total) : '',
+            description: e2.description ?? '',
+            breakdown: e2.breakdown && typeof e2.breakdown === 'object' ? { ...e2.breakdown } : {},
+          };
+        }
+        return next;
+      });
+      setPaymentChainFiles({
+        owner_control: state.filesByTile.OWNER_RECEIPT,
+        from_company1_to_owner: state.filesByTile.C1_TO_OWNER,
+        from_company2_to_company1: state.filesByTile.C2_TO_C1,
+      });
+    } catch (e) {
+      setPaymentChainError(e instanceof Error ? e.message : 'Не вдалося завантажити платіжний ланцюжок');
+    } finally {
+      setPaymentChainLoading(false);
+    }
+  }, []);
   const handlePaymentChainAddFiles = async (tileKey: PaymentTileKey, files: FileList | null) => {
     if (!files?.length || !selectedPropertyId) return;
     setPaymentChainUploadingTile(tileKey);
     try {
-      const storageKey = paymentChainStorageKey(tileKey);
-      const uploaded: PaymentChainAttachment[] = [];
+      const { data: { user } } = await supabase.auth.getUser();
       for (let i = 0; i < files.length; i++) {
-        const meta = await paymentChainFilesService.upload(selectedPropertyId, storageKey, files[i]);
-        uploaded.push(meta);
+        await paymentChainService.uploadFile(selectedPropertyId, tileKeyToDb(tileKey), files[i], user?.id ?? undefined);
       }
-      setPaymentTiles(prev => ({ ...prev, [tileKey]: { ...prev[tileKey], attachments: [...prev[tileKey].attachments, ...uploaded] } }));
+      await loadPaymentChain(selectedPropertyId);
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Помилка завантаження');
     } finally {
       setPaymentChainUploadingTile(null);
     }
   };
-  const handlePaymentChainViewFile = async (path: string) => {
-    try { const url = await paymentChainFilesService.getSignedUrl(path, 600); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); }
+  const handlePaymentChainViewFile = async (storagePath: string) => {
+    try { const url = await paymentChainService.getFileSignedUrl(storagePath, 600); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); }
   };
-  const handlePaymentChainRemoveAttachment = async (tileKey: PaymentTileKey, index: number) => {
-    const att = paymentTiles[tileKey].attachments[index];
-    if (att && typeof att === 'object' && 'path' in att && typeof (att as PaymentChainAttachment).path === 'string') {
-      try { await paymentChainFilesService.remove((att as PaymentChainAttachment).path); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося видалити'); }
+  const handlePaymentChainDeleteFile = async (tileKey: PaymentTileKey, file: PaymentChainFile) => {
+    try {
+      if (file.id.startsWith('legacy-')) {
+        await paymentChainFilesService.remove(file.storage_path);
+        setPaymentChainFiles(prev => ({ ...prev, [tileKey]: prev[tileKey].filter(f => f.id !== file.id) }));
+      } else {
+        await paymentChainService.deleteFileById(file.id);
+        setPaymentChainFiles(prev => ({ ...prev, [tileKey]: prev[tileKey].filter(f => f.id !== file.id) }));
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Не вдалося видалити');
     }
-    setPaymentTiles(prev => ({ ...prev, [tileKey]: { ...prev[tileKey], attachments: prev[tileKey].attachments.filter((_, i) => i !== index) } }));
   };
   const [depositProofFile, setDepositProofFile] = useState<File | null>(null);
   const [depositProofError, setDepositProofError] = useState<string | null>(null);
@@ -503,33 +554,9 @@ const AccountDashboard: React.FC = () => {
   const ownerTotalAuto = activeRentRow ? (activeRentRow.warm ?? (activeRentRow.km + activeRentRow.bk + activeRentRow.hk)) : 0;
 
   useEffect(() => {
-    if (selectedPropertyId == null) {
-      lastLoadedPaymentChainForPropertyId.current = null;
-      return;
-    }
-    if (lastLoadedPaymentChainForPropertyId.current === selectedPropertyId) return;
-    const chain = selectedProperty?.paymentChain as Record<string, { payByDayOfMonth?: number; total?: string; description?: string; breakdown?: Record<string, string>; attachments?: { path: string; name: string }[] }> | undefined;
-    lastLoadedPaymentChainForPropertyId.current = selectedPropertyId;
-    const keys: PaymentTileKey[] = ['owner_control', 'from_company1_to_owner', 'from_company2_to_company1'];
-    const dbKey = (k: PaymentTileKey) => (k === 'owner_control' ? 'owner' : k === 'from_company1_to_owner' ? 'company1' : 'company2');
-    setPaymentTiles(prev => {
-      const next = { ...prev };
-      keys.forEach(k => {
-        const saved = (chain?.[k] ?? chain?.[dbKey(k)]) as { payByDayOfMonth?: number; total?: string; description?: string; breakdown?: Record<string, string>; attachments?: { path: string; name: string }[] } | undefined;
-        if (saved && typeof saved === 'object') {
-          const att = saved.attachments && Array.isArray(saved.attachments) ? saved.attachments : [];
-          next[k] = {
-            payByDayOfMonth: saved.payByDayOfMonth != null && saved.payByDayOfMonth >= 1 && saved.payByDayOfMonth <= 31 ? saved.payByDayOfMonth : undefined,
-            total: typeof saved.total === 'string' ? saved.total : '',
-            description: typeof saved.description === 'string' ? saved.description : '',
-            breakdown: saved.breakdown && typeof saved.breakdown === 'object' ? { ...saved.breakdown } : {},
-            attachments: att.length ? att.map(a => ({ path: a.path, name: a.name, size: (a as { size?: number }).size, mime: (a as { mime?: string }).mime, uploadedAt: (a as { uploadedAt?: string }).uploadedAt })) : (prev[k].attachments ?? [])
-          };
-        }
-      });
-      return next;
-    });
-  }, [selectedPropertyId, selectedProperty?.paymentChain]);
+    if (selectedPropertyId == null) return;
+    loadPaymentChain(selectedPropertyId);
+  }, [selectedPropertyId, loadPaymentChain]);
 
   const [isInventoryEditing, setIsInventoryEditing] = useState(false);
   const [expandedMeterGroups, setExpandedMeterGroups] = useState<Set<string>>(new Set());
@@ -2257,30 +2284,20 @@ const AccountDashboard: React.FC = () => {
             returnStatus: draftSnapshot.deposit.returnStatus ?? 'unpaid'
           }
         : null;
-      const toAttachments = (att: (File | PaymentChainAttachment)[]): PaymentChainAttachment[] =>
-        att.filter((a): a is PaymentChainAttachment => typeof a === 'object' && a !== null && 'path' in a && typeof (a as PaymentChainAttachment).path === 'string');
-      const paymentChainPayload: PaymentChain = {
-        owner: {
-          payByDayOfMonth: paymentTiles.owner_control.payByDayOfMonth,
-          description: paymentTiles.owner_control.description,
-          breakdown: Object.keys(paymentTiles.owner_control.breakdown).length ? { ...paymentTiles.owner_control.breakdown } : undefined,
-          attachments: toAttachments(paymentTiles.owner_control.attachments).length ? toAttachments(paymentTiles.owner_control.attachments) : undefined,
-        },
-        company1: {
-          payByDayOfMonth: paymentTiles.from_company1_to_owner.payByDayOfMonth,
-          total: paymentTiles.from_company1_to_owner.total,
-          description: paymentTiles.from_company1_to_owner.description,
-          breakdown: Object.keys(paymentTiles.from_company1_to_owner.breakdown).length ? { ...paymentTiles.from_company1_to_owner.breakdown } : undefined,
-          attachments: toAttachments(paymentTiles.from_company1_to_owner.attachments).length ? toAttachments(paymentTiles.from_company1_to_owner.attachments) : undefined,
-        },
-        company2: {
-          payByDayOfMonth: paymentTiles.from_company2_to_company1.payByDayOfMonth,
-          total: paymentTiles.from_company2_to_company1.total,
-          description: paymentTiles.from_company2_to_company1.description,
-          breakdown: Object.keys(paymentTiles.from_company2_to_company1.breakdown).length ? { ...paymentTiles.from_company2_to_company1.breakdown } : undefined,
-          attachments: toAttachments(paymentTiles.from_company2_to_company1.attachments).length ? toAttachments(paymentTiles.from_company2_to_company1.attachments) : undefined,
-        },
-      };
+      await Promise.all([
+        paymentChainService.upsertEdge(prop.id, 'C1_TO_OWNER', {
+          payByDayOfMonth: paymentTiles.from_company1_to_owner.payByDayOfMonth ?? null,
+          amount_total: paymentTiles.from_company1_to_owner.total || null,
+          description: paymentTiles.from_company1_to_owner.description || null,
+          breakdown: Object.keys(paymentTiles.from_company1_to_owner.breakdown).length ? paymentTiles.from_company1_to_owner.breakdown : null,
+        }),
+        paymentChainService.upsertEdge(prop.id, 'C2_TO_C1', {
+          payByDayOfMonth: paymentTiles.from_company2_to_company1.payByDayOfMonth ?? null,
+          amount_total: paymentTiles.from_company2_to_company1.total || null,
+          description: paymentTiles.from_company2_to_company1.description || null,
+          breakdown: Object.keys(paymentTiles.from_company2_to_company1.breakdown).length ? paymentTiles.from_company2_to_company1.breakdown : null,
+        }),
+      ]);
       const updated = await propertiesService.update(prop.id, {
         address: draftSnapshot.address,
         zip: draftSnapshot.zip,
@@ -2294,7 +2311,6 @@ const AccountDashboard: React.FC = () => {
         tenant: tenantPayload,
         secondCompany: secondCompanyPayload === null ? null : (secondCompanyPayload ?? undefined),
         deposit: depositPayload,
-        paymentChain: paymentChainPayload
       });
       const { data: { user } } = await supabase.auth.getUser();
       const entries = user?.id
@@ -5002,7 +5018,7 @@ ${internalCompany} Team`;
                                     )}
                                 </div>
                             </div>
-                            {/* Платіжний ланцюжок — data from Parties only */}
+                            {/* Платіжний ланцюжок — edges + files from paymentChainService */}
                             <div className="pb-4 border-b border-gray-700">
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="text-sm font-semibold text-white">Платіжний ланцюжок</span>
@@ -5011,6 +5027,10 @@ ${internalCompany} Team`;
                                         {showPaymentDetails ? 'Сховати деталізацію' : 'Показати деталізацію'}
                                     </button>
                                 </div>
+                                {paymentChainError && <div className="text-sm text-red-400 mb-2">{paymentChainError}</div>}
+                                {paymentChainLoading ? (
+                                    <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-4 text-gray-500 text-sm">Завантаження платіжного ланцюжка…</div>
+                                ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-0 items-start">
                                     <div className="md:col-span-3">
                                         <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-3">
@@ -5031,13 +5051,13 @@ ${internalCompany} Team`;
                                             <div className="mt-2 flex flex-wrap items-center gap-2">
                                                 <label className="text-xs text-emerald-500 hover:text-emerald-400 cursor-pointer">+ Додати файл<input type="file" className="hidden" multiple onChange={e => { handlePaymentChainAddFiles('owner_control', e.target.files); e.target.value = ''; }} disabled={!!paymentChainUploadingTile} /></label>
                                                 {paymentChainUploadingTile === 'owner_control' && <span className="text-xs text-gray-500">завантаження…</span>}
-                                                {paymentTiles.owner_control.attachments.length > 0 && (
+                                                {paymentChainFiles.owner_control.length > 0 && (
                                                     <ul className="list-none space-y-1 w-full">
-                                                        {paymentTiles.owner_control.attachments.map((a, i) => (
-                                                            <li key={i} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
-                                                                <span className="truncate flex-1">{'path' in a && typeof (a as PaymentChainAttachment).path === 'string' ? (a as PaymentChainAttachment).name : (a as File).name}</span>
-                                                                {'path' in a && typeof (a as PaymentChainAttachment).path === 'string' && <button type="button" onClick={() => handlePaymentChainViewFile((a as PaymentChainAttachment).path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>}
-                                                                <button type="button" onClick={() => handlePaymentChainRemoveAttachment('owner_control', i)} className="text-gray-400 hover:text-white">Видалити</button>
+                                                        {paymentChainFiles.owner_control.map(f => (
+                                                            <li key={f.id} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
+                                                                <span className="truncate flex-1">{f.file_name}</span>
+                                                                <button type="button" onClick={() => handlePaymentChainViewFile(f.storage_path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>
+                                                                <button type="button" onClick={() => handlePaymentChainDeleteFile('owner_control', f)} className="text-gray-400 hover:text-white">Видалити</button>
                                                             </li>
                                                         ))}
                                                     </ul>
@@ -5087,13 +5107,13 @@ ${internalCompany} Team`;
                                                             <div className="mt-2 flex flex-wrap items-center gap-2">
                                                                 <label className="text-xs text-emerald-500 hover:text-emerald-400 cursor-pointer">+ Додати файл<input type="file" className="hidden" multiple onChange={e => { handlePaymentChainAddFiles('from_company1_to_owner', e.target.files); e.target.value = ''; }} disabled={!!paymentChainUploadingTile} /></label>
                                                                 {paymentChainUploadingTile === 'from_company1_to_owner' && <span className="text-xs text-gray-500">завантаження…</span>}
-                                                                {paymentTiles.from_company1_to_owner.attachments.length > 0 && (
+                                                                {paymentChainFiles.from_company1_to_owner.length > 0 && (
                                                                     <ul className="list-none space-y-1 w-full">
-                                                                        {paymentTiles.from_company1_to_owner.attachments.map((a, i) => (
-                                                                            <li key={i} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
-                                                                                <span className="truncate flex-1">{'path' in a && typeof (a as PaymentChainAttachment).path === 'string' ? (a as PaymentChainAttachment).name : (a as File).name}</span>
-                                                                                {'path' in a && typeof (a as PaymentChainAttachment).path === 'string' && <button type="button" onClick={() => handlePaymentChainViewFile((a as PaymentChainAttachment).path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>}
-                                                                                <button type="button" onClick={() => handlePaymentChainRemoveAttachment('from_company1_to_owner', i)} className="text-gray-400 hover:text-white">Видалити</button>
+                                                                        {paymentChainFiles.from_company1_to_owner.map(f => (
+                                                                            <li key={f.id} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
+                                                                                <span className="truncate flex-1">{f.file_name}</span>
+                                                                                <button type="button" onClick={() => handlePaymentChainViewFile(f.storage_path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>
+                                                                                <button type="button" onClick={() => handlePaymentChainDeleteFile('from_company1_to_owner', f)} className="text-gray-400 hover:text-white">Видалити</button>
                                                                             </li>
                                                                         ))}
                                                                     </ul>
@@ -5153,13 +5173,13 @@ ${internalCompany} Team`;
                                                             <div className="mt-2 flex flex-wrap items-center gap-2">
                                                                 <label className="text-xs text-emerald-500 hover:text-emerald-400 cursor-pointer">+ Додати файл<input type="file" className="hidden" multiple onChange={e => { handlePaymentChainAddFiles('from_company2_to_company1', e.target.files); e.target.value = ''; }} disabled={!!paymentChainUploadingTile} /></label>
                                                                 {paymentChainUploadingTile === 'from_company2_to_company1' && <span className="text-xs text-gray-500">завантаження…</span>}
-                                                                {paymentTiles.from_company2_to_company1.attachments.length > 0 && (
+                                                                {paymentChainFiles.from_company2_to_company1.length > 0 && (
                                                                     <ul className="list-none space-y-1 w-full">
-                                                                        {paymentTiles.from_company2_to_company1.attachments.map((a, i) => (
-                                                                            <li key={i} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
-                                                                                <span className="truncate flex-1">{'path' in a && typeof (a as PaymentChainAttachment).path === 'string' ? (a as PaymentChainAttachment).name : (a as File).name}</span>
-                                                                                {'path' in a && typeof (a as PaymentChainAttachment).path === 'string' && <button type="button" onClick={() => handlePaymentChainViewFile((a as PaymentChainAttachment).path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>}
-                                                                                <button type="button" onClick={() => handlePaymentChainRemoveAttachment('from_company2_to_company1', i)} className="text-gray-400 hover:text-white">Видалити</button>
+                                                                        {paymentChainFiles.from_company2_to_company1.map(f => (
+                                                                            <li key={f.id} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
+                                                                                <span className="truncate flex-1">{f.file_name}</span>
+                                                                                <button type="button" onClick={() => handlePaymentChainViewFile(f.storage_path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>
+                                                                                <button type="button" onClick={() => handlePaymentChainDeleteFile('from_company2_to_company1', f)} className="text-gray-400 hover:text-white">Видалити</button>
                                                                             </li>
                                                                         ))}
                                                                     </ul>
@@ -5174,6 +5194,7 @@ ${internalCompany} Team`;
                                     </div>
                                     <div className="hidden md:block md:col-span-1" />
                                 </div>
+                                )}
                             </div>
                             <div>
                                 <span className="text-xs text-gray-500 block mb-2">Рентний таймлайн</span>
