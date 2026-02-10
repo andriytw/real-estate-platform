@@ -34,6 +34,15 @@ type AccountingTab = 'dashboard' | 'invoices' | 'expenses' | 'calendar' | 'banki
 type SalesTab = 'leads' | 'calendar' | 'offers' | 'reservations' | 'proformas' | 'requests' | 'history' | 'chat'; 
 type PropertiesTab = 'list' | 'units';
 
+type PaymentTileKey = 'from_company2_to_company1' | 'from_company1_to_owner' | 'owner_control';
+type PaymentTileState = {
+  dueDate: string;
+  total: string;
+  description: string;
+  breakdown: { km?: string; bk?: string; hk?: string; muell?: string; strom?: string; gas?: string; wasser?: string };
+  attachments: File[];
+};
+
 // --- TASK CATEGORIES ---
 const FACILITY_TASK_TYPES: TaskType[] = [
     'Einzug', 'Auszug', 'Putzen', 'Reklamation', 'Arbeit nach plan', 'Zeit Abgabe von wohnung', 'Zählerstand'
@@ -420,6 +429,13 @@ const AccountDashboard: React.FC = () => {
   const [addressBookDeletingId, setAddressBookDeletingId] = useState<string | null>(null);
   const [addressBookDeleteError, setAddressBookDeleteError] = useState<string | null>(null);
   const [showPartiesDetails, setShowPartiesDetails] = useState(false);
+  const [showPaymentDetails, setShowPaymentDetails] = useState(false);
+  const [editingPaymentTile, setEditingPaymentTile] = useState<PaymentTileKey | null>(null);
+  const [paymentTiles, setPaymentTiles] = useState<Record<PaymentTileKey, PaymentTileState>>({
+    owner_control: { dueDate: '', total: '', description: '', breakdown: {}, attachments: [] },
+    from_company1_to_owner: { dueDate: '', total: '', description: '', breakdown: {}, attachments: [] },
+    from_company2_to_company1: { dueDate: '', total: '', description: '', breakdown: {}, attachments: [] },
+  });
   const [depositProofFile, setDepositProofFile] = useState<File | null>(null);
   const [depositProofError, setDepositProofError] = useState<string | null>(null);
   const [depositProofUploading, setDepositProofUploading] = useState(false);
@@ -4872,6 +4888,179 @@ ${internalCompany} Team`;
                                             {renderPartyRow('IBAN', selectedProperty.management?.iban)}
                                         </>
                                     )}
+                                </div>
+                            </div>
+                            {/* Платіжний ланцюжок — data from Parties only */}
+                            <div className="pb-4 border-b border-gray-700">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-sm font-semibold text-white">Платіжний ланцюжок</span>
+                                    <button type="button" onClick={() => setShowPaymentDetails(v => !v)} className="p-2 rounded-md border border-gray-700 bg-[#111315] hover:bg-[#15181b] text-gray-200 flex items-center gap-1.5 text-sm">
+                                        {showPaymentDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                        {showPaymentDetails ? 'Сховати деталі' : 'Показати деталі'}
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-0 items-start">
+                                    <div className="md:col-span-3">
+                                        <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-3">
+                                            <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">Власник</div>
+                                            <div className="text-xs text-gray-500 mb-2">Отримання (контроль)</div>
+                                            <div className="text-sm font-semibold text-white">Кому платити: {(selectedProperty.landlord?.name ?? '').trim() || '—'}</div>
+                                            <div className="text-sm text-gray-400 font-mono mt-0.5">IBAN: {(selectedProperty.landlord?.iban ?? '').trim() || '—'}</div>
+                                            {editingPaymentTile === 'owner_control' ? (
+                                                <>
+                                                    <div className="mt-2"><span className="text-xs text-gray-500 block">Дата платежу</span><input type="date" value={paymentTiles.owner_control.dueDate} onChange={e => setPaymentTiles(s => ({ ...s, owner_control: { ...s.owner_control, dueDate: e.target.value } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
+                                                    <div className="mt-1"><span className="text-xs text-gray-500 block">Сума (разом)</span><input type="text" value={paymentTiles.owner_control.total} onChange={e => setPaymentTiles(s => ({ ...s, owner_control: { ...s.owner_control, total: e.target.value } }))} placeholder="0" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
+                                                    <div className="mt-1"><span className="text-xs text-gray-500 block">Опис</span><input type="text" value={paymentTiles.owner_control.description} onChange={e => setPaymentTiles(s => ({ ...s, owner_control: { ...s.owner_control, description: e.target.value } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
+                                                    {showPaymentDetails && (
+                                                        <div className="mt-2 pt-2 border-t border-gray-800 space-y-1">
+                                                            <div className="text-xs text-gray-500">Kaltmiete</div><input type="text" value={paymentTiles.owner_control.breakdown.km ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, owner_control: { ...s.owner_control, breakdown: { ...s.owner_control.breakdown, km: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
+                                                            <div className="text-xs text-gray-500">Betriebskosten</div><input type="text" value={paymentTiles.owner_control.breakdown.bk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, owner_control: { ...s.owner_control, breakdown: { ...s.owner_control.breakdown, bk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
+                                                            <div className="text-xs text-gray-500">Heizkosten</div><input type="text" value={paymentTiles.owner_control.breakdown.hk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, owner_control: { ...s.owner_control, breakdown: { ...s.owner_control.breakdown, hk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
+                                                        </div>
+                                                    )}
+                                                    <div className="mt-2 flex gap-1"><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-emerald-500 hover:text-emerald-400">Зберегти</button><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-gray-400 hover:text-white">Скасувати</button></div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div className="mt-1 text-sm text-gray-400">Дата платежу: {paymentTiles.owner_control.dueDate || '—'}</div>
+                                                    <div className="text-sm text-gray-400">Сума (разом): {paymentTiles.owner_control.total || '—'}</div>
+                                                    {paymentTiles.owner_control.description && <div className="text-sm text-gray-400 mt-0.5">Опис: {paymentTiles.owner_control.description}</div>}
+                                                    {showPaymentDetails && (
+                                                        <div className="mt-2 pt-2 border-t border-gray-800 text-xs text-gray-500 space-y-0.5">
+                                                            {['km', 'bk', 'hk'].map(k => (paymentTiles.owner_control.breakdown as Record<string, string>)[k] && <div key={k}>{k === 'km' ? 'Kaltmiete' : k === 'bk' ? 'Betriebskosten' : 'Heizkosten'}: {(paymentTiles.owner_control.breakdown as Record<string, string>)[k]}</div>)}
+                                                            {!paymentTiles.owner_control.breakdown.km && !paymentTiles.owner_control.breakdown.bk && !paymentTiles.owner_control.breakdown.hk && <div>—</div>}
+                                                        </div>
+                                                    )}
+                                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                        <label className="text-xs text-emerald-500 hover:text-emerald-400 cursor-pointer">+ Додати файл<input type="file" className="hidden" multiple onChange={e => { const files = e.target.files; if (files?.length) setPaymentTiles(s => ({ ...s, owner_control: { ...s.owner_control, attachments: [...s.owner_control.attachments, ...Array.from(files)] } })); e.target.value = ''; }} /></label>
+                                                        {paymentTiles.owner_control.attachments.length > 0 && (
+                                                            <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">
+                                                                📎 {paymentTiles.owner_control.attachments.length}
+                                                                <button type="button" onClick={() => setPaymentTiles(s => ({ ...s, owner_control: { ...s.owner_control, attachments: [] } }))} className="text-gray-400 hover:text-white">×</button>
+                                                            </span>
+                                                        )}
+                                                        <button type="button" onClick={() => setEditingPaymentTile('owner_control')} className="text-xs text-emerald-500 hover:text-emerald-400">Редагувати</button>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="hidden md:flex md:col-span-1 items-center justify-center text-gray-500 pt-8"><ArrowRight className="w-5 h-5 rotate-180" /></div>
+                                    <div className="md:col-span-3">
+                                        <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-3">
+                                            {!(selectedProperty.tenant?.name ?? '').trim() ? (
+                                                <>
+                                                    <div className="text-sm text-gray-500 py-2">Додай 1-шу фірму в Контрагенти</div>
+                                                    <button type="button" onClick={startCard1Edit} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">1-ша фірма → Власник</div>
+                                                    <div className="text-xs text-gray-500 mb-2">Кому платити: Власник</div>
+                                                    <div className="text-sm font-semibold text-white">Кому платити: {(selectedProperty.landlord?.name ?? '').trim() || '—'}</div>
+                                                    <div className="text-sm text-gray-400 font-mono mt-0.5">IBAN: {(selectedProperty.landlord?.iban ?? '').trim() || '—'}</div>
+                                                    {editingPaymentTile === 'from_company1_to_owner' ? (
+                                                        <>
+                                                            <div className="mt-2"><span className="text-xs text-gray-500 block">Дата платежу</span><input type="date" value={paymentTiles.from_company1_to_owner.dueDate} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, dueDate: e.target.value } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
+                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Сума (разом)</span><input type="text" value={paymentTiles.from_company1_to_owner.total} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, total: e.target.value } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
+                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Опис</span><input type="text" value={paymentTiles.from_company1_to_owner.description} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, description: e.target.value } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
+                                                            {showPaymentDetails && (
+                                                                <div className="mt-2 pt-2 border-t border-gray-800 space-y-1">
+                                                                    <div className="text-xs text-gray-500">Kaltmiete</div><input type="text" value={paymentTiles.from_company1_to_owner.breakdown.km ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, breakdown: { ...s.from_company1_to_owner.breakdown, km: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
+                                                                    <div className="text-xs text-gray-500">Betriebskosten</div><input type="text" value={paymentTiles.from_company1_to_owner.breakdown.bk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, breakdown: { ...s.from_company1_to_owner.breakdown, bk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
+                                                                    <div className="text-xs text-gray-500">Heizkosten</div><input type="text" value={paymentTiles.from_company1_to_owner.breakdown.hk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, breakdown: { ...s.from_company1_to_owner.breakdown, hk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
+                                                                </div>
+                                                            )}
+                                                            <div className="mt-2 flex gap-1"><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-emerald-500 hover:text-emerald-400">Зберегти</button><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-gray-400 hover:text-white">Скасувати</button></div>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div className="mt-1 text-sm text-gray-400">Дата платежу: {paymentTiles.from_company1_to_owner.dueDate || '—'}</div>
+                                                            <div className="text-sm text-gray-400">Сума (разом): {paymentTiles.from_company1_to_owner.total || '—'}</div>
+                                                            {paymentTiles.from_company1_to_owner.description && <div className="text-sm text-gray-400 mt-0.5">Опис: {paymentTiles.from_company1_to_owner.description}</div>}
+                                                            {showPaymentDetails && (
+                                                                <div className="mt-2 pt-2 border-t border-gray-800 text-xs text-gray-500 space-y-0.5">
+                                                                    {['km', 'bk', 'hk'].map(k => (paymentTiles.from_company1_to_owner.breakdown as Record<string, string>)[k] && <div key={k}>{k === 'km' ? 'Kaltmiete' : k === 'bk' ? 'Betriebskosten' : 'Heizkosten'}: {(paymentTiles.from_company1_to_owner.breakdown as Record<string, string>)[k]}</div>)}
+                                                                    {!paymentTiles.from_company1_to_owner.breakdown.km && !paymentTiles.from_company1_to_owner.breakdown.bk && !paymentTiles.from_company1_to_owner.breakdown.hk && <div>—</div>}
+                                                                </div>
+                                                            )}
+                                                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                                <label className="text-xs text-emerald-500 hover:text-emerald-400 cursor-pointer">+ Додати файл<input type="file" className="hidden" multiple onChange={e => { const files = e.target.files; if (files?.length) setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, attachments: [...s.from_company1_to_owner.attachments, ...Array.from(files)] } })); e.target.value = ''; }} /></label>
+                                                                {paymentTiles.from_company1_to_owner.attachments.length > 0 && (
+                                                                    <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">
+                                                                        📎 {paymentTiles.from_company1_to_owner.attachments.length}
+                                                                        <button type="button" onClick={() => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, attachments: [] } }))} className="text-gray-400 hover:text-white">×</button>
+                                                                    </span>
+                                                                )}
+                                                                <button type="button" onClick={() => setEditingPaymentTile('from_company1_to_owner')} className="text-xs text-emerald-500 hover:text-emerald-400">Редагувати</button>
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="hidden md:flex md:col-span-1 items-center justify-center text-gray-500 pt-8"><ArrowRight className="w-5 h-5 rotate-180" /></div>
+                                    <div className="md:col-span-3">
+                                        <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-3">
+                                            {!(selectedProperty.tenant?.name ?? '').trim() ? (
+                                                <>
+                                                    <div className="text-sm text-gray-500 py-2">Додай 1-шу фірму в Контрагенти</div>
+                                                    <button type="button" onClick={startCard1Edit} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
+                                                </>
+                                            ) : !(selectedProperty.secondCompany?.name ?? '').trim() ? (
+                                                <>
+                                                    <div className="text-sm text-gray-500 py-2">Додай 2-гу фірму в Контрагенти</div>
+                                                    <button type="button" onClick={startCard1Edit} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">2-га фірма → 1-ша фірма</div>
+                                                    <div className="text-xs text-gray-500 mb-2">Кому платити: 1-ша фірма</div>
+                                                    <div className="text-sm font-semibold text-white">Кому платити: {(selectedProperty.tenant?.name ?? '').trim() || '—'}</div>
+                                                    <div className="text-sm text-gray-400 font-mono mt-0.5">IBAN: {(selectedProperty.tenant?.iban ?? '').trim() || '—'}</div>
+                                                    {editingPaymentTile === 'from_company2_to_company1' ? (
+                                                        <>
+                                                            <div className="mt-2"><span className="text-xs text-gray-500 block">Дата платежу</span><input type="date" value={paymentTiles.from_company2_to_company1.dueDate} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, dueDate: e.target.value } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
+                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Сума (разом)</span><input type="text" value={paymentTiles.from_company2_to_company1.total} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, total: e.target.value } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
+                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Опис</span><input type="text" value={paymentTiles.from_company2_to_company1.description} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, description: e.target.value } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
+                                                            {showPaymentDetails && (
+                                                                <div className="mt-2 pt-2 border-t border-gray-800 space-y-1">
+                                                                    <div className="text-xs text-gray-500">Kaltmiete</div><input type="text" value={paymentTiles.from_company2_to_company1.breakdown.km ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, breakdown: { ...s.from_company2_to_company1.breakdown, km: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
+                                                                    <div className="text-xs text-gray-500">Betriebskosten</div><input type="text" value={paymentTiles.from_company2_to_company1.breakdown.bk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, breakdown: { ...s.from_company2_to_company1.breakdown, bk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
+                                                                    <div className="text-xs text-gray-500">Heizkosten</div><input type="text" value={paymentTiles.from_company2_to_company1.breakdown.hk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, breakdown: { ...s.from_company2_to_company1.breakdown, hk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
+                                                                </div>
+                                                            )}
+                                                            <div className="mt-2 flex gap-1"><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-emerald-500 hover:text-emerald-400">Зберегти</button><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-gray-400 hover:text-white">Скасувати</button></div>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div className="mt-1 text-sm text-gray-400">Дата платежу: {paymentTiles.from_company2_to_company1.dueDate || '—'}</div>
+                                                            <div className="text-sm text-gray-400">Сума (разом): {paymentTiles.from_company2_to_company1.total || '—'}</div>
+                                                            {paymentTiles.from_company2_to_company1.description && <div className="text-sm text-gray-400 mt-0.5">Опис: {paymentTiles.from_company2_to_company1.description}</div>}
+                                                            {showPaymentDetails && (
+                                                                <div className="mt-2 pt-2 border-t border-gray-800 text-xs text-gray-500 space-y-0.5">
+                                                                    {['km', 'bk', 'hk'].map(k => (paymentTiles.from_company2_to_company1.breakdown as Record<string, string>)[k] && <div key={k}>{k === 'km' ? 'Kaltmiete' : k === 'bk' ? 'Betriebskosten' : 'Heizkosten'}: {(paymentTiles.from_company2_to_company1.breakdown as Record<string, string>)[k]}</div>)}
+                                                                    {!paymentTiles.from_company2_to_company1.breakdown.km && !paymentTiles.from_company2_to_company1.breakdown.bk && !paymentTiles.from_company2_to_company1.breakdown.hk && <div>—</div>}
+                                                                </div>
+                                                            )}
+                                                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                                <label className="text-xs text-emerald-500 hover:text-emerald-400 cursor-pointer">+ Додати файл<input type="file" className="hidden" multiple onChange={e => { const files = e.target.files; if (files?.length) setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, attachments: [...s.from_company2_to_company1.attachments, ...Array.from(files)] } })); e.target.value = ''; }} /></label>
+                                                                {paymentTiles.from_company2_to_company1.attachments.length > 0 && (
+                                                                    <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">
+                                                                        📎 {paymentTiles.from_company2_to_company1.attachments.length}
+                                                                        <button type="button" onClick={() => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, attachments: [] } }))} className="text-gray-400 hover:text-white">×</button>
+                                                                    </span>
+                                                                )}
+                                                                <button type="button" onClick={() => setEditingPaymentTile('from_company2_to_company1')} className="text-xs text-emerald-500 hover:text-emerald-400">Редагувати</button>
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="hidden md:block md:col-span-1" />
                                 </div>
                             </div>
                             <div>
