@@ -4392,7 +4392,6 @@ ${internalCompany} Team`;
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Власник (орендодавець)</h3>
                                     <div className="grid grid-cols-1 gap-2 items-start">
-                                        <div><label className="text-xs text-gray-500 block mb-1">ID</label><input value={card1Draft.landlord?.unitIdentifier ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, landlord: { ...(d.landlord || defaultContactParty()), unitIdentifier: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
                                         <div>
                                             <label className="text-xs text-gray-500 block mb-1">Назва</label>
                                             <div className="relative">
@@ -4414,6 +4413,7 @@ ${internalCompany} Team`;
                                                 )}
                                             </div>
                                         </div>
+                                        <div><label className="text-xs text-gray-500 block mb-1">ID</label><input value={card1Draft.landlord?.unitIdentifier ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, landlord: { ...(d.landlord || defaultContactParty()), unitIdentifier: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Контактна персона</label><input value={card1Draft.landlord?.contactPerson ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, landlord: { ...(d.landlord || defaultContactParty()), contactPerson: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">IBAN</label><input value={card1Draft.landlord?.iban ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, landlord: (d.landlord || defaultContactParty()).iban !== undefined ? { ...(d.landlord || defaultContactParty()), iban: e.target.value } : { ...(d.landlord || defaultContactParty()), iban: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white font-mono" placeholder="IBAN" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Вулиця</label><input value={card1Draft.landlord?.address?.street ?? ''} onChange={e => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, address: { ...d.landlord.address!, street: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
@@ -4498,7 +4498,6 @@ ${internalCompany} Team`;
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Управління</h3>
                                     <div className="grid grid-cols-1 gap-2 items-start">
-                                        <div><label className="text-xs text-gray-500 block mb-1">ID</label><input value={card1Draft.management?.unitIdentifier ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, management: { ...(d.management || defaultContactParty()), unitIdentifier: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
                                         <div>
                                             <label className="text-xs text-gray-500 block mb-1">Назва</label>
                                             <div className="relative">
@@ -4520,6 +4519,7 @@ ${internalCompany} Team`;
                                                 )}
                                             </div>
                                         </div>
+                                        <div><label className="text-xs text-gray-500 block mb-1">ID</label><input value={card1Draft.management?.unitIdentifier ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, management: { ...(d.management || defaultContactParty()), unitIdentifier: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Контактна персона</label><input value={card1Draft.management?.contactPerson ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, management: { ...(d.management || defaultContactParty()), contactPerson: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Вулиця</label><input value={card1Draft.management?.address?.street ?? ''} onChange={e => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, address: { ...d.management.address!, street: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Номер будинку</label><input value={card1Draft.management?.address?.houseNumber ?? ''} onChange={e => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, address: { ...d.management.address!, houseNumber: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
