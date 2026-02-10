@@ -142,6 +142,12 @@ function formatAddress(addr?: { street?: string; houseNumber?: string; zip?: str
   return parts.join(', ');
 }
 
+/** VIEW only: filter empty, join with " • ". */
+function joinMeta(parts: string[]): string {
+  const filtered = parts.map((p) => String(p).trim()).filter(Boolean);
+  return filtered.length ? filtered.join(' • ') : '';
+}
+
 /** VIEW only: one label + value row; empty value => "—". */
 function renderPartyRow(label: string, value: string | number | null | undefined): React.ReactNode {
   const display = value === null || value === undefined || value === '' ? '—' : String(value);
@@ -407,7 +413,10 @@ const AccountDashboard: React.FC = () => {
   const [isAddressBookModalOpen, setIsAddressBookModalOpen] = useState(false);
   const [addressBookEntries, setAddressBookEntries] = useState<AddressBookPartyEntry[]>([]);
   const [addressBookLoading, setAddressBookLoading] = useState(false);
+  const [addressBookLoaded, setAddressBookLoaded] = useState(false);
   const [addressBookLastError, setAddressBookLastError] = useState<string | null>(null);
+  const [addressBookDropdownOpen, setAddressBookDropdownOpen] = useState<'owner' | 'company1' | 'company2' | 'management' | null>(null);
+  const [addressBookSearch, setAddressBookSearch] = useState<{ owner: string; company1: string; company2: string; management: string }>({ owner: '', company1: '', company2: '', management: '' });
   const [depositProofFile, setDepositProofFile] = useState<File | null>(null);
   const [depositProofError, setDepositProofError] = useState<string | null>(null);
   const [depositProofUploading, setDepositProofUploading] = useState(false);
@@ -2015,6 +2024,23 @@ const AccountDashboard: React.FC = () => {
     setCard1DepositError(null);
     setLeaseTermDraft(leaseTerm ? { contractStart: leaseTerm.contract_start, contractEnd: leaseTerm.contract_end ?? '', contractType: leaseTerm.contract_type, firstPaymentDate: leaseTerm.first_payment_date ?? '', note: leaseTerm.note ?? '' } : { contractStart: '', contractEnd: '', contractType: 'befristet', firstPaymentDate: '', note: '' });
     setIsEditingCard1(true);
+    if (!addressBookLoaded) {
+      setAddressBookLoading(true);
+      (async () => {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user?.id) {
+            const list = await addressBookPartiesService.listByRole(user.id);
+            setAddressBookEntries(list);
+            setAddressBookLoaded(true);
+          }
+        } catch (e) {
+          console.error('[AddressBook load]', e);
+        } finally {
+          setAddressBookLoading(false);
+        }
+      })();
+    }
   };
 
   const cancelCard1Edit = () => {
@@ -4365,7 +4391,27 @@ ${internalCompany} Team`;
                                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Власник (орендодавець)</h3>
                                     <div className="grid grid-cols-1 gap-2 items-start">
                                         <div><label className="text-xs text-gray-500 block mb-1">ID</label><input value={card1Draft.landlord?.unitIdentifier ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, landlord: { ...(d.landlord || defaultContactParty()), unitIdentifier: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Назва</label><input value={card1Draft.landlord?.name ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, landlord: d.landlord ? { ...d.landlord, name: e.target.value } : { ...defaultContactParty(), name: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="Імʼя або компанія" /></div>
+                                        <div>
+                                            <label className="text-xs text-gray-500 block mb-1">Назва</label>
+                                            <div className="relative">
+                                                <input value={card1Draft.landlord?.name ?? ''} onChange={e => { const v = e.target.value; setCard1Draft(d => d ? { ...d, landlord: d.landlord ? { ...d.landlord, name: v } : { ...defaultContactParty(), name: v } } : null); setAddressBookSearch(s => ({ ...s, owner: v })); }} onFocus={() => setAddressBookDropdownOpen('owner')} onBlur={() => setTimeout(() => setAddressBookDropdownOpen(null), 150)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white" placeholder="Імʼя або компанія" />
+                                                <button type="button" onClick={() => { setCard1Draft(d => d ? { ...d, landlord: d.landlord ? { ...d.landlord, name: '' } : { ...defaultContactParty(), name: '' } } : null); setAddressBookSearch(s => ({ ...s, owner: '' })); setAddressBookDropdownOpen(null); }} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>
+                                                {addressBookDropdownOpen === 'owner' && (
+                                                    <div className="absolute left-0 right-0 top-full mt-0.5 z-50 bg-[#1C1F24] border border-gray-700 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                                                        {addressBookEntries.filter(e => e.role === 'owner').filter(e => { const q = addressBookSearch.owner.toLowerCase(); if (!q.trim()) return true; const addr = formatAddress({ street: e.street, houseNumber: e.houseNumber ?? '', zip: e.zip, city: e.city, country: e.country ?? '' }); const searchable = `${e.name} ${addr} ${normalizeArray(e.phones ?? [])} ${normalizeArray(e.emails ?? [])}`.toLowerCase(); return searchable.includes(q); }).map(entry => {
+                                                            const addr = formatAddress({ street: entry.street, houseNumber: entry.houseNumber ?? '', zip: entry.zip, city: entry.city, country: entry.country ?? '' }); const meta = joinMeta([addr, normalizeArray(entry.phones ?? []), normalizeArray(entry.emails ?? [])]);
+                                                            return (
+                                                                <button key={entry.id ?? entry.name + entry.street} type="button" className="w-full text-left px-3 py-2 hover:bg-[#111315] border-b border-gray-700/50 last:border-0" onMouseDown={(ev) => { ev.preventDefault(); setCard1Draft(d => d ? { ...d, landlord: { name: entry.name ?? '', address: { street: entry.street ?? '', houseNumber: entry.houseNumber ?? '', zip: entry.zip ?? '', city: entry.city ?? '', country: entry.country ?? '' }, phones: entry.phones ?? [], emails: entry.emails ?? [], iban: entry.iban ?? '', unitIdentifier: entry.unitIdentifier ?? '', contactPerson: entry.contactPerson ?? '' } } : null); setAddressBookSearch(s => ({ ...s, owner: '' })); setAddressBookDropdownOpen(null); }}>
+                                                                    <div className="font-semibold text-white text-sm">{entry.name}</div>
+                                                                    <div className="text-gray-400 text-xs">{meta || '—'}</div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                        {addressBookEntries.filter(e => e.role === 'owner').filter(e => { const q = addressBookSearch.owner.toLowerCase(); if (!q.trim()) return true; const addr = formatAddress({ street: e.street, houseNumber: e.houseNumber ?? '', zip: e.zip, city: e.city, country: e.country ?? '' }); const searchable = `${e.name} ${addr} ${normalizeArray(e.phones ?? [])} ${normalizeArray(e.emails ?? [])}`.toLowerCase(); return searchable.includes(q); }).length === 0 && <div className="px-3 py-2 text-gray-500 text-sm">Немає записів</div>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Контактна персона</label><input value={card1Draft.landlord?.contactPerson ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, landlord: { ...(d.landlord || defaultContactParty()), contactPerson: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">IBAN</label><input value={card1Draft.landlord?.iban ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, landlord: (d.landlord || defaultContactParty()).iban !== undefined ? { ...(d.landlord || defaultContactParty()), iban: e.target.value } : { ...(d.landlord || defaultContactParty()), iban: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white font-mono" placeholder="IBAN" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Вулиця</label><input value={card1Draft.landlord?.address?.street ?? ''} onChange={e => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, address: { ...d.landlord.address!, street: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
@@ -4380,7 +4426,27 @@ ${internalCompany} Team`;
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">1-ша фірма</h3>
                                     <div className="grid grid-cols-1 gap-2 items-start">
-                                        <div><label className="text-xs text-gray-500 block mb-1">Імʼя</label><input value={card1Draft.tenant.name} onChange={e => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, name: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        <div>
+                                            <label className="text-xs text-gray-500 block mb-1">Імʼя</label>
+                                            <div className="relative">
+                                                <input value={card1Draft.tenant.name} onChange={e => { const v = e.target.value; setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, name: v } } : null); setAddressBookSearch(s => ({ ...s, company1: v })); }} onFocus={() => setAddressBookDropdownOpen('company1')} onBlur={() => setTimeout(() => setAddressBookDropdownOpen(null), 150)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white" />
+                                                <button type="button" onClick={() => { setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, name: '' } } : null); setAddressBookSearch(s => ({ ...s, company1: '' })); setAddressBookDropdownOpen(null); }} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>
+                                                {addressBookDropdownOpen === 'company1' && (
+                                                    <div className="absolute left-0 right-0 top-full mt-0.5 z-50 bg-[#1C1F24] border border-gray-700 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                                                        {addressBookEntries.filter(e => e.role === 'company1').filter(e => { const q = addressBookSearch.company1.toLowerCase(); if (!q.trim()) return true; const addr = formatAddress({ street: e.street, houseNumber: e.houseNumber ?? '', zip: e.zip, city: e.city, country: e.country ?? '' }); const searchable = `${e.name} ${addr} ${normalizeArray(e.phones ?? [])} ${normalizeArray(e.emails ?? [])}`.toLowerCase(); return searchable.includes(q); }).map(entry => {
+                                                            const addr = formatAddress({ street: entry.street, houseNumber: entry.houseNumber ?? '', zip: entry.zip, city: entry.city, country: entry.country ?? '' }); const meta = joinMeta([addr, normalizeArray(entry.phones ?? []), normalizeArray(entry.emails ?? [])]);
+                                                            return (
+                                                                <button key={entry.id ?? entry.name + entry.street} type="button" className="w-full text-left px-3 py-2 hover:bg-[#111315] border-b border-gray-700/50 last:border-0" onMouseDown={(ev) => { ev.preventDefault(); setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, name: entry.name ?? '', iban: entry.iban ?? '', address: { street: entry.street ?? '', houseNumber: entry.houseNumber ?? '', zip: entry.zip ?? '', city: entry.city ?? '', country: entry.country ?? '' }, phones: entry.phones ?? [], emails: entry.emails ?? [], paymentDayOfMonth: (entry.paymentDay != null && entry.paymentDay >= 1 && entry.paymentDay <= 31) ? entry.paymentDay : undefined, phone: (entry.phones?.[0] ?? ''), email: (entry.emails?.[0] ?? '') } } : null); setAddressBookSearch(s => ({ ...s, company1: '' })); setAddressBookDropdownOpen(null); }}>
+                                                                    <div className="font-semibold text-white text-sm">{entry.name}</div>
+                                                                    <div className="text-gray-400 text-xs">{meta || '—'}</div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                        {addressBookEntries.filter(e => e.role === 'company1').filter(e => { const q = addressBookSearch.company1.toLowerCase(); if (!q.trim()) return true; const addr = formatAddress({ street: e.street, houseNumber: e.houseNumber ?? '', zip: e.zip, city: e.city, country: e.country ?? '' }); const searchable = `${e.name} ${addr} ${normalizeArray(e.phones ?? [])} ${normalizeArray(e.emails ?? [])}`.toLowerCase(); return searchable.includes(q); }).length === 0 && <div className="px-3 py-2 text-gray-500 text-sm">Немає записів</div>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                         <div><label className="text-xs text-gray-500 block mb-1">IBAN (необовʼязково)</label><input value={card1Draft.tenant.iban ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, iban: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white font-mono" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Вулиця</label><input value={card1Draft.tenant.address?.street ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, address: { ...(d.tenant.address || defaultContactParty().address), street: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Номер будинку</label><input value={card1Draft.tenant.address?.houseNumber ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, address: { ...(d.tenant.address || defaultContactParty().address), houseNumber: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
@@ -4395,7 +4461,27 @@ ${internalCompany} Team`;
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">2-га фірма</h3>
                                     <div className="grid grid-cols-1 gap-2 items-start">
-                                        <div><label className="text-xs text-gray-500 block mb-1">Імʼя</label><input value={card1Draft.secondCompany?.name ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, secondCompany: d.secondCompany ? { ...d.secondCompany, name: e.target.value } : { name: e.target.value, phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [''], paymentDayOfMonth: undefined } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        <div>
+                                            <label className="text-xs text-gray-500 block mb-1">Імʼя</label>
+                                            <div className="relative">
+                                                <input value={card1Draft.secondCompany?.name ?? ''} onChange={e => { const v = e.target.value; setCard1Draft(d => d ? { ...d, secondCompany: d.secondCompany ? { ...d.secondCompany, name: v } : { name: v, phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [''], paymentDayOfMonth: undefined } } : null); setAddressBookSearch(s => ({ ...s, company2: v })); }} onFocus={() => setAddressBookDropdownOpen('company2')} onBlur={() => setTimeout(() => setAddressBookDropdownOpen(null), 150)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white" />
+                                                <button type="button" onClick={() => { setCard1Draft(d => d ? (d.secondCompany ? { ...d, secondCompany: { ...d.secondCompany, name: '' } } : d) : null); setAddressBookSearch(s => ({ ...s, company2: '' })); setAddressBookDropdownOpen(null); }} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>
+                                                {addressBookDropdownOpen === 'company2' && (
+                                                    <div className="absolute left-0 right-0 top-full mt-0.5 z-50 bg-[#1C1F24] border border-gray-700 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                                                        {addressBookEntries.filter(e => e.role === 'company2').filter(e => { const q = addressBookSearch.company2.toLowerCase(); if (!q.trim()) return true; const addr = formatAddress({ street: e.street, houseNumber: e.houseNumber ?? '', zip: e.zip, city: e.city, country: e.country ?? '' }); const searchable = `${e.name} ${addr} ${normalizeArray(e.phones ?? [])} ${normalizeArray(e.emails ?? [])}`.toLowerCase(); return searchable.includes(q); }).map(entry => {
+                                                            const addr = formatAddress({ street: entry.street, houseNumber: entry.houseNumber ?? '', zip: entry.zip, city: entry.city, country: entry.country ?? '' }); const meta = joinMeta([addr, normalizeArray(entry.phones ?? []), normalizeArray(entry.emails ?? [])]);
+                                                            return (
+                                                                <button key={entry.id ?? entry.name + entry.street} type="button" className="w-full text-left px-3 py-2 hover:bg-[#111315] border-b border-gray-700/50 last:border-0" onMouseDown={(ev) => { ev.preventDefault(); const base = card1Draft?.secondCompany ?? { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [''], paymentDayOfMonth: undefined }; setCard1Draft(d => d ? { ...d, secondCompany: { ...base, name: entry.name ?? '', iban: entry.iban ?? '', address: { street: entry.street ?? '', houseNumber: entry.houseNumber ?? '', zip: entry.zip ?? '', city: entry.city ?? '', country: entry.country ?? '' }, phones: entry.phones ?? [], emails: entry.emails ?? [], paymentDayOfMonth: (entry.paymentDay != null && entry.paymentDay >= 1 && entry.paymentDay <= 31) ? entry.paymentDay : undefined, phone: (entry.phones?.[0] ?? ''), email: (entry.emails?.[0] ?? '') } } : null); setAddressBookSearch(s => ({ ...s, company2: '' })); setAddressBookDropdownOpen(null); }}>
+                                                                    <div className="font-semibold text-white text-sm">{entry.name}</div>
+                                                                    <div className="text-gray-400 text-xs">{meta || '—'}</div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                        {addressBookEntries.filter(e => e.role === 'company2').filter(e => { const q = addressBookSearch.company2.toLowerCase(); if (!q.trim()) return true; const addr = formatAddress({ street: e.street, houseNumber: e.houseNumber ?? '', zip: e.zip, city: e.city, country: e.country ?? '' }); const searchable = `${e.name} ${addr} ${normalizeArray(e.phones ?? [])} ${normalizeArray(e.emails ?? [])}`.toLowerCase(); return searchable.includes(q); }).length === 0 && <div className="px-3 py-2 text-gray-500 text-sm">Немає записів</div>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                         <div><label className="text-xs text-gray-500 block mb-1">IBAN (необовʼязково)</label><input value={card1Draft.secondCompany?.iban ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, secondCompany: { ...(d.secondCompany || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [] }), iban: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white font-mono" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Вулиця</label><input value={card1Draft.secondCompany?.address?.street ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, secondCompany: { ...(d.secondCompany || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [] }), address: { ...(d.secondCompany?.address || defaultContactParty().address), street: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Номер будинку</label><input value={card1Draft.secondCompany?.address?.houseNumber ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, secondCompany: { ...(d.secondCompany || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [] }), address: { ...(d.secondCompany?.address || defaultContactParty().address), houseNumber: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
@@ -4411,7 +4497,27 @@ ${internalCompany} Team`;
                                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Управління</h3>
                                     <div className="grid grid-cols-1 gap-2 items-start">
                                         <div><label className="text-xs text-gray-500 block mb-1">ID</label><input value={card1Draft.management?.unitIdentifier ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, management: { ...(d.management || defaultContactParty()), unitIdentifier: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Назва</label><input value={card1Draft.management?.name ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, management: (d.management || defaultContactParty()).name !== undefined ? { ...(d.management || defaultContactParty()), name: e.target.value } : { ...defaultContactParty(), name: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        <div>
+                                            <label className="text-xs text-gray-500 block mb-1">Назва</label>
+                                            <div className="relative">
+                                                <input value={card1Draft.management?.name ?? ''} onChange={e => { const v = e.target.value; setCard1Draft(d => d ? { ...d, management: (d.management || defaultContactParty()).name !== undefined ? { ...(d.management || defaultContactParty()), name: v } : { ...defaultContactParty(), name: v } } : null); setAddressBookSearch(s => ({ ...s, management: v })); }} onFocus={() => setAddressBookDropdownOpen('management')} onBlur={() => setTimeout(() => setAddressBookDropdownOpen(null), 150)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white" />
+                                                <button type="button" onClick={() => { setCard1Draft(d => d ? { ...d, management: d.management ? { ...d.management, name: '' } : { ...defaultContactParty(), name: '' } } : null); setAddressBookSearch(s => ({ ...s, management: '' })); setAddressBookDropdownOpen(null); }} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>
+                                                {addressBookDropdownOpen === 'management' && (
+                                                    <div className="absolute left-0 right-0 top-full mt-0.5 z-50 bg-[#1C1F24] border border-gray-700 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                                                        {addressBookEntries.filter(e => e.role === 'management').filter(e => { const q = addressBookSearch.management.toLowerCase(); if (!q.trim()) return true; const addr = formatAddress({ street: e.street, houseNumber: e.houseNumber ?? '', zip: e.zip, city: e.city, country: e.country ?? '' }); const searchable = `${e.name} ${addr} ${normalizeArray(e.phones ?? [])} ${normalizeArray(e.emails ?? [])}`.toLowerCase(); return searchable.includes(q); }).map(entry => {
+                                                            const addr = formatAddress({ street: entry.street, houseNumber: entry.houseNumber ?? '', zip: entry.zip, city: entry.city, country: entry.country ?? '' }); const meta = joinMeta([addr, normalizeArray(entry.phones ?? []), normalizeArray(entry.emails ?? [])]);
+                                                            return (
+                                                                <button key={entry.id ?? entry.name + entry.street} type="button" className="w-full text-left px-3 py-2 hover:bg-[#111315] border-b border-gray-700/50 last:border-0" onMouseDown={(ev) => { ev.preventDefault(); setCard1Draft(d => d ? { ...d, management: { name: entry.name ?? '', address: { street: entry.street ?? '', houseNumber: entry.houseNumber ?? '', zip: entry.zip ?? '', city: entry.city ?? '', country: entry.country ?? '' }, phones: entry.phones ?? [], emails: entry.emails ?? [], iban: entry.iban ?? '', unitIdentifier: entry.unitIdentifier ?? '', contactPerson: entry.contactPerson ?? '' } } : null); setAddressBookSearch(s => ({ ...s, management: '' })); setAddressBookDropdownOpen(null); }}>
+                                                                    <div className="font-semibold text-white text-sm">{entry.name}</div>
+                                                                    <div className="text-gray-400 text-xs">{meta || '—'}</div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                        {addressBookEntries.filter(e => e.role === 'management').filter(e => { const q = addressBookSearch.management.toLowerCase(); if (!q.trim()) return true; const addr = formatAddress({ street: e.street, houseNumber: e.houseNumber ?? '', zip: e.zip, city: e.city, country: e.country ?? '' }); const searchable = `${e.name} ${addr} ${normalizeArray(e.phones ?? [])} ${normalizeArray(e.emails ?? [])}`.toLowerCase(); return searchable.includes(q); }).length === 0 && <div className="px-3 py-2 text-gray-500 text-sm">Немає записів</div>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Контактна персона</label><input value={card1Draft.management?.contactPerson ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, management: { ...(d.management || defaultContactParty()), contactPerson: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Вулиця</label><input value={card1Draft.management?.address?.street ?? ''} onChange={e => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, address: { ...d.management.address!, street: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
                                         <div><label className="text-xs text-gray-500 block mb-1">Номер будинку</label><input value={card1Draft.management?.address?.houseNumber ?? ''} onChange={e => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, address: { ...d.management.address!, houseNumber: e.target.value } } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
@@ -4584,16 +4690,22 @@ ${internalCompany} Team`;
                                     onClick={async () => {
                                         setIsAddressBookModalOpen(true);
                                         setAddressBookLastError(null);
+
+                                        if (addressBookLoaded && addressBookEntries.length > 0) return;
+
                                         setAddressBookLoading(true);
                                         setAddressBookEntries([]);
+
                                         try {
                                             const { data: { user } } = await supabase.auth.getUser();
-                                            if (user?.id) {
-                                                const list = await addressBookPartiesService.listByRole(user.id);
-                                                setAddressBookEntries(list);
-                                            }
+                                            if (!user) throw new Error('Not authenticated');
+
+                                            const list = await addressBookPartiesService.listByRole(user.id);
+                                            setAddressBookEntries(list);
+                                            setAddressBookLoaded(true);
                                         } catch (e) {
-                                            console.error('[AddressBook list]', e);
+                                            console.error('[AddressBook listByRole]', e);
+                                            setAddressBookLastError(String((e as Error)?.message ?? e));
                                         } finally {
                                             setAddressBookLoading(false);
                                         }
@@ -4732,7 +4844,7 @@ ${internalCompany} Team`;
                                     <h3 className="text-lg font-bold text-white">Address Book</h3>
                                     <button type="button" onClick={() => setIsAddressBookModalOpen(false)} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
                                 </div>
-                                <div className="p-4 overflow-y-auto flex-1">
+                                <div className="flex-1 min-h-0 overflow-y-auto p-4">
                                     {addressBookLoading ? <p className="text-sm text-gray-500">Завантаження…</p> : addressBookEntries.length === 0 ? <p className="text-sm text-gray-500">Немає записів. Збережіть картку обʼєкта (сторони угоди), щоб додати контакти в Address Book.</p> : (
                                         <div className="space-y-4">
                                             {(['owner', 'company1', 'company2', 'management'] as const).map(role => {
@@ -4743,16 +4855,22 @@ ${internalCompany} Team`;
                                                     <div key={role}>
                                                         <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">{roleLabel}</h4>
                                                         <ul className="space-y-2">
-                                                            {byRole.map(entry => (
-                                                                <li key={entry.id ?? `${entry.role}-${entry.name}-${entry.street}-${entry.zip}`} className="p-3 rounded-lg bg-[#111315] border border-gray-700 text-sm">
-                                                                    <div className="font-medium text-white">{entry.name}</div>
-                                                                    {(entry.street || entry.zip || entry.city) && <div className="text-gray-400 mt-0.5">{[entry.street, entry.zip, entry.city].filter(Boolean).join(', ')}</div>}
-                                                                    {entry.iban && <div className="text-gray-500 font-mono text-xs mt-0.5">{entry.iban}</div>}
-                                                                    {(entry.unitIdentifier || entry.contactPerson) && <div className="text-gray-500 text-xs mt-0.5">{entry.unitIdentifier && `ID: ${entry.unitIdentifier}`}{entry.unitIdentifier && entry.contactPerson ? ' · ' : ''}{entry.contactPerson && `Контакт: ${entry.contactPerson}`}</div>}
-                                                                    {entry.paymentDay != null && entry.paymentDay >= 1 && entry.paymentDay <= 31 && <div className="text-gray-500 text-xs mt-0.5">День оплати: до {entry.paymentDay}-го</div>}
-                                                                    {((entry.phones?.length ?? 0) > 0 || (entry.emails?.length ?? 0) > 0) && <div className="text-gray-500 text-xs mt-1">{(entry.phones ?? []).filter(Boolean).join(' · ')}{(entry.phones?.length && entry.emails?.length) ? ' · ' : ''}{(entry.emails ?? []).filter(Boolean).join(' · ')}</div>}
-                                                                </li>
-                                                            ))}
+                                                            {byRole.map(entry => {
+                                                                const addressLine = formatAddress({ street: entry.street, houseNumber: entry.houseNumber ?? '', zip: entry.zip, city: entry.city, country: entry.country ?? '' });
+                                                                const phonesLine = normalizeArray(entry.phones ?? []);
+                                                                const emailsLine = normalizeArray(entry.emails ?? []);
+                                                                const meta = joinMeta([addressLine, phonesLine, emailsLine]);
+                                                                return (
+                                                                    <li key={entry.id ?? `${entry.role}-${entry.name}-${entry.street}-${entry.zip}`} className="p-3 rounded-lg bg-[#111315] border border-gray-700 text-sm">
+                                                                        <div className="font-semibold text-white">
+                                                                            {entry.name}
+                                                                            {(role === 'owner' || role === 'management') && (entry.unitIdentifier ?? '').trim() && <span className="ml-1.5 text-xs font-normal text-gray-400">ID: {(entry.unitIdentifier ?? '').trim()}</span>}
+                                                                            {(role === 'company1' || role === 'company2') && entry.paymentDay != null && entry.paymentDay >= 1 && entry.paymentDay <= 31 && <span className="ml-1.5 text-xs font-normal text-gray-400">Pay: {entry.paymentDay}</span>}
+                                                                        </div>
+                                                                        <div className={meta ? 'text-gray-400 text-xs mt-0.5' : 'text-gray-500 text-xs mt-0.5'}>{meta || '—'}</div>
+                                                                    </li>
+                                                                );
+                                                            })}
                                                         </ul>
                                                     </div>
                                                 );
