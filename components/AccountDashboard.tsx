@@ -399,7 +399,7 @@ const AccountDashboard: React.FC = () => {
     landlord: ContactParty | null;
     management: ContactParty | null;
     tenant: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number };
-    secondCompany: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number };
+    secondCompany: (TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number }) | null;
     deposit: PropertyDeposit | null;
   } | null>(null);
   const [card1DepositError, setCard1DepositError] = useState<string | null>(null);
@@ -1953,70 +1953,65 @@ const AccountDashboard: React.FC = () => {
   });
 
   const startCard1Edit = () => {
-    const p = properties.find(pr => pr.id === selectedPropertyId) ?? null;
-    if (!p) return;
-    const landlord = p.landlord ? {
-      name: p.landlord.name || '',
-      address: p.landlord.address || defaultContactParty().address,
-      phones: (p.landlord.phones?.length ? [...p.landlord.phones] : ['']),
-      emails: (p.landlord.emails?.length ? [...p.landlord.emails] : ['']),
-      iban: p.landlord.iban || '',
-      unitIdentifier: p.landlord.unitIdentifier ?? '',
-      contactPerson: p.landlord.contactPerson ?? ''
-    } : null;
-    const management = p.management ? {
-      name: p.management.name || '',
-      address: p.management.address || defaultContactParty().address,
-      phones: (p.management.phones?.length ? [...p.management.phones] : ['']),
-      emails: (p.management.emails?.length ? [...p.management.emails] : ['']),
-      iban: p.management.iban ?? '',
-      unitIdentifier: p.management.unitIdentifier ?? '',
-      contactPerson: p.management.contactPerson ?? ''
-    } : null;
-    const tenant: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number } = p.tenant ? {
-      ...p.tenant,
-      address: p.tenant.address || defaultContactParty().address,
-      phones: (p.tenant.phones?.length ? [...p.tenant.phones] : (p.tenant.phone ? [p.tenant.phone] : [''])),
-      emails: (p.tenant.emails?.length ? [...p.tenant.emails] : (p.tenant.email ? [p.tenant.email] : [''])),
-      paymentDayOfMonth: p.tenant.paymentDayOfMonth
+    const prop = selectedProperty ?? properties.find(pr => pr.id === selectedPropertyId) ?? null;
+    if (!prop) return;
+    const defAddr = defaultContactParty().address;
+    const landlord: ContactParty = prop.landlord ? {
+      name: prop.landlord.name ?? '',
+      address: { ...defAddr, ...(prop.landlord.address || {}) },
+      phones: (prop.landlord.phones?.length ? [...prop.landlord.phones] : ['']),
+      emails: (prop.landlord.emails?.length ? [...prop.landlord.emails] : ['']),
+      iban: prop.landlord.iban ?? '',
+      unitIdentifier: prop.landlord.unitIdentifier ?? '',
+      contactPerson: prop.landlord.contactPerson ?? ''
+    } : defaultContactParty();
+    const management: ContactParty = prop.management ? {
+      name: prop.management.name ?? '',
+      address: { ...defAddr, ...(prop.management.address || {}) },
+      phones: (prop.management.phones?.length ? [...prop.management.phones] : ['']),
+      emails: (prop.management.emails?.length ? [...prop.management.emails] : ['']),
+      iban: prop.management.iban ?? '',
+      unitIdentifier: prop.management.unitIdentifier ?? '',
+      contactPerson: prop.management.contactPerson ?? ''
+    } : defaultContactParty();
+    const tenant: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number } = prop.tenant ? {
+      ...prop.tenant,
+      address: prop.tenant.address ? { ...defAddr, ...prop.tenant.address } : defAddr,
+      phones: (prop.tenant.phones?.length ? [...prop.tenant.phones] : (prop.tenant.phone ? [prop.tenant.phone] : [''])),
+      emails: (prop.tenant.emails?.length ? [...prop.tenant.emails] : (prop.tenant.email ? [prop.tenant.email] : [''])),
+      paymentDayOfMonth: prop.tenant.paymentDayOfMonth
     } : {
       name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0,
-      address: defaultContactParty().address,
+      address: defAddr,
       phones: [''],
       emails: [''],
       paymentDayOfMonth: undefined
     };
-    const secondCompany: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number } = p.secondCompany ? {
-      ...p.secondCompany,
-      address: p.secondCompany.address || defaultContactParty().address,
-      phones: (p.secondCompany.phones?.length ? [...p.secondCompany.phones] : (p.secondCompany.phone ? [p.secondCompany.phone] : [''])),
-      emails: (p.secondCompany.emails?.length ? [...p.secondCompany.emails] : (p.secondCompany.email ? [p.secondCompany.email] : [''])),
-      paymentDayOfMonth: p.secondCompany.paymentDayOfMonth
-    } : {
-      name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0,
-      address: defaultContactParty().address,
-      phones: [''],
-      emails: [''],
-      paymentDayOfMonth: undefined
-    };
-    const deposit: PropertyDeposit | null = p.deposit ? {
-      amount: p.deposit.amount ?? 0,
-      status: (p.deposit.status === 'paid' || p.deposit.status === 'partially_returned' || p.deposit.status === 'returned') ? 'paid' : 'unpaid',
-      paidAt: p.deposit.paidAt ?? '',
-      paidTo: p.deposit.paidTo ?? '',
-      returnedAt: p.deposit.returnedAt ?? '',
-      returnedAmount: p.deposit.returnedAmount ?? undefined,
-      returnStatus: p.deposit.returnStatus ?? (p.deposit.status === 'partially_returned' ? 'partially_returned' : p.deposit.status === 'returned' ? 'returned' : 'unpaid')
+    const secondCompany: (TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number }) | null = prop.secondCompany ? {
+      ...prop.secondCompany,
+      address: prop.secondCompany.address ? { ...defAddr, ...prop.secondCompany.address } : defAddr,
+      phones: (prop.secondCompany.phones?.length ? [...prop.secondCompany.phones] : (prop.secondCompany.phone ? [prop.secondCompany.phone] : [''])),
+      emails: (prop.secondCompany.emails?.length ? [...prop.secondCompany.emails] : (prop.secondCompany.email ? [prop.secondCompany.email] : [''])),
+      paymentDayOfMonth: prop.secondCompany.paymentDayOfMonth
+    } : null;
+    const deposit: PropertyDeposit | null = prop.deposit ? {
+      amount: prop.deposit.amount ?? 0,
+      status: (prop.deposit.status === 'paid' || prop.deposit.status === 'partially_returned' || prop.deposit.status === 'returned') ? 'paid' : 'unpaid',
+      paidAt: prop.deposit.paidAt ?? '',
+      paidTo: prop.deposit.paidTo ?? '',
+      returnedAt: prop.deposit.returnedAt ?? '',
+      returnedAmount: prop.deposit.returnedAmount ?? undefined,
+      returnStatus: prop.deposit.returnStatus ?? (prop.deposit.status === 'partially_returned' ? 'partially_returned' : prop.deposit.status === 'returned' ? 'returned' : 'unpaid')
     } : null;
     setCard1Draft({
-      apartmentStatus: (p.apartmentStatus || 'active') as 'active' | 'ooo' | 'preparation' | 'rented_worker',
-      address: p.address ?? '',
-      zip: p.zip ?? '',
-      city: p.city ?? '',
-      country: p.country ?? '',
-      title: p.title ?? '',
-      floor: p.details?.floor ?? 0,
-      buildingFloors: p.details?.buildingFloors ?? 0,
+      apartmentStatus: (prop.apartmentStatus || 'active') as 'active' | 'ooo' | 'preparation' | 'rented_worker',
+      address: prop.address ?? '',
+      zip: prop.zip ?? '',
+      city: prop.city ?? '',
+      country: prop.country ?? '',
+      title: prop.title ?? '',
+      floor: prop.details?.floor ?? 0,
+      buildingFloors: prop.details?.buildingFloors ?? 0,
       landlord,
       management,
       tenant,
