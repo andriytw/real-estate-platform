@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen } from 'lucide-react';
+import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 import AdminCalendar from './AdminCalendar';
 import AdminMessages from './AdminMessages';
@@ -419,6 +419,7 @@ const AccountDashboard: React.FC = () => {
   const [addressBookSearch, setAddressBookSearch] = useState<{ owner: string; company1: string; company2: string; management: string }>({ owner: '', company1: '', company2: '', management: '' });
   const [addressBookDeletingId, setAddressBookDeletingId] = useState<string | null>(null);
   const [addressBookDeleteError, setAddressBookDeleteError] = useState<string | null>(null);
+  const [showPartiesDetails, setShowPartiesDetails] = useState(false);
   const [depositProofFile, setDepositProofFile] = useState<File | null>(null);
   const [depositProofError, setDepositProofError] = useState<string | null>(null);
   const [depositProofUploading, setDepositProofUploading] = useState(false);
@@ -4773,36 +4774,46 @@ ${internalCompany} Team`;
                             </div>
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-sm font-semibold text-white">Контрагенти</span>
-                                <button
-                                    type="button"
-                                    onClick={async () => {
-                                        setIsAddressBookModalOpen(true);
-                                        setAddressBookLastError(null);
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPartiesDetails(v => !v)}
+                                        className="p-2 rounded-md border border-gray-700 bg-[#111315] hover:bg-[#15181b] text-gray-200 flex items-center gap-1.5 text-sm"
+                                    >
+                                        {showPartiesDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                        {showPartiesDetails ? 'Сховати деталі' : 'Показати деталі'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            setIsAddressBookModalOpen(true);
+                                            setAddressBookLastError(null);
 
-                                        if (addressBookLoaded && addressBookEntries.length > 0) return;
+                                            if (addressBookLoaded && addressBookEntries.length > 0) return;
 
-                                        setAddressBookLoading(true);
-                                        setAddressBookEntries([]);
+                                            setAddressBookLoading(true);
+                                            setAddressBookEntries([]);
 
-                                        try {
-                                            const { data: { user } } = await supabase.auth.getUser();
-                                            if (!user) throw new Error('Not authenticated');
+                                            try {
+                                                const { data: { user } } = await supabase.auth.getUser();
+                                                if (!user) throw new Error('Not authenticated');
 
-                                            const list = await addressBookPartiesService.listByRole(user.id);
-                                            setAddressBookEntries(list);
-                                            setAddressBookLoaded(true);
-                                        } catch (e) {
-                                            console.error('[AddressBook listByRole]', e);
-                                            setAddressBookLastError(String((e as Error)?.message ?? e));
-                                        } finally {
-                                            setAddressBookLoading(false);
-                                        }
-                                    }}
-                                    className="p-2 rounded-md border border-gray-700 bg-[#111315] hover:bg-[#15181b] text-gray-200"
-                                    title="Address Book"
-                                >
-                                    <BookOpen size={18} />
-                                </button>
+                                                const list = await addressBookPartiesService.listByRole(user.id);
+                                                setAddressBookEntries(list);
+                                                setAddressBookLoaded(true);
+                                            } catch (e) {
+                                                console.error('[AddressBook listByRole]', e);
+                                                setAddressBookLastError(String((e as Error)?.message ?? e));
+                                            } finally {
+                                                setAddressBookLoading(false);
+                                            }
+                                        }}
+                                        className="p-2 rounded-md border border-gray-700 bg-[#111315] hover:bg-[#15181b] text-gray-200"
+                                        title="Address Book"
+                                    >
+                                        <BookOpen size={18} />
+                                    </button>
+                                </div>
                             </div>
                             {addressBookLastError && (
                                 <p className="text-xs text-amber-500 mt-1">Address Book sync failed: {addressBookLastError}</p>
@@ -4810,41 +4821,57 @@ ${internalCompany} Team`;
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-4 border-b border-gray-700">
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Власник (орендодавець)</h3>
-                                    {renderPartyRow('Назва', selectedProperty.landlord?.name)}
-                                    {renderPartyRow('ID', selectedProperty.landlord?.unitIdentifier?.trim() || undefined)}
-                                    {renderPartyRow('Контакт', selectedProperty.landlord?.contactPerson)}
-                                    {renderPartyRow('IBAN', selectedProperty.landlord?.iban)}
-                                    {renderPartyRow('Адреса', formatAddress(selectedProperty.landlord?.address) || undefined)}
-                                    {renderPartyRow('Телефони', normalizeArray(selectedProperty.landlord?.phones) || undefined)}
-                                    {renderPartyRow('Email', normalizeArray(selectedProperty.landlord?.emails) || undefined)}
+                                    <div className={`text-sm font-semibold ${(selectedProperty.landlord?.name ?? '').trim() ? 'text-white' : 'text-gray-500'}`}>{(selectedProperty.landlord?.name ?? '').trim() || '—'}</div>
+                                    {formatAddress(selectedProperty.landlord?.address)?.trim() && <div className="text-sm text-gray-400 mt-0.5">{formatAddress(selectedProperty.landlord?.address)}</div>}
+                                    {(() => { const p = selectedProperty.landlord; const phonesLine = normalizeArray(p?.phones ?? []); const emailsLine = normalizeArray(p?.emails ?? []); const metaLine = joinMeta([phonesLine, emailsLine]); return metaLine ? <div className="text-sm text-gray-400 mt-0.5">{metaLine}</div> : null; })()}
+                                    {showPartiesDetails && (
+                                        <>
+                                            <div className="border-t border-gray-800 mt-2 pt-2" />
+                                            {renderPartyRow('ID', selectedProperty.landlord?.unitIdentifier?.trim() || undefined)}
+                                            {renderPartyRow('Контакт', selectedProperty.landlord?.contactPerson)}
+                                            {renderPartyRow('IBAN', selectedProperty.landlord?.iban)}
+                                        </>
+                                    )}
                                 </div>
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">1-ша фірма</h3>
-                                    {renderPartyRow('Назва', selectedProperty.tenant?.name)}
-                                    {renderPartyRow('IBAN', selectedProperty.tenant?.iban)}
-                                    {renderPartyRow('Адреса', formatAddress(selectedProperty.tenant?.address) || undefined)}
-                                    {renderPartyRow('День оплати', (selectedProperty.tenant?.paymentDayOfMonth != null && selectedProperty.tenant.paymentDayOfMonth >= 1 && selectedProperty.tenant.paymentDayOfMonth <= 31) ? selectedProperty.tenant.paymentDayOfMonth : undefined)}
-                                    {renderPartyRow('Телефони', normalizeArray(selectedProperty.tenant?.phones ?? (selectedProperty.tenant?.phone ? [selectedProperty.tenant.phone] : undefined)) || undefined)}
-                                    {renderPartyRow('Email', normalizeArray(selectedProperty.tenant?.emails ?? (selectedProperty.tenant?.email ? [selectedProperty.tenant.email] : undefined)) || undefined)}
+                                    <div className={`text-sm font-semibold ${(selectedProperty.tenant?.name ?? '').trim() ? 'text-white' : 'text-gray-500'}`}>{(selectedProperty.tenant?.name ?? '').trim() || '—'}</div>
+                                    {formatAddress(selectedProperty.tenant?.address)?.trim() && <div className="text-sm text-gray-400 mt-0.5">{formatAddress(selectedProperty.tenant?.address)}</div>}
+                                    {(() => { const p = selectedProperty.tenant; const phonesLine = normalizeArray((p?.phones?.length ? p.phones : (p?.phone ? [p.phone] : []))); const emailsLine = normalizeArray((p?.emails?.length ? p.emails : (p?.email ? [p.email] : []))); const metaLine = joinMeta([phonesLine, emailsLine]); return metaLine ? <div className="text-sm text-gray-400 mt-0.5">{metaLine}</div> : null; })()}
+                                    {showPartiesDetails && (
+                                        <>
+                                            <div className="border-t border-gray-800 mt-2 pt-2" />
+                                            {renderPartyRow('IBAN', selectedProperty.tenant?.iban)}
+                                            {renderPartyRow('День оплати', (selectedProperty.tenant?.paymentDayOfMonth != null && selectedProperty.tenant.paymentDayOfMonth >= 1 && selectedProperty.tenant.paymentDayOfMonth <= 31) ? selectedProperty.tenant.paymentDayOfMonth : undefined)}
+                                        </>
+                                    )}
                                 </div>
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">2-га фірма</h3>
-                                    {renderPartyRow('Назва', selectedProperty.secondCompany?.name)}
-                                    {renderPartyRow('IBAN', selectedProperty.secondCompany?.iban)}
-                                    {renderPartyRow('Адреса', formatAddress(selectedProperty.secondCompany?.address) || undefined)}
-                                    {renderPartyRow('День оплати', (selectedProperty.secondCompany?.paymentDayOfMonth != null && selectedProperty.secondCompany.paymentDayOfMonth >= 1 && selectedProperty.secondCompany.paymentDayOfMonth <= 31) ? selectedProperty.secondCompany.paymentDayOfMonth : undefined)}
-                                    {renderPartyRow('Телефони', normalizeArray(selectedProperty.secondCompany?.phones ?? (selectedProperty.secondCompany?.phone ? [selectedProperty.secondCompany.phone] : undefined)) || undefined)}
-                                    {renderPartyRow('Email', normalizeArray(selectedProperty.secondCompany?.emails ?? (selectedProperty.secondCompany?.email ? [selectedProperty.secondCompany.email] : undefined)) || undefined)}
+                                    <div className={`text-sm font-semibold ${(selectedProperty.secondCompany?.name ?? '').trim() ? 'text-white' : 'text-gray-500'}`}>{(selectedProperty.secondCompany?.name ?? '').trim() || '—'}</div>
+                                    {formatAddress(selectedProperty.secondCompany?.address)?.trim() && <div className="text-sm text-gray-400 mt-0.5">{formatAddress(selectedProperty.secondCompany?.address)}</div>}
+                                    {(() => { const p = selectedProperty.secondCompany; const phonesLine = normalizeArray((p?.phones?.length ? p.phones : (p?.phone ? [p.phone] : []))); const emailsLine = normalizeArray((p?.emails?.length ? p.emails : (p?.email ? [p.email] : []))); const metaLine = joinMeta([phonesLine, emailsLine]); return metaLine ? <div className="text-sm text-gray-400 mt-0.5">{metaLine}</div> : null; })()}
+                                    {showPartiesDetails && (
+                                        <>
+                                            <div className="border-t border-gray-800 mt-2 pt-2" />
+                                            {renderPartyRow('IBAN', selectedProperty.secondCompany?.iban)}
+                                            {renderPartyRow('День оплати', (selectedProperty.secondCompany?.paymentDayOfMonth != null && selectedProperty.secondCompany.paymentDayOfMonth >= 1 && selectedProperty.secondCompany.paymentDayOfMonth <= 31) ? selectedProperty.secondCompany.paymentDayOfMonth : undefined)}
+                                        </>
+                                    )}
                                 </div>
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Управління</h3>
-                                    {renderPartyRow('Назва', selectedProperty.management?.name)}
-                                    {renderPartyRow('ID', selectedProperty.management?.unitIdentifier?.trim() || undefined)}
-                                    {renderPartyRow('Контакт', selectedProperty.management?.contactPerson)}
-                                    {renderPartyRow('IBAN', selectedProperty.management?.iban)}
-                                    {renderPartyRow('Адреса', formatAddress(selectedProperty.management?.address) || undefined)}
-                                    {renderPartyRow('Телефони', normalizeArray(selectedProperty.management?.phones) || undefined)}
-                                    {renderPartyRow('Email', normalizeArray(selectedProperty.management?.emails) || undefined)}
+                                    <div className={`text-sm font-semibold ${(selectedProperty.management?.name ?? '').trim() ? 'text-white' : 'text-gray-500'}`}>{(selectedProperty.management?.name ?? '').trim() || '—'}</div>
+                                    {formatAddress(selectedProperty.management?.address)?.trim() && <div className="text-sm text-gray-400 mt-0.5">{formatAddress(selectedProperty.management?.address)}</div>}
+                                    {(() => { const p = selectedProperty.management; const phonesLine = normalizeArray(p?.phones ?? []); const emailsLine = normalizeArray(p?.emails ?? []); const metaLine = joinMeta([phonesLine, emailsLine]); return metaLine ? <div className="text-sm text-gray-400 mt-0.5">{metaLine}</div> : null; })()}
+                                    {showPartiesDetails && (
+                                        <>
+                                            <div className="border-t border-gray-800 mt-2 pt-2" />
+                                            {renderPartyRow('ID', selectedProperty.management?.unitIdentifier?.trim() || undefined)}
+                                            {renderPartyRow('Контакт', selectedProperty.management?.contactPerson)}
+                                            {renderPartyRow('IBAN', selectedProperty.management?.iban)}
+                                        </>
+                                    )}
                                 </div>
                             </div>
                             <div>
