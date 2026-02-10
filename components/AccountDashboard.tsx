@@ -4605,7 +4605,7 @@ ${internalCompany} Team`;
                                 </button>
                             </div>
                             {addressBookLastError && (
-                                <p className="text-xs text-amber-500 mt-1">Address Book sync failed</p>
+                                <p className="text-xs text-amber-500 mt-1">Address Book sync failed: {addressBookLastError}</p>
                             )}
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-4 border-b border-gray-700">
                                 <div>

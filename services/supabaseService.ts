@@ -1298,29 +1298,34 @@ export const addressBookPartiesService = {
     return (data ?? []).map(addressBookRowFromDB);
   },
 
-  /** Upsert by (owner_user_id, role, name, iban, street, zip, city). Gets user inside for RLS; normalizes key fields; only includes rows with non-empty name. */
+  /** Upsert by (owner_user_id, role, name, iban, street, zip, city). Gets user inside for RLS; normalizes so phones/emails are always arrays (NOT NULL in DB). */
   async upsertMany(entries: AddressBookPartyEntry[]): Promise<void> {
+    if (!entries.length) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
+    const normStr = (v: any) => (v == null ? '' : String(v).trim());
+    const normArr = (arr?: string[]) =>
+      Array.isArray(arr) ? arr.map((x) => String(x).trim()).filter(Boolean) : [];
     const filtered = entries.filter((e) => (e.name ?? '').trim() !== '');
     if (!filtered.length) return;
     const rows = filtered.map((e) => ({
       id: e.id ?? undefined,
       owner_user_id: user.id,
       role: e.role,
-      name: (e.name ?? '').trim(),
-      iban: e.iban != null && e.iban !== undefined ? String(e.iban).trim() : '',
-      street: e.street != null && e.street !== undefined ? String(e.street).trim() : '',
-      zip: e.zip != null && e.zip !== undefined ? String(e.zip).trim() : '',
-      city: e.city != null && e.city !== undefined ? String(e.city).trim() : '',
-      house_number: e.houseNumber ?? null,
-      country: e.country ?? null,
-      phones: Array.isArray(e.phones) ? e.phones.map((s) => String(s).trim()).filter(Boolean) : [],
-      emails: Array.isArray(e.emails) ? e.emails.map((s) => String(s).trim()).filter(Boolean) : [],
-      payment_day: e.paymentDay ?? null,
-      unit_identifier: e.unitIdentifier ?? null,
-      contact_person: e.contactPerson ?? null,
+      name: normStr(e.name),
+      iban: normStr(e.iban),
+      street: normStr(e.street),
+      zip: normStr(e.zip),
+      city: normStr(e.city),
+      house_number: e.houseNumber != null ? String(e.houseNumber).trim() : null,
+      country: e.country != null ? String(e.country).trim() : null,
+      phones: normArr(e.phones),
+      emails: normArr(e.emails),
+      payment_day: e.paymentDay != null ? e.paymentDay : null,
+      unit_identifier: e.unitIdentifier != null ? String(e.unitIdentifier).trim() : null,
+      contact_person: e.contactPerson != null ? String(e.contactPerson).trim() : null,
     }));
+    console.debug('[AddressBook upsertMany]', rows.length, 'rows');
     const { error } = await supabase
       .from('address_book_parties')
       .upsert(rows, { onConflict: 'owner_user_id,role,name,iban,street,zip,city' });
@@ -1353,8 +1358,8 @@ export function propertyToPartiesAddressBookEntries(
       city: a.city ?? '',
       houseNumber: a.houseNumber ?? null,
       country: a.country ?? null,
-      phones: toPhonesArray(property.landlord) as string[] | null,
-      emails: toEmailsArray(property.landlord) as string[] | null,
+      phones: toPhonesArray(property.landlord),
+      emails: toEmailsArray(property.landlord),
       paymentDay: null,
       unitIdentifier: property.landlord.unitIdentifier ?? null,
       contactPerson: property.landlord.contactPerson ?? null,
@@ -1373,8 +1378,8 @@ export function propertyToPartiesAddressBookEntries(
       city: a.city ?? '',
       houseNumber: a.houseNumber ?? null,
       country: a.country ?? null,
-      phones: toPhonesArray(property.tenant) as string[] | null,
-      emails: toEmailsArray(property.tenant) as string[] | null,
+      phones: toPhonesArray(property.tenant),
+      emails: toEmailsArray(property.tenant),
       paymentDay: property.tenant.paymentDayOfMonth ?? null,
       unitIdentifier: null,
       contactPerson: null,
@@ -1393,8 +1398,8 @@ export function propertyToPartiesAddressBookEntries(
       city: a.city ?? '',
       houseNumber: a.houseNumber ?? null,
       country: a.country ?? null,
-      phones: toPhonesArray(property.secondCompany) as string[] | null,
-      emails: toEmailsArray(property.secondCompany) as string[] | null,
+      phones: toPhonesArray(property.secondCompany),
+      emails: toEmailsArray(property.secondCompany),
       paymentDay: property.secondCompany.paymentDayOfMonth ?? null,
       unitIdentifier: null,
       contactPerson: null,
@@ -1413,8 +1418,8 @@ export function propertyToPartiesAddressBookEntries(
       city: a.city ?? '',
       houseNumber: a.houseNumber ?? null,
       country: a.country ?? null,
-      phones: toPhonesArray(property.management) as string[] | null,
-      emails: toEmailsArray(property.management) as string[] | null,
+      phones: toPhonesArray(property.management),
+      emails: toEmailsArray(property.management),
       paymentDay: null,
       unitIdentifier: property.management.unitIdentifier ?? null,
       contactPerson: property.management.contactPerson ?? null,
