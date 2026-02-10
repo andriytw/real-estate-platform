@@ -1309,7 +1309,6 @@ export const addressBookPartiesService = {
     const filtered = entries.filter((e) => (e.name ?? '').trim() !== '');
     if (!filtered.length) return;
     const rows = filtered.map((e) => ({
-      id: e.id ?? undefined,
       owner_user_id: user.id,
       role: e.role,
       name: normStr(e.name),
