@@ -330,6 +330,31 @@ export interface MeterLogEntry {
   };
 }
 
+/** Single attachment in a payment chain tile (path in property-files bucket). */
+export interface PaymentChainAttachment {
+  path: string;
+  name: string;
+  size?: number;
+  mime?: string;
+  uploadedAt?: string;
+}
+
+/** One tile of the payment chain (owner, company1, company2). Owner total is not persisted (computed from Rent Timeline). */
+export interface PaymentChainTile {
+  payByDayOfMonth?: number;
+  total?: string;
+  description?: string;
+  breakdown?: Record<string, string>;
+  attachments?: PaymentChainAttachment[];
+}
+
+/** Payment chain shape in DB. Keys: owner, company1, company2. */
+export interface PaymentChain {
+  owner?: PaymentChainTile;
+  company1?: PaymentChainTile;
+  company2?: PaymentChainTile;
+}
+
 export interface Property {
   id: string; 
   title: string;
@@ -374,6 +399,8 @@ export interface Property {
   secondCompany?: TenantDetails;
   /** Card 1: Kaution (deposit) — our company's deposit to landlord. Stored in deposit JSONB. */
   deposit?: PropertyDeposit;
+  /** Payment chain (Платіжний ланцюжок). Stored in payment_chain JSONB. Keys: owner, company1, company2. Owner total is computed from Rent Timeline. */
+  paymentChain?: PaymentChain;
   futurePayments?: FuturePayment[];
   repairRequests?: RepairRequest[];
   events?: PropertyEvent[];

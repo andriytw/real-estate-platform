@@ -30,6 +30,9 @@ import {
   AddressBookPartyRole,
   ContactParty,
   TenantDetails,
+  PaymentChain,
+  PaymentChainTile,
+  PaymentChainAttachment,
 } from '../types';
 import { isoToEu } from '../utils/leaseTermDates';
 
@@ -2001,6 +2004,29 @@ function transformWorkerFromDB(db: any): Worker {
   };
 }
 
+function normalizePaymentChainFromDB(raw: any): PaymentChain | undefined {
+  if (raw == null || typeof raw !== 'object') return undefined;
+  const toTile = (t: any): PaymentChainTile | undefined => {
+    if (t == null || typeof t !== 'object') return undefined;
+    const att = t.attachments;
+    const attachments: PaymentChainAttachment[] = Array.isArray(att)
+      ? att.map((a: any) => ({ path: a.path ?? '', name: a.name ?? '', size: a.size, mime: a.mime, uploadedAt: a.uploadedAt }))
+      : [];
+    return {
+      payByDayOfMonth: t.payByDayOfMonth != null && t.payByDayOfMonth >= 1 && t.payByDayOfMonth <= 31 ? t.payByDayOfMonth : undefined,
+      total: typeof t.total === 'string' ? t.total : undefined,
+      description: typeof t.description === 'string' ? t.description : undefined,
+      breakdown: t.breakdown && typeof t.breakdown === 'object' ? { ...t.breakdown } : undefined,
+      attachments: attachments.length ? attachments : undefined,
+    };
+  };
+  const owner = toTile(raw.owner ?? raw.owner_control);
+  const company1 = toTile(raw.company1 ?? raw.from_company1_to_owner);
+  const company2 = toTile(raw.company2 ?? raw.from_company2_to_company1);
+  if (!owner && !company1 && !company2) return undefined;
+  return { owner, company1, company2 };
+}
+
 function transformPropertyFromDB(db: any): Property {
   return {
     id: db.id,
@@ -2046,6 +2072,7 @@ function transformPropertyFromDB(db: any): Property {
       return undefined;
     })(),
     rentPayments: db.rent_payments || db.rentPayments || [],
+    paymentChain: normalizePaymentChainFromDB(db.payment_chain),
     ownerExpense: db.owner_expense || db.ownerExpense,
     futurePayments: db.future_payments || db.futurePayments || [],
     repairRequests: db.repair_requests || db.repairRequests || [],
@@ -2110,6 +2137,7 @@ function transformPropertyToDB(property: Property): any {
   if (property.management !== undefined) result.management = property.management;
   if (property.secondCompany !== undefined) result.second_company = property.secondCompany;
   if (property.deposit !== undefined) result.deposit = property.deposit;
+  if (property.paymentChain !== undefined) result.payment_chain = property.paymentChain;
   if (property.rentPayments !== undefined) result.rent_payments = property.rentPayments;
   if (property.ownerExpense !== undefined) result.owner_expense = property.ownerExpense;
   if (property.futurePayments !== undefined) result.future_payments = property.futurePayments;
@@ -2820,6 +2848,47 @@ export const propertyDepositProofsService = {
     if (error) throw new Error(error.message || 'Failed to get document URL');
     if (!data?.signedUrl) throw new Error('No signed URL returned');
     return data.signedUrl;
+  },
+};
+
+// ==================== PAYMENT CHAIN FILES (property-files bucket) ====================
+const PROPERTY_FILES_BUCKET = 'property-files';
+
+export const paymentChainFilesService = {
+  /** Upload a file to property-files: properties/{propertyId}/payment-chain/{tileKey}/{yyyy-mm}/{timestamp}_{safeFilename} */
+  async upload(
+    propertyId: string,
+    tileKey: 'owner' | 'company1' | 'company2',
+    file: File
+  ): Promise<PaymentChainAttachment> {
+    const now = new Date();
+    const yyyyMm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const timestamp = now.getTime();
+    const safe = (file.name || 'file').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+    const path = `properties/${propertyId}/payment-chain/${tileKey}/${yyyyMm}/${timestamp}_${safe}`;
+    const { error } = await supabase.storage.from(PROPERTY_FILES_BUCKET).upload(path, file, { upsert: false });
+    if (error) throw new Error(error.message || 'Failed to upload file');
+    return {
+      path,
+      name: file.name || safe,
+      size: file.size,
+      mime: file.type || undefined,
+      uploadedAt: now.toISOString(),
+    };
+  },
+
+  async getSignedUrl(filePath: string, expirySeconds: number = 600): Promise<string> {
+    const { data, error } = await supabase.storage
+      .from(PROPERTY_FILES_BUCKET)
+      .createSignedUrl(filePath, expirySeconds);
+    if (error) throw new Error(error.message || 'Failed to create signed URL');
+    if (!data?.signedUrl) throw new Error('No signed URL returned');
+    return data.signedUrl;
+  },
+
+  async remove(filePath: string): Promise<void> {
+    const { error } = await supabase.storage.from(PROPERTY_FILES_BUCKET).remove([filePath]);
+    if (error) throw new Error(error.message || 'Failed to delete file');
   },
 };
 
