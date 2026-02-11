@@ -139,6 +139,7 @@ export type PropertyDocumentType =
   | 'deposit_payment_proof'
   | 'deposit_return_proof'
   | 'bk_abrechnung'
+  | 'zvu'
   | 'other_document';
 
 export interface PropertyDocument {

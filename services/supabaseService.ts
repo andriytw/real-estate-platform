@@ -2721,6 +2721,7 @@ export const propertyDocumentsService = {
       if (params.type === 'lease_contract' && typeof m.von === 'string') docDate = m.von;
       else if (params.type === 'handover_protocol' && typeof m.datum === 'string') docDate = m.datum;
       else if (params.type === 'bk_abrechnung' && typeof m.docDatum === 'string') docDate = m.docDatum;
+      else if (params.type === 'zvu' && typeof m.datum === 'string') docDate = m.datum;
       else if ((params.type === 'supplier_electricity' || params.type === 'supplier_gas' || params.type === 'supplier_water' || params.type === 'supplier_waste') && (typeof m.faellig === 'string' || typeof m.von === 'string')) docDate = (m.faellig as string) || (m.von as string);
     }
     const { data, error } = await supabase
