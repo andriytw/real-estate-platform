@@ -501,6 +501,14 @@ const AccountDashboard: React.FC = () => {
   const [addressBookSearch, setAddressBookSearch] = useState<{ owner: string; company1: string; company2: string; management: string }>({ owner: '', company1: '', company2: '', management: '' });
   const [addressBookDeletingId, setAddressBookDeletingId] = useState<string | null>(null);
   const [addressBookDeleteError, setAddressBookDeleteError] = useState<string | null>(null);
+  const [docPreview, setDocPreview] = useState<{ open: boolean; url: string; title?: string }>({ open: false, url: '' });
+  const closeDocPreview = useCallback(() => setDocPreview({ open: false, url: '' }), []);
+  useEffect(() => {
+    if (!docPreview.open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeDocPreview(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [docPreview.open, closeDocPreview]);
   const [showPartiesDetails, setShowPartiesDetails] = useState(false);
   const [showPaymentDetails, setShowPaymentDetails] = useState(false);
   const [editingPaymentTile, setEditingPaymentTile] = useState<PaymentTileKey | null>(null);
@@ -5059,7 +5067,7 @@ ${internalCompany} Team`;
                                         </div>
                                         <div className="w-[120px] flex items-center justify-end gap-2 shrink-0">
                                           <button type="button" onClick={() => { setDepositProofType('payment'); setDepositProofFile(null); setDepositProofError(null); setIsDepositProofModalOpen(true); }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати підтвердження оплати"><Plus className="w-4 h-4" /></button>
-                                          {kautionProofs.payment ? <button type="button" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.payment!.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors" title="Переглянути підтвердження оплати"><FileText className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><FileText className="w-4 h-4" /></button>}
+                                          {kautionProofs.payment ? <button type="button" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.payment!.filePath); setDocPreview({ open: true, url, title: 'Підтвердження оплати застави' }); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors" title="Переглянути підтвердження оплати"><FileText className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><FileText className="w-4 h-4" /></button>}
                                           {kautionProofs.payment ? <button type="button" onClick={() => { if (window.confirm('Видалити документ безповоротно?')) { propertyDepositProofsService.delete(kautionProofs.payment!.id).then(() => refreshKautionProofs()).catch((e) => alert(e?.message || 'Помилка видалення')); } }} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити підтвердження оплати"><Trash2 className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><Trash2 className="w-4 h-4" /></button>}
                                         </div>
                                       </div>
@@ -5073,7 +5081,7 @@ ${internalCompany} Team`;
                                         </div>
                                         <div className="w-[120px] flex items-center justify-end gap-2 shrink-0">
                                           <button type="button" onClick={() => { setDepositProofType('return'); setDepositProofFile(null); setDepositProofError(null); setIsDepositProofModalOpen(true); }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати підтвердження повернення"><Plus className="w-4 h-4" /></button>
-                                          {kautionProofs.return ? <button type="button" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.return!.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors" title="Переглянути підтвердження повернення"><FileText className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><FileText className="w-4 h-4" /></button>}
+                                          {kautionProofs.return ? <button type="button" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.return!.filePath); setDocPreview({ open: true, url, title: 'Підтвердження повернення застави' }); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors" title="Переглянути підтвердження повернення"><FileText className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><FileText className="w-4 h-4" /></button>}
                                           {kautionProofs.return ? <button type="button" onClick={() => { if (window.confirm('Видалити документ безповоротно?')) { propertyDepositProofsService.delete(kautionProofs.return!.id).then(() => refreshKautionProofs()).catch((e) => alert(e?.message || 'Помилка видалення')); } }} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити підтвердження повернення"><Trash2 className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><Trash2 className="w-4 h-4" /></button>}
                                         </div>
                                       </div>
@@ -5486,7 +5494,7 @@ ${internalCompany} Team`;
                                             </div>
                                             <div className="w-[120px] flex items-center justify-end gap-2 shrink-0">
                                                 {kautionProofs.payment ? (
-                                                    <button type="button" title="Підтвердження оплати застави" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.payment!.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors"><FileText className="w-4 h-4" /></button>
+                                                    <button type="button" title="Підтвердження оплати застави" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.payment!.filePath); setDocPreview({ open: true, url, title: 'Підтвердження оплати застави' }); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors"><FileText className="w-4 h-4" /></button>
                                                 ) : <span className="text-sm text-gray-500">—</span>}
                                             </div>
                                         </div>
@@ -5500,7 +5508,7 @@ ${internalCompany} Team`;
                                             </div>
                                             <div className="w-[120px] flex items-center justify-end gap-2 shrink-0">
                                                 {kautionProofs.return ? (
-                                                    <button type="button" title="Підтвердження повернення застави" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.return!.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors"><FileText className="w-4 h-4" /></button>
+                                                    <button type="button" title="Підтвердження повернення застави" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.return!.filePath); setDocPreview({ open: true, url, title: 'Підтвердження повернення застави' }); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors"><FileText className="w-4 h-4" /></button>
                                                 ) : <span className="text-sm text-gray-500">—</span>}
                                             </div>
                                         </div>
@@ -5600,6 +5608,33 @@ ${internalCompany} Team`;
                                             })}
                                         </div>
                                     )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {docPreview.open && (
+                        <div className="fixed inset-0 z-[230] flex items-center justify-center bg-black/60 p-4" onClick={closeDocPreview}>
+                            <div className="max-w-4xl w-[92vw] max-h-[85vh] flex flex-col rounded-xl border border-gray-700 bg-[#0B0F14] shadow-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                                <div className="p-4 border-b border-gray-700 flex justify-between items-center shrink-0">
+                                    <span className="text-sm font-semibold text-white truncate flex-1 min-w-0">{docPreview.title ?? ''}</span>
+                                    <button type="button" onClick={closeDocPreview} className="text-gray-400 hover:text-white p-1.5 rounded shrink-0"><X className="w-5 h-5" /></button>
+                                </div>
+                                <div className="min-h-0 flex-1 overflow-auto p-4">
+                                    {(() => {
+                                        const path = docPreview.url.split('?')[0].toLowerCase();
+                                        if (path.endsWith('.pdf')) {
+                                            return <iframe src={docPreview.url} title={docPreview.title} className="w-full min-h-[75vh] rounded-b bg-white" />;
+                                        }
+                                        if (['.png', '.jpg', '.jpeg', '.webp'].some(ext => path.endsWith(ext))) {
+                                            return <img src={docPreview.url} alt={docPreview.title} className="max-w-full max-h-[75vh] object-contain mx-auto" />;
+                                        }
+                                        return (
+                                            <div className="text-center py-6">
+                                                <p className="text-gray-400 mb-4">Файл не можна переглянути тут</p>
+                                                <button type="button" onClick={() => window.open(docPreview.url, '_blank')} className="text-sm text-emerald-500 hover:text-emerald-400">Відкрити в новій вкладці</button>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                         </div>
