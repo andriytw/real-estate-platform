@@ -5046,7 +5046,7 @@ ${internalCompany} Team`;
                                   return (
                                     <>
                                       {/* Row 1: Payment — grid 12 + action column */}
-                                      <div className="flex items-start gap-4">
+                                      <div className="flex items-end gap-4">
                                         <div className="grid flex-1 grid-cols-12 gap-4 items-center min-w-0">
                                           <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Von</label><input type="date" value={card1Draft.deposit?.periodFrom ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...base(d), periodFrom: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
                                           <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Bis</label><input type="date" value={card1Draft.deposit?.periodTo ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...base(d), periodTo: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
@@ -5064,7 +5064,7 @@ ${internalCompany} Team`;
                                         </div>
                                       </div>
                                       {/* Row 2: Refund — grid 12 + action column */}
-                                      <div className="flex items-start gap-4 mt-4">
+                                      <div className="flex items-end gap-4 mt-4">
                                         <div className="grid flex-1 grid-cols-12 gap-4 items-center min-w-0">
                                           <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Дата повернення</label><input type="date" value={card1Draft.deposit?.returnedAt ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...base(d), returnedAt: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
                                           <div className="col-span-6"><label className="text-xs text-gray-500 block mb-1">Повернув хто / від кого</label><input value="" readOnly className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-gray-500" placeholder="—" title="Поле не зберігається в базі" /></div>
@@ -5473,7 +5473,7 @@ ${internalCompany} Team`;
                                 {(selectedProperty.deposit || kautionProofs.payment || kautionProofs.return) ? (
                                     <>
                                         {/* Row 1: Payment — grid 12 + right actions */}
-                                        <div className="flex items-center gap-4">
+                                        <div className="flex items-end gap-4">
                                             <div className="grid flex-1 grid-cols-12 gap-4 items-center min-w-0">
                                                 <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Von</span><span className="text-sm text-white">{(selectedProperty.deposit?.periodFrom ?? selectedProperty.deposit?.paidAt)?.trim() || '—'}</span></div>
                                                 <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Bis</span><span className="text-sm text-white">{selectedProperty.deposit?.periodTo?.trim() || '—'}</span></div>
@@ -5491,7 +5491,7 @@ ${internalCompany} Team`;
                                             </div>
                                         </div>
                                         {/* Row 2: Refund — grid 12 + right actions */}
-                                        <div className="flex items-center gap-4 mt-4">
+                                        <div className="flex items-end gap-4 mt-4">
                                             <div className="grid flex-1 grid-cols-12 gap-4 items-center min-w-0">
                                                 <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Дата повернення</span><span className="text-sm text-white">{selectedProperty.deposit?.returnedAt?.trim() || '—'}</span></div>
                                                 <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Сума повернення (€)</span><span className="text-sm text-white">{selectedProperty.deposit?.returnedAmount != null ? (() => { const n = Number(selectedProperty.deposit!.returnedAmount); return !Number.isNaN(n) ? `€${n.toFixed(2)}` : '—'; })() : '—'}</span></div>
@@ -5508,7 +5508,7 @@ ${internalCompany} Team`;
                                 ) : (
                                     <>
                                         {/* Empty state: same two-row structure */}
-                                        <div className="flex items-center gap-4">
+                                        <div className="flex items-end gap-4">
                                             <div className="grid flex-1 grid-cols-12 gap-4 items-center min-w-0">
                                                 <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Von</span><span className="text-sm text-gray-500">—</span></div>
                                                 <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Bis</span><span className="text-sm text-gray-500">—</span></div>
@@ -5521,7 +5521,7 @@ ${internalCompany} Team`;
                                             </div>
                                             <div className="w-[120px] flex items-center justify-end shrink-0"><span className="text-sm text-gray-500">—</span></div>
                                         </div>
-                                        <div className="flex items-center gap-4 mt-4">
+                                        <div className="flex items-end gap-4 mt-4">
                                             <div className="grid flex-1 grid-cols-12 gap-4 items-center min-w-0">
                                                 <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Дата повернення</span><span className="text-sm text-gray-500">—</span></div>
                                                 <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Сума повернення (€)</span><span className="text-sm text-gray-500">—</span></div>
