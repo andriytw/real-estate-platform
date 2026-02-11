@@ -2676,6 +2676,7 @@ function transformPropertyDocumentFromDB(db: {
   title?: string | null;
   doc_date?: string | null;
   notes?: string | null;
+  meta?: unknown;
   created_at: string;
 }): PropertyDocument {
   return {
@@ -2687,6 +2688,7 @@ function transformPropertyDocumentFromDB(db: {
     docDate: db.doc_date ?? undefined,
     createdAt: db.created_at,
     notes: db.notes ?? undefined,
+    meta: (db.meta != null && typeof db.meta === 'object') ? (db.meta as Record<string, unknown>) : undefined,
   };
 }
 
@@ -2694,14 +2696,14 @@ export const propertyDocumentsService = {
   async listPropertyDocuments(propertyId: string): Promise<PropertyDocument[]> {
     const { data, error } = await supabase
       .from('property_documents')
-      .select('id, property_id, type, file_path, title, doc_date, notes, created_at')
+      .select('id, property_id, type, file_path, title, doc_date, notes, meta, created_at')
       .eq('property_id', propertyId)
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message || 'Failed to list property documents');
     return (data || []).map(transformPropertyDocumentFromDB);
   },
 
-  /** Create DB row with explicit id (same id used in storage path to avoid orphans). */
+  /** Create DB row with explicit id (same id used in storage path to avoid orphans). doc_date derived from meta when not provided. */
   async createPropertyDocument(params: {
     id: string;
     propertyId: string;
@@ -2710,7 +2712,17 @@ export const propertyDocumentsService = {
     title?: string | null;
     docDate?: string | null;
     notes?: string | null;
+    meta?: Record<string, unknown> | null;
   }): Promise<PropertyDocument> {
+    const meta = params.meta ?? {};
+    let docDate: string | null = params.docDate ?? null;
+    if (docDate == null || docDate === '') {
+      const m = meta as Record<string, unknown>;
+      if (params.type === 'lease_contract' && typeof m.von === 'string') docDate = m.von;
+      else if (params.type === 'handover_protocol' && typeof m.datum === 'string') docDate = m.datum;
+      else if (params.type === 'bk_abrechnung' && typeof m.docDatum === 'string') docDate = m.docDatum;
+      else if ((params.type === 'supplier_electricity' || params.type === 'supplier_gas' || params.type === 'supplier_water' || params.type === 'supplier_waste') && (typeof m.faellig === 'string' || typeof m.von === 'string')) docDate = (m.faellig as string) || (m.von as string);
+    }
     const { data, error } = await supabase
       .from('property_documents')
       .insert({
@@ -2719,10 +2731,11 @@ export const propertyDocumentsService = {
         type: params.type,
         file_path: params.filePath,
         title: params.title ?? null,
-        doc_date: params.docDate ?? null,
+        doc_date: docDate,
         notes: params.notes ?? null,
+        meta,
       })
-      .select('id, property_id, type, file_path, title, doc_date, notes, created_at')
+      .select('id, property_id, type, file_path, title, doc_date, notes, meta, created_at')
       .single();
     if (error) throw new Error(error.message || 'Failed to create property document');
     return transformPropertyDocumentFromDB(data);

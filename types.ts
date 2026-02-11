@@ -138,6 +138,7 @@ export type PropertyDocumentType =
   | 'supplier_other'
   | 'deposit_payment_proof'
   | 'deposit_return_proof'
+  | 'bk_abrechnung'
   | 'other_document';
 
 export interface PropertyDocument {
@@ -148,6 +149,8 @@ export interface PropertyDocument {
   title?: string | null;
   docDate?: string | null;
   notes?: string | null;
+  /** Module-specific fields (Mietvertrag, Übergabe, Utility, BK). */
+  meta?: Record<string, unknown> | null;
   createdAt: string;
 }
 
