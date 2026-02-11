@@ -1147,7 +1147,7 @@ export const propertiesService = {
       console.log('📡 propertiesService.getAll called, lightweight:', lightweight);
       // For Marketplace/public views, only load essential fields for faster loading
       const selectFields = lightweight 
-        ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip'
+        ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip, zweckentfremdung_flag, zweckentfremdung_updated_at'
         : '*';
       
       console.log('📡 Querying properties table with fields:', selectFields);
@@ -2066,6 +2066,8 @@ function transformPropertyFromDB(db: any): Property {
     tenant: db.tenant,
     rentalHistory: db.rental_history || db.rentalHistory || [],
     apartmentStatus: db.apartment_status || db.apartmentStatus || 'active',
+    zweckentfremdungFlag: db.zweckentfremdung_flag === true,
+    zweckentfremdungUpdatedAt: db.zweckentfremdung_updated_at ?? undefined,
     landlord: db.landlord,
     management: db.management,
     secondCompany: db.second_company ?? undefined,
@@ -2150,6 +2152,8 @@ function transformPropertyToDB(property: Property): any {
   if (property.tenant !== undefined) result.tenant = property.tenant;
   if (property.rentalHistory !== undefined) result.rental_history = property.rentalHistory;
   if (property.apartmentStatus !== undefined) result.apartment_status = property.apartmentStatus;
+  if (property.zweckentfremdungFlag !== undefined) result.zweckentfremdung_flag = property.zweckentfremdungFlag;
+  if (property.zweckentfremdungUpdatedAt !== undefined) result.zweckentfremdung_updated_at = property.zweckentfremdungUpdatedAt;
   if (property.landlord !== undefined) result.landlord = property.landlord;
   if (property.management !== undefined) result.management = property.management;
   if (property.secondCompany !== undefined) result.second_company = property.secondCompany;
@@ -2722,6 +2726,7 @@ export const propertyDocumentsService = {
       else if (params.type === 'handover_protocol' && typeof m.datum === 'string') docDate = m.datum;
       else if (params.type === 'bk_abrechnung' && typeof m.docDatum === 'string') docDate = m.docDatum;
       else if (params.type === 'zvu' && typeof m.datum === 'string') docDate = m.datum;
+      else if (params.type === 'zweckentfremdung_notice' && typeof m.datum === 'string') docDate = m.datum;
       else if ((params.type === 'supplier_electricity' || params.type === 'supplier_gas' || params.type === 'supplier_water' || params.type === 'supplier_waste') && (typeof m.faellig === 'string' || typeof m.von === 'string')) docDate = (m.faellig as string) || (m.von as string);
     }
     const { data, error } = await supabase

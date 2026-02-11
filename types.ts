@@ -140,6 +140,7 @@ export type PropertyDocumentType =
   | 'deposit_return_proof'
   | 'bk_abrechnung'
   | 'zvu'
+  | 'zweckentfremdung_notice'
   | 'other_document';
 
 export interface PropertyDocument {
@@ -474,6 +475,10 @@ export interface Property {
   ownerExpense?: OwnerExpense;
   /** Card 1: apartment/lease status (active, ooo, preparation, rented_worker). Stored in apartment_status column. */
   apartmentStatus?: 'active' | 'ooo' | 'preparation' | 'rented_worker';
+  /** Zweckentfremdung (Zweckentfremdungsverbot) flag. Stored in zweckentfremdung_flag column. */
+  zweckentfremdungFlag?: boolean;
+  /** When the Zweckentfremdung flag was last updated. Stored in zweckentfremdung_updated_at column. */
+  zweckentfremdungUpdatedAt?: string;
   /** Card 1: landlord contact (JSONB). */
   landlord?: ContactParty;
   /** Card 1: management company contact (JSONB). */

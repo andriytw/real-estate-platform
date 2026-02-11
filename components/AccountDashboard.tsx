@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip } from 'lucide-react';
+import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Square } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 import AdminCalendar from './AdminCalendar';
 import AdminMessages from './AdminMessages';
@@ -181,6 +181,7 @@ const DOCUMENT_TYPE_LABELS: Record<PropertyDocumentType, string> = {
   deposit_return_proof: 'Підтвердження повернення застави',
   bk_abrechnung: 'BKA',
   zvu: 'ZVU',
+  zweckentfremdung_notice: 'Zweckentfremdung',
   other_document: 'Інший документ',
 };
 
@@ -538,6 +539,16 @@ const AccountDashboard: React.FC = () => {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [docPreview.open, closeDocPreview]);
+  const [isZweckentfremdungModalOpen, setIsZweckentfremdungModalOpen] = useState(false);
+  const [zweckentfremdungDocs, setZweckentfremdungDocs] = useState<PropertyDocument[]>([]);
+  const [zweckentfremdungDocsLoading, setZweckentfremdungDocsLoading] = useState(false);
+  const [zweckentfremdungSwitchValue, setZweckentfremdungSwitchValue] = useState(false);
+  const [zweckentfremdungSaving, setZweckentfremdungSaving] = useState(false);
+  const [zweckentfremdungAddDraft, setZweckentfremdungAddDraft] = useState({ datum: '', aktenzeichen: '', bezirksamt: '', note: '' });
+  const [zweckentfremdungModalFile, setZweckentfremdungModalFile] = useState<File | null>(null);
+  const [zweckentfremdungAddSaving, setZweckentfremdungAddSaving] = useState(false);
+  const [zweckentfremdungAddError, setZweckentfremdungAddError] = useState<string | null>(null);
+  const zweckentfremdungFileInputRef = useRef<HTMLInputElement>(null);
   const [showPartiesDetails, setShowPartiesDetails] = useState(false);
   const [showPaymentDetails, setShowPaymentDetails] = useState(false);
   const [editingPaymentTile, setEditingPaymentTile] = useState<PaymentTileKey | null>(null);
@@ -4690,7 +4701,10 @@ ${internalCompany} Team`;
                <div key={prop.id} onClick={() => setSelectedPropertyId(prop.id)} className={`cursor-pointer p-4 rounded-xl border transition-all duration-200 ${selectedPropertyId === prop.id ? 'bg-[#1C1F24] border-l-4 border-l-emerald-500 border-y-transparent border-r-transparent shadow-lg' : 'bg-[#1C1F24] border-gray-800 hover:bg-[#23262b] hover:border-gray-700'}`}>
                   <div className="flex justify-between items-start mb-1">
                      <h3 className="font-bold text-white text-sm">{prop.title}</h3>
-                     <span className={`text-[10px] px-1.5 py-0.5 rounded ${prop.termStatus === 'green' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>{prop.termStatus === 'green' ? 'Active' : 'Expiring'}</span>
+                     <div className="flex items-center gap-1 shrink-0">
+                        {prop.zweckentfremdungFlag && <span className="text-amber-500" title="Zweckentfremdung Hinweis"><AlertTriangle className="w-4 h-4" /></span>}
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${prop.termStatus === 'green' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>{prop.termStatus === 'green' ? 'Active' : 'Expiring'}</span>
+                     </div>
                   </div>
                   <p className="text-xs text-gray-500 truncate mb-2">{prop.address}</p>
                   
@@ -4735,9 +4749,14 @@ ${internalCompany} Team`;
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold text-white">Оренда квартири</h2>
                     {!isEditingCard1 ? (
-                        <button type="button" onClick={startCard1Edit} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
-                            <Edit className="w-4 h-4 mr-1 inline" /> Редагувати
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button type="button" onClick={() => { setZweckentfremdungSwitchValue(!!selectedProperty?.zweckentfremdungFlag); setZweckentfremdungAddDraft({ datum: '', aktenzeichen: '', bezirksamt: '', note: '' }); setZweckentfremdungModalFile(null); setZweckentfremdungAddError(null); if (selectedProperty?.id) { setZweckentfremdungDocsLoading(true); propertyDocumentsService.listPropertyDocuments(selectedProperty.id).then(list => { setZweckentfremdungDocs(list.filter(d => d.type === 'zweckentfremdung_notice')); }).finally(() => setZweckentfremdungDocsLoading(false)); } setIsZweckentfremdungModalOpen(true); }} className="p-2 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors" title="Zweckentfremdung — Hinweis/Anzeige wegen Zweckentfremdung">
+                                {selectedProperty?.zweckentfremdungFlag ? <AlertTriangle className="w-5 h-5 text-amber-500" /> : <Square className="w-5 h-5 text-gray-500" />}
+                            </button>
+                            <button type="button" onClick={startCard1Edit} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+                                <Edit className="w-4 h-4 mr-1 inline" /> Редагувати
+                            </button>
+                        </div>
                     ) : null}
                 </div>
                 <div className="space-y-4">
@@ -5721,6 +5740,54 @@ ${internalCompany} Team`;
                                 )}
                             </div>
                         </>
+                    )}
+                    {isZweckentfremdungModalOpen && selectedProperty && (
+                        <div className="fixed inset-0 z-[218] flex items-center justify-center bg-black/60 p-4" onClick={() => setIsZweckentfremdungModalOpen(false)}>
+                            <div className="bg-[#1C1F24] w-full max-w-lg rounded-xl border border-gray-700 shadow-xl flex flex-col max-h-[85vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+                                <div className="p-4 border-b border-gray-700 flex justify-between items-center shrink-0">
+                                    <h3 className="text-lg font-bold text-white">Zweckentfremdung</h3>
+                                    <button type="button" onClick={() => setIsZweckentfremdungModalOpen(false)} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
+                                </div>
+                                <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+                                    <div className="flex items-center justify-between gap-4">
+                                        <span className="text-sm text-white">Hinweis/Anzeige wegen Zweckentfremdung</span>
+                                        <button type="button" role="switch" aria-checked={zweckentfremdungSwitchValue} onClick={() => setZweckentfremdungSwitchValue(!zweckentfremdungSwitchValue)} className={`relative w-11 h-6 rounded-full transition-colors ${zweckentfremdungSwitchValue ? 'bg-amber-500' : 'bg-gray-600'}`}>
+                                            <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${zweckentfremdungSwitchValue ? 'translate-x-5' : 'translate-x-0'}`} />
+                                        </button>
+                                    </div>
+                                    <button type="button" disabled={zweckentfremdungSaving} onClick={async () => { if (!selectedProperty) return; setZweckentfremdungSaving(true); try { const updated = await propertiesService.update(selectedProperty.id, { zweckentfremdungFlag: zweckentfremdungSwitchValue, zweckentfremdungUpdatedAt: new Date().toISOString() }); setProperties(prev => prev.map(p => p.id === updated.id ? updated : p)); } finally { setZweckentfremdungSaving(false); } }} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white">Speichern</button>
+                                    <input type="file" ref={zweckentfremdungFileInputRef} className="hidden" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={e => setZweckentfremdungModalFile(e.target.files?.[0] ?? null)} />
+                                    <div className="border-t border-gray-700 pt-4">
+                                        <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2">Dokument anfügen</h4>
+                                        <div className="grid grid-cols-2 gap-2 text-xs">
+                                            <div><label className="text-gray-500 block mb-0.5">Datum (Pflicht)</label><input type="date" value={zweckentfremdungAddDraft.datum} onChange={e => setZweckentfremdungAddDraft(d => ({ ...d, datum: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded px-2 py-1.5 text-white" /></div>
+                                            <div><label className="text-gray-500 block mb-0.5">Aktenzeichen</label><input value={zweckentfremdungAddDraft.aktenzeichen} onChange={e => setZweckentfremdungAddDraft(d => ({ ...d, aktenzeichen: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded px-2 py-1.5 text-white" /></div>
+                                            <div className="col-span-2"><label className="text-gray-500 block mb-0.5">Bezirksamt</label><input value={zweckentfremdungAddDraft.bezirksamt} onChange={e => setZweckentfremdungAddDraft(d => ({ ...d, bezirksamt: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded px-2 py-1.5 text-white" /></div>
+                                            <div className="col-span-2"><label className="text-gray-500 block mb-0.5">Notiz</label><input value={zweckentfremdungAddDraft.note} onChange={e => setZweckentfremdungAddDraft(d => ({ ...d, note: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded px-2 py-1.5 text-white" /></div>
+                                            <div className="col-span-2 flex items-center gap-2">
+                                                <button type="button" onClick={() => zweckentfremdungFileInputRef.current?.click()} className="p-1.5 text-gray-400 hover:text-white rounded border border-gray-700" title="Datei"><Paperclip className="w-4 h-4" /></button>
+                                                <span className="text-gray-500 truncate flex-1">{zweckentfremdungModalFile?.name ?? '—'}</span>
+                                                <button type="button" disabled={zweckentfremdungAddSaving || !zweckentfremdungAddDraft.datum.trim() || !zweckentfremdungModalFile} onClick={async () => { if (!selectedProperty || !zweckentfremdungModalFile) return; const datum = zweckentfremdungAddDraft.datum.trim(); if (!datum) { setZweckentfremdungAddError('Datum ist Pflicht'); return; } setZweckentfremdungAddSaving(true); setZweckentfremdungAddError(null); const docId = crypto.randomUUID(); let filePath: string | null = null; try { filePath = await propertyDocumentsService.uploadPropertyDocumentFile(zweckentfremdungModalFile, selectedProperty.id, 'zweckentfremdung_notice', docId); const meta = { datum, aktenzeichen: zweckentfremdungAddDraft.aktenzeichen, bezirksamt: zweckentfremdungAddDraft.bezirksamt, note: zweckentfremdungAddDraft.note }; await propertyDocumentsService.createPropertyDocument({ id: docId, propertyId: selectedProperty.id, type: 'zweckentfremdung_notice', filePath, title: null, meta }); const list = await propertyDocumentsService.listPropertyDocuments(selectedProperty.id); setZweckentfremdungDocs(list.filter(d => d.type === 'zweckentfremdung_notice')); setZweckentfremdungAddDraft({ datum: '', aktenzeichen: '', bezirksamt: '', note: '' }); setZweckentfremdungModalFile(null); if (zweckentfremdungFileInputRef.current) zweckentfremdungFileInputRef.current.value = ''; } catch (e) { setZweckentfremdungAddError(e instanceof Error ? e.message : 'Fehler'); if (filePath) propertyDocumentsService.removePropertyDocumentFile(filePath).catch(() => {}); } finally { setZweckentfremdungAddSaving(false); } }} className="p-1.5 text-emerald-500 hover:text-emerald-400 rounded" title="Speichern"><Check className="w-4 h-4" /></button>
+                                            </div>
+                                        </div>
+                                        {zweckentfremdungAddError && <p className="text-xs text-red-400 mt-1">{zweckentfremdungAddError}</p>}
+                                    </div>
+                                    <div className="border-t border-gray-700 pt-4">
+                                        <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2">Anzeigen / Beschwerden</h4>
+                                        {zweckentfremdungDocsLoading ? <p className="text-sm text-gray-500">Laden…</p> : (
+                                            <div className="overflow-x-auto border border-gray-700 rounded-lg">
+                                                <table className="w-full text-xs">
+                                                    <thead className="bg-[#23262b] text-gray-400"><tr><th className="px-2 py-1 text-left font-medium w-24">Datum</th><th className="px-2 py-1 text-left font-medium w-20">Aktenz.</th><th className="px-2 py-1 text-left font-medium min-w-0">Bezirksamt</th><th className="px-2 py-1 w-20" /></tr></thead>
+                                                    <tbody className="divide-y divide-gray-700/50">
+                                                        {zweckentfremdungDocs.length === 0 ? <tr><td colSpan={4} className="px-2 py-2 text-gray-500">Keine Einträge</td></tr> : zweckentfremdungDocs.map(doc => { const m = (doc.meta || {}) as Record<string, unknown>; return <tr key={doc.id} className="hover:bg-[#23262b]"><td className="px-2 py-1 text-white whitespace-nowrap">{String(m.datum ?? '—')}</td><td className="px-2 py-1 text-white whitespace-nowrap">{String(m.aktenzeichen ?? '—')}</td><td className="px-2 py-1 text-white truncate">{String(m.bezirksamt ?? '—')}</td><td className="px-2 py-1"><div className="flex items-center gap-0.5 justify-end"><button type="button" onClick={async () => { try { const url = await propertyDocumentsService.getDocumentSignedUrl(doc.filePath); setDocPreview({ open: true, url, title: doc.title ?? DOCUMENT_TYPE_LABELS[doc.type] }); } catch (e) { alert(e instanceof Error ? e.message : 'Fehler'); } }} className="p-1 text-gray-400 hover:text-white rounded" title="Ansehen"><Eye className="w-4 h-4" /></button><button type="button" onClick={() => { if (!window.confirm('Dokument endgültig löschen?')) return; propertyDocumentsService.deletePropertyDocumentHard(doc).then(() => { setZweckentfremdungDocs(prev => prev.filter(d => d.id !== doc.id)); }).catch(e => alert(e instanceof Error ? e.message : 'Fehler')); }} className="p-1 text-red-400 hover:text-red-300 rounded" title="Löschen"><Trash2 className="w-4 h-4" /></button></div></td></tr>; })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     )}
                     {isAddressBookModalOpen && (
                         <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4" onClick={() => setIsAddressBookModalOpen(false)}>
