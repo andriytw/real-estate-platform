@@ -141,6 +141,7 @@ export type PropertyDocumentType =
   | 'bk_abrechnung'
   | 'zvu'
   | 'zweckentfremdung_notice'
+  | 'an_abmeldung'
   | 'other_document';
 
 export interface PropertyDocument {
