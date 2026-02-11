@@ -619,6 +619,7 @@ const AccountDashboard: React.FC = () => {
       const mietsteuer = Number(r.mietsteuer) || 0, unternehmenssteuer = Number(r.unternehmenssteuer) || 0;
       const muell = Number(r.muell) || 0, strom = Number(r.strom) || 0, gas = Number(r.gas) || 0, wasser = Number(r.wasser) || 0;
       return {
+        id: r.id,
         validFrom: r.valid_from,
         validTo: r.valid_to ? r.valid_to : '∞',
         km, mietsteuer, unternehmenssteuer, bk, hk, muell, strom, gas, wasser,
@@ -626,6 +627,14 @@ const AccountDashboard: React.FC = () => {
       };
     });
   }, [ownerRentTimelineDbRows]);
+
+  const [editingRentTimelineRowId, setEditingRentTimelineRowId] = useState<string | null>(null);
+  const [rentTimelineEditDraft, setRentTimelineEditDraft] = useState<{
+    validFrom: string; validTo: string;
+    km: string; mietsteuer: string; unternehmenssteuer: string; bk: string; hk: string;
+    muell: string; strom: string; gas: string; wasser: string;
+  } | null>(null);
+  const [rentTimelineEditError, setRentTimelineEditError] = useState<string | null>(null);
   const activeRentRow = useMemo(() => getActiveRentTimelineRow(rentTimelineRows), [rentTimelineRows]);
   const ownerTotalAuto = activeRentRow ? (activeRentRow.warm ?? (
     (activeRentRow.km ?? 0) + (activeRentRow.bk ?? 0) + (activeRentRow.hk ?? 0) +
@@ -2313,6 +2322,9 @@ const AccountDashboard: React.FC = () => {
     setCard1Draft(null);
     setLeaseTermDraft(null);
     setCard1DepositError(null);
+    setEditingRentTimelineRowId(null);
+    setRentTimelineEditDraft(null);
+    setRentTimelineEditError(null);
   };
 
   const isCard1LandlordValid = (l: ContactParty | null): boolean => {
@@ -2355,6 +2367,51 @@ const AccountDashboard: React.FC = () => {
     if (scPaymentDay != null && (scPaymentDay < 1 || scPaymentDay > 31 || !Number.isInteger(scPaymentDay))) {
       alert('День оплати (2-га фірма) має бути числом від 1 до 31.');
       return;
+    }
+    if (editingRentTimelineRowId && rentTimelineEditDraft) {
+      const d = rentTimelineEditDraft;
+      setRentTimelineEditError(null);
+      if (!d.validFrom?.trim()) {
+        setRentTimelineEditError('Дата «Дійсний з» обовʼязкова.');
+        return;
+      }
+      const num = (s: string) => (s === '' || s == null) ? 0 : parseFloat(s);
+      const kmNum = num(d.km), bkNum = num(d.bk), hkNum = num(d.hk);
+      const mietsteuerNum = num(d.mietsteuer), unternehmenssteuerNum = num(d.unternehmenssteuer);
+      const stromNum = num(d.strom), muellNum = num(d.muell), gasNum = num(d.gas), wasserNum = num(d.wasser);
+      const allNums = [kmNum, bkNum, hkNum, mietsteuerNum, unternehmenssteuerNum, stromNum, muellNum, gasNum, wasserNum];
+      if (allNums.some(n => Number.isNaN(n) || n < 0)) {
+        setRentTimelineEditError('Усі числові поля мають бути числами ≥ 0.');
+        return;
+      }
+      if (d.validTo?.trim() && d.validTo < d.validFrom) {
+        setRentTimelineEditError('Дата «Дійсний по» не може бути раніше за «Дійсний з».');
+        return;
+      }
+      try {
+        await rentTimelineService.updateRow(editingRentTimelineRowId, {
+          valid_from: d.validFrom.trim(),
+          valid_to: (d.validTo?.trim() && d.validTo.trim() !== '∞') ? d.validTo.trim() : null,
+          km: kmNum,
+          mietsteuer: mietsteuerNum,
+          unternehmenssteuer: unternehmenssteuerNum,
+          bk: bkNum,
+          hk: hkNum,
+          muell: muellNum,
+          strom: stromNum,
+          gas: gasNum,
+          wasser: wasserNum,
+        });
+        const rows = await rentTimelineService.listRows(selectedPropertyId!);
+        setOwnerRentTimelineDbRows(rows);
+      } catch (err) {
+        console.error('Rent timeline update error:', err);
+        setRentTimelineEditError(err instanceof Error ? err.message : 'Помилка збереження рядка.');
+        return;
+      }
+      setEditingRentTimelineRowId(null);
+      setRentTimelineEditDraft(null);
+      setRentTimelineEditError(null);
     }
     try {
       const t = draftSnapshot.tenant;
@@ -2521,6 +2578,9 @@ const AccountDashboard: React.FC = () => {
     setShowAddRentIncreaseForm(false);
     setRentIncreaseForm({ validFrom: '', validTo: '', km: '', mietsteuer: '', unternehmenssteuer: '', bk: '', hk: '', muell: '', strom: '', gas: '', wasser: '' });
     setRentIncreaseFormError(null);
+    setEditingRentTimelineRowId(null);
+    setRentTimelineEditDraft(null);
+    setRentTimelineEditError(null);
   }, [selectedPropertyId]);
 
   useEffect(() => {
@@ -4885,11 +4945,46 @@ ${internalCompany} Team`;
                                 <span className="text-xs text-gray-500 block mb-2">Рентний таймлайн</span>
                                 {rentTimelineLoading && <p className="text-xs text-gray-500 mb-1">Завантаження…</p>}
                                 {rentTimelineError && <p className="text-sm text-red-400 mb-1">{rentTimelineError}</p>}
+                                {rentTimelineEditError && <p className="text-xs text-amber-400 mb-1">{rentTimelineEditError}</p>}
                                 <div className="overflow-x-auto overflow-hidden border border-gray-700 rounded-lg">
                                     <table className="w-full text-sm text-left min-w-[800px]">
                                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700"><tr><th className="p-2 font-bold text-xs uppercase" title="Дійсний з">Von</th><th className="p-2 font-bold text-xs uppercase" title="Дійсний по">Bis</th><th className="p-2 font-bold text-xs uppercase text-right" title="Kaltmiete">KM</th><th className="p-2 font-bold text-xs uppercase text-right" title="Mietsteuer">MSt</th><th className="p-2 font-bold text-xs uppercase text-right" title="Unternehmenssteuer">USt</th><th className="p-2 font-bold text-xs uppercase text-right" title="Betriebskosten">BK</th><th className="p-2 font-bold text-xs uppercase text-right" title="Heizkosten">HK</th><th className="p-2 font-bold text-xs uppercase text-right" title="Müll">Müll</th><th className="p-2 font-bold text-xs uppercase text-right" title="Strom">Strom</th><th className="p-2 font-bold text-xs uppercase text-right" title="Gas">Gas</th><th className="p-2 font-bold text-xs uppercase text-right" title="Wasser">Wasser</th><th className="p-2 font-bold text-xs uppercase text-right" title="Warmmiete">WM</th></tr></thead>
                                         <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                                            {rentTimelineRows.length === 0 ? <tr><td colSpan={12} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr> : rentTimelineRows.map((r, i) => <tr key={i}><td className="p-2 text-white">{r.validFrom}</td><td className="p-2 text-white">{r.validTo}</td><td className="p-2 text-right text-white font-mono">€{(r.km ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.mietsteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.unternehmenssteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.bk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.hk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.muell ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.strom ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.gas ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.wasser ?? 0).toFixed(2)}</td><td className="p-2 text-right text-emerald-400 font-mono font-bold">€{(r.warm ?? 0).toFixed(2)}</td></tr>)}
+                                            {rentTimelineRows.length === 0 ? (
+                                              <tr><td colSpan={12} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr>
+                                            ) : rentTimelineRows.map((r) => {
+                                              const isEditing = editingRentTimelineRowId === r.id && rentTimelineEditDraft;
+                                              const draft = isEditing ? rentTimelineEditDraft : null;
+                                              const warmPreview = draft ? ((parseFloat(draft.km) || 0) + (parseFloat(draft.bk) || 0) + (parseFloat(draft.hk) || 0) + (parseFloat(draft.mietsteuer) || 0) + (parseFloat(draft.unternehmenssteuer) || 0) + (parseFloat(draft.muell) || 0) + (parseFloat(draft.strom) || 0) + (parseFloat(draft.gas) || 0) + (parseFloat(draft.wasser) || 0)) : 0;
+                                              return (
+                                                <tr
+                                                  key={r.id}
+                                                  onClick={isEditing ? (e) => e.stopPropagation() : () => { setEditingRentTimelineRowId(r.id); setRentTimelineEditDraft({ validFrom: r.validFrom, validTo: r.validTo === '∞' ? '' : r.validTo, km: (r.km ?? 0) === 0 ? '' : String(r.km), mietsteuer: (r.mietsteuer ?? 0) === 0 ? '' : String(r.mietsteuer), unternehmenssteuer: (r.unternehmenssteuer ?? 0) === 0 ? '' : String(r.unternehmenssteuer), bk: (r.bk ?? 0) === 0 ? '' : String(r.bk), hk: (r.hk ?? 0) === 0 ? '' : String(r.hk), muell: (r.muell ?? 0) === 0 ? '' : String(r.muell), strom: (r.strom ?? 0) === 0 ? '' : String(r.strom), gas: (r.gas ?? 0) === 0 ? '' : String(r.gas), wasser: (r.wasser ?? 0) === 0 ? '' : String(r.wasser) }); setRentTimelineEditError(null); }}
+                                                  className={isEditing ? '' : 'cursor-pointer hover:bg-[#1C1F24]'}
+                                                >
+                                                  {isEditing && draft ? (
+                                                    <>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="date" value={draft.validFrom} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, validFrom: e.target.value } : null)} className="w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white" placeholder="YYYY-MM-DD" title="Von" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="date" value={draft.validTo} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, validTo: e.target.value } : null)} className="w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white" title="Bis" placeholder="∞" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.km === '0' ? '' : draft.km} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, km: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.mietsteuer === '0' ? '' : draft.mietsteuer} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, mietsteuer: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.unternehmenssteuer === '0' ? '' : draft.unternehmenssteuer} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, unternehmenssteuer: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.bk === '0' ? '' : draft.bk} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, bk: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.hk === '0' ? '' : draft.hk} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, hk: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.muell === '0' ? '' : draft.muell} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, muell: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.strom === '0' ? '' : draft.strom} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, strom: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.gas === '0' ? '' : draft.gas} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, gas: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.wasser === '0' ? '' : draft.wasser} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, wasser: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-2 text-right text-emerald-400 font-mono font-bold">€{warmPreview.toFixed(2)}</td>
+                                                    </>
+                                                  ) : (
+                                                    <>
+                                                      <td className="p-2 text-white">{r.validFrom}</td><td className="p-2 text-white">{r.validTo}</td><td className="p-2 text-right text-white font-mono">€{(r.km ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.mietsteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.unternehmenssteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.bk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.hk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.muell ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.strom ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.gas ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.wasser ?? 0).toFixed(2)}</td><td className="p-2 text-right text-emerald-400 font-mono font-bold">€{(r.warm ?? 0).toFixed(2)}</td>
+                                                    </>
+                                                  )}
+                                                </tr>
+                                              );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>
@@ -5339,7 +5434,7 @@ ${internalCompany} Team`;
                                     <table className="w-full text-sm text-left min-w-[800px]">
                                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700"><tr><th className="p-2 font-bold text-xs uppercase" title="Дійсний з">Von</th><th className="p-2 font-bold text-xs uppercase" title="Дійсний по">Bis</th><th className="p-2 font-bold text-xs uppercase text-right" title="Kaltmiete">KM</th><th className="p-2 font-bold text-xs uppercase text-right" title="Mietsteuer">MSt</th><th className="p-2 font-bold text-xs uppercase text-right" title="Unternehmenssteuer">USt</th><th className="p-2 font-bold text-xs uppercase text-right" title="Betriebskosten">BK</th><th className="p-2 font-bold text-xs uppercase text-right" title="Heizkosten">HK</th><th className="p-2 font-bold text-xs uppercase text-right" title="Müll">Müll</th><th className="p-2 font-bold text-xs uppercase text-right" title="Strom">Strom</th><th className="p-2 font-bold text-xs uppercase text-right" title="Gas">Gas</th><th className="p-2 font-bold text-xs uppercase text-right" title="Wasser">Wasser</th><th className="p-2 font-bold text-xs uppercase text-right" title="Warmmiete">WM</th></tr></thead>
                                         <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                                            {rentTimelineRows.length === 0 ? <tr><td colSpan={12} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr> : rentTimelineRows.map((r, i) => <tr key={i} className="hover:bg-[#1C1F24]"><td className="p-2 text-white">{r.validFrom}</td><td className="p-2 text-white">{r.validTo}</td><td className="p-2 text-right text-white font-mono">€{(r.km ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.mietsteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.unternehmenssteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.bk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.hk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.muell ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.strom ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.gas ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.wasser ?? 0).toFixed(2)}</td><td className="p-2 text-right text-emerald-400 font-mono font-bold">€{(r.warm ?? 0).toFixed(2)}</td></tr>)}
+                                            {rentTimelineRows.length === 0 ? <tr><td colSpan={12} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr> : rentTimelineRows.map((r) => <tr key={r.id} className="hover:bg-[#1C1F24]"><td className="p-2 text-white">{r.validFrom}</td><td className="p-2 text-white">{r.validTo}</td><td className="p-2 text-right text-white font-mono">€{(r.km ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.mietsteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.unternehmenssteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.bk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.hk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.muell ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.strom ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.gas ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.wasser ?? 0).toFixed(2)}</td><td className="p-2 text-right text-emerald-400 font-mono font-bold">€{(r.warm ?? 0).toFixed(2)}</td></tr>)}
                                         </tbody>
                                     </table>
                                 </div>

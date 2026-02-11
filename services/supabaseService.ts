@@ -3157,6 +3157,41 @@ export const rentTimelineService = {
     return data as RentTimelineRowDB;
   },
 
+  async updateRow(
+    rowId: string,
+    patch: Partial<{
+      valid_from: string;
+      valid_to: string | null;
+      km: number;
+      mietsteuer: number;
+      unternehmenssteuer: number;
+      bk: number;
+      hk: number;
+      muell: number;
+      strom: number;
+      gas: number;
+      wasser: number;
+      status: string;
+    }>
+  ): Promise<void> {
+    const payload: Record<string, unknown> = {};
+    if (patch.valid_from !== undefined) payload.valid_from = patch.valid_from;
+    if (patch.valid_to !== undefined) payload.valid_to = patch.valid_to;
+    if (patch.km !== undefined) payload.km = patch.km;
+    if (patch.mietsteuer !== undefined) payload.mietsteuer = patch.mietsteuer;
+    if (patch.unternehmenssteuer !== undefined) payload.unternehmenssteuer = patch.unternehmenssteuer;
+    if (patch.bk !== undefined) payload.bk = patch.bk;
+    if (patch.hk !== undefined) payload.hk = patch.hk;
+    if (patch.muell !== undefined) payload.muell = patch.muell;
+    if (patch.strom !== undefined) payload.strom = patch.strom;
+    if (patch.gas !== undefined) payload.gas = patch.gas;
+    if (patch.wasser !== undefined) payload.wasser = patch.wasser;
+    if (patch.status !== undefined) payload.status = patch.status;
+    if (Object.keys(payload).length === 0) return;
+    const { error } = await supabase.from('rent_timeline_rows').update(payload).eq('id', rowId);
+    if (error) throw new Error(error.message || 'Failed to update rent timeline row');
+  },
+
   /**
    * Backfill from legacy properties.rental_history. Migrates dates + km/bk/hk only; new fields = 0.
    * Does NOT set tenant_name (owner payment schedule only).
