@@ -20,8 +20,64 @@ import UserManagement from './admin/UserManagement';
 // Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks tab.
 // This avoids "X is not a constructor" on /account (CJS/ESM + esbuild minification issue with dnd).
 const KanbanBoard = React.lazy(() => import('./kanban/KanbanBoard'));
-import { propertiesService, tasksService, workersService, warehouseService, bookingsService, invoicesService, offersService, reservationsService, leadsService, paymentProofsService, propertyDocumentsService, propertyDepositProofsService, unitLeaseTermsService, checkBookingOverlap, markInvoicePaidAndConfirmBooking, WarehouseStockItem, UnitLeaseTermUi, addressBookPartiesService, propertyToPartiesAddressBookEntries, paymentChainService, paymentChainFilesService } from '../services/supabaseService';
-import { ReservationData, OfferData, InvoiceData, CalendarEvent, TaskType, TaskStatus, Lead, Property, PropertyDetails, RentalAgreement, MeterLogEntry, FuturePayment, PropertyEvent, BookingStatus, RequestData, Worker, Warehouse, Booking, Reservation, PaymentProof, ContactParty, TenantDetails, PropertyDocument, PropertyDocumentType, PropertyDeposit, PropertyDepositProof, LeaseTermDraftUi, AddressBookPartyEntry, PaymentChainAttachment, PaymentChain, PaymentChainFile } from '../types';
+import {
+  propertiesService,
+  tasksService,
+  workersService,
+  warehouseService,
+  bookingsService,
+  invoicesService,
+  offersService,
+  reservationsService,
+  leadsService,
+  paymentProofsService,
+  propertyDocumentsService,
+  propertyDepositProofsService,
+  unitLeaseTermsService,
+  checkBookingOverlap,
+  markInvoicePaidAndConfirmBooking,
+  WarehouseStockItem,
+  UnitLeaseTermUi,
+  addressBookPartiesService,
+  propertyToPartiesAddressBookEntries,
+  paymentChainService,
+  paymentChainFilesService,
+  rentTimelineService,
+} from '../services/supabaseService';
+import {
+  ReservationData,
+  OfferData,
+  InvoiceData,
+  CalendarEvent,
+  TaskType,
+  TaskStatus,
+  Lead,
+  Property,
+  PropertyDetails,
+  RentalAgreement,
+  RentTimelineRowDB,
+  MeterLogEntry,
+  FuturePayment,
+  PropertyEvent,
+  BookingStatus,
+  RequestData,
+  Worker,
+  Warehouse,
+  Booking,
+  Reservation,
+  PaymentProof,
+  ContactParty,
+  TenantDetails,
+  PropertyDocument,
+  PropertyDocumentType,
+  PropertyDeposit,
+  PropertyDepositProof,
+  LeaseTermDraftUi,
+  AddressBookPartyEntry,
+  PaymentChainAttachment,
+  PaymentChain,
+  PaymentChainFile,
+} from '../types';
 import { euToIso, validateEuDate } from '../utils/leaseTermDates';
 import { MOCK_PROPERTIES } from '../constants';
 import { createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
@@ -538,25 +594,87 @@ const AccountDashboard: React.FC = () => {
   const [depositProofError, setDepositProofError] = useState<string | null>(null);
   const [depositProofUploading, setDepositProofUploading] = useState(false);
   const [showAddRentIncreaseForm, setShowAddRentIncreaseForm] = useState(false);
-  const [rentIncreaseForm, setRentIncreaseForm] = useState<{ validFrom: string; validTo: string; km: string; bk: string; hk: string }>({ validFrom: '', validTo: '', km: '', bk: '', hk: '' });
+  const [rentIncreaseForm, setRentIncreaseForm] = useState<{
+    validFrom: string; validTo: string;
+    km: string; mietsteuer: string; unternehmenssteuer: string; bk: string; hk: string;
+    muell: string; strom: string; gas: string; wasser: string;
+  }>({
+    validFrom: '', validTo: '',
+    km: '', mietsteuer: '', unternehmenssteuer: '', bk: '', hk: '',
+    muell: '', strom: '', gas: '', wasser: ''
+  });
   const [rentIncreaseFormError, setRentIncreaseFormError] = useState<string | null>(null);
   const [isAddingRentIncrease, setIsAddingRentIncrease] = useState(false);
   const selectedProperty = useMemo(() => properties.find(p => p.id === selectedPropertyId) || properties[0] || null, [properties, selectedPropertyId]);
 
+  const [ownerRentTimelineDbRows, setOwnerRentTimelineDbRows] = useState<RentTimelineRowDB[]>([]);
+  const [rentTimelineLoading, setRentTimelineLoading] = useState(false);
+  const [rentTimelineError, setRentTimelineError] = useState<string | null>(null);
+
   const rentTimelineRows = useMemo(() => {
-    const history = (selectedProperty?.rentalHistory || []).slice().sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
-    const tenant = selectedProperty?.tenant;
-    return history.length > 0
-      ? history.map(a => ({ validFrom: a.startDate, validTo: a.endDate || '∞', km: a.km, bk: a.bk, hk: a.hk, warm: a.km + a.bk + a.hk }))
-      : tenant ? [{ validFrom: tenant.startDate || '—', validTo: '∞', km: tenant.km ?? 0, bk: tenant.bk ?? 0, hk: tenant.hk ?? 0, warm: (tenant.km ?? 0) + (tenant.bk ?? 0) + (tenant.hk ?? 0) }] : [];
-  }, [selectedProperty?.rentalHistory, selectedProperty?.tenant]);
+    const warmFrom = (km: number, bk: number, hk: number, mietsteuer: number, unternehmenssteuer: number, muell: number, strom: number, gas: number, wasser: number) =>
+      km + bk + hk + mietsteuer + unternehmenssteuer + muell + strom + gas + wasser;
+    return ownerRentTimelineDbRows.map((r) => {
+      const km = Number(r.km) || 0, bk = Number(r.bk) || 0, hk = Number(r.hk) || 0;
+      const mietsteuer = Number(r.mietsteuer) || 0, unternehmenssteuer = Number(r.unternehmenssteuer) || 0;
+      const muell = Number(r.muell) || 0, strom = Number(r.strom) || 0, gas = Number(r.gas) || 0, wasser = Number(r.wasser) || 0;
+      return {
+        validFrom: r.valid_from,
+        validTo: r.valid_to ? r.valid_to : '∞',
+        km, mietsteuer, unternehmenssteuer, bk, hk, muell, strom, gas, wasser,
+        warm: warmFrom(km, bk, hk, mietsteuer, unternehmenssteuer, muell, strom, gas, wasser)
+      };
+    });
+  }, [ownerRentTimelineDbRows]);
   const activeRentRow = useMemo(() => getActiveRentTimelineRow(rentTimelineRows), [rentTimelineRows]);
-  const ownerTotalAuto = activeRentRow ? (activeRentRow.warm ?? (activeRentRow.km + activeRentRow.bk + activeRentRow.hk)) : 0;
+  const ownerTotalAuto = activeRentRow ? (activeRentRow.warm ?? (
+    (activeRentRow.km ?? 0) + (activeRentRow.bk ?? 0) + (activeRentRow.hk ?? 0) +
+    (activeRentRow.mietsteuer ?? 0) + (activeRentRow.unternehmenssteuer ?? 0) +
+    (activeRentRow.strom ?? 0) + (activeRentRow.muell ?? 0) + (activeRentRow.gas ?? 0) + (activeRentRow.wasser ?? 0)
+  )) : 0;
 
   useEffect(() => {
     if (selectedPropertyId == null) return;
     loadPaymentChain(selectedPropertyId);
   }, [selectedPropertyId, loadPaymentChain]);
+
+  useEffect(() => {
+    if (!selectedPropertyId) {
+      setOwnerRentTimelineDbRows([]);
+      setRentTimelineError(null);
+      return;
+    }
+    const prop = properties.find(p => p.id === selectedPropertyId);
+    let cancelled = false;
+    setRentTimelineLoading(true);
+    setRentTimelineError(null);
+    rentTimelineService
+      .listRows(selectedPropertyId)
+      .then((rows) => {
+        if (cancelled) return;
+        const legacy = prop?.rentalHistory;
+        if (rows.length === 0 && legacy?.length) {
+          return rentTimelineService.backfillFromLegacy(selectedPropertyId, legacy).then(() =>
+            rentTimelineService.listRows(selectedPropertyId)
+          );
+        }
+        return rows;
+      })
+      .then((rows) => {
+        if (cancelled) return;
+        setOwnerRentTimelineDbRows(Array.isArray(rows) ? rows : []);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setRentTimelineError(e?.message || 'Не вдалося завантажити рентний таймлайн');
+          setOwnerRentTimelineDbRows([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRentTimelineLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedPropertyId, properties]);
 
   const [isInventoryEditing, setIsInventoryEditing] = useState(false);
   const [expandedMeterGroups, setExpandedMeterGroups] = useState<Set<string>>(new Set());
@@ -2341,19 +2459,20 @@ const AccountDashboard: React.FC = () => {
   };
 
   const addRentIncrease = async () => {
-    const prop = properties.find(p => p.id === selectedPropertyId);
-    if (!prop) return;
-    const { validFrom, validTo, km, bk, hk } = rentIncreaseForm;
+    if (!selectedPropertyId) return;
+    const { validFrom, validTo, km, mietsteuer, unternehmenssteuer, bk, hk, muell, strom, gas, wasser } = rentIncreaseForm;
     setRentIncreaseFormError(null);
     if (!validFrom?.trim()) {
       setRentIncreaseFormError('Дата «Дійсний з» обовʼязкова.');
       return;
     }
-    const kmNum = parseFloat(km);
-    const bkNum = parseFloat(bk);
-    const hkNum = parseFloat(hk);
-    if (Number.isNaN(kmNum) || kmNum < 0 || Number.isNaN(bkNum) || bkNum < 0 || Number.isNaN(hkNum) || hkNum < 0) {
-      setRentIncreaseFormError('Kaltmiete, BK та HK мають бути числами ≥ 0.');
+    const num = (s: string) => (s === '' || s == null) ? 0 : parseFloat(s);
+    const kmNum = num(km), bkNum = num(bk), hkNum = num(hk);
+    const mietsteuerNum = num(mietsteuer), unternehmenssteuerNum = num(unternehmenssteuer);
+    const stromNum = num(strom), muellNum = num(muell), gasNum = num(gas), wasserNum = num(wasser);
+    const allNums = [kmNum, bkNum, hkNum, mietsteuerNum, unternehmenssteuerNum, stromNum, muellNum, gasNum, wasserNum];
+    if (allNums.some(n => Number.isNaN(n) || n < 0)) {
+      setRentIncreaseFormError('Усі числові поля мають бути числами ≥ 0.');
       return;
     }
     if (validTo?.trim()) {
@@ -2364,24 +2483,24 @@ const AccountDashboard: React.FC = () => {
     }
     setIsAddingRentIncrease(true);
     try {
-      const newAgreement: RentalAgreement = {
-        id: crypto.randomUUID(),
-        tenantName: prop.tenant?.name ?? '',
-        startDate: validFrom.trim(),
-        endDate: (validTo?.trim() || '') || '',
+      await rentTimelineService.insertRow(selectedPropertyId, {
+        valid_from: validFrom.trim(),
+        valid_to: (validTo?.trim() && validTo.trim() !== '∞') ? validTo.trim() : null,
         km: kmNum,
+        mietsteuer: mietsteuerNum,
+        unternehmenssteuer: unternehmenssteuerNum,
         bk: bkNum,
         hk: hkNum,
+        muell: muellNum,
+        strom: stromNum,
+        gas: gasNum,
+        wasser: wasserNum,
         status: 'ACTIVE'
-      };
-      const updatedHistory = [...(prop.rentalHistory || []), newAgreement].sort(
-        (a, b) => (a.startDate || '').localeCompare(b.startDate || '')
-      );
-      const updated = await propertiesService.update(prop.id, { rentalHistory: updatedHistory });
-      setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
-      setSelectedPropertyId(updated.id);
+      });
+      const rows = await rentTimelineService.listRows(selectedPropertyId);
+      setOwnerRentTimelineDbRows(rows);
       setShowAddRentIncreaseForm(false);
-      setRentIncreaseForm({ validFrom: '', validTo: '', km: '', bk: '', hk: '' });
+      setRentIncreaseForm({ validFrom: '', validTo: '', km: '', mietsteuer: '', unternehmenssteuer: '', bk: '', hk: '', muell: '', strom: '', gas: '', wasser: '' });
     } catch (err) {
       console.error('Add rent increase error:', err);
       alert(err instanceof Error ? err.message : 'Помилка збереження. Спробуйте ще раз.');
@@ -2400,7 +2519,7 @@ const AccountDashboard: React.FC = () => {
     setCard1Draft(null);
     setLeaseTermDraft(null);
     setShowAddRentIncreaseForm(false);
-    setRentIncreaseForm({ validFrom: '', validTo: '', km: '', bk: '', hk: '' });
+    setRentIncreaseForm({ validFrom: '', validTo: '', km: '', mietsteuer: '', unternehmenssteuer: '', bk: '', hk: '', muell: '', strom: '', gas: '', wasser: '' });
     setRentIncreaseFormError(null);
   }, [selectedPropertyId]);
 
@@ -4764,34 +4883,36 @@ ${internalCompany} Team`;
                             </div>
                             <div>
                                 <span className="text-xs text-gray-500 block mb-2">Рентний таймлайн</span>
-                                <div className="overflow-hidden border border-gray-700 rounded-lg">
-                                    <table className="w-full text-sm text-left">
-                                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700"><tr><th className="p-2 font-bold text-xs uppercase">Дійсний з</th><th className="p-2 font-bold text-xs uppercase">Дійсний по</th><th className="p-2 font-bold text-xs uppercase text-right">Kaltmiete</th><th className="p-2 font-bold text-xs uppercase text-right">BK</th><th className="p-2 font-bold text-xs uppercase text-right">HK</th><th className="p-2 font-bold text-xs uppercase text-right">Warmmiete</th></tr></thead>
+                                {rentTimelineLoading && <p className="text-xs text-gray-500 mb-1">Завантаження…</p>}
+                                {rentTimelineError && <p className="text-sm text-red-400 mb-1">{rentTimelineError}</p>}
+                                <div className="overflow-x-auto overflow-hidden border border-gray-700 rounded-lg">
+                                    <table className="w-full text-sm text-left min-w-[800px]">
+                                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700"><tr><th className="p-2 font-bold text-xs uppercase">Дійсний з</th><th className="p-2 font-bold text-xs uppercase">Дійсний по</th><th className="p-2 font-bold text-xs uppercase text-right">Kaltmiete</th><th className="p-2 font-bold text-xs uppercase text-right">Mietsteuer</th><th className="p-2 font-bold text-xs uppercase text-right">Unternehmenssteuer</th><th className="p-2 font-bold text-xs uppercase text-right">BK</th><th className="p-2 font-bold text-xs uppercase text-right">HK</th><th className="p-2 font-bold text-xs uppercase text-right">Müll</th><th className="p-2 font-bold text-xs uppercase text-right">Strom</th><th className="p-2 font-bold text-xs uppercase text-right">Gas</th><th className="p-2 font-bold text-xs uppercase text-right">Wasser</th><th className="p-2 font-bold text-xs uppercase text-right">Warmmiete</th></tr></thead>
                                         <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                                            {(() => {
-                                                const history = (selectedProperty.rentalHistory || []).slice().sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
-                                                const tenant = selectedProperty.tenant;
-                                                const rows = history.length > 0 ? history.map(a => ({ validFrom: a.startDate, validTo: a.endDate || '∞', km: a.km, bk: a.bk, hk: a.hk, warm: a.km + a.bk + a.hk })) : (tenant ? [{ validFrom: tenant.startDate || '—', validTo: '∞', km: tenant.km ?? 0, bk: tenant.bk ?? 0, hk: tenant.hk ?? 0, warm: (tenant.km ?? 0) + (tenant.bk ?? 0) + (tenant.hk ?? 0) }] : []);
-                                                if (rows.length === 0) return <tr><td colSpan={6} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr>;
-                                                return rows.map((r, i) => <tr key={i}><td className="p-2 text-white">{r.validFrom}</td><td className="p-2 text-white">{r.validTo}</td><td className="p-2 text-right text-white font-mono">€{r.km.toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{r.bk.toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{r.hk.toFixed(2)}</td><td className="p-2 text-right text-emerald-400 font-mono font-bold">€{r.warm.toFixed(2)}</td></tr>);
-                                            })()}
+                                            {rentTimelineRows.length === 0 ? <tr><td colSpan={12} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr> : rentTimelineRows.map((r, i) => <tr key={i}><td className="p-2 text-white">{r.validFrom}</td><td className="p-2 text-white">{r.validTo}</td><td className="p-2 text-right text-white font-mono">€{(r.km ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.mietsteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.unternehmenssteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.bk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.hk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.muell ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.strom ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.gas ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.wasser ?? 0).toFixed(2)}</td><td className="p-2 text-right text-emerald-400 font-mono font-bold">€{(r.warm ?? 0).toFixed(2)}</td></tr>)}
                                         </tbody>
                                     </table>
                                 </div>
                                 {showAddRentIncreaseForm ? (
                                     <div className="mt-2 p-3 bg-[#111315] border border-gray-700 rounded-lg space-y-2">
-                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 items-end">
+                                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 items-end">
                                             <div><label className="text-xs text-gray-500 block mb-1">Дійсний з</label><input type="date" value={rentIncreaseForm.validFrom} onChange={e => setRentIncreaseForm(f => ({ ...f, validFrom: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" /></div>
                                             <div><label className="text-xs text-gray-500 block mb-1">Дійсний по (необовʼязково)</label><input type="date" value={rentIncreaseForm.validTo} onChange={e => setRentIncreaseForm(f => ({ ...f, validTo: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" /></div>
                                             <div><label className="text-xs text-gray-500 block mb-1">Kaltmiete (km)</label><input type="number" min={0} step={0.01} value={rentIncreaseForm.km} onChange={e => setRentIncreaseForm(f => ({ ...f, km: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
+                                            <div><label className="text-xs text-gray-500 block mb-1">Mietsteuer</label><input type="number" min={0} step={0.01} value={rentIncreaseForm.mietsteuer} onChange={e => setRentIncreaseForm(f => ({ ...f, mietsteuer: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
+                                            <div><label className="text-xs text-gray-500 block mb-1">Unternehmenssteuer</label><input type="number" min={0} step={0.01} value={rentIncreaseForm.unternehmenssteuer} onChange={e => setRentIncreaseForm(f => ({ ...f, unternehmenssteuer: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
                                             <div><label className="text-xs text-gray-500 block mb-1">BK</label><input type="number" min={0} step={0.01} value={rentIncreaseForm.bk} onChange={e => setRentIncreaseForm(f => ({ ...f, bk: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
                                             <div><label className="text-xs text-gray-500 block mb-1">HK</label><input type="number" min={0} step={0.01} value={rentIncreaseForm.hk} onChange={e => setRentIncreaseForm(f => ({ ...f, hk: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
+                                            <div><label className="text-xs text-gray-500 block mb-1">Müll</label><input type="number" min={0} step={0.01} value={rentIncreaseForm.muell} onChange={e => setRentIncreaseForm(f => ({ ...f, muell: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
+                                            <div><label className="text-xs text-gray-500 block mb-1">Strom</label><input type="number" min={0} step={0.01} value={rentIncreaseForm.strom} onChange={e => setRentIncreaseForm(f => ({ ...f, strom: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
+                                            <div><label className="text-xs text-gray-500 block mb-1">Gas</label><input type="number" min={0} step={0.01} value={rentIncreaseForm.gas} onChange={e => setRentIncreaseForm(f => ({ ...f, gas: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
+                                            <div><label className="text-xs text-gray-500 block mb-1">Wasser</label><input type="number" min={0} step={0.01} value={rentIncreaseForm.wasser} onChange={e => setRentIncreaseForm(f => ({ ...f, wasser: e.target.value }))} className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
                                         </div>
-                                        <p className="text-xs text-gray-400">Warmmiete = {(parseFloat(rentIncreaseForm.km) || 0) + (parseFloat(rentIncreaseForm.bk) || 0) + (parseFloat(rentIncreaseForm.hk) || 0)} €</p>
+                                        <p className="text-xs text-gray-400">Warmmiete = {((parseFloat(rentIncreaseForm.km) || 0) + (parseFloat(rentIncreaseForm.bk) || 0) + (parseFloat(rentIncreaseForm.hk) || 0) + (parseFloat(rentIncreaseForm.mietsteuer) || 0) + (parseFloat(rentIncreaseForm.unternehmenssteuer) || 0) + (parseFloat(rentIncreaseForm.strom) || 0) + (parseFloat(rentIncreaseForm.muell) || 0) + (parseFloat(rentIncreaseForm.gas) || 0) + (parseFloat(rentIncreaseForm.wasser) || 0)).toFixed(2)} €</p>
                                         {rentIncreaseFormError && <p className="text-sm text-red-400">{rentIncreaseFormError}</p>}
                                         <div className="flex gap-2">
                                             <button type="button" disabled={isAddingRentIncrease} onClick={addRentIncrease} className="px-3 py-1.5 rounded text-sm font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white">Додати</button>
-                                            <button type="button" disabled={isAddingRentIncrease} onClick={() => { setShowAddRentIncreaseForm(false); setRentIncreaseForm({ validFrom: '', validTo: '', km: '', bk: '', hk: '' }); setRentIncreaseFormError(null); }} className="px-3 py-1.5 rounded text-sm text-gray-400 hover:text-white">Скасувати</button>
+                                            <button type="button" disabled={isAddingRentIncrease} onClick={() => { setShowAddRentIncreaseForm(false); setRentIncreaseForm({ validFrom: '', validTo: '', km: '', mietsteuer: '', unternehmenssteuer: '', bk: '', hk: '', muell: '', strom: '', gas: '', wasser: '' }); setRentIncreaseFormError(null); }} className="px-3 py-1.5 rounded text-sm text-gray-400 hover:text-white">Скасувати</button>
                                         </div>
                                     </div>
                                 ) : (
@@ -5198,17 +5319,13 @@ ${internalCompany} Team`;
                             </div>
                             <div>
                                 <span className="text-xs text-gray-500 block mb-2">Рентний таймлайн</span>
-                                <div className="overflow-hidden border border-gray-700 rounded-lg">
-                                    <table className="w-full text-sm text-left">
-                                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700"><tr><th className="p-2 font-bold text-xs uppercase">Дійсний з</th><th className="p-2 font-bold text-xs uppercase">Дійсний по</th><th className="p-2 font-bold text-xs uppercase text-right">Kaltmiete</th><th className="p-2 font-bold text-xs uppercase text-right">BK</th><th className="p-2 font-bold text-xs uppercase text-right">HK</th><th className="p-2 font-bold text-xs uppercase text-right">Warmmiete</th></tr></thead>
+                                {rentTimelineLoading && <p className="text-xs text-gray-500 mb-1">Завантаження…</p>}
+                                {rentTimelineError && <p className="text-sm text-red-400 mb-1">{rentTimelineError}</p>}
+                                <div className="overflow-x-auto overflow-hidden border border-gray-700 rounded-lg">
+                                    <table className="w-full text-sm text-left min-w-[800px]">
+                                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700"><tr><th className="p-2 font-bold text-xs uppercase">Дійсний з</th><th className="p-2 font-bold text-xs uppercase">Дійсний по</th><th className="p-2 font-bold text-xs uppercase text-right">Kaltmiete</th><th className="p-2 font-bold text-xs uppercase text-right">Mietsteuer</th><th className="p-2 font-bold text-xs uppercase text-right">Unternehmenssteuer</th><th className="p-2 font-bold text-xs uppercase text-right">BK</th><th className="p-2 font-bold text-xs uppercase text-right">HK</th><th className="p-2 font-bold text-xs uppercase text-right">Müll</th><th className="p-2 font-bold text-xs uppercase text-right">Strom</th><th className="p-2 font-bold text-xs uppercase text-right">Gas</th><th className="p-2 font-bold text-xs uppercase text-right">Wasser</th><th className="p-2 font-bold text-xs uppercase text-right">Warmmiete</th></tr></thead>
                                         <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                                            {(() => {
-                                                const history = (selectedProperty.rentalHistory || []).slice().sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''));
-                                                const tenant = selectedProperty.tenant;
-                                                const rows = history.length > 0 ? history.map(a => ({ validFrom: a.startDate, validTo: a.endDate || '∞', km: a.km, bk: a.bk, hk: a.hk, warm: a.km + a.bk + a.hk })) : (tenant ? [{ validFrom: tenant.startDate || '—', validTo: '∞', km: tenant.km ?? 0, bk: tenant.bk ?? 0, hk: tenant.hk ?? 0, warm: (tenant.km ?? 0) + (tenant.bk ?? 0) + (tenant.hk ?? 0) }] : []);
-                                                if (rows.length === 0) return <tr><td colSpan={6} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr>;
-                                                return rows.map((r, i) => <tr key={i} className="hover:bg-[#1C1F24]"><td className="p-2 text-white">{r.validFrom}</td><td className="p-2 text-white">{r.validTo}</td><td className="p-2 text-right text-white font-mono">€{r.km.toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{r.bk.toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{r.hk.toFixed(2)}</td><td className="p-2 text-right text-emerald-400 font-mono font-bold">€{r.warm.toFixed(2)}</td></tr>);
-                                            })()}
+                                            {rentTimelineRows.length === 0 ? <tr><td colSpan={12} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr> : rentTimelineRows.map((r, i) => <tr key={i} className="hover:bg-[#1C1F24]"><td className="p-2 text-white">{r.validFrom}</td><td className="p-2 text-white">{r.validTo}</td><td className="p-2 text-right text-white font-mono">€{(r.km ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.mietsteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.unternehmenssteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.bk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.hk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.muell ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.strom ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.gas ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.wasser ?? 0).toFixed(2)}</td><td className="p-2 text-right text-emerald-400 font-mono font-bold">€{(r.warm ?? 0).toFixed(2)}</td></tr>)}
                                         </tbody>
                                     </table>
                                 </div>

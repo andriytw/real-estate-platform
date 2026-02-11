@@ -84,6 +84,35 @@ export interface RentalAgreement {
   bk: number;
   hk: number;
   status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED' | 'FUTURE';
+  /** Optional monthly payment components (Rent Timeline). Missing => 0. */
+  mietsteuer?: number;
+  unternehmenssteuer?: number;
+  strom?: number;
+  muell?: number;
+  gas?: number;
+  wasser?: number;
+}
+
+/** DB row for rent_timeline_rows table (owner payment schedule). Source of truth for Rent Timeline. */
+export interface RentTimelineRowDB {
+  id: string;
+  property_id: string;
+  external_id: string;
+  valid_from: string;
+  valid_to: string | null;
+  tenant_name: string | null;
+  status: string;
+  km: number;
+  mietsteuer: number;
+  unternehmenssteuer: number;
+  bk: number;
+  hk: number;
+  muell: number;
+  strom: number;
+  gas: number;
+  wasser: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface RentPayment {

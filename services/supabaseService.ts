@@ -38,6 +38,8 @@ import {
   PaymentChainState,
   PaymentChainEdgeKey,
   PaymentChainTileKey,
+  RentTimelineRowDB,
+  RentalAgreement,
 } from '../types';
 import { isoToEu } from '../utils/leaseTermDates';
 
@@ -3099,6 +3101,90 @@ export const paymentChainService = {
     if (storageError) throw new Error(storageError.message || 'Failed to delete file from storage');
     const { error: deleteError } = await supabase.from('payment_chain_files').delete().eq('id', id);
     if (deleteError) throw new Error(deleteError.message || 'Failed to delete file record');
+  },
+};
+
+// ==================== RENT TIMELINE (OWNER PAYMENT SCHEDULE) ====================
+
+export const rentTimelineService = {
+  async listRows(propertyId: string): Promise<RentTimelineRowDB[]> {
+    const { data, error } = await supabase
+      .from('rent_timeline_rows')
+      .select('*')
+      .eq('property_id', propertyId)
+      .order('valid_from', { ascending: true });
+    if (error) throw new Error(error.message || 'Failed to fetch rent timeline rows');
+    return (data || []) as RentTimelineRowDB[];
+  },
+
+  async insertRow(
+    propertyId: string,
+    payload: {
+      valid_from: string;
+      valid_to?: string | null;
+      km: number;
+      mietsteuer?: number;
+      unternehmenssteuer?: number;
+      bk: number;
+      hk: number;
+      muell?: number;
+      strom?: number;
+      gas?: number;
+      wasser?: number;
+      status?: string;
+    }
+  ): Promise<RentTimelineRowDB> {
+    const external_id = crypto.randomUUID();
+    const row = {
+      property_id: propertyId,
+      external_id,
+      valid_from: payload.valid_from,
+      valid_to: payload.valid_to ?? null,
+      tenant_name: null,
+      status: payload.status ?? 'ACTIVE',
+      km: payload.km ?? 0,
+      mietsteuer: payload.mietsteuer ?? 0,
+      unternehmenssteuer: payload.unternehmenssteuer ?? 0,
+      bk: payload.bk ?? 0,
+      hk: payload.hk ?? 0,
+      muell: payload.muell ?? 0,
+      strom: payload.strom ?? 0,
+      gas: payload.gas ?? 0,
+      wasser: payload.wasser ?? 0,
+    };
+    const { data, error } = await supabase.from('rent_timeline_rows').insert(row).select().single();
+    if (error) throw new Error(error.message || 'Failed to insert rent timeline row');
+    return data as RentTimelineRowDB;
+  },
+
+  /**
+   * Backfill from legacy properties.rental_history. Migrates dates + km/bk/hk only; new fields = 0.
+   * Does NOT set tenant_name (owner payment schedule only).
+   */
+  async backfillFromLegacy(propertyId: string, legacyAgreements: RentalAgreement[]): Promise<number> {
+    if (!legacyAgreements?.length) return 0;
+    const rows = legacyAgreements.map((a) => ({
+      property_id: propertyId,
+      external_id: a.id,
+      valid_from: a.startDate || '',
+      valid_to: (a.endDate && a.endDate.trim() && a.endDate !== '∞') ? a.endDate : null,
+      tenant_name: null,
+      status: a.status || 'ACTIVE',
+      km: a.km ?? 0,
+      mietsteuer: a.mietsteuer ?? 0,
+      unternehmenssteuer: a.unternehmenssteuer ?? 0,
+      bk: a.bk ?? 0,
+      hk: a.hk ?? 0,
+      muell: a.muell ?? 0,
+      strom: a.strom ?? 0,
+      gas: a.gas ?? 0,
+      wasser: a.wasser ?? 0,
+    }));
+    const { error } = await supabase
+      .from('rent_timeline_rows')
+      .upsert(rows, { onConflict: 'property_id,external_id', ignoreDuplicates: false });
+    if (error) throw new Error(error.message || 'Failed to backfill rent timeline');
+    return rows.length;
   },
 };
 
