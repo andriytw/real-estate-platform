@@ -2072,11 +2072,21 @@ function transformPropertyFromDB(db: any): Property {
     deposit: (() => {
       const raw = db.deposit ?? db.kaution;
       if (raw == null) return undefined;
+      let obj: Record<string, unknown>;
       if (typeof raw === 'string') {
-        try { return JSON.parse(raw); } catch { return undefined; }
+        try { obj = JSON.parse(raw); } catch { return undefined; }
+      } else if (typeof raw === 'object') {
+        obj = { ...raw };
+      } else {
+        return undefined;
       }
-      if (typeof raw === 'object') return raw;
-      return undefined;
+      const dt = obj.depositType ?? obj.deposit_type;
+      obj.depositType = (dt === 'CASH' || dt === 'TRANSFER' || dt === 'GUARANTEE') ? dt : 'TRANSFER';
+      obj.periodFrom = obj.periodFrom ?? obj.period_from ?? obj.paidAt ?? '';
+      obj.periodTo = obj.periodTo ?? obj.period_to ?? '';
+      obj.depositNo = obj.depositNo ?? obj.deposit_no ?? '';
+      obj.issuerCompany = obj.issuerCompany ?? obj.issuer_company ?? '';
+      return obj;
     })(),
     rentPayments: db.rent_payments || db.rentPayments || [],
     paymentChain: normalizePaymentChainFromDB(db.payment_chain),

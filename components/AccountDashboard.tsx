@@ -2279,7 +2279,11 @@ const AccountDashboard: React.FC = () => {
       returnedAt: prop.deposit.returnedAt ?? '',
       returnedAmount: prop.deposit.returnedAmount ?? undefined,
       returnStatus: prop.deposit.returnStatus ?? (prop.deposit.status === 'partially_returned' ? 'partially_returned' : prop.deposit.status === 'returned' ? 'returned' : 'unpaid'),
-      depositType: prop.deposit.depositType ?? 'TRANSFER'
+      depositType: prop.deposit.depositType ?? 'TRANSFER',
+      periodFrom: prop.deposit.periodFrom ?? prop.deposit.paidAt ?? '',
+      periodTo: prop.deposit.periodTo ?? '',
+      depositNo: prop.deposit.depositNo ?? '',
+      issuerCompany: prop.deposit.issuerCompany ?? ''
     } : null;
     setCard1Draft({
       apartmentStatus: (prop.apartmentStatus || 'active') as 'active' | 'ooo' | 'preparation' | 'rented_worker',
@@ -2339,7 +2343,7 @@ const AccountDashboard: React.FC = () => {
     if (!d) return { valid: true, message: null };
     const amount = typeof d.amount === 'number' ? d.amount : 0;
     if (amount < 0) return { valid: false, message: 'Сума застави не може бути від\'ємною.' };
-    if (d.status !== 'unpaid' && !d.paidAt?.trim()) return { valid: false, message: 'Для обраного статусу потрібна дата оплати.' };
+    if (d.status !== 'unpaid' && !(d.periodFrom?.trim() || d.paidAt?.trim())) return { valid: false, message: 'Для обраного статусу потрібна дата оплати.' };
     const retStatus = d.returnStatus ?? 'unpaid';
     if (retStatus === 'partially_returned' || retStatus === 'returned') {
       if (!d.returnedAt?.trim()) return { valid: false, message: 'Потрібна дата повернення.' };
@@ -2453,12 +2457,16 @@ const AccountDashboard: React.FC = () => {
         ? {
             amount: typeof draftSnapshot.deposit.amount === 'number' ? draftSnapshot.deposit.amount : 0,
             status: draftSnapshot.deposit.status ?? 'unpaid',
-            paidAt: draftSnapshot.deposit.paidAt?.trim() || undefined,
+            paidAt: draftSnapshot.deposit.periodFrom?.trim() || draftSnapshot.deposit.paidAt?.trim() || undefined,
             paidTo: draftSnapshot.deposit.paidTo?.trim() || undefined,
             returnedAt: draftSnapshot.deposit.returnedAt?.trim() || undefined,
             returnedAmount: draftSnapshot.deposit.returnedAmount,
             returnStatus: draftSnapshot.deposit.returnStatus ?? 'unpaid',
-            depositType: draftSnapshot.deposit.depositType ?? 'TRANSFER'
+            depositType: draftSnapshot.deposit.depositType ?? 'TRANSFER',
+            periodFrom: draftSnapshot.deposit.periodFrom?.trim() || undefined,
+            periodTo: draftSnapshot.deposit.periodTo?.trim() || undefined,
+            depositNo: draftSnapshot.deposit.depositNo?.trim() || undefined,
+            issuerCompany: draftSnapshot.deposit.issuerCompany?.trim() || undefined
           }
         : null;
       await Promise.all([
@@ -5033,27 +5041,44 @@ ${internalCompany} Team`;
                             <div className="pb-4 border-b border-gray-700">
                                 <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Застава (Kaution)</h3>
                                 <div className="grid grid-cols-12 gap-4 items-center">
-                                    {/* Row 1: Дата 2 + Кому 2 + Typ 2 + Сума 2 + Status 2 + Buttons 2 */}
-                                    <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Дата оплати</label><input type="date" value={card1Draft.deposit?.paidAt ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid', returnStatus: 'unpaid', depositType: 'TRANSFER' }), paidAt: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
-                                    <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Оплачено кому</label><input value={card1Draft.deposit?.paidTo ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid', returnStatus: 'unpaid', depositType: 'TRANSFER' }), paidTo: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
-                                    <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Typ</label><select value={card1Draft.deposit?.depositType ?? 'TRANSFER'} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid', returnStatus: 'unpaid', depositType: 'TRANSFER' }), depositType: e.target.value as PropertyDeposit['depositType'] } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white"><option value="CASH">Bar</option><option value="TRANSFER">ÜW</option><option value="GUARANTEE">BU</option></select></div>
-                                    <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Сума (€)</label><input type="number" min={0} step={0.01} value={card1Draft.deposit?.amount ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid', returnStatus: 'unpaid', depositType: 'TRANSFER' }), amount: parseFloat(e.target.value) || 0 } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
-                                    <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Статус</label><select value={card1Draft.deposit?.status ?? 'unpaid'} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid', returnStatus: 'unpaid', depositType: 'TRANSFER' }), status: e.target.value as PropertyDeposit['status'] } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white"><option value="unpaid">Не оплачено</option><option value="paid">Оплачено</option></select></div>
-                                    <div className="col-span-2 flex items-center justify-end gap-0.5 shrink-0">
+                                    {/* Row A: Von, Bis, Nr, Firma */}
+                                    {(() => {
+                                      const def = { amount: 0, status: 'unpaid' as const, returnStatus: 'unpaid' as const, depositType: 'TRANSFER' as const, periodFrom: '', periodTo: '', depositNo: '', issuerCompany: '' };
+                                      const base = (d: typeof card1Draft) => d?.deposit ? { ...def, ...d.deposit } : def;
+                                      return <>
+                                        <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Von</label><input type="date" value={card1Draft.deposit?.periodFrom ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...base(d), periodFrom: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Bis</label><input type="date" value={card1Draft.deposit?.periodTo ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...base(d), periodTo: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Nr</label><input value={card1Draft.deposit?.depositNo ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...base(d), depositNo: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                                        <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Firma</label><input value={card1Draft.deposit?.issuerCompany ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...base(d), issuerCompany: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                                        <div className="col-span-4" />
+                                        {/* Row B: Кому, Typ, Сума, Статус, Buttons */}
+                                        <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Оплачено кому</label><input value={card1Draft.deposit?.paidTo ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...base(d), paidTo: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                                        <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Typ</label><select value={card1Draft.deposit?.depositType ?? 'TRANSFER'} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...base(d), depositType: e.target.value as PropertyDeposit['depositType'] } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white"><option value="CASH">Bar</option><option value="TRANSFER">ÜW</option><option value="GUARANTEE">BU</option></select></div>
+                                        <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Сума (€)</label><input type="number" min={0} step={0.01} value={card1Draft.deposit?.amount ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...base(d), amount: parseFloat(e.target.value) || 0 } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="0" /></div>
+                                        <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Статус</label><select value={card1Draft.deposit?.status ?? 'unpaid'} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...base(d), status: e.target.value as PropertyDeposit['status'] } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white"><option value="unpaid">Не оплачено</option><option value="paid">Оплачено</option></select></div>
+                                        <div className="col-span-2 flex items-center justify-end gap-0.5 shrink-0">
                                         <button type="button" onClick={() => { setDepositProofType('payment'); setDepositProofFile(null); setDepositProofError(null); setIsDepositProofModalOpen(true); }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати підтвердження оплати"><Plus className="w-4 h-4" /></button>
                                         {kautionProofs.payment ? <button type="button" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.payment!.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors" title="Переглянути підтвердження оплати"><FileText className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><FileText className="w-4 h-4" /></button>}
                                         {kautionProofs.payment ? <button type="button" onClick={() => { if (window.confirm('Видалити документ безповоротно?')) { propertyDepositProofsService.delete(kautionProofs.payment!.id).then(() => refreshKautionProofs()).catch((e) => alert(e?.message || 'Помилка видалення')); } }} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити підтвердження оплати"><Trash2 className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><Trash2 className="w-4 h-4" /></button>}
                                     </div>
+                                      </>;
+                                    })()}
                                     {/* Row 2: returnedAt 2 + placeholder 3 + returnedAmount 2 + returnStatus 2 + buttons 3 */}
-                                    <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Дата повернення</label><input type="date" value={card1Draft.deposit?.returnedAt ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid', returnStatus: 'unpaid', depositType: 'TRANSFER' }), returnedAt: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                    {(() => {
+                                      const def = { amount: 0, status: 'unpaid' as const, returnStatus: 'unpaid' as const, depositType: 'TRANSFER' as const, periodFrom: '', periodTo: '', depositNo: '', issuerCompany: '' };
+                                      const base = (d: typeof card1Draft) => d?.deposit ? { ...def, ...d.deposit } : def;
+                                      return <>
+                                    <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Дата повернення</label><input type="date" value={card1Draft.deposit?.returnedAt ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...base(d), returnedAt: e.target.value } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
                                     <div className="col-span-3"><label className="text-xs text-gray-500 block mb-1">Повернув хто / від кого</label><input value="" readOnly className="w-full bg-[#0D1117] border border-gray-700 rounded p-2 text-sm text-gray-500" placeholder="—" title="Поле не зберігається в базі" /></div>
-                                    <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Сума повернення (€)</label><input type="number" min={0} step={0.01} value={card1Draft.deposit?.returnedAmount ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid', returnStatus: 'unpaid', depositType: 'TRANSFER' }), returnedAmount: e.target.value === '' ? undefined : parseFloat(e.target.value) || 0 } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
-                                    <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Статус</label><select value={card1Draft.deposit?.returnStatus ?? 'unpaid'} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...(d.deposit || { amount: 0, status: 'unpaid', returnStatus: 'unpaid', depositType: 'TRANSFER' }), returnStatus: e.target.value as PropertyDeposit['returnStatus'] } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white"><option value="unpaid">Не повернено</option><option value="partially_returned">Частково повернено</option><option value="returned">Повернено</option></select></div>
+                                    <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Сума повернення (€)</label><input type="number" min={0} step={0.01} value={card1Draft.deposit?.returnedAmount ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...base(d), returnedAmount: e.target.value === '' ? undefined : parseFloat(e.target.value) || 0 } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                                    <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Статус</label><select value={card1Draft.deposit?.returnStatus ?? 'unpaid'} onChange={e => setCard1Draft(d => d ? { ...d, deposit: { ...base(d), returnStatus: e.target.value as PropertyDeposit['returnStatus'] } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white"><option value="unpaid">Не повернено</option><option value="partially_returned">Частково повернено</option><option value="returned">Повернено</option></select></div>
                                     <div className="col-span-3 flex items-center justify-end gap-0.5 shrink-0">
                                         <button type="button" onClick={() => { setDepositProofType('return'); setDepositProofFile(null); setDepositProofError(null); setIsDepositProofModalOpen(true); }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати підтвердження повернення"><Plus className="w-4 h-4" /></button>
                                         {kautionProofs.return ? <button type="button" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.return!.filePath); window.open(url, '_blank'); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors" title="Переглянути підтвердження повернення"><FileText className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><FileText className="w-4 h-4" /></button>}
                                         {kautionProofs.return ? <button type="button" onClick={() => { if (window.confirm('Видалити документ безповоротно?')) { propertyDepositProofsService.delete(kautionProofs.return!.id).then(() => refreshKautionProofs()).catch((e) => alert(e?.message || 'Помилка видалення')); } }} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити підтвердження повернення"><Trash2 className="w-4 h-4" /></button> : <button type="button" disabled className="p-1.5 text-gray-600 cursor-not-allowed rounded" title="Немає документу"><Trash2 className="w-4 h-4" /></button>}
                                     </div>
+                                      </>;
+                                    })()}
                                 </div>
                                 {card1DepositError && <p className="text-sm text-red-400 mt-2">{card1DepositError}</p>}
                                 <div className="mt-2">
@@ -5448,8 +5473,11 @@ ${internalCompany} Team`;
                                 {(selectedProperty.deposit || kautionProofs.payment || kautionProofs.return) ? (
                                     <>
                                         <div className="grid grid-cols-12 gap-4 items-center">
-                                            {/* Row 1: Дата 2 + Кому 2 + Typ 2 + Сума 2 + Status 2 + Buttons 2 */}
-                                            <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Дата оплати</span><span className="text-sm text-white">{selectedProperty.deposit?.paidAt?.trim() || '—'}</span></div>
+                                            {/* Row 1: Von, Bis, Nr, Firma, Кому, Typ, Сума, Статус, Buttons */}
+                                            <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Von</span><span className="text-sm text-white">{(selectedProperty.deposit?.periodFrom ?? selectedProperty.deposit?.paidAt)?.trim() || '—'}</span></div>
+                                            <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Bis</span><span className="text-sm text-white">{selectedProperty.deposit?.periodTo?.trim() || '—'}</span></div>
+                                            <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Nr</span><span className="text-sm text-white">{selectedProperty.deposit?.depositNo?.trim() || '—'}</span></div>
+                                            <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Firma</span><span className="text-sm text-white">{selectedProperty.deposit?.issuerCompany?.trim() || '—'}</span></div>
                                             <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Оплачено кому</span><span className="text-sm text-white">{selectedProperty.deposit?.paidTo?.trim() || '—'}</span></div>
                                             <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Typ</span><span className="text-sm text-white">{(() => { const dt = selectedProperty.deposit?.depositType ?? 'TRANSFER'; return dt === 'CASH' ? 'Bar' : dt === 'GUARANTEE' ? 'BU' : 'ÜW'; })()}</span></div>
                                             <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Сума (€)</span><span className="text-sm text-white font-bold">{(() => { const n = Number(selectedProperty.deposit?.amount); return (n != null && !Number.isNaN(n)) ? `€${n.toFixed(2)}` : '—'; })()}</span></div>
@@ -5473,7 +5501,10 @@ ${internalCompany} Team`;
                                     </>
                                 ) : (
                                     <div className="grid grid-cols-12 gap-4 items-center">
-                                        <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Дата оплати</span><span className="text-sm text-gray-500">—</span></div>
+                                        <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Von</span><span className="text-sm text-gray-500">—</span></div>
+                                        <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Bis</span><span className="text-sm text-gray-500">—</span></div>
+                                        <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Nr</span><span className="text-sm text-gray-500">—</span></div>
+                                        <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Firma</span><span className="text-sm text-gray-500">—</span></div>
                                         <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Оплачено кому</span><span className="text-sm text-gray-500">—</span></div>
                                         <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Typ</span><span className="text-sm text-gray-500">—</span></div>
                                         <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Сума (€)</span><span className="text-sm text-gray-500">—</span></div>

@@ -158,6 +158,9 @@ export interface OwnerExpense {
   reserve: number;
 }
 
+/** Kautionsart: Bar (cash), ÜW (bank transfer), BU (Bürgschaftsurkunde). */
+export type DepositType = 'CASH' | 'TRANSFER' | 'GUARANTEE';
+
 /** Card 1: Kaution (deposit) — deposit paid by our company to landlord (master lease). */
 export interface PropertyDeposit {
   amount: number;
@@ -169,6 +172,16 @@ export interface PropertyDeposit {
   returnedAmount?: number;
   /** Return row: unpaid | partially_returned | returned */
   returnStatus?: 'unpaid' | 'partially_returned' | 'returned';
+  /** Kautionsart: CASH=Bar, TRANSFER=ÜW, GUARANTEE=BU. Default TRANSFER. */
+  depositType?: DepositType | null;
+  /** Period Von (YYYY-MM-DD). Display fallback from paidAt if missing. */
+  periodFrom?: string | null;
+  /** Period Bis (YYYY-MM-DD or empty). */
+  periodTo?: string | null;
+  /** Reference number. */
+  depositNo?: string | null;
+  /** Issuer company (Firma). */
+  issuerCompany?: string | null;
 }
 
 /** Kaution proof document — stored in property_deposit_proofs (independent from property_documents). */
