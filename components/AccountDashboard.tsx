@@ -506,6 +506,10 @@ const AccountDashboard: React.FC = () => {
   const [propertyToEdit, setPropertyToEdit] = useState<Property | undefined>(undefined);
   const [isCard2Editing, setIsCard2Editing] = useState(false);
   const [card2Draft, setCard2Draft] = useState<{ details: PropertyDetails; amenities: Record<string, boolean> } | null>(null);
+  const [openAusstattungCards, setOpenAusstattungCards] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    setOpenAusstattungCards({});
+  }, [selectedPropertyId]);
   const [isEditingCard1, setIsEditingCard1] = useState(false);
   const [card1Documents, setCard1Documents] = useState<PropertyDocument[]>([]);
   const [card1DocumentsLoading, setCard1DocumentsLoading] = useState(false);
@@ -6028,35 +6032,57 @@ ${internalCompany} Team`;
                                 </div>
                             </div>
                             <div className="border-t border-gray-700 pt-4">
-                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Ausstattung</h3>
+                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">AUSSTATTUNG</h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {AMENITY_GROUPS.map(({ groupLabel, keys }) => (
-                                        <div key={groupLabel} className="bg-[#111315] border border-gray-700 rounded-lg p-3">
-                                            <div className="text-xs font-semibold text-gray-400 mb-2">{groupLabel}</div>
-                                            <div className="space-y-1.5">
-                                                {keys.map((key) => {
-                                                    const checked = !!a[key];
-                                                    return (
-                                                        <label key={key} className="flex items-center gap-2 cursor-pointer text-sm">
-                                                            {view ? (
-                                                                <span className="text-white">{key}: <span className="font-bold">{checked ? 'Так' : '—'}</span></span>
-                                                            ) : (
-                                                                <>
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        className="rounded border-gray-600 bg-[#0D1117] text-emerald-500 focus:ring-emerald-500"
-                                                                        checked={checked}
-                                                                        onChange={e => card2Draft && setCard2Draft({ ...card2Draft, amenities: { ...card2Draft.amenities, [key]: e.target.checked } })}
-                                                                    />
-                                                                    <span className="text-white">{key}</span>
-                                                                </>
-                                                            )}
-                                                        </label>
-                                                    );
-                                                })}
+                                    {AMENITY_GROUPS.map(({ groupLabel, keys }, groupIndex) => {
+                                        const groupKey = `ausstattung-g-${groupIndex}`;
+                                        const isOpen = !!openAusstattungCards[groupKey];
+                                        const selectedCount = keys.filter(k => !!a[k]).length;
+                                        const panelId = `ausstattung-panel-${groupKey}`;
+                                        const headerId = `ausstattung-header-${groupKey}`;
+                                        return (
+                                            <div key={groupKey} className="bg-[#111315] border border-gray-700 rounded-lg overflow-hidden">
+                                                <button
+                                                    type="button"
+                                                    id={headerId}
+                                                    aria-expanded={isOpen}
+                                                    aria-controls={panelId}
+                                                    onClick={() => setOpenAusstattungCards(prev => ({ ...prev, [groupKey]: !prev[groupKey] }))}
+                                                    className="w-full flex items-center justify-between gap-2 min-h-[48px] px-3 py-2.5 text-left hover:bg-white/[0.03] transition-colors"
+                                                >
+                                                    <span className="text-xs font-semibold text-gray-400 truncate">{groupLabel}</span>
+                                                    <span className="flex items-center gap-2 shrink-0">
+                                                        <span className="text-xs text-gray-500 tabular-nums">{selectedCount}/{keys.length}</span>
+                                                        <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                                                    </span>
+                                                </button>
+                                                <div id={panelId} role="region" aria-labelledby={headerId} className={isOpen ? 'border-t border-gray-700/50' : 'hidden'}>
+                                                    {isOpen && (
+                                                        <div className="p-3 space-y-1.5">
+                                                            {keys.map((key) => {
+                                                                const checked = !!a[key];
+                                                                return (
+                                                                    <div key={key} className="flex items-center gap-2 min-h-[28px]">
+                                                                        {view ? (
+                                                                            checked ? <Check className="w-4 h-4 text-emerald-500 shrink-0" /> : <span className="w-4 h-4 shrink-0 text-gray-500 text-center leading-4 text-sm">—</span>
+                                                                        ) : (
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                className="rounded border-gray-600 bg-[#0D1117] text-emerald-500 focus:ring-emerald-500 shrink-0"
+                                                                                checked={checked}
+                                                                                onChange={e => card2Draft && setCard2Draft({ ...card2Draft, amenities: { ...card2Draft.amenities, [key]: e.target.checked } })}
+                                                                            />
+                                                                        )}
+                                                                        <span className="text-sm text-white truncate">{key}</span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </>
