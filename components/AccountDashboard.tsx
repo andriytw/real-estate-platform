@@ -54,6 +54,7 @@ import {
   Lead,
   Property,
   PropertyDetails,
+  BuildingSpecs,
   RentalAgreement,
   RentTimelineRowDB,
   MeterLogEntry,
@@ -2272,6 +2273,44 @@ const AccountDashboard: React.FC = () => {
   const cancelCard2 = () => {
     setIsCard2Editing(false);
     setCard2Draft(null);
+  };
+
+  const [isCard3Editing, setIsCard3Editing] = useState(false);
+  const [card3Draft, setCard3Draft] = useState<{ building: BuildingSpecs; year: number } | null>(null);
+  const defaultBuilding = (): BuildingSpecs => ({
+    type: '', repairYear: 0, heating: '', energyClass: '', parking: '', pets: '',
+    elevator: '', kitchen: '', access: '', certificate: '', energyDemand: ''
+  });
+  const startCard3Edit = () => {
+    const prop = properties.find(p => p.id === selectedPropertyId) ?? null;
+    if (!prop) return;
+    const b = (prop.building || {}) as Partial<BuildingSpecs>;
+    setCard3Draft({
+      building: { ...defaultBuilding(), ...b, repairYear: b.repairYear ?? 0 },
+      year: (prop.details?.year ?? 0) as number
+    });
+    setIsCard3Editing(true);
+  };
+  const saveCard3 = async () => {
+    const prop = properties.find(p => p.id === selectedPropertyId) ?? null;
+    if (!prop || !card3Draft) return;
+    try {
+      const updated = await propertiesService.update(prop.id, {
+        building: card3Draft.building,
+        details: { ...defaultDetails, ...(prop.details || {}), year: card3Draft.year }
+      });
+      setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+      setSelectedPropertyId(updated.id);
+      setIsCard3Editing(false);
+      setCard3Draft(null);
+    } catch (err) {
+      console.error('Card 3 save error:', err);
+      alert('Помилка збереження. Спробуйте ще раз.');
+    }
+  };
+  const cancelCard3 = () => {
+    setIsCard3Editing(false);
+    setCard3Draft(null);
   };
 
   const defaultContactParty = (): ContactParty => ({
@@ -6007,20 +6046,20 @@ ${internalCompany} Team`;
                                 </div>
                                 <div className="min-w-[120px]">
                                     <div className="text-xs text-gray-400">Ліжка</div>
-                                    {view ? <div className="text-lg font-semibold text-white leading-none">{phNum(d.beds)}</div> : (
-                                        <input type="number" className="w-20 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={numOrZero(d.beds)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, beds: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                    {view ? <div className="text-lg font-semibold text-white leading-none">{(d.beds != null && d.beds !== 0) ? String(d.beds) : '—'}</div> : (
+                                        <input type="number" className="w-20 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={d.beds != null && d.beds !== 0 ? d.beds : ''} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, beds: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
                                     )}
                                 </div>
                                 <div className="min-w-[120px]">
                                     <div className="text-xs text-gray-400">Ванни</div>
-                                    {view ? <div className="text-lg font-semibold text-white leading-none">{phNum(d.baths)}</div> : (
-                                        <input type="number" className="w-20 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={numOrZero(d.baths)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, baths: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                    {view ? <div className="text-lg font-semibold text-white leading-none">{(d.baths != null && d.baths !== 0) ? String(d.baths) : '—'}</div> : (
+                                        <input type="number" className="w-20 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={d.baths != null && d.baths !== 0 ? d.baths : ''} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, baths: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
                                     )}
                                 </div>
                                 <div className="min-w-[120px]">
                                     <div className="text-xs text-gray-400">Балкони</div>
-                                    {view ? <div className="text-lg font-semibold text-white leading-none">{phNum(d.balconies)}</div> : (
-                                        <input type="number" className="w-20 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={numOrZero(d.balconies)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, balconies: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                    {view ? <div className="text-lg font-semibold text-white leading-none">{(d.balconies != null && d.balconies !== 0) ? String(d.balconies) : '—'}</div> : (
+                                        <input type="number" className="w-20 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={d.balconies != null && d.balconies !== 0 ? d.balconies : ''} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, balconies: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
                                     )}
                                 </div>
                                 <div className="min-w-[120px]">
@@ -6105,18 +6144,82 @@ ${internalCompany} Team`;
                 )}
             </section>
 
-            {/* Card 3 — Building (read-only) */}
+            {/* Card 3 — Building */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                <h2 className="text-2xl font-bold text-white mb-4">Будівля</h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-y-4 gap-x-6 text-sm">
-                    <div><span className="text-gray-500 text-xs block">Тип будівлі</span><span className="text-white font-bold">{selectedProperty.building?.type || '—'}</span></div>
-                    <div><span className="text-gray-500 text-xs block">Рік побудови</span><span className="text-white font-bold">{selectedProperty.details?.year ? String(selectedProperty.details.year) : '—'}</span></div>
-                    <div><span className="text-gray-500 text-xs block">Рік ремонту</span><span className="text-white font-bold">{selectedProperty.building?.repairYear ? String(selectedProperty.building.repairYear) : '—'}</span></div>
-                    <div><span className="text-gray-500 text-xs block">Ліфт</span><span className="text-white font-bold">{selectedProperty.building?.elevator || '—'}</span></div>
-                    <div><span className="text-gray-500 text-xs block">Доступність</span><span className="text-white font-bold">{selectedProperty.building?.access || '—'}</span></div>
-                    <div><span className="text-gray-500 text-xs block">Сертифікат</span><span className="text-white font-bold">{selectedProperty.building?.certificate || '—'}</span></div>
-                    <div><span className="text-gray-500 text-xs block">Енергоклас</span><span className="text-white font-bold">{selectedProperty.building?.energyClass || '—'}</span></div>
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-bold text-white">Будівля</h2>
+                    {!isCard3Editing ? (
+                        <button
+                            type="button"
+                            onClick={startCard3Edit}
+                            className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"
+                        >
+                            <Edit className="w-4 h-4" /> Редагувати
+                        </button>
+                    ) : (
+                        <div className="flex gap-2">
+                            <button type="button" onClick={saveCard3} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2">
+                                <Save className="w-4 h-4" /> Зберегти
+                            </button>
+                            <button type="button" onClick={cancelCard3} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+                                Скасувати
+                            </button>
+                        </div>
+                    )}
                 </div>
+                {(() => {
+                    const view = !isCard3Editing;
+                    const b: Partial<BuildingSpecs> = view ? (selectedProperty.building || {}) : (card3Draft?.building || {});
+                    const yearVal = view ? (selectedProperty.details?.year ?? 0) : (card3Draft?.year ?? 0);
+                    const repairYearVal = view ? (selectedProperty.building?.repairYear ?? 0) : (card3Draft?.building?.repairYear ?? 0);
+                    const str = (v: string | undefined) => (v != null && String(v).trim() !== '') ? String(v).trim() : '—';
+                    return (
+                        <div className="flex flex-wrap items-end gap-x-10 gap-y-4">
+                            <div className="min-w-[120px]">
+                                <div className="text-xs text-gray-400">Тип будівлі</div>
+                                {view ? <div className="text-lg font-semibold text-white leading-none">{str(b.type)}</div> : (
+                                    <input type="text" className="w-40 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={b.type || ''} onChange={e => card3Draft && setCard3Draft({ ...card3Draft, building: { ...card3Draft.building, type: e.target.value } })} placeholder="—" />
+                                )}
+                            </div>
+                            <div className="min-w-[120px]">
+                                <div className="text-xs text-gray-400">Рік побудови</div>
+                                {view ? <div className="text-lg font-semibold text-white leading-none">{yearVal ? String(yearVal) : '—'}</div> : (
+                                    <input type="number" className="w-20 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={yearVal || ''} onChange={e => card3Draft && setCard3Draft({ ...card3Draft, year: parseInt(e.target.value || '0', 10) })} placeholder="—" />
+                                )}
+                            </div>
+                            <div className="min-w-[120px]">
+                                <div className="text-xs text-gray-400">Рік ремонту</div>
+                                {view ? <div className="text-lg font-semibold text-white leading-none">{repairYearVal ? String(repairYearVal) : '—'}</div> : (
+                                    <input type="number" className="w-20 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={repairYearVal || ''} onChange={e => card3Draft && setCard3Draft({ ...card3Draft, building: { ...card3Draft.building, repairYear: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                )}
+                            </div>
+                            <div className="min-w-[120px]">
+                                <div className="text-xs text-gray-400">Ліфт</div>
+                                {view ? <div className="text-lg font-semibold text-white leading-none">{str(b.elevator)}</div> : (
+                                    <input type="text" className="w-24 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={b.elevator || ''} onChange={e => card3Draft && setCard3Draft({ ...card3Draft, building: { ...card3Draft.building, elevator: e.target.value } })} placeholder="—" />
+                                )}
+                            </div>
+                            <div className="min-w-[120px]">
+                                <div className="text-xs text-gray-400">Доступність</div>
+                                {view ? <div className="text-lg font-semibold text-white leading-none">{str(b.access)}</div> : (
+                                    <input type="text" className="w-24 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={b.access || ''} onChange={e => card3Draft && setCard3Draft({ ...card3Draft, building: { ...card3Draft.building, access: e.target.value } })} placeholder="—" />
+                                )}
+                            </div>
+                            <div className="min-w-[120px]">
+                                <div className="text-xs text-gray-400">Сертифікат</div>
+                                {view ? <div className="text-lg font-semibold text-white leading-none">{str(b.certificate)}</div> : (
+                                    <input type="text" className="w-28 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={b.certificate || ''} onChange={e => card3Draft && setCard3Draft({ ...card3Draft, building: { ...card3Draft.building, certificate: e.target.value } })} placeholder="—" />
+                                )}
+                            </div>
+                            <div className="min-w-[120px]">
+                                <div className="text-xs text-gray-400">Енергоклас</div>
+                                {view ? <div className="text-lg font-semibold text-white leading-none">{str(b.energyClass)}</div> : (
+                                    <input type="text" className="w-16 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={b.energyClass || ''} onChange={e => card3Draft && setCard3Draft({ ...card3Draft, building: { ...card3Draft.building, energyClass: e.target.value } })} placeholder="—" />
+                                )}
+                            </div>
+                        </div>
+                    );
+                })()}
             </section>
 
             {/* Repair Requests */}
