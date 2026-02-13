@@ -5987,47 +5987,52 @@ ${internalCompany} Team`;
                     return (
                         <>
                             <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Основні параметри</h3>
-                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-y-4 gap-x-6 text-sm mb-6">
-                                <div>
-                                    <span className="text-gray-500 text-xs block mb-1">Площа</span>
-                                    {view ? <span className="text-white font-bold">{(d.area != null && d.area !== 0) ? String(d.area) : '—'}</span> : (
-                                        <input type="number" min={0} step={0.1} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={d.area != null && d.area !== 0 ? d.area : ''} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, area: parseFloat(e.target.value) || 0 } })} placeholder="—" />
+                            <div className="flex flex-wrap items-end gap-x-10 gap-y-4 mb-6">
+                                <div className="min-w-[120px]">
+                                    <div className="text-xs text-gray-400">Площа</div>
+                                    {view ? (
+                                        <div className="text-lg font-semibold text-white leading-none">{(d.area != null && d.area !== 0) ? `${d.area} m²` : '—'}</div>
+                                    ) : (
+                                        <div className="flex items-center gap-1">
+                                            <input type="number" min={0} step={0.1} className="w-20 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={d.area != null && d.area !== 0 ? d.area : ''} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, area: parseFloat(e.target.value) || 0 } })} placeholder="—" />
+                                            <span className="text-gray-500 text-sm">m²</span>
+                                        </div>
                                     )}
                                 </div>
-                                <div>
-                                    <span className="text-gray-500 text-xs block mb-1">Кімнати</span>
-                                    {view ? <span className="text-white font-bold">{phNum(d.rooms)}</span> : (
-                                        <input type="number" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={numOrZero(d.rooms)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, rooms: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                <div className="min-w-[120px]">
+                                    <div className="text-xs text-gray-400">Кімнати</div>
+                                    {view ? <div className="text-lg font-semibold text-white leading-none">{phNum(d.rooms)}</div> : (
+                                        <input type="number" className="w-20 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={numOrZero(d.rooms)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, rooms: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
                                     )}
                                 </div>
-                                <div>
-                                    <span className="text-gray-500 text-xs block mb-1">Ліжка</span>
-                                    {view ? <span className="text-white font-bold">{phNum(d.beds)}</span> : (
-                                        <input type="number" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={numOrZero(d.beds)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, beds: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                <div className="min-w-[120px]">
+                                    <div className="text-xs text-gray-400">Ліжка</div>
+                                    {view ? <div className="text-lg font-semibold text-white leading-none">{phNum(d.beds)}</div> : (
+                                        <input type="number" className="w-20 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={numOrZero(d.beds)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, beds: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
                                     )}
                                 </div>
-                                <div>
-                                    <span className="text-gray-500 text-xs block mb-1">Ванни</span>
-                                    {view ? <span className="text-white font-bold">{phNum(d.baths)}</span> : (
-                                        <input type="number" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={numOrZero(d.baths)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, baths: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                <div className="min-w-[120px]">
+                                    <div className="text-xs text-gray-400">Ванни</div>
+                                    {view ? <div className="text-lg font-semibold text-white leading-none">{phNum(d.baths)}</div> : (
+                                        <input type="number" className="w-20 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={numOrZero(d.baths)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, baths: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
                                     )}
                                 </div>
-                                <div>
-                                    <span className="text-gray-500 text-xs block mb-1">Балкони</span>
-                                    {view ? <span className="text-white font-bold">{phNum(d.balconies)}</span> : (
-                                        <input type="number" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={numOrZero(d.balconies)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, balconies: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                <div className="min-w-[120px]">
+                                    <div className="text-xs text-gray-400">Балкони</div>
+                                    {view ? <div className="text-lg font-semibold text-white leading-none">{phNum(d.balconies)}</div> : (
+                                        <input type="number" className="w-20 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={numOrZero(d.balconies)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, balconies: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
                                     )}
                                 </div>
-                                <div>
-                                    <span className="text-gray-500 text-xs block mb-1">Поверх (поточний)</span>
-                                    {view ? <span className="text-white font-bold">{phNum(d.floor)}</span> : (
-                                        <input type="number" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={numOrZero(d.floor)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, floor: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
-                                    )}
-                                </div>
-                                <div>
-                                    <span className="text-gray-500 text-xs block mb-1">Поверх (всього)</span>
-                                    {view ? <span className="text-white font-bold">{phNum(d.buildingFloors)}</span> : (
-                                        <input type="number" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white font-bold" value={numOrZero(d.buildingFloors)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, buildingFloors: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                <div className="min-w-[120px]">
+                                    <div className="text-xs text-gray-400">Поверх</div>
+                                    {view ? (
+                                        <div className="text-lg font-semibold text-white leading-none">{phNum(d.floor)}/{phNum(d.buildingFloors)}</div>
+                                    ) : (
+                                        <div className="flex items-center gap-1">
+                                            <input type="number" className="w-14 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={numOrZero(d.floor)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, floor: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                            <span className="text-gray-500 text-sm">/</span>
+                                            <input type="number" className="w-14 bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-sm text-white" value={numOrZero(d.buildingFloors)} onChange={e => card2Draft && setCard2Draft({ ...card2Draft, details: { ...card2Draft.details, buildingFloors: parseInt(e.target.value || '0', 10) } })} placeholder="—" />
+                                        </div>
                                     )}
                                 </div>
                             </div>
