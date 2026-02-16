@@ -733,6 +733,7 @@ const AccountDashboard: React.FC = () => {
   const [expenseOcrError, setExpenseOcrError] = useState<string | null>(null);
   const [isExpenseOcrSaving, setIsExpenseOcrSaving] = useState(false);
   const [isExpenseCategoriesModalOpen, setIsExpenseCategoriesModalOpen] = useState(false);
+  const [expandedExpenseGroups, setExpandedExpenseGroups] = useState<Record<string, boolean>>({});
   const expenseOcrFileInputRef = useRef<HTMLInputElement | null>(null);
   const [transferPropertyId, setTransferPropertyId] = useState<string>('');
   const [transferWorkerId, setTransferWorkerId] = useState<string>('');
@@ -3014,6 +3015,32 @@ const AccountDashboard: React.FC = () => {
       alert('Не вдалося зберегти. Спробуйте ще раз.');
     }
   };
+
+  // Group expense items by document_id for invoice-level rows (doc:uuid or "manual")
+  const expenseGroups = useMemo(() => {
+    const byKey = new Map<string, PropertyExpenseItemWithDocument[]>();
+    for (const item of expenseItems) {
+      const key = item.document_id ? `doc:${item.document_id}` : 'manual';
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key)!.push(item);
+    }
+    const groups: { key: string; documentId: string | null; doc: { storage_path: string; file_name: string | null; invoice_number: string | null; invoice_date: string | null; vendor: string | null } | null; items: PropertyExpenseItemWithDocument[] }[] = [];
+    // Document groups first (order by first item's created_at or invoice_date), then manual
+    const docKeys = [...byKey.entries()].filter(([k]) => k !== 'manual').sort((a, b) => {
+      const aDate = a[1][0]?.invoice_date || a[1][0]?.created_at || '';
+      const bDate = b[1][0]?.invoice_date || b[1][0]?.created_at || '';
+      return String(bDate).localeCompare(String(aDate));
+    });
+    for (const [key, items] of docKeys) {
+      const doc = items[0]?.property_expense_documents ?? null;
+      groups.push({ key, documentId: items[0].document_id, doc, items });
+    }
+    if (byKey.has('manual')) {
+      const items = byKey.get('manual')!;
+      groups.push({ key: 'manual', documentId: null, doc: null, items });
+    }
+    return groups;
+  }, [expenseItems]);
 
   const handleExpenseOcrRecognize = async () => {
     if (!expenseOcrFile || !selectedPropertyId) return;
@@ -6751,165 +6778,203 @@ ${internalCompany} Team`;
                     <div className="overflow-x-auto">
                     <table className="w-full table-fixed text-sm text-left">
                         <colgroup>
+                            <col className="w-10" />
                             <col className="w-[95px]" />
+                            <col className="w-[90px]" />
                             <col className="w-[100px]" />
-                            <col className="w-[110px]" />
-                            <col className="w-[80px]" />
-                            <col />
-                            <col className="w-[60px]" />
+                            <col className="w-[120px]" />
+                            <col className="w-[90px]" />
                             <col className="w-[85px]" />
-                            <col className="w-[90px]" />
-                            <col className="w-[90px]" />
-                            <col className="w-[90px]" />
-                            <col className="w-[70px]" />
-                            {isExpenseEditing && <col className="w-[70px]" />}
                         </colgroup>
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
                             <tr>
+                                <th className="p-3 font-bold text-xs uppercase w-10" aria-label="Розгорнути" />
                                 <th className="p-3 font-bold text-xs uppercase">Дата</th>
-                                <th className="p-3 font-bold text-xs uppercase">Постачальник</th>
-                                <th className="p-3 font-bold text-xs uppercase">Категорія</th>
-                                <th className="p-3 font-bold text-xs uppercase">Артикул</th>
-                                <th className="p-3 font-bold text-xs uppercase">Назва</th>
-                                <th className="p-3 font-bold text-xs uppercase text-right">К-сть</th>
-                                <th className="p-3 font-bold text-xs uppercase text-right">Ціна (од.)</th>
                                 <th className="p-3 font-bold text-xs uppercase">Інвойс №</th>
+                                <th className="p-3 font-bold text-xs uppercase">Постачальник</th>
                                 <th className="p-3 font-bold text-xs uppercase">Документ</th>
                                 <th className="p-3 font-bold text-xs uppercase">Об'єкт</th>
-                                {isExpenseEditing && <th className="p-3 font-bold text-xs uppercase text-center">Дії</th>}
+                                <th className="p-3 font-bold text-xs uppercase text-right">Сума</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
                             {expenseLoading ? (
-                                <tr><td colSpan={isExpenseEditing ? 12 : 11} className="p-4 text-center text-gray-500 text-sm">Завантаження...</td></tr>
-                            ) : expenseItems.length === 0 ? (
-                                <tr><td colSpan={isExpenseEditing ? 12 : 11} className="p-4 text-center text-gray-500 text-xs">Немає витрат. Додайте вручну або з документа.</td></tr>
+                                <tr><td colSpan={7} className="p-4 text-center text-gray-500 text-sm">Завантаження...</td></tr>
+                            ) : expenseGroups.length === 0 ? (
+                                <tr><td colSpan={7} className="p-4 text-center text-gray-500 text-xs">Немає витрат. Додайте вручну або з документа.</td></tr>
                             ) : (
-                                expenseItems.map((item, idx) => {
-                                    const doc = item.property_expense_documents;
-                                    const cat = item.property_expense_categories;
-                                    const formattedDate = item.invoice_date
-                                        ? new Date(item.invoice_date).toLocaleDateString('uk-UA', { year: 'numeric', month: '2-digit', day: '2-digit' })
-                                        : '—';
+                                expenseGroups.map((group) => {
+                                    const isExpanded = expandedExpenseGroups[group.key] ?? false;
+                                    const doc = group.doc;
+                                    const formattedDate = doc?.invoice_date
+                                        ? new Date(doc.invoice_date).toLocaleDateString('uk-UA', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                                        : (group.key === 'manual' && group.items[0]?.invoice_date
+                                            ? new Date(group.items[0].invoice_date).toLocaleDateString('uk-UA', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                                            : '—');
+                                    const invoiceNumber = doc?.invoice_number ?? '—';
+                                    const vendor = group.key === 'manual' ? 'Без документа (Manual)' : (doc?.vendor ?? '—');
+                                    const groupSum = group.items.reduce((s, i) => s + ((i.quantity ?? 0) * (i.unit_price ?? 0)), 0);
                                     return (
-                                        <tr key={item.id} className="hover:bg-[#1C1F24]">
-                                            <td className="p-3 text-gray-400 text-xs">{formattedDate}</td>
-                                            <td className="p-3 text-gray-400 text-xs min-w-0">
-                                                {isExpenseEditing ? (
-                                                    <input
-                                                        className="bg-transparent border-b border-gray-700 w-full text-xs text-white outline-none min-w-0"
-                                                        value={item.vendor ?? ''}
-                                                        onChange={(e) => handleUpdateExpenseItem(idx, 'vendor', e.target.value)}
-                                                        placeholder="—"
-                                                    />
-                                                ) : (item.vendor ?? '—')}
-                                            </td>
-                                            <td className="p-3 text-gray-400 text-xs min-w-0">
-                                                {isExpenseEditing ? (
-                                                    <select
-                                                        value={item.category_id}
-                                                        onChange={(e) => handleUpdateExpenseItem(idx, 'category_id', e.target.value)}
-                                                        className="bg-[#16181D] border border-gray-700 rounded px-2 py-1 text-xs text-white w-full"
-                                                    >
-                                                        {expenseCategories.filter((c) => c.is_active).map((c) => (
-                                                            <option key={c.id} value={c.id}>{c.name}</option>
-                                                        ))}
-                                                        {expenseCategories.filter((c) => !c.is_active).map((c) => (
-                                                            <option key={c.id} value={c.id}>{c.name} (архів)</option>
-                                                        ))}
-                                                    </select>
-                                                ) : (cat ? (cat.is_active ? cat.name : `${cat.name} (архів)`) : '—')}
-                                            </td>
-                                            <td className="p-3 text-gray-400 text-xs">
-                                                {isExpenseEditing ? (
-                                                    <input
-                                                        className="bg-transparent border-b border-gray-700 w-full text-xs text-white outline-none"
-                                                        value={item.article ?? ''}
-                                                        onChange={(e) => handleUpdateExpenseItem(idx, 'article', e.target.value)}
-                                                    />
-                                                ) : (item.article ?? '—')}
-                                            </td>
-                                            <td className="p-3 min-w-0">
-                                                {isExpenseEditing ? (
-                                                    <input
-                                                        className="bg-transparent border-b border-gray-700 w-full text-sm text-white outline-none min-w-0"
-                                                        value={item.name}
-                                                        onChange={(e) => handleUpdateExpenseItem(idx, 'name', e.target.value)}
-                                                        placeholder="Назва"
-                                                    />
-                                                ) : (
-                                                    <span className="block text-white font-semibold text-sm overflow-hidden truncate" title={item.name}>
-                                                        {item.name}
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="p-3 text-right">
-                                                {isExpenseEditing ? (
-                                                    <input
-                                                        type="number"
-                                                        className="bg-transparent border-b border-gray-700 w-12 text-right text-white outline-none text-xs"
-                                                        value={item.quantity ?? 1}
-                                                        onChange={(e) => handleUpdateExpenseItem(idx, 'quantity', parseFloat(e.target.value) || 0)}
-                                                    />
-                                                ) : (
-                                                    <span className="text-gray-300 font-mono text-xs">{item.quantity ?? 0}</span>
-                                                )}
-                                            </td>
-                                            <td className="p-3 text-right">
-                                                {isExpenseEditing ? (
-                                                    <input
-                                                        type="number"
-                                                        className="bg-transparent border-b border-gray-700 w-16 text-right text-white outline-none text-xs"
-                                                        value={item.unit_price ?? 0}
-                                                        onChange={(e) => handleUpdateExpenseItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
-                                                    />
-                                                ) : (
-                                                    <span className="text-white font-mono text-xs">{(item.unit_price ?? 0).toFixed(2)} €</span>
-                                                )}
-                                            </td>
-                                            <td className="p-3 text-gray-400 text-xs">{item.invoice_number ?? '—'}</td>
-                                            <td className="p-3 text-gray-400 text-xs">
-                                                {doc?.storage_path ? (
-                                                    <div className="flex flex-col gap-1">
-                                                        <span className="text-[10px] text-gray-500 truncate max-w-[80px]" title={doc.invoice_number || doc.file_name || ''}>
-                                                            {doc.invoice_number || doc.file_name || 'Документ'}
-                                                        </span>
-                                                        <div className="flex items-center gap-1">
-                                                            <button
-                                                                type="button"
-                                                                aria-label="Переглянути документ"
-                                                                title="Переглянути"
-                                                                onClick={() => handleViewExpenseDocument(doc.storage_path)}
-                                                                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
-                                                            >
-                                                                <Eye className="w-4 h-4" />
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                aria-label="Скачати документ"
-                                                                title="Скачати"
-                                                                onClick={() => handleDownloadExpenseDocument(doc.storage_path, doc.file_name || 'document')}
-                                                                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
-                                                            >
-                                                                <Download className="w-4 h-4" />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                ) : '—'}
-                                            </td>
-                                            <td className="p-3 text-gray-400 text-xs">{selectedProperty?.title ?? '—'}</td>
-                                            {isExpenseEditing && (
-                                                <td className="p-3 text-center">
+                                        <React.Fragment key={group.key}>
+                                            <tr className="hover:bg-[#1C1F24]">
+                                                <td className="p-2 align-middle">
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleDeleteExpenseItem(idx)}
-                                                        className="text-red-500 hover:text-red-400 p-1"
+                                                        onClick={() => setExpandedExpenseGroups((prev) => ({ ...prev, [group.key]: !prev[group.key] }))}
+                                                        className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
+                                                        aria-expanded={isExpanded}
+                                                        aria-label={isExpanded ? 'Згорнути' : 'Розгорнути'}
                                                     >
-                                                        <Trash2 className="w-3 h-3" />
+                                                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                                                     </button>
                                                 </td>
+                                                <td className="p-3 text-gray-400 text-xs">{formattedDate}</td>
+                                                <td className="p-3 text-gray-400 text-xs">{invoiceNumber}</td>
+                                                <td className="p-3 text-gray-400 text-xs min-w-0 truncate" title={typeof vendor === 'string' ? vendor : ''}>{vendor}</td>
+                                                <td className="p-3 text-gray-400 text-xs">
+                                                    {doc?.storage_path ? (
+                                                        <div className="flex flex-col gap-1">
+                                                            <span className="text-[10px] text-gray-500 truncate max-w-[80px]" title={doc.invoice_number || doc.file_name || ''}>
+                                                                {doc.invoice_number || doc.file_name || 'Документ'}
+                                                            </span>
+                                                            <div className="flex items-center gap-1">
+                                                                <button
+                                                                    type="button"
+                                                                    aria-label="Переглянути документ"
+                                                                    title="Переглянути"
+                                                                    onClick={() => handleViewExpenseDocument(doc.storage_path)}
+                                                                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
+                                                                >
+                                                                    <Eye className="w-4 h-4" />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    aria-label="Скачати документ"
+                                                                    title="Скачати"
+                                                                    onClick={() => handleDownloadExpenseDocument(doc.storage_path, doc.file_name || 'document')}
+                                                                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
+                                                                >
+                                                                    <Download className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ) : '—'}
+                                                </td>
+                                                <td className="p-3 text-gray-400 text-xs">{selectedProperty?.title ?? '—'}</td>
+                                                <td className="p-3 text-right text-white font-mono text-xs">{groupSum.toFixed(2)} €</td>
+                                            </tr>
+                                            {isExpanded && (
+                                                <tr>
+                                                    <td colSpan={7} className="p-0 bg-[#16181D] align-top">
+                                                        <div className="px-4 pb-3 pt-0">
+                                                            <table className="w-full text-sm text-left border border-gray-700 rounded-lg overflow-hidden">
+                                                                <colgroup>
+                                                                    <col className="w-[110px]" />
+                                                                    <col className="w-[80px]" />
+                                                                    <col />
+                                                                    <col className="w-[60px]" />
+                                                                    <col className="w-[85px]" />
+                                                                    {isExpenseEditing && <col className="w-[70px]" />}
+                                                                </colgroup>
+                                                                <thead className="bg-[#23262b] text-gray-400">
+                                                                    <tr>
+                                                                        <th className="p-2 font-bold text-xs uppercase">Категорія</th>
+                                                                        <th className="p-2 font-bold text-xs uppercase">Артикул</th>
+                                                                        <th className="p-2 font-bold text-xs uppercase">Назва</th>
+                                                                        <th className="p-2 font-bold text-xs uppercase text-right">К-сть</th>
+                                                                        <th className="p-2 font-bold text-xs uppercase text-right">Ціна (од.)</th>
+                                                                        {isExpenseEditing && <th className="p-2 font-bold text-xs uppercase text-center">Дії</th>}
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody className="divide-y divide-gray-700/50">
+                                                                    {group.items.map((item) => {
+                                                                        const globalIndex = expenseItems.findIndex((i) => i.id === item.id);
+                                                                        if (globalIndex < 0) return null;
+                                                                        const cat = item.property_expense_categories;
+                                                                        return (
+                                                                            <tr key={item.id} className="hover:bg-[#1C1F24]">
+                                                                                <td className="p-2 text-gray-400 text-xs">
+                                                                                    {isExpenseEditing ? (
+                                                                                        <select
+                                                                                            value={item.category_id}
+                                                                                            onChange={(e) => handleUpdateExpenseItem(globalIndex, 'category_id', e.target.value)}
+                                                                                            className="bg-[#16181D] border border-gray-700 rounded px-2 py-1 text-xs text-white w-full"
+                                                                                        >
+                                                                                            {expenseCategories.filter((c) => c.is_active).map((c) => (
+                                                                                                <option key={c.id} value={c.id}>{c.name}</option>
+                                                                                            ))}
+                                                                                            {expenseCategories.filter((c) => !c.is_active).map((c) => (
+                                                                                                <option key={c.id} value={c.id}>{c.name} (архів)</option>
+                                                                                            ))}
+                                                                                        </select>
+                                                                                    ) : (cat ? (cat.is_active ? cat.name : `${cat.name} (архів)`) : '—')}
+                                                                                </td>
+                                                                                <td className="p-2 text-gray-400 text-xs">
+                                                                                    {isExpenseEditing ? (
+                                                                                        <input
+                                                                                            className="bg-transparent border-b border-gray-700 w-full text-xs text-white outline-none"
+                                                                                            value={item.article ?? ''}
+                                                                                            onChange={(e) => handleUpdateExpenseItem(globalIndex, 'article', e.target.value)}
+                                                                                        />
+                                                                                    ) : (item.article ?? '—')}
+                                                                                </td>
+                                                                                <td className="p-2 min-w-0">
+                                                                                    {isExpenseEditing ? (
+                                                                                        <input
+                                                                                            className="bg-transparent border-b border-gray-700 w-full text-sm text-white outline-none min-w-0"
+                                                                                            value={item.name}
+                                                                                            onChange={(e) => handleUpdateExpenseItem(globalIndex, 'name', e.target.value)}
+                                                                                            placeholder="Назва"
+                                                                                        />
+                                                                                    ) : (
+                                                                                        <span className="block text-white font-semibold text-sm overflow-hidden truncate" title={item.name}>{item.name}</span>
+                                                                                    )}
+                                                                                </td>
+                                                                                <td className="p-2 text-right">
+                                                                                    {isExpenseEditing ? (
+                                                                                        <input
+                                                                                            type="number"
+                                                                                            className="bg-transparent border-b border-gray-700 w-12 text-right text-white outline-none text-xs"
+                                                                                            value={item.quantity ?? 1}
+                                                                                            onChange={(e) => handleUpdateExpenseItem(globalIndex, 'quantity', parseFloat(e.target.value) || 0)}
+                                                                                        />
+                                                                                    ) : (
+                                                                                        <span className="text-gray-300 font-mono text-xs">{item.quantity ?? 0}</span>
+                                                                                    )}
+                                                                                </td>
+                                                                                <td className="p-2 text-right">
+                                                                                    {isExpenseEditing ? (
+                                                                                        <input
+                                                                                            type="number"
+                                                                                            className="bg-transparent border-b border-gray-700 w-16 text-right text-white outline-none text-xs"
+                                                                                            value={item.unit_price ?? 0}
+                                                                                            onChange={(e) => handleUpdateExpenseItem(globalIndex, 'unit_price', parseFloat(e.target.value) || 0)}
+                                                                                        />
+                                                                                    ) : (
+                                                                                        <span className="text-white font-mono text-xs">{(item.unit_price ?? 0).toFixed(2)} €</span>
+                                                                                    )}
+                                                                                </td>
+                                                                                {isExpenseEditing && (
+                                                                                    <td className="p-2 text-center">
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => handleDeleteExpenseItem(globalIndex)}
+                                                                                            className="text-red-500 hover:text-red-400 p-1"
+                                                                                        >
+                                                                                            <Trash2 className="w-3 h-3" />
+                                                                                        </button>
+                                                                                    </td>
+                                                                                )}
+                                                                            </tr>
+                                                                        );
+                                                                    })}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </td>
+                                                </tr>
                                             )}
-                                        </tr>
+                                        </React.Fragment>
                                     );
                                 })
                             )}
