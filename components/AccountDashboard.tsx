@@ -6494,8 +6494,21 @@ ${internalCompany} Team`;
                 </div>
                 {!isPropertyInventoryCollapsed && (
                 <>
-                <div className="overflow-hidden border border-gray-700 rounded-lg">
-                    <table className="w-full text-sm text-left">
+                <div className="rounded-lg border border-gray-700 overflow-hidden">
+                    <div className="overflow-x-auto">
+                    <table className="w-full table-fixed text-sm text-left">
+                        <colgroup>
+                            <col className="w-[110px]" />
+                            <col />
+                            <col className="w-[70px]" />
+                            <col className="w-[90px]" />
+                            <col className="w-[110px]" />
+                            <col className="w-[110px]" />
+                            <col className="w-[90px]" />
+                            <col className="w-[90px]" />
+                            <col className="w-[90px]" />
+                            {isInventoryEditing && <col className="w-[80px]" />}
+                        </colgroup>
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
                             <tr>
                                 <th className="p-3 font-bold text-xs uppercase">Артикул</th>
@@ -6534,16 +6547,22 @@ ${internalCompany} Team`;
                                       />
                                     ) : (item.article || '-')}
                                   </td>
-                                  <td className="p-3">
+                                  <td className="p-3 min-w-0">
                                     {isInventoryEditing ? (
                                       <input
-                                        className="bg-transparent border-b border-gray-700 w-full text-white outline-none"
+                                        className="bg-transparent border-b border-gray-700 w-full text-white outline-none min-w-0"
                                         value={item.name || ''}
                                         onChange={(e) => handleUpdateInventoryItem(idx, 'name', e.target.value)}
                                         placeholder="Назва товару"
                                       />
                                     ) : (
-                                      <span className="text-white font-bold">{item.name || '-'}</span>
+                                      <span
+                                        className="block text-white font-semibold text-sm overflow-hidden"
+                                        title={item.name || ''}
+                                        style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}
+                                      >
+                                        {item.name || '-'}
+                                      </span>
                                     )}
                                   </td>
                                   <td className="p-3 text-right">
@@ -6649,6 +6668,7 @@ ${internalCompany} Team`;
                             )}
                         </tbody>
                     </table>
+                    </div>
                 </div>
                 <div className="flex justify-end mt-3 pt-3 border-t border-gray-700">
                     <p className="text-sm font-bold text-gray-400">
