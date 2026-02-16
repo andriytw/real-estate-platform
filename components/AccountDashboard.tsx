@@ -14,6 +14,7 @@ import PropertyAddModal from './PropertyAddModal';
 import RequestModal from './RequestModal';
 import ConfirmPaymentModal from './ConfirmPaymentModal';
 import PaymentProofPdfModal from './PaymentProofPdfModal';
+import ExpenseCategoriesModal from './ExpenseCategoriesModal';
 import BankingDashboard from './BankingDashboard';
 import UserManagement from './admin/UserManagement';
 
@@ -45,6 +46,8 @@ import {
   rentTimelineService,
 } from '../services/supabaseService';
 import { propertyInventoryService, type PropertyInventoryItemRow, type PropertyInventoryItemWithDocument } from '../services/propertyInventoryService';
+import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '../services/propertyExpenseService';
+import { propertyExpenseCategoryService, type PropertyExpenseCategoryRow } from '../services/propertyExpenseCategoryService';
 import {
   ReservationData,
   OfferData,
@@ -713,6 +716,24 @@ const AccountDashboard: React.FC = () => {
   const [propertyInventoryItems, setPropertyInventoryItems] = useState<PropertyInventoryItemWithDocument[]>([]);
   const [propertyInventoryLoading, setPropertyInventoryLoading] = useState(false);
   const [isPropertyInventoryCollapsed, setIsPropertyInventoryCollapsed] = useState(true);
+  // Property expense invoices (replaces Ремонти tile)
+  const [expenseItems, setExpenseItems] = useState<PropertyExpenseItemWithDocument[]>([]);
+  const [expenseLoading, setExpenseLoading] = useState(false);
+  const [isExpenseEditing, setIsExpenseEditing] = useState(false);
+  const [expenseCategories, setExpenseCategories] = useState<PropertyExpenseCategoryRow[]>([]);
+  const [isExpenseAddFromDocumentOpen, setIsExpenseAddFromDocumentOpen] = useState(false);
+  const [expenseOcrRows, setExpenseOcrRows] = useState<Array<{ id: string; name: string; quantity: string; price: string; category_id: string }>>([]);
+  const [expenseOcrFile, setExpenseOcrFile] = useState<File | null>(null);
+  const [expenseOcrFileName, setExpenseOcrFileName] = useState<string | null>(null);
+  const [expenseOcrPreviewUrl, setExpenseOcrPreviewUrl] = useState<string | null>(null);
+  const [expenseOcrInvoiceNumber, setExpenseOcrInvoiceNumber] = useState('');
+  const [expenseOcrInvoiceDate, setExpenseOcrInvoiceDate] = useState('');
+  const [expenseOcrVendor, setExpenseOcrVendor] = useState('');
+  const [isExpenseOcrProcessing, setIsExpenseOcrProcessing] = useState(false);
+  const [expenseOcrError, setExpenseOcrError] = useState<string | null>(null);
+  const [isExpenseOcrSaving, setIsExpenseOcrSaving] = useState(false);
+  const [isExpenseCategoriesModalOpen, setIsExpenseCategoriesModalOpen] = useState(false);
+  const expenseOcrFileInputRef = useRef<HTMLInputElement | null>(null);
   const [transferPropertyId, setTransferPropertyId] = useState<string>('');
   const [transferWorkerId, setTransferWorkerId] = useState<string>('');
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -2842,6 +2863,272 @@ const AccountDashboard: React.FC = () => {
       }
     }
   }, [selectedPropertyId]);
+
+  // Expense invoices: load categories (ensure defaults) and items when property changes
+  useEffect(() => {
+    if (!selectedPropertyId) {
+      setExpenseItems([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const cats = await propertyExpenseCategoryService.ensureDefaults();
+        if (!cancelled) setExpenseCategories(cats);
+      } catch {
+        if (!cancelled) setExpenseCategories([]);
+      }
+    })();
+    setExpenseLoading(true);
+    propertyExpenseService.listItemsWithDocuments(selectedPropertyId)
+      .then((data) => { if (!cancelled) setExpenseItems(data); })
+      .catch(() => { if (!cancelled) setExpenseItems([]); })
+      .finally(() => { if (!cancelled) setExpenseLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedPropertyId]);
+
+  const refreshExpenseItems = useCallback(() => {
+    if (!selectedPropertyId) return;
+    propertyExpenseService.listItemsWithDocuments(selectedPropertyId).then(setExpenseItems);
+    propertyExpenseCategoryService.listCategories(true).then(setExpenseCategories);
+  }, [selectedPropertyId]);
+
+  const handleViewExpenseDocument = useCallback(async (storagePath: string) => {
+    try {
+      const url = await propertyExpenseService.getDocumentSignedUrl(storagePath);
+      window.open(url, '_blank');
+    } catch (e) {
+      console.error('Expense document signed URL:', e);
+      alert('Не вдалося відкрити документ.');
+    }
+  }, []);
+
+  const handleDownloadExpenseDocument = useCallback(async (storagePath: string, fileName: string) => {
+    try {
+      const url = await propertyExpenseService.getDocumentSignedUrl(storagePath);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName || 'document';
+      a.rel = 'noopener noreferrer';
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      console.error('Expense document download:', e);
+      alert('Не вдалося завантажити документ.');
+    }
+  }, []);
+
+  const handleAddExpenseRow = () => {
+    if (!selectedPropertyId || expenseCategories.length === 0) return;
+    const newRow: PropertyExpenseItemWithDocument & { id: string } = {
+      id: `new-${crypto.randomUUID()}`,
+      property_id: selectedPropertyId,
+      document_id: null,
+      category_id: expenseCategories[0].id,
+      article: null,
+      name: '',
+      quantity: 1,
+      unit_price: 0,
+      line_total: null,
+      invoice_number: null,
+      invoice_date: null,
+      vendor: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      property_expense_documents: null,
+      property_expense_categories: { id: expenseCategories[0].id, name: expenseCategories[0].name, code: expenseCategories[0].code, is_active: expenseCategories[0].is_active },
+    };
+    setExpenseItems((prev) => [...prev, newRow]);
+    setIsExpenseEditing(true);
+  };
+
+  const handleUpdateExpenseItem = (index: number, field: string, value: string | number) => {
+    setExpenseItems((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const handleDeleteExpenseItem = async (index: number) => {
+    const item = expenseItems[index];
+    if (!item) return;
+    if (item.id.startsWith('new-')) {
+      setExpenseItems((prev) => prev.filter((_, i) => i !== index));
+      return;
+    }
+    try {
+      await propertyExpenseService.deleteItem(item.id);
+      setExpenseItems((prev) => prev.filter((_, i) => i !== index));
+    } catch (e) {
+      console.error('Delete expense item:', e);
+      alert('Не вдалося видалити. Спробуйте ще раз.');
+    }
+  };
+
+  const handleSaveExpense = async () => {
+    if (!selectedPropertyId) return;
+    const activeCategories = expenseCategories.filter((c) => c.is_active);
+    const newRows = expenseItems.filter((i) => i.id.startsWith('new-'));
+    for (const row of newRows) {
+      if (!row.category_id || !row.name?.trim()) {
+        alert('У кожного рядка мають бути назва та категорія.');
+        return;
+      }
+      const cat = activeCategories.find((c) => c.id === row.category_id) || expenseCategories.find((c) => c.id === row.category_id);
+      if (!cat) {
+        alert('Обрана категорія недійсна.');
+        return;
+      }
+    }
+    try {
+      for (const item of expenseItems) {
+        if (item.id.startsWith('new-')) {
+          await propertyExpenseService.createItem(selectedPropertyId, {
+            category_id: item.category_id,
+            name: item.name.trim(),
+            quantity: item.quantity ?? 1,
+            unit_price: item.unit_price ?? 0,
+            article: item.article ?? null,
+            invoice_number: item.invoice_number ?? null,
+            invoice_date: item.invoice_date ?? null,
+            vendor: item.vendor ?? null,
+          });
+        } else {
+          await propertyExpenseService.updateItem(item.id, {
+            category_id: item.category_id,
+            name: item.name,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            article: item.article ?? null,
+            invoice_number: item.invoice_number ?? null,
+            invoice_date: item.invoice_date ?? null,
+            vendor: item.vendor ?? null,
+          });
+        }
+      }
+      await refreshExpenseItems();
+      setIsExpenseEditing(false);
+    } catch (e) {
+      console.error('Save expense error:', e);
+      alert('Не вдалося зберегти. Спробуйте ще раз.');
+    }
+  };
+
+  const handleExpenseOcrRecognize = async () => {
+    if (!expenseOcrFile || !selectedPropertyId) return;
+    setIsExpenseOcrProcessing(true);
+    setExpenseOcrError(null);
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const base64String = reader.result as string;
+          const base64Data = base64String.split(',')[1];
+          const mimeType = expenseOcrFile.type;
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('Not authenticated.');
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+          const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+          if (!supabaseUrl || !anonKey) throw new Error('Missing Supabase env.');
+          const response = await fetch(`${supabaseUrl}/functions/v1/ocr-invoice`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': anonKey },
+            body: JSON.stringify({ fileBase64: base64Data, mimeType, fileName: expenseOcrFileName }),
+          });
+          if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || `OCR failed: ${response.status}`);
+          }
+          const result = await response.json();
+          if (!result.success || !result.data) throw new Error('Invalid OCR response');
+          const ocrData = result.data;
+          setExpenseOcrInvoiceNumber(ocrData.invoiceNumber || '');
+          setExpenseOcrInvoiceDate(ocrData.invoiceDate || ocrData.purchaseDate || new Date().toISOString().split('T')[0]);
+          setExpenseOcrVendor(ocrData.vendor || '');
+          const firstCategoryId = expenseCategories.length > 0 ? expenseCategories[0].id : '';
+          const rows = (ocrData.items || []).map((item: { name?: string; quantity?: number; price?: number }, idx: number) => ({
+            id: `ocr-${idx + 1}`,
+            name: item.name || '',
+            quantity: String(item.quantity ?? 1),
+            price: String(item.price ?? 0),
+            category_id: firstCategoryId,
+          }));
+          setExpenseOcrRows(rows);
+          if (rows.length === 0) setExpenseOcrError('Документ не містить позицій.');
+        } catch (e: unknown) {
+          setExpenseOcrError(e instanceof Error ? e.message : 'OCR failed.');
+        } finally {
+          setIsExpenseOcrProcessing(false);
+        }
+      };
+      reader.onerror = () => { setExpenseOcrError('Failed to read file'); setIsExpenseOcrProcessing(false); };
+      reader.readAsDataURL(expenseOcrFile);
+    } catch (e: unknown) {
+      setExpenseOcrError(e instanceof Error ? e.message : 'Failed');
+      setIsExpenseOcrProcessing(false);
+    }
+  };
+
+  const handleExpenseOcrCellChange = (rowId: string, field: 'name' | 'quantity' | 'price' | 'category_id', value: string) => {
+    setExpenseOcrRows((prev) => prev.map((r) => (r.id === rowId ? { ...r, [field]: value } : r)));
+  };
+
+  const handleExpenseOcrApplyCategoryToAll = (categoryId: string) => {
+    setExpenseOcrRows((prev) => prev.map((r) => ({ ...r, category_id: categoryId })));
+  };
+
+  const handleSaveExpenseFromOCR = async () => {
+    if (!selectedPropertyId || !expenseOcrFile || expenseOcrRows.length === 0) return;
+    const validRows = expenseOcrRows.filter((r) => r.name.trim() && parseFloat(r.quantity) > 0);
+    if (validRows.length === 0) {
+      setExpenseOcrError('Додайте хоча б одну позицію з назвою та кількістю.');
+      return;
+    }
+    const missingCategory = validRows.find((r) => !r.category_id);
+    if (missingCategory) {
+      setExpenseOcrError('У кожної позиції має бути обрана категорія.');
+      return;
+    }
+    setIsExpenseOcrSaving(true);
+    setExpenseOcrError(null);
+    try {
+      const { documentId } = await propertyExpenseService.createDocumentAndUpload(selectedPropertyId, expenseOcrFile, {
+        file_name: expenseOcrFileName || null,
+        invoice_number: expenseOcrInvoiceNumber || null,
+        invoice_date: expenseOcrInvoiceDate || null,
+        vendor: expenseOcrVendor || null,
+      });
+      await propertyExpenseService.appendItems(
+        selectedPropertyId,
+        documentId,
+        validRows.map((r) => ({
+          category_id: r.category_id,
+          name: r.name.trim(),
+          quantity: parseFloat(r.quantity) || 1,
+          unit_price: parseFloat(r.price) || 0,
+          invoice_number: expenseOcrInvoiceNumber || null,
+          invoice_date: expenseOcrInvoiceDate || null,
+          vendor: expenseOcrVendor || null,
+        }))
+      );
+      await refreshExpenseItems();
+      setIsExpenseAddFromDocumentOpen(false);
+      setExpenseOcrRows([]);
+      setExpenseOcrFile(null);
+      setExpenseOcrFileName(null);
+      if (expenseOcrPreviewUrl) { URL.revokeObjectURL(expenseOcrPreviewUrl); setExpenseOcrPreviewUrl(null); }
+      setExpenseOcrInvoiceNumber('');
+      setExpenseOcrInvoiceDate('');
+      setExpenseOcrVendor('');
+      setExpenseOcrError(null);
+    } catch (e: unknown) {
+      console.error('Expense OCR save error:', e);
+      setExpenseOcrError(e instanceof Error ? e.message : 'Не вдалося зберегти.');
+    } finally {
+      setIsExpenseOcrSaving(false);
+    }
+  };
 
   const handleViewInventoryDocument = useCallback(async (storagePath: string) => {
     try {
@@ -6414,36 +6701,221 @@ ${internalCompany} Team`;
                 })()}
             </section>
 
-            {/* Repair Requests */}
+            {/* Інвойси (Витрати) — property expense invoices, per-row category */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold text-white">Ремонти</h2>
-                    <button className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"><Plus className="w-3 h-3 mr-1 inline"/> Додати Заявку</button>
+                    <h2 className="text-xl font-bold text-white">Інвойси (Витрати)</h2>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setIsExpenseCategoriesModalOpen(true)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
+                        >
+                            Категорії
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (isExpenseEditing) handleSaveExpense();
+                                else setIsExpenseEditing(true);
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${isExpenseEditing ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}
+                        >
+                            {isExpenseEditing ? <><Check className="w-3 h-3 mr-1 inline"/> Зберегти</> : <><Edit className="w-3 h-3 mr-1 inline"/> Редагувати</>}
+                        </button>
+                        {isExpenseEditing && (
+                            <button
+                                onClick={() => { setIsExpenseEditing(false); refreshExpenseItems(); }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-600 text-gray-300 hover:bg-gray-700/50"
+                            >
+                                Скасувати
+                            </button>
+                        )}
+                        {isExpenseEditing && (
+                            <button
+                                onClick={handleAddExpenseRow}
+                                disabled={expenseCategories.length === 0}
+                                className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                            >
+                                <Plus className="w-3 h-3 mr-1 inline" /> Додати
+                            </button>
+                        )}
+                        <button
+                            onClick={() => setIsExpenseAddFromDocumentOpen(true)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
+                        >
+                            <Upload className="w-3 h-3 mr-1 inline" /> Додати з документа
+                        </button>
+                    </div>
                 </div>
-                <div className="overflow-hidden border border-gray-700 rounded-lg">
-                    <table className="w-full text-sm text-left">
+                <div className="rounded-lg border border-gray-700 overflow-hidden">
+                    <div className="overflow-x-auto">
+                    <table className="w-full table-fixed text-sm text-left">
+                        <colgroup>
+                            <col className="w-[95px]" />
+                            <col className="w-[100px]" />
+                            <col className="w-[110px]" />
+                            <col className="w-[80px]" />
+                            <col />
+                            <col className="w-[60px]" />
+                            <col className="w-[85px]" />
+                            <col className="w-[90px]" />
+                            <col className="w-[90px]" />
+                            <col className="w-[90px]" />
+                            <col className="w-[70px]" />
+                            {isExpenseEditing && <col className="w-[70px]" />}
+                        </colgroup>
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
                             <tr>
-                                <th className="p-3 font-bold text-xs uppercase">ID</th>
                                 <th className="p-3 font-bold text-xs uppercase">Дата</th>
-                                <th className="p-3 font-bold text-xs uppercase">Опис</th>
-                                <th className="p-3 font-bold text-xs uppercase">Статус</th>
+                                <th className="p-3 font-bold text-xs uppercase">Постачальник</th>
+                                <th className="p-3 font-bold text-xs uppercase">Категорія</th>
+                                <th className="p-3 font-bold text-xs uppercase">Артикул</th>
+                                <th className="p-3 font-bold text-xs uppercase">Назва</th>
+                                <th className="p-3 font-bold text-xs uppercase text-right">К-сть</th>
+                                <th className="p-3 font-bold text-xs uppercase text-right">Ціна (од.)</th>
+                                <th className="p-3 font-bold text-xs uppercase">Інвойс №</th>
+                                <th className="p-3 font-bold text-xs uppercase">Документ</th>
+                                <th className="p-3 font-bold text-xs uppercase">Об'єкт</th>
+                                {isExpenseEditing && <th className="p-3 font-bold text-xs uppercase text-center">Дії</th>}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                            {selectedProperty.repairRequests?.map(req => (
-                                <tr key={req.id} className="hover:bg-[#1C1F24]">
-                                    <td className="p-3 text-white">{req.id}</td>
-                                    <td className="p-3 text-gray-400">{req.date}</td>
-                                    <td className="p-3 text-white">{req.description}</td>
-                                    <td className="p-3"><span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30">{req.status}</span></td>
-                                </tr>
-                            ))}
-                            {(!selectedProperty.repairRequests || selectedProperty.repairRequests.length === 0) && (
-                                <tr><td colSpan={4} className="p-4 text-center text-gray-500 text-xs">Немає активних ремонтів.</td></tr>
+                            {expenseLoading ? (
+                                <tr><td colSpan={isExpenseEditing ? 12 : 11} className="p-4 text-center text-gray-500 text-sm">Завантаження...</td></tr>
+                            ) : expenseItems.length === 0 ? (
+                                <tr><td colSpan={isExpenseEditing ? 12 : 11} className="p-4 text-center text-gray-500 text-xs">Немає витрат. Додайте вручну або з документа.</td></tr>
+                            ) : (
+                                expenseItems.map((item, idx) => {
+                                    const doc = item.property_expense_documents;
+                                    const cat = item.property_expense_categories;
+                                    const formattedDate = item.invoice_date
+                                        ? new Date(item.invoice_date).toLocaleDateString('uk-UA', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                                        : '—';
+                                    return (
+                                        <tr key={item.id} className="hover:bg-[#1C1F24]">
+                                            <td className="p-3 text-gray-400 text-xs">{formattedDate}</td>
+                                            <td className="p-3 text-gray-400 text-xs min-w-0">
+                                                {isExpenseEditing ? (
+                                                    <input
+                                                        className="bg-transparent border-b border-gray-700 w-full text-xs text-white outline-none min-w-0"
+                                                        value={item.vendor ?? ''}
+                                                        onChange={(e) => handleUpdateExpenseItem(idx, 'vendor', e.target.value)}
+                                                        placeholder="—"
+                                                    />
+                                                ) : (item.vendor ?? '—')}
+                                            </td>
+                                            <td className="p-3 text-gray-400 text-xs min-w-0">
+                                                {isExpenseEditing ? (
+                                                    <select
+                                                        value={item.category_id}
+                                                        onChange={(e) => handleUpdateExpenseItem(idx, 'category_id', e.target.value)}
+                                                        className="bg-[#16181D] border border-gray-700 rounded px-2 py-1 text-xs text-white w-full"
+                                                    >
+                                                        {expenseCategories.filter((c) => c.is_active).map((c) => (
+                                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                                        ))}
+                                                        {expenseCategories.filter((c) => !c.is_active).map((c) => (
+                                                            <option key={c.id} value={c.id}>{c.name} (архів)</option>
+                                                        ))}
+                                                    </select>
+                                                ) : (cat ? (cat.is_active ? cat.name : `${cat.name} (архів)`) : '—')}
+                                            </td>
+                                            <td className="p-3 text-gray-400 text-xs">
+                                                {isExpenseEditing ? (
+                                                    <input
+                                                        className="bg-transparent border-b border-gray-700 w-full text-xs text-white outline-none"
+                                                        value={item.article ?? ''}
+                                                        onChange={(e) => handleUpdateExpenseItem(idx, 'article', e.target.value)}
+                                                    />
+                                                ) : (item.article ?? '—')}
+                                            </td>
+                                            <td className="p-3 min-w-0">
+                                                {isExpenseEditing ? (
+                                                    <input
+                                                        className="bg-transparent border-b border-gray-700 w-full text-sm text-white outline-none min-w-0"
+                                                        value={item.name}
+                                                        onChange={(e) => handleUpdateExpenseItem(idx, 'name', e.target.value)}
+                                                        placeholder="Назва"
+                                                    />
+                                                ) : (
+                                                    <span className="block text-white font-semibold text-sm overflow-hidden truncate" title={item.name}>
+                                                        {item.name}
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="p-3 text-right">
+                                                {isExpenseEditing ? (
+                                                    <input
+                                                        type="number"
+                                                        className="bg-transparent border-b border-gray-700 w-12 text-right text-white outline-none text-xs"
+                                                        value={item.quantity ?? 1}
+                                                        onChange={(e) => handleUpdateExpenseItem(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                                                    />
+                                                ) : (
+                                                    <span className="text-gray-300 font-mono text-xs">{item.quantity ?? 0}</span>
+                                                )}
+                                            </td>
+                                            <td className="p-3 text-right">
+                                                {isExpenseEditing ? (
+                                                    <input
+                                                        type="number"
+                                                        className="bg-transparent border-b border-gray-700 w-16 text-right text-white outline-none text-xs"
+                                                        value={item.unit_price ?? 0}
+                                                        onChange={(e) => handleUpdateExpenseItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
+                                                    />
+                                                ) : (
+                                                    <span className="text-white font-mono text-xs">{(item.unit_price ?? 0).toFixed(2)} €</span>
+                                                )}
+                                            </td>
+                                            <td className="p-3 text-gray-400 text-xs">{item.invoice_number ?? '—'}</td>
+                                            <td className="p-3 text-gray-400 text-xs">
+                                                {doc?.storage_path ? (
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="text-[10px] text-gray-500 truncate max-w-[80px]" title={doc.invoice_number || doc.file_name || ''}>
+                                                            {doc.invoice_number || doc.file_name || 'Документ'}
+                                                        </span>
+                                                        <div className="flex items-center gap-1">
+                                                            <button
+                                                                type="button"
+                                                                aria-label="Переглянути документ"
+                                                                title="Переглянути"
+                                                                onClick={() => handleViewExpenseDocument(doc.storage_path)}
+                                                                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
+                                                            >
+                                                                <Eye className="w-4 h-4" />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                aria-label="Скачати документ"
+                                                                title="Скачати"
+                                                                onClick={() => handleDownloadExpenseDocument(doc.storage_path, doc.file_name || 'document')}
+                                                                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
+                                                            >
+                                                                <Download className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : '—'}
+                                            </td>
+                                            <td className="p-3 text-gray-400 text-xs">{selectedProperty?.title ?? '—'}</td>
+                                            {isExpenseEditing && (
+                                                <td className="p-3 text-center">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteExpenseItem(idx)}
+                                                        className="text-red-500 hover:text-red-400 p-1"
+                                                    >
+                                                        <Trash2 className="w-3 h-3" />
+                                                    </button>
+                                                </td>
+                                            )}
+                                        </tr>
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>
+                    </div>
                 </div>
             </section>
 
@@ -9454,6 +9926,273 @@ ${internalCompany} Team`;
             </div>
           </div>
         </div>
+      )}
+
+      {isExpenseAddFromDocumentOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
+          <div className="w-full max-w-6xl h-[90vh] max-h-[95vh] bg-[#020617] border border-gray-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-white">Додати витрати з документа</h2>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  Завантажте інвойс, розпізнайте OCR та оберіть категорію для кожної позиції.
+                </p>
+                {selectedProperty?.title && (
+                  <p className="text-[11px] text-gray-300 mt-1">Об'єкт: {selectedProperty.title}</p>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setIsExpenseAddFromDocumentOpen(false);
+                  setExpenseOcrError(null);
+                  setExpenseOcrRows([]);
+                  setExpenseOcrFile(null);
+                  setExpenseOcrFileName(null);
+                  if (expenseOcrPreviewUrl) { URL.revokeObjectURL(expenseOcrPreviewUrl); setExpenseOcrPreviewUrl(null); }
+                  setExpenseOcrInvoiceNumber('');
+                  setExpenseOcrInvoiceDate('');
+                  setExpenseOcrVendor('');
+                }}
+                className="p-1.5 rounded-full hover:bg-white/5 text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-6 py-5 flex-1 flex flex-col overflow-hidden space-y-4 text-xs text-gray-100">
+              {expenseOcrError && (
+                <div className="mb-3 text-xs text-red-400 bg-red-500/10 border border-red-500/40 rounded-md px-3 py-2">{expenseOcrError}</div>
+              )}
+              <div className="flex-1 grid grid-cols-1 md:grid-cols-[3fr,4fr] gap-4 items-stretch min-h-0">
+                <div className="flex flex-col gap-3 h-full min-h-0">
+                  <input
+                    ref={expenseOcrFileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      if (expenseOcrPreviewUrl) URL.revokeObjectURL(expenseOcrPreviewUrl);
+                      if (file) {
+                        setExpenseOcrFile(file);
+                        setExpenseOcrFileName(file.name);
+                        setExpenseOcrPreviewUrl(URL.createObjectURL(file));
+                        setExpenseOcrRows([]);
+                        setExpenseOcrError(null);
+                      } else {
+                        setExpenseOcrFile(null);
+                        setExpenseOcrFileName(null);
+                        setExpenseOcrPreviewUrl(null);
+                      }
+                    }}
+                  />
+                  {!expenseOcrFile && (
+                    <div
+                      className="relative flex flex-col items-center justify-center border-2 border-dashed border-gray-700 hover:border-blue-500/70 bg-black/20 rounded-xl px-4 py-8 cursor-pointer transition-colors"
+                      onClick={() => expenseOcrFileInputRef.current?.click()}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) {
+                          if (expenseOcrPreviewUrl) URL.revokeObjectURL(expenseOcrPreviewUrl);
+                          setExpenseOcrFile(file);
+                          setExpenseOcrFileName(file.name);
+                          setExpenseOcrPreviewUrl(URL.createObjectURL(file));
+                          setExpenseOcrRows([]);
+                          setExpenseOcrError(null);
+                        }
+                      }}
+                    >
+                      <Upload className="w-6 h-6 text-blue-400 mb-2" />
+                      <span className="text-xs font-medium text-white">Перетягніть файл або натисніть</span>
+                      <span className="mt-1 text-[11px] text-gray-500">PDF, JPG, PNG</span>
+                    </div>
+                  )}
+                  {expenseOcrPreviewUrl && expenseOcrFile && (
+                    <div className="relative flex-1 min-h-0 border border-gray-800 rounded-xl overflow-hidden bg-black/40">
+                      <div className="absolute top-2 right-2 z-10">
+                        <button type="button" onClick={() => expenseOcrFileInputRef.current?.click()} className="px-2 py-1 rounded-md bg-black/70 text-[10px] text-gray-200 border border-gray-600 hover:bg-black/90">Змінити</button>
+                      </div>
+                      {expenseOcrFile.type === 'application/pdf' ? (
+                        <iframe src={expenseOcrPreviewUrl} className="w-full h-full min-h-[200px]" title="PDF preview" />
+                      ) : (
+                        <img src={expenseOcrPreviewUrl} alt="Preview" className="w-full h-auto max-h-full object-contain" />
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2 h-full min-h-0">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-gray-400">Розпізнати OCR та обрати категорію для кожної позиції.</span>
+                    <button
+                      onClick={handleExpenseOcrRecognize}
+                      disabled={isExpenseOcrProcessing || !expenseOcrFile || expenseCategories.length === 0}
+                      className={`px-3 py-1.5 rounded-md text-[11px] font-semibold flex items-center gap-2 transition-colors ${isExpenseOcrProcessing || !expenseOcrFile || expenseCategories.length === 0 ? 'bg-purple-600/40 text-purple-200/70 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 text-white'}`}
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      {isExpenseOcrProcessing ? 'Розпізнавання…' : 'Recognize with OCR'}
+                    </button>
+                  </div>
+                  <div className="flex-1 min-h-0 border border-gray-800 rounded-lg p-3 bg-[#020617] flex flex-col">
+                    {expenseOcrRows.length === 0 ? (
+                      <div className="h-full flex items-center justify-center text-[11px] text-gray-500 text-center">
+                        {expenseCategories.length === 0 ? 'Спочатку додайте категорії (кнопка «Категорії»).' : 'Результат OCR з\'явиться тут після розпізнавання.'}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pb-2 border-b border-gray-800">
+                          <div>
+                            <label className="block text-[10px] text-gray-400 mb-1">Номер інвойсу</label>
+                            <input
+                              value={expenseOcrInvoiceNumber}
+                              onChange={(e) => setExpenseOcrInvoiceNumber(e.target.value)}
+                              className="w-full bg-transparent border border-gray-700 rounded px-2 py-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              placeholder="INV-..."
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-400 mb-1">Дата</label>
+                            <input
+                              type="date"
+                              value={expenseOcrInvoiceDate}
+                              onChange={(e) => setExpenseOcrInvoiceDate(e.target.value)}
+                              className="w-full bg-transparent border border-gray-700 rounded px-2 py-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-400 mb-1">Постачальник</label>
+                            <input
+                              value={expenseOcrVendor}
+                              onChange={(e) => setExpenseOcrVendor(e.target.value)}
+                              className="w-full bg-transparent border border-gray-700 rounded px-2 py-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              placeholder="Фірма / магазин"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 pb-1">
+                          <span className="text-[10px] text-gray-500">Застосувати категорію до всіх:</span>
+                          <select
+                            onChange={(e) => { const v = e.target.value; if (v) handleExpenseOcrApplyCategoryToAll(v); }}
+                            className="bg-[#16181D] border border-gray-700 rounded px-2 py-1 text-[11px] text-white"
+                          >
+                            <option value="">— оберіть —</option>
+                            {expenseCategories.filter((c) => c.is_active).map((c) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-auto">
+                          <table className="min-w-full text-[11px]">
+                            <thead className="bg-[#020617] text-gray-300 border-b border-gray-800 sticky top-0">
+                              <tr>
+                                <th className="px-2 py-2 text-left">Назва</th>
+                                <th className="px-2 py-2 text-right">К-сть</th>
+                                <th className="px-2 py-2 text-right">Ціна (од.)</th>
+                                <th className="px-2 py-2 text-left">Категорія</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-800">
+                              {expenseOcrRows.map((row) => (
+                                <tr key={row.id}>
+                                  <td className="px-2 py-1.5">
+                                    <input
+                                      value={row.name}
+                                      onChange={(e) => handleExpenseOcrCellChange(row.id, 'name', e.target.value)}
+                                      className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                      placeholder="Назва"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right">
+                                    <input
+                                      value={row.quantity}
+                                      onChange={(e) => handleExpenseOcrCellChange(row.id, 'quantity', e.target.value)}
+                                      className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-right text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right">
+                                    <input
+                                      value={row.price}
+                                      onChange={(e) => handleExpenseOcrCellChange(row.id, 'price', e.target.value)}
+                                      className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-right text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    />
+                                  </td>
+                                  <td className="px-2 py-1.5">
+                                    <select
+                                      value={row.category_id}
+                                      onChange={(e) => handleExpenseOcrCellChange(row.id, 'category_id', e.target.value)}
+                                      className="w-full bg-[#16181D] border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    >
+                                      <option value="">— оберіть категорію —</option>
+                                      {expenseCategories.filter((c) => c.is_active).map((c) => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-3 border-t border-gray-800 flex items-center justify-between text-[11px]">
+              <div className="text-gray-400">
+                Позицій: <span className="text-gray-200 font-medium">{expenseOcrRows.length}</span>
+                {expenseOcrRows.length > 0 && (
+                  <span className="ml-2 text-amber-400">
+                    {expenseOcrRows.every((r) => r.category_id) ? 'Усі з категорією' : 'Оберіть категорію для кожної позиції'}
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setIsExpenseAddFromDocumentOpen(false);
+                    setExpenseOcrError(null);
+                    setExpenseOcrRows([]);
+                    setExpenseOcrFile(null);
+                    setExpenseOcrFileName(null);
+                    if (expenseOcrPreviewUrl) { URL.revokeObjectURL(expenseOcrPreviewUrl); setExpenseOcrPreviewUrl(null); }
+                    setExpenseOcrInvoiceNumber('');
+                    setExpenseOcrInvoiceDate('');
+                    setExpenseOcrVendor('');
+                  }}
+                  className="px-3 py-1.5 rounded-md border border-gray-700 text-gray-300 hover:bg-white/5 transition-colors"
+                >
+                  Закрити
+                </button>
+                <button
+                  onClick={handleSaveExpenseFromOCR}
+                  disabled={
+                    expenseOcrRows.length === 0 ||
+                    isExpenseOcrSaving ||
+                    !expenseOcrRows.every((r) => r.name.trim() && parseFloat(r.quantity) > 0 && r.category_id)
+                  }
+                  className={`px-4 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-colors ${
+                    expenseOcrRows.length === 0 || isExpenseOcrSaving || !expenseOcrRows.every((r) => r.name.trim() && parseFloat(r.quantity) > 0 && r.category_id)
+                      ? 'bg-emerald-600/30 text-emerald-200/60 cursor-not-allowed'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  }`}
+                >
+                  <Save className="w-4 h-4" />
+                  {isExpenseOcrSaving ? 'Збереження…' : 'Зберегти'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isExpenseCategoriesModalOpen && (
+        <ExpenseCategoriesModal
+          onClose={() => { setIsExpenseCategoriesModalOpen(false); refreshExpenseItems(); }}
+          categories={expenseCategories}
+          onRefresh={() => propertyExpenseCategoryService.listCategories(true).then(setExpenseCategories)}
+        />
       )}
 
       <BookingDetailsModal
