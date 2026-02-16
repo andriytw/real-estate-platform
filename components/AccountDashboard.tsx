@@ -2967,6 +2967,31 @@ const AccountDashboard: React.FC = () => {
     }
   };
 
+  const handleDeleteExpenseGroup = async (group: { key: string; documentId: string | null; doc: { storage_path: string } | null; items: PropertyExpenseItemWithDocument[] }) => {
+    const itemIds = new Set(group.items.map((i) => i.id));
+    if (group.key === 'manual') {
+      const toDelete = group.items.filter((i) => !i.id.startsWith('new-'));
+      try {
+        for (const item of toDelete) {
+          await propertyExpenseService.deleteItem(item.id);
+        }
+        setExpenseItems((prev) => prev.filter((i) => !itemIds.has(i.id)));
+      } catch (e) {
+        console.error('Delete manual group:', e);
+        alert('Не вдалося видалити. Спробуйте ще раз.');
+      }
+      return;
+    }
+    if (!group.documentId || !group.doc?.storage_path) return;
+    try {
+      await propertyExpenseService.deleteDocumentAndItems(group.documentId, group.doc.storage_path);
+      setExpenseItems((prev) => prev.filter((i) => i.document_id !== group.documentId));
+    } catch (e) {
+      console.error('Delete expense document:', e);
+      alert('Не вдалося видалити інвойс. Спробуйте ще раз.');
+    }
+  };
+
   const handleSaveExpense = async () => {
     if (!selectedPropertyId) return;
     const activeCategories = expenseCategories.filter((c) => c.is_active);
@@ -6785,6 +6810,7 @@ ${internalCompany} Team`;
                             <col className="w-[120px]" />
                             <col className="w-[90px]" />
                             <col className="w-[85px]" />
+                            {isExpenseEditing && <col className="w-[90px]" />}
                         </colgroup>
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
                             <tr>
@@ -6795,13 +6821,14 @@ ${internalCompany} Team`;
                                 <th className="p-3 font-bold text-xs uppercase">Документ</th>
                                 <th className="p-3 font-bold text-xs uppercase">Об'єкт</th>
                                 <th className="p-3 font-bold text-xs uppercase text-right">Сума</th>
+                                {isExpenseEditing && <th className="p-3 font-bold text-xs uppercase text-center">Дії</th>}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
                             {expenseLoading ? (
-                                <tr><td colSpan={7} className="p-4 text-center text-gray-500 text-sm">Завантаження...</td></tr>
+                                <tr><td colSpan={isExpenseEditing ? 8 : 7} className="p-4 text-center text-gray-500 text-sm">Завантаження...</td></tr>
                             ) : expenseGroups.length === 0 ? (
-                                <tr><td colSpan={7} className="p-4 text-center text-gray-500 text-xs">Немає витрат. Додайте вручну або з документа.</td></tr>
+                                <tr><td colSpan={isExpenseEditing ? 8 : 7} className="p-4 text-center text-gray-500 text-xs">Немає витрат. Додайте вручну або з документа.</td></tr>
                             ) : (
                                 expenseGroups.map((group) => {
                                     const isExpanded = expandedExpenseGroups[group.key] ?? false;
@@ -6862,10 +6889,22 @@ ${internalCompany} Team`;
                                                 </td>
                                                 <td className="p-3 text-gray-400 text-xs">{selectedProperty?.title ?? '—'}</td>
                                                 <td className="p-3 text-right text-white font-mono text-xs">{groupSum.toFixed(2)} €</td>
+                                                {isExpenseEditing && (
+                                                    <td className="p-2 text-center align-middle">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteExpenseGroup(group)}
+                                                            className="text-red-500 hover:text-red-400 p-1.5 rounded hover:bg-red-500/10 transition-colors inline-flex items-center gap-1 text-xs font-medium"
+                                                            title="Видалити весь інвойс"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" /> Видалити інвойс
+                                                        </button>
+                                                    </td>
+                                                )}
                                             </tr>
                                             {isExpanded && (
                                                 <tr>
-                                                    <td colSpan={7} className="p-0 bg-[#16181D] align-top">
+                                                    <td colSpan={isExpenseEditing ? 8 : 7} className="p-0 bg-[#16181D] align-top">
                                                         <div className="px-4 pb-3 pt-0">
                                                             <table className="w-full text-sm text-left border border-gray-700 rounded-lg overflow-hidden">
                                                                 <colgroup>

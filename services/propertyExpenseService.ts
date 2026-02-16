@@ -226,4 +226,23 @@ export const propertyExpenseService = {
     const { error } = await supabase.from('property_expense_items').delete().eq('id', itemId);
     if (error) throw error;
   },
+
+  /** Delete entire invoice: all items for the document, then document row and storage file. */
+  async deleteDocumentAndItems(documentId: string, storagePath: string): Promise<void> {
+    const { error: itemsError } = await supabase
+      .from('property_expense_items')
+      .delete()
+      .eq('document_id', documentId);
+    if (itemsError) throw itemsError;
+    const { error: docError } = await supabase
+      .from('property_expense_documents')
+      .delete()
+      .eq('id', documentId);
+    if (docError) throw docError;
+    try {
+      await supabase.storage.from(PROPERTY_EXPENSE_DOCS_BUCKET).remove([storagePath]);
+    } catch {
+      // best-effort; document row is already deleted
+    }
+  },
 };
