@@ -44,6 +44,7 @@ import {
   paymentChainFilesService,
   rentTimelineService,
 } from '../services/supabaseService';
+import { propertyInventoryService, type PropertyInventoryItemRow, type PropertyInventoryItemWithDocument } from '../services/propertyInventoryService';
 import {
   ReservationData,
   OfferData,
@@ -368,112 +369,16 @@ const AccountDashboard: React.FC = () => {
         // #region agent log
         if (data.length > 0) {
           const firstProperty = data[0];
-          (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:120',message:'Properties loaded',data:{totalProperties:data.length,firstProperty:{id:firstProperty.id,title:firstProperty.title,inventoryCount:firstProperty.inventory?.length||0,inventoryItems:firstProperty.inventory?.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type,sku:i.sku}))||[]}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
+          (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:120',message:'Properties loaded',data:{totalProperties:data.length,firstProperty:{id:firstProperty.id,title:firstProperty.title}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
         }
         // #endregion
         
         // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:129',message:'Setting properties from DB',data:{propertiesCount:data.length,isUsingMock:false,firstPropertyId:data[0]?.id,firstPropertyTitle:data[0]?.title,firstPropertyInventoryCount:data[0]?.inventory?.length||0,firstPropertyInventory:data[0]?.inventory?.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
+        (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:129',message:'Setting properties from DB',data:{propertiesCount:data.length,isUsingMock:false,firstPropertyId:data[0]?.id,firstPropertyTitle:data[0]?.title},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
         // #endregion
         
-        // Очистити inventory, який пов'язаний зі складом, але не знайдений на складі
-        // Це автоматично видалить inventory, який був видалений зі складу
-        let stock: any[] = [];
-        try {
-          stock = await warehouseService.getStock();
-          // #region agent log
-          (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:137',message:'Warehouse stock loaded for cleanup',data:{stockCount:stock.length,stockItemIds:stock.map(s=>s.itemId).slice(0,5)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{}));
-          // #endregion
-        } catch (error) {
-          console.error('Error loading warehouse stock for cleanup:', error);
-          // #region agent log
-          (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:142',message:'Error loading warehouse stock',data:{error:error instanceof Error ? error.message : String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{}));
-          // #endregion
-        }
-        
-        const stockItemIds = new Set(stock.map(s => s.itemId));
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:148',message:'Stock itemIds set created',data:{stockItemIdsCount:stockItemIds.size,stockItemIdsArray:Array.from(stockItemIds).slice(0,5)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{}));
-        // #endregion
-        
-        // Мок-дані inventory, які потрібно видалити (якщо вони є в БД)
-        // Перевіряємо як type, так і name, ігноруючи регістр
-        const mockInventoryTypes = ['ліжко', 'шафа', 'холодильник', 'інше (вкажіть у кількості)', 'sofa', 'fridge'];
-        const mockInvNumbers = ['KV1-L001', 'KV1-SH003', 'KV1-HOL01', 'KV1-PRM01', 'BRL-DIV04', 'BRL-HOL02', 'WRS-D001', 'WRS-H001'];
-        
-        const cleanedData = await Promise.all(data.map(async (property) => {
-          if (property.inventory && property.inventory.length > 0) {
-            const cleanedInventory = property.inventory.filter((item: any) => {
-              // Видаляємо мок-дані inventory (перевіряємо type і name, ігноруючи регістр)
-              const itemType = (item.type || '').toLowerCase().trim();
-              const itemName = (item.name || '').toLowerCase().trim();
-              
-              // Перевірка на мок-дані: "ліжко", "шафа", "холодильник" в будь-якому регістрі
-              const isMockItem = 
-                itemType.includes('ліжко') || itemName.includes('ліжко') ||
-                itemType.includes('шафа') || itemName.includes('шафа') ||
-                itemType.includes('холодильник') || itemName.includes('холодильник') ||
-                itemType.includes('sofa') || itemName.includes('sofa') ||
-                itemType.includes('fridge') || itemName.includes('fridge') ||
-                mockInventoryTypes.some(mock => itemType === mock || itemName === mock);
-              
-              const isMockInvNumber = item.invNumber && mockInvNumbers.includes(item.invNumber);
-              
-              if (isMockItem || isMockInvNumber) {
-                console.log(`🗑️ Removing mock inventory: ${item.type || item.name} (${item.invNumber || 'no invNumber'}) from ${property.title}`);
-                return false; // Видаляємо мок-дані
-              }
-              
-              // Якщо склад пустий, видаляємо весь старий inventory без itemId (крім тих, що точно не мок-дані)
-              // Це означає, що весь inventory має бути пов'язаний зі складом
-              if (stock.length === 0) {
-                // Якщо склад пустий, видаляємо весь inventory без itemId (він не може бути зі складу)
-                if (!item.itemId) {
-                  console.log(`🗑️ Removing old inventory (no warehouse): ${item.type || item.name} from ${property.title}`);
-                  return false;
-                }
-              }
-              
-              // Залишаємо старий інвентар без itemId тільки якщо склад не пустий
-              if (!item.itemId && (!item.invNumber || !item.invNumber.startsWith('WAREHOUSE-'))) {
-                // Але перевіряємо, чи це не мок-дані
-                if (isMockType || isMockInvNumber) {
-                  return false;
-                }
-                return true; // Старий інвентар - залишаємо тільки якщо не мок-дані
-              }
-              
-              // Якщо item має itemId, перевіряємо, чи він є на складі
-              if (item.itemId) {
-                return stockItemIds.has(item.itemId);
-              }
-              
-              // Якщо item має invNumber у форматі WAREHOUSE-, перевіряємо, чи відповідний itemId є на складі
-              if (item.invNumber && item.invNumber.startsWith('WAREHOUSE-')) {
-                const itemIdFromInvNumber = item.invNumber.replace('WAREHOUSE-', '');
-                return stockItemIds.has(itemIdFromInvNumber);
-              }
-              
-              return true; // Якщо не визначено - залишаємо (старий інвентар)
-            });
-            
-            if (cleanedInventory.length !== property.inventory.length) {
-              console.log(`🧹 Cleaning inventory for ${property.title}: ${property.inventory.length} -> ${cleanedInventory.length} items`);
-              // #region agent log
-              (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:168',message:'Cleaning property inventory',data:{propertyId:property.id,propertyTitle:property.title,oldCount:property.inventory.length,newCount:cleanedInventory.length,removedItems:property.inventory.filter((i:any)=>!cleanedInventory.some((ci:any)=>ci.itemId===i.itemId&&ci.invNumber===i.invNumber)).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{}));
-              // #endregion
-              // Оновити property в БД
-              await propertiesService.update(property.id, {
-                inventory: cleanedInventory,
-              });
-              // #region agent log
-              (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:175',message:'Property inventory updated in DB',data:{propertyId:property.id,newInventoryCount:cleanedInventory.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{}));
-              // #endregion
-              return { ...property, inventory: cleanedInventory };
-            }
-          }
-          return property;
-        }));
+        // Property inventory lives in property_inventory_items; do not write to properties.inventory
+        const cleanedData = data;
         
         setProperties(cleanedData);
         // Use functional update to avoid dependency on selectedPropertyId
@@ -790,7 +695,23 @@ const AccountDashboard: React.FC = () => {
   const [ocrPurchaseDate, setOcrPurchaseDate] = useState<string>('');
   const [ocrVendor, setOcrVendor] = useState<string>('');
   const inventoryFileInputRef = useRef<HTMLInputElement | null>(null);
+  const propertyOcrFileInputRef = useRef<HTMLInputElement | null>(null);
   const depositProofFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isPropertyAddFromDocumentOpen, setIsPropertyAddFromDocumentOpen] = useState(false);
+  const [propertyOcrRows, setPropertyOcrRows] = useState<
+    Array<{ id: string; sku: string; name: string; quantity: string; unit: string; price: string; invoiceNumber: string; purchaseDate: string; object: string }>
+  >([]);
+  const [propertyOcrFile, setPropertyOcrFile] = useState<File | null>(null);
+  const [propertyOcrFileName, setPropertyOcrFileName] = useState<string | null>(null);
+  const [propertyOcrPreviewUrl, setPropertyOcrPreviewUrl] = useState<string | null>(null);
+  const [propertyOcrInvoiceNumber, setPropertyOcrInvoiceNumber] = useState<string>('');
+  const [propertyOcrPurchaseDate, setPropertyOcrPurchaseDate] = useState<string>('');
+  const [propertyOcrVendor, setPropertyOcrVendor] = useState<string>('');
+  const [isPropertyOcrProcessing, setIsPropertyOcrProcessing] = useState(false);
+  const [propertyOcrError, setPropertyOcrError] = useState<string | null>(null);
+  const [isPropertyOcrSaving, setIsPropertyOcrSaving] = useState(false);
+  const [propertyInventoryItems, setPropertyInventoryItems] = useState<PropertyInventoryItemWithDocument[]>([]);
+  const [propertyInventoryLoading, setPropertyInventoryLoading] = useState(false);
   const [transferPropertyId, setTransferPropertyId] = useState<string>('');
   const [transferWorkerId, setTransferWorkerId] = useState<string>('');
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -1271,6 +1192,129 @@ const AccountDashboard: React.FC = () => {
     }
   };
 
+  const propertyNameForOcr = selectedProperty?.title ?? '';
+
+  const handlePropertyOcrRecognize = async () => {
+    if (!propertyOcrFile || !selectedPropertyId) return;
+    setIsPropertyOcrProcessing(true);
+    setPropertyOcrError(null);
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const base64String = reader.result as string;
+          const base64Data = base64String.split(',')[1];
+          const mimeType = propertyOcrFile.type;
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) throw new Error('Not authenticated.');
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+          const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+          if (!supabaseUrl || !anonKey) throw new Error('Missing Supabase env.');
+          const response = await fetch(`${supabaseUrl}/functions/v1/ocr-invoice`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': anonKey },
+            body: JSON.stringify({ fileBase64: base64Data, mimeType, fileName: propertyOcrFileName }),
+          });
+          if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || `OCR failed: ${response.status}`);
+          }
+          const result = await response.json();
+          if (!result.success || !result.data) throw new Error('Invalid OCR response');
+          const ocrData = result.data;
+          setPropertyOcrInvoiceNumber(ocrData.invoiceNumber || '');
+          setPropertyOcrPurchaseDate(ocrData.purchaseDate || new Date().toISOString().split('T')[0]);
+          setPropertyOcrVendor(ocrData.vendor || '');
+          const rows = (ocrData.items || []).map((item: any, idx: number) => ({
+            id: String(idx + 1),
+            sku: item.sku || '',
+            name: item.name || '',
+            quantity: String(item.quantity || 1),
+            unit: item.unit || 'pcs',
+            price: String(item.price || 0),
+            invoiceNumber: ocrData.invoiceNumber || '',
+            purchaseDate: ocrData.purchaseDate || '',
+            object: propertyNameForOcr,
+          }));
+          setPropertyOcrRows(rows);
+          if (rows.length === 0) setPropertyOcrError('No items found in the document.');
+        } catch (e: any) {
+          setPropertyOcrError(e?.message || 'OCR failed.');
+        } finally {
+          setIsPropertyOcrProcessing(false);
+        }
+      };
+      reader.onerror = () => { setPropertyOcrError('Failed to read file'); setIsPropertyOcrProcessing(false); };
+      reader.readAsDataURL(propertyOcrFile);
+    } catch (e: any) {
+      setPropertyOcrError(e?.message || 'Failed');
+      setIsPropertyOcrProcessing(false);
+    }
+  };
+
+  const handlePropertyOcrCellChange = (rowId: string, field: 'sku' | 'name' | 'quantity' | 'price' | 'invoiceNumber' | 'purchaseDate', value: string) => {
+    setPropertyOcrRows((prev) => prev.map((row) => (row.id === rowId ? { ...row, [field]: value } : row)));
+    if (field === 'invoiceNumber') {
+      setPropertyOcrInvoiceNumber(value);
+      setPropertyOcrRows((prev) => prev.map((row) => ({ ...row, invoiceNumber: value })));
+    }
+    if (field === 'purchaseDate') {
+      setPropertyOcrPurchaseDate(value);
+      setPropertyOcrRows((prev) => prev.map((row) => ({ ...row, purchaseDate: value })));
+    }
+  };
+
+  const handleSavePropertyInventoryFromOCR = async () => {
+    if (!selectedPropertyId || !selectedProperty || propertyOcrRows.length === 0 || !propertyOcrFile) return;
+    const validRows = propertyOcrRows.filter((row) => row.name.trim() && parseFloat(row.quantity) > 0);
+    if (validRows.length === 0) {
+      setPropertyOcrError('No valid items (name and quantity required).');
+      return;
+    }
+    setIsPropertyOcrSaving(true);
+    setPropertyOcrError(null);
+    try {
+      const { documentId } = await propertyInventoryService.createDocumentAndUpload(selectedPropertyId, propertyOcrFile, {
+        file_name: propertyOcrFileName || null,
+        invoice_number: propertyOcrInvoiceNumber || null,
+        purchase_date: propertyOcrPurchaseDate || null,
+        store: propertyOcrVendor || null,
+      });
+      await propertyInventoryService.appendItems(
+        selectedPropertyId,
+        documentId,
+        validRows.map((row) => ({
+          property_id: selectedPropertyId,
+          document_id: documentId,
+          article: row.sku?.trim() || null,
+          name: row.name.trim(),
+          quantity: parseFloat(row.quantity) || 1,
+          unit_price: parseFloat(row.price) || null,
+          invoice_number: row.invoiceNumber || null,
+          purchase_date: row.purchaseDate || null,
+          store: propertyOcrVendor || null,
+        }))
+      );
+      await refreshPropertyInventory();
+      if (import.meta.env.DEV) console.log('[PropertyInventoryOCR]', { propertyId: selectedPropertyId, itemsCount: validRows.length });
+      setIsPropertyAddFromDocumentOpen(false);
+      setPropertyOcrRows([]);
+      setPropertyOcrFile(null);
+      setPropertyOcrFileName(null);
+      if (propertyOcrPreviewUrl) { URL.revokeObjectURL(propertyOcrPreviewUrl); setPropertyOcrPreviewUrl(null); }
+      setPropertyOcrInvoiceNumber('');
+      setPropertyOcrPurchaseDate('');
+      setPropertyOcrVendor('');
+      setPropertyOcrError(null);
+    } catch (e: unknown) {
+      console.error('Property OCR save error:', e);
+      setPropertyOcrError(e instanceof Error ? e.message : 'Failed to save.');
+      // Do not close modal on error so user can retry or fix
+    } finally {
+      setIsPropertyOcrSaving(false);
+    }
+  };
+
   const handleDeleteStockItem = async (stockId: string) => {
     if (!confirm('Are you sure you want to delete this item from warehouse stock? This will also remove it from all apartments where it was transferred.')) return;
 
@@ -1738,6 +1782,22 @@ const AccountDashboard: React.FC = () => {
         console.log('📋 Tasks after filtering:', validTasks.length);
         if (validTasks.length > 0) {
             console.log('📋 Task IDs:', validTasks.map(t => t.id));
+        }
+
+        // Process any verified/completed transfer tasks (e.g. confirmed in another tab) so inventory is applied
+        for (const task of validTasks) {
+          if ((task.status === 'completed' || task.status === 'verified') && task.description) {
+            try {
+              const parsed = JSON.parse(task.description);
+              if (parsed.action === 'transfer_inventory' && parsed.transferData && !parsed.transferExecuted) {
+                console.log('📦 Executing pending inventory transfer on load for task:', task.id);
+                await executeInventoryTransfer(parsed);
+                parsed.transferExecuted = true;
+                await tasksService.update(task.id, { description: JSON.stringify(parsed) });
+                console.log('✅ Pending inventory transfer executed for task:', task.id);
+              }
+            } catch (_) { /* ignore */ }
+          }
         }
         
         setAdminEvents(validTasks);
@@ -2742,6 +2802,50 @@ const AccountDashboard: React.FC = () => {
       .catch(() => setLeaseTerm(null));
   }, [selectedPropertyId]);
 
+  useEffect(() => {
+    if (!selectedPropertyId) {
+      setPropertyInventoryItems([]);
+      return;
+    }
+    setPropertyInventoryLoading(true);
+    propertyInventoryService.listItemsWithDocuments(selectedPropertyId)
+      .then(setPropertyInventoryItems)
+      .catch(() => setPropertyInventoryItems([]))
+      .finally(() => setPropertyInventoryLoading(false));
+  }, [selectedPropertyId]);
+
+  const refreshPropertyInventory = useCallback(() => {
+    if (!selectedPropertyId) return;
+    propertyInventoryService.listItemsWithDocuments(selectedPropertyId).then(setPropertyInventoryItems);
+  }, [selectedPropertyId]);
+
+  const handleViewInventoryDocument = useCallback(async (storagePath: string) => {
+    try {
+      const url = await propertyInventoryService.getDocumentSignedUrl(storagePath);
+      window.open(url, '_blank');
+    } catch (e) {
+      console.error('Signed URL error:', e);
+      alert('Не вдалося відкрити документ.');
+    }
+  }, []);
+
+  const handleDownloadInventoryDocument = useCallback(async (storagePath: string, fileName: string) => {
+    try {
+      const url = await propertyInventoryService.getDocumentSignedUrl(storagePath);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName || 'document';
+      a.rel = 'noopener noreferrer';
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      console.error('Signed URL error:', e);
+      alert('Не вдалося завантажити документ.');
+    }
+  }, []);
+
   const refreshKautionProofs = () => {
     if (!selectedPropertyId) return;
     Promise.all([
@@ -2750,43 +2854,92 @@ const AccountDashboard: React.FC = () => {
     ]).then(([payment, ret]) => setKautionProofs({ payment, return: ret })).catch(() => setKautionProofs({ payment: null, return: null }));
   };
 
+  const uiFieldToDbColumn: Record<string, string> = {
+    sku: 'article',
+    name: 'name',
+    quantity: 'quantity',
+    unitPrice: 'unit_price',
+    invoiceNumber: 'invoice_number',
+    purchaseDate: 'purchase_date',
+    vendor: 'store',
+  };
+
   const handleAddInventoryRow = () => {
-    const updatedProperties = properties.map(prop => {
-        if (prop.id === selectedPropertyId) {
-            const count = prop.inventory.length + 1;
-            const prefix = prop.title.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, 'P');
-            const autoId = `${prefix}-${prop.id}-INV${String(count).padStart(3, '0')}`;
-            const newItem = { type: '', invNumber: autoId, quantity: 1, cost: 0 };
-            return { ...prop, inventory: [...prop.inventory, newItem] };
-        }
-        return prop;
-    });
-    setProperties(updatedProperties);
+    if (!selectedPropertyId) return;
+    const newRow: PropertyInventoryItemWithDocument = {
+      id: `new-${crypto.randomUUID()}`,
+      property_id: selectedPropertyId,
+      document_id: null,
+      article: null,
+      name: '',
+      quantity: 1,
+      unit_price: null,
+      invoice_number: null,
+      purchase_date: null,
+      store: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      property_inventory_documents: null,
+    };
+    setPropertyInventoryItems((prev) => [...prev, newRow]);
     setIsInventoryEditing(true);
   };
 
   const handleUpdateInventoryItem = (index: number, field: string, value: string | number) => {
-    const updatedProperties = properties.map(prop => {
-        if (prop.id === selectedPropertyId) {
-            const newInventory = [...prop.inventory];
-            // @ts-ignore
-            newInventory[index] = { ...newInventory[index], [field]: value };
-            return { ...prop, inventory: newInventory };
-        }
-        return prop;
-    });
-    setProperties(updatedProperties);
+    const dbField = uiFieldToDbColumn[field] ?? field;
+    setPropertyInventoryItems((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, [dbField]: value } : item))
+    );
   };
 
-  const handleDeleteInventoryItem = (index: number) => {
-    const updatedProperties = properties.map(prop => {
-        if (prop.id === selectedPropertyId) {
-            const newInventory = prop.inventory.filter((_, i) => i !== index);
-            return { ...prop, inventory: newInventory };
+  const handleDeleteInventoryItem = async (index: number) => {
+    const item = propertyInventoryItems[index];
+    if (!item) return;
+    if (item.id.startsWith('new-')) {
+      setPropertyInventoryItems((prev) => prev.filter((_, i) => i !== index));
+      return;
+    }
+    try {
+      await propertyInventoryService.deleteItem(item.id);
+      setPropertyInventoryItems((prev) => prev.filter((_, i) => i !== index));
+    } catch (e) {
+      console.error('Delete inventory item error:', e);
+      alert('Не вдалося видалити. Спробуйте ще раз.');
+    }
+  };
+
+  const handleSavePropertyInventory = async () => {
+    if (!selectedPropertyId) return;
+    try {
+      for (const item of propertyInventoryItems) {
+        if (item.id.startsWith('new-')) {
+          await propertyInventoryService.createItem(selectedPropertyId, {
+            name: item.name,
+            quantity: item.quantity,
+            article: item.article ?? null,
+            unit_price: item.unit_price ?? null,
+            invoice_number: item.invoice_number ?? null,
+            purchase_date: item.purchase_date ?? null,
+            store: item.store ?? null,
+          });
+        } else {
+          await propertyInventoryService.updateItem(item.id, {
+            name: item.name,
+            quantity: item.quantity,
+            article: item.article ?? null,
+            unit_price: item.unit_price ?? null,
+            invoice_number: item.invoice_number ?? null,
+            purchase_date: item.purchase_date ?? null,
+            store: item.store ?? null,
+          });
         }
-        return prop;
-    });
-    setProperties(updatedProperties);
+      }
+      await refreshPropertyInventory();
+      setIsInventoryEditing(false);
+    } catch (e) {
+      console.error('Save property inventory error:', e);
+      alert('Не вдалося зберегти. Спробуйте ще раз.');
+    }
   };
 
   const handleSaveOffer = async (newOffer: OfferData) => {
@@ -4333,6 +4486,22 @@ ${internalCompany} Team`;
           // NOTE: We do NOT reload tasks here to prevent race condition
           // The local state is already updated above, and Kanban will reload on its own
           window.dispatchEvent(new CustomEvent('taskUpdated'));
+
+          // Finalize inventory transfer when manager confirms (verified); does not rely on taskUpdated listener
+          if (updatedEvent.status === 'verified' && updatedEvent.description) {
+            try {
+              const parsed = JSON.parse(updatedEvent.description);
+              if (parsed.action === 'transfer_inventory' && parsed.transferData && !parsed.transferExecuted) {
+                console.log('📦 Finalizing inventory transfer on manager confirm for task:', updatedEvent.id);
+                await executeInventoryTransfer(parsed);
+                parsed.transferExecuted = true;
+                await tasksService.update(updatedEvent.id, { description: JSON.stringify(parsed) });
+                console.log('✅ Inventory transfer finalized for task:', updatedEvent.id);
+              }
+            } catch (e) {
+              // Not a transfer task or parse error — ignore
+            }
+          }
       } catch (error: any) {
           // #region agent log
           (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2690',message:'H3: ERROR in DB update',data:{taskId:updatedEvent.id,error:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{}));
@@ -4730,17 +4899,16 @@ ${internalCompany} Team`;
   const renderPropertiesContent = () => {
     // #region agent log
     if (selectedProperty) {
-      (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1931',message:'selectedProperty used for rendering',data:{propertyId:selectedProperty.id,propertyTitle:selectedProperty.title,inventoryCount:selectedProperty.inventory?.length||0,inventoryItems:selectedProperty.inventory?.slice(0,5).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type,sku:i.sku})),isFromMock:selectedProperty.id === '1' && selectedProperty.title === 'Apartment 1, Lviv'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
+      (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1931',message:'selectedProperty used for rendering',data:{propertyId:selectedProperty.id,propertyTitle:selectedProperty.title,inventoryCount:propertyInventoryItems.length,inventoryItems:propertyInventoryItems.slice(0,5).map(i=>({id:i.id,name:i.name,article:i.article,quantity:i.quantity}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
     }
     // #endregion
     
     if (!selectedProperty) return <div>Loading...</div>;
     const expense = selectedProperty.ownerExpense || { mortgage: 0, management: 0, taxIns: 0, reserve: 0 };
     const totalExpense = expense.mortgage + expense.management + expense.taxIns + expense.reserve;
-    // Use unitPrice if present, otherwise fall back to legacy cost field
-    const totalInventoryCost = selectedProperty.inventory.reduce((acc, item: any) => {
-      const unitPrice = item.unitPrice != null ? item.unitPrice : (item.cost || 0);
-      const qty = item.quantity || 0;
+    const totalInventoryCost = propertyInventoryItems.reduce((acc, item) => {
+      const unitPrice = item.unit_price ?? 0;
+      const qty = Number(item.quantity) || 0;
       return acc + unitPrice * qty;
     }, 0);
 
@@ -6261,7 +6429,7 @@ ${internalCompany} Team`;
                     <h2 className="text-xl font-bold text-white">Меблі (Інвентар)</h2>
                     <div className="flex gap-2">
                         <button 
-                            onClick={() => setIsInventoryEditing(!isInventoryEditing)}
+                            onClick={() => isInventoryEditing ? handleSavePropertyInventory() : setIsInventoryEditing(true)}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${isInventoryEditing ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}
                         >
                             {isInventoryEditing ? <Check className="w-3 h-3 mr-1 inline"/> : <Edit className="w-3 h-3 mr-1 inline"/>}
@@ -6275,6 +6443,12 @@ ${internalCompany} Team`;
                                 <Plus className="w-3 h-3 mr-1 inline" /> Додати
                             </button>
                         )}
+                        <button
+                            onClick={() => setIsPropertyAddFromDocumentOpen(true)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
+                        >
+                            <Upload className="w-3 h-3 mr-1 inline" /> Додати з документа
+                        </button>
                     </div>
                 </div>
                 <div className="overflow-hidden border border-gray-700 rounded-lg">
@@ -6288,61 +6462,45 @@ ${internalCompany} Team`;
                                 <th className="p-3 font-bold text-xs uppercase">Номер інвойсу</th>
                                 <th className="p-3 font-bold text-xs uppercase">Дата покупки</th>
                                 <th className="p-3 font-bold text-xs uppercase">Магазин</th>
+                                <th className="p-3 font-bold text-xs uppercase">Документ</th>
+                                <th className="p-3 font-bold text-xs uppercase">Об'єкт</th>
                                 {isInventoryEditing && (
                                   <th className="p-3 font-bold text-xs uppercase text-center">Дії</th>
                                 )}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                            {selectedProperty.inventory.map((item: any, idx: number) => {
-                              // #region agent log
-                              if (idx === 0) {
-                                (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2075',message:'Rendering property inventory',data:{propertyId:selectedProperty.id,propertyTitle:selectedProperty.title,totalInventoryCount:selectedProperty.inventory.length,firstItem:{itemId:item.itemId,invNumber:item.invNumber,name:item.name,type:item.type,sku:item.sku}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
-                              }
-                              // #endregion
-                              
-                              const unitPrice =
-                                item.unitPrice != null ? item.unitPrice : (item.cost || 0);
-                              const formattedPrice =
-                                unitPrice > 0 ? `€${unitPrice.toFixed(2)}` : '-';
-                              const formattedDate = item.purchaseDate
-                                ? new Date(item.purchaseDate).toLocaleDateString('uk-UA', {
-                                    year: 'numeric',
-                                    month: '2-digit',
-                                    day: '2-digit',
-                                  })
+                            {propertyInventoryLoading ? (
+                              <tr><td colSpan={11} className="p-4 text-center text-gray-500 text-sm">Завантаження...</td></tr>
+                            ) : (
+                            propertyInventoryItems.map((item, idx) => {
+                              const unitPrice = item.unit_price ?? 0;
+                              const formattedPrice = unitPrice > 0 ? `€${Number(unitPrice).toFixed(2)}` : '-';
+                              const formattedDate = item.purchase_date
+                                ? new Date(item.purchase_date).toLocaleDateString('uk-UA', { year: 'numeric', month: '2-digit', day: '2-digit' })
                                 : '-';
-
                               return (
-                                <tr key={idx} className="hover:bg-[#1C1F24]">
+                                <tr key={item.id} className="hover:bg-[#1C1F24]">
                                   <td className="p-3 text-gray-400 text-xs">
                                     {isInventoryEditing ? (
                                       <input
                                         className="bg-transparent border-b border-gray-700 w-full text-xs text-white outline-none"
-                                        value={item.sku || ''}
-                                        onChange={(e) =>
-                                          handleUpdateInventoryItem(idx, 'sku', e.target.value)
-                                        }
+                                        value={item.article || ''}
+                                        onChange={(e) => handleUpdateInventoryItem(idx, 'sku', e.target.value)}
                                         placeholder="SKU"
                                       />
-                                    ) : (
-                                      item.sku || '-'
-                                    )}
+                                    ) : (item.article || '-')}
                                   </td>
                                   <td className="p-3">
                                     {isInventoryEditing ? (
                                       <input
                                         className="bg-transparent border-b border-gray-700 w-full text-white outline-none"
-                                        value={item.name || item.type || ''}
-                                        onChange={(e) =>
-                                          handleUpdateInventoryItem(idx, 'name', e.target.value)
-                                        }
+                                        value={item.name || ''}
+                                        onChange={(e) => handleUpdateInventoryItem(idx, 'name', e.target.value)}
                                         placeholder="Назва товару"
                                       />
                                     ) : (
-                                      <span className="text-white font-bold">
-                                        {item.name || item.type}
-                                      </span>
+                                      <span className="text-white font-bold">{item.name || '-'}</span>
                                     )}
                                   </td>
                                   <td className="p-3 text-right">
@@ -6350,19 +6508,11 @@ ${internalCompany} Team`;
                                       <input
                                         type="number"
                                         className="bg-transparent border-b border-gray-700 w-16 text-right text-white outline-none"
-                                        value={item.quantity || 0}
-                                        onChange={(e) =>
-                                          handleUpdateInventoryItem(
-                                            idx,
-                                            'quantity',
-                                            parseInt(e.target.value || '0', 10)
-                                          )
-                                        }
+                                        value={Number(item.quantity) || 0}
+                                        onChange={(e) => handleUpdateInventoryItem(idx, 'quantity', parseInt(e.target.value || '0', 10))}
                                       />
                                     ) : (
-                                      <span className="text-gray-300 font-mono">
-                                        {item.quantity || 0}
-                                      </span>
+                                      <span className="text-gray-300 font-mono">{Number(item.quantity) || 0}</span>
                                     )}
                                   </td>
                                   <td className="p-3 text-right">
@@ -6371,73 +6521,74 @@ ${internalCompany} Team`;
                                         type="number"
                                         className="bg-transparent border-b border-gray-700 w-20 text-right text-white outline-none"
                                         value={unitPrice}
-                                        onChange={(e) =>
-                                          handleUpdateInventoryItem(
-                                            idx,
-                                            'unitPrice',
-                                            parseFloat(e.target.value || '0')
-                                          )
-                                        }
+                                        onChange={(e) => handleUpdateInventoryItem(idx, 'unitPrice', parseFloat(e.target.value || '0'))}
                                       />
                                     ) : (
-                                      <span className="text-white font-mono">
-                                        {formattedPrice}
-                                      </span>
+                                      <span className="text-white font-mono">{formattedPrice}</span>
                                     )}
                                   </td>
                                   <td className="p-3 text-gray-400 text-xs">
                                     {isInventoryEditing ? (
                                       <input
                                         className="bg-transparent border-b border-gray-700 w-full text-xs text-white outline-none"
-                                        value={item.invoiceNumber || ''}
-                                        onChange={(e) =>
-                                          handleUpdateInventoryItem(
-                                            idx,
-                                            'invoiceNumber',
-                                            e.target.value
-                                          )
-                                        }
+                                        value={item.invoice_number || ''}
+                                        onChange={(e) => handleUpdateInventoryItem(idx, 'invoiceNumber', e.target.value)}
                                         placeholder="INV-..."
                                       />
-                                    ) : (
-                                      item.invoiceNumber || '-'
-                                    )}
+                                    ) : (item.invoice_number || '-')}
                                   </td>
                                   <td className="p-3 text-gray-400 text-xs">
                                     {isInventoryEditing ? (
                                       <input
                                         type="date"
                                         className="bg-transparent border-b border-gray-700 text-xs text-white outline-none"
-                                        value={item.purchaseDate || ''}
-                                        onChange={(e) =>
-                                          handleUpdateInventoryItem(
-                                            idx,
-                                            'purchaseDate',
-                                            e.target.value
-                                          )
-                                        }
+                                        value={item.purchase_date || ''}
+                                        onChange={(e) => handleUpdateInventoryItem(idx, 'purchaseDate', e.target.value)}
                                       />
-                                    ) : (
-                                      formattedDate
-                                    )}
+                                    ) : formattedDate}
                                   </td>
                                   <td className="p-3 text-gray-400 text-xs">
                                     {isInventoryEditing ? (
                                       <input
                                         className="bg-transparent border-b border-gray-700 w-full text-xs text-white outline-none"
-                                        value={item.vendor || ''}
-                                        onChange={(e) =>
-                                          handleUpdateInventoryItem(idx, 'vendor', e.target.value)
-                                        }
+                                        value={item.store || ''}
+                                        onChange={(e) => handleUpdateInventoryItem(idx, 'vendor', e.target.value)}
                                         placeholder="Магазин"
                                       />
-                                    ) : (
-                                      item.vendor || '-'
-                                    )}
+                                    ) : (item.store || '-')}
+                                  </td>
+                                  <td className="p-3 text-gray-400 text-xs">
+                                    {item.document_id && item.property_inventory_documents?.storage_path ? (
+                                      <div className="flex flex-col gap-1">
+                                        <span className="text-[10px] text-gray-500 truncate max-w-[120px]" title={item.property_inventory_documents.invoice_number || item.property_inventory_documents.file_name || ''}>
+                                          {item.property_inventory_documents.invoice_number || item.property_inventory_documents.file_name || 'Документ'}
+                                        </span>
+                                        <div className="flex gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleViewInventoryDocument(item.property_inventory_documents!.storage_path!)}
+                                            className="text-blue-400 hover:text-blue-300 text-[10px] font-medium"
+                                          >
+                                            Переглянути
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDownloadInventoryDocument(item.property_inventory_documents!.storage_path!, item.property_inventory_documents?.file_name || 'document')}
+                                            className="text-blue-400 hover:text-blue-300 text-[10px] font-medium"
+                                          >
+                                            Скачати
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : '—'}
+                                  </td>
+                                  <td className="p-3 text-gray-400 text-xs">
+                                    {selectedProperty?.title ?? '-'}
                                   </td>
                                   {isInventoryEditing && (
                                     <td className="p-3 text-center">
                                       <button
+                                        type="button"
                                         onClick={() => handleDeleteInventoryItem(idx)}
                                         className="text-red-500 hover:text-red-400 p-1"
                                       >
@@ -6447,7 +6598,8 @@ ${internalCompany} Team`;
                                   )}
                                 </tr>
                               );
-                            })}
+                            })
+                            )}
                         </tbody>
                     </table>
                 </div>
@@ -9027,6 +9179,207 @@ ${internalCompany} Team`;
                 >
                   <Save className="w-4 h-4" />
                   {isExecutingTransfer ? 'Saving...' : 'Save to inventory'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isPropertyAddFromDocumentOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
+          <div className="w-full max-w-6xl h-[90vh] max-h-[95vh] bg-[#020617] border border-gray-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-white">Add inventory from document</h2>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  For this property. Drag & drop or upload, then recognize with OCR and save to property inventory.
+                </p>
+                {selectedProperty?.title && (
+                  <p className="text-[11px] text-gray-300 mt-1">Об'єкт: {selectedProperty.title}</p>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setIsPropertyAddFromDocumentOpen(false);
+                  setPropertyOcrError(null);
+                  setPropertyOcrRows([]);
+                  setPropertyOcrFile(null);
+                  setPropertyOcrFileName(null);
+                  if (propertyOcrPreviewUrl) { URL.revokeObjectURL(propertyOcrPreviewUrl); setPropertyOcrPreviewUrl(null); }
+                  setPropertyOcrInvoiceNumber('');
+                  setPropertyOcrPurchaseDate('');
+                  setPropertyOcrVendor('');
+                }}
+                className="p-1.5 rounded-full hover:bg-white/5 text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-6 py-5 flex-1 flex flex-col overflow-hidden space-y-4 text-xs text-gray-100">
+              {propertyOcrError && (
+                <div className="mb-3 text-xs text-red-400 bg-red-500/10 border border-red-500/40 rounded-md px-3 py-2">{propertyOcrError}</div>
+              )}
+              <div className="flex-1 grid grid-cols-1 md:grid-cols-[3fr,4fr] gap-4 items-stretch min-h-0">
+                <div className="flex flex-col gap-3 h-full min-h-0">
+                  <input
+                    ref={propertyOcrFileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      if (propertyOcrPreviewUrl) URL.revokeObjectURL(propertyOcrPreviewUrl);
+                      if (file) {
+                        setPropertyOcrFile(file);
+                        setPropertyOcrFileName(file.name);
+                        setPropertyOcrPreviewUrl(URL.createObjectURL(file));
+                        setPropertyOcrRows([]);
+                        setPropertyOcrError(null);
+                      } else {
+                        setPropertyOcrFile(null);
+                        setPropertyOcrFileName(null);
+                        setPropertyOcrPreviewUrl(null);
+                      }
+                    }}
+                  />
+                  {!propertyOcrFile && (
+                    <div
+                      className="relative flex flex-col items-center justify-center border-2 border-dashed border-gray-700 hover:border-blue-500/70 bg-black/20 rounded-xl px-4 py-8 cursor-pointer transition-colors"
+                      onClick={() => propertyOcrFileInputRef.current?.click()}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) {
+                          if (propertyOcrPreviewUrl) URL.revokeObjectURL(propertyOcrPreviewUrl);
+                          setPropertyOcrFile(file);
+                          setPropertyOcrFileName(file.name);
+                          setPropertyOcrPreviewUrl(URL.createObjectURL(file));
+                          setPropertyOcrRows([]);
+                          setPropertyOcrError(null);
+                        }
+                      }}
+                    >
+                      <Upload className="w-6 h-6 text-blue-400 mb-2" />
+                      <span className="text-xs font-medium text-white">Drag & drop file here or click to browse</span>
+                      <span className="mt-1 text-[11px] text-gray-500">PDF, JPG, PNG or Excel with item list</span>
+                    </div>
+                  )}
+                  {propertyOcrPreviewUrl && propertyOcrFile && (
+                    <div className="relative flex-1 min-h-0 border border-gray-800 rounded-xl overflow-hidden bg-black/40">
+                      <div className="absolute top-2 right-2 z-10">
+                        <button type="button" onClick={() => propertyOcrFileInputRef.current?.click()} className="px-2 py-1 rounded-md bg-black/70 text-[10px] text-gray-200 border border-gray-600 hover:bg-black/90">Change file</button>
+                      </div>
+                      {propertyOcrFile.type === 'application/pdf' ? (
+                        <iframe src={propertyOcrPreviewUrl} className="w-full h-full min-h-[200px]" title="PDF preview" />
+                      ) : (
+                        <img src={propertyOcrPreviewUrl} alt="Preview" className="w-full h-auto max-h-full object-contain" />
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2 h-full min-h-0">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-gray-400">Step 2 – recognize with OCR and review items.</span>
+                    <button
+                      onClick={handlePropertyOcrRecognize}
+                      disabled={isPropertyOcrProcessing || !propertyOcrFile}
+                      className={`px-3 py-1.5 rounded-md text-[11px] font-semibold flex items-center gap-2 transition-colors ${isPropertyOcrProcessing || !propertyOcrFile ? 'bg-purple-600/40 text-purple-200/70 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 text-white'}`}
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      {isPropertyOcrProcessing ? 'Recognizing…' : 'Recognize with OCR'}
+                    </button>
+                  </div>
+                  <div className="flex-1 min-h-0 border border-gray-800 rounded-lg p-3 bg-[#020617] flex flex-col">
+                    {propertyOcrRows.length === 0 ? (
+                      <div className="h-full flex items-center justify-center text-[11px] text-gray-500 text-center">OCR result will appear here after recognition.</div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pb-2 border-b border-gray-800">
+                          <div>
+                            <label className="block text-[10px] text-gray-400 mb-1">Номер інвойсу</label>
+                            <input
+                              value={propertyOcrInvoiceNumber}
+                              onChange={(e) => { setPropertyOcrInvoiceNumber(e.target.value); setPropertyOcrRows((prev) => prev.map((r) => ({ ...r, invoiceNumber: e.target.value }))); }}
+                              className="w-full bg-transparent border border-gray-700 rounded px-2 py-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              placeholder="INV-2025-0001"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-400 mb-1">Дата покупки</label>
+                            <input
+                              type="date"
+                              value={propertyOcrPurchaseDate}
+                              onChange={(e) => { setPropertyOcrPurchaseDate(e.target.value); setPropertyOcrRows((prev) => prev.map((r) => ({ ...r, purchaseDate: e.target.value }))); }}
+                              className="w-full bg-transparent border border-gray-700 rounded px-2 py-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-400 mb-1">Магазин</label>
+                            <input
+                              value={propertyOcrVendor}
+                              onChange={(e) => setPropertyOcrVendor(e.target.value)}
+                              className="w-full bg-transparent border border-gray-700 rounded px-2 py-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              placeholder="Назва магазину"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-auto">
+                          <table className="min-w-full text-[11px]">
+                            <thead className="bg-[#020617] text-gray-300 border-b border-gray-800 sticky top-0">
+                              <tr>
+                                <th className="px-2 py-2 text-left">Артикул</th>
+                                <th className="px-2 py-2 text-left">Назва товару</th>
+                                <th className="px-2 py-2 text-right">К-сть</th>
+                                <th className="px-2 py-2 text-right">Ціна (од.)</th>
+                                <th className="px-2 py-2 text-left">Номер інвойсу</th>
+                                <th className="px-2 py-2 text-left">Дата покупки</th>
+                                <th className="px-2 py-2 text-left">Магазин</th>
+                                <th className="px-2 py-2 text-left">Об'єкт</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-800">
+                              {propertyOcrRows.map((row) => (
+                                <tr key={row.id}>
+                                  <td className="px-2 py-1.5">
+                                    <input value={row.sku} onChange={(e) => handlePropertyOcrCellChange(row.id, 'sku', e.target.value)} className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="SKU" />
+                                  </td>
+                                  <td className="px-2 py-1.5">
+                                    <input value={row.name} onChange={(e) => handlePropertyOcrCellChange(row.id, 'name', e.target.value)} className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right">
+                                    <input value={row.quantity} onChange={(e) => handlePropertyOcrCellChange(row.id, 'quantity', e.target.value)} className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-right text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right">
+                                    <input value={row.price} onChange={(e) => handlePropertyOcrCellChange(row.id, 'price', e.target.value)} className="w-full bg-transparent border border-gray-700 rounded px-1.5 py-1 text-[11px] text-right text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                                  </td>
+                                  <td className="px-2 py-1.5"><span className="text-[11px] text-gray-400">{row.invoiceNumber || '-'}</span></td>
+                                  <td className="px-2 py-1.5"><span className="text-[11px] text-gray-400">{row.purchaseDate || '-'}</span></td>
+                                  <td className="px-2 py-1.5"><span className="text-[11px] text-gray-400">{propertyOcrVendor || '-'}</span></td>
+                                  <td className="px-2 py-1.5"><span className="text-[11px] text-gray-400">{row.object || '-'}</span></td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-3 border-t border-gray-800 flex items-center justify-between text-[11px]">
+              <div className="text-gray-400">Recognized items: <span className="text-gray-200 font-medium">{propertyOcrRows.length}</span></div>
+              <div className="flex gap-2">
+                <button onClick={() => { setIsPropertyAddFromDocumentOpen(false); setPropertyOcrError(null); setPropertyOcrRows([]); setPropertyOcrFile(null); setPropertyOcrFileName(null); if (propertyOcrPreviewUrl) { URL.revokeObjectURL(propertyOcrPreviewUrl); setPropertyOcrPreviewUrl(null); } setPropertyOcrInvoiceNumber(''); setPropertyOcrPurchaseDate(''); setPropertyOcrVendor(''); }} className="px-3 py-1.5 rounded-md border border-gray-700 text-gray-300 hover:bg-white/5 transition-colors">Close</button>
+                <button
+                  onClick={handleSavePropertyInventoryFromOCR}
+                  disabled={propertyOcrRows.length === 0 || isPropertyOcrSaving}
+                  className={`px-4 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-colors ${propertyOcrRows.length === 0 || isPropertyOcrSaving ? 'bg-emerald-600/30 text-emerald-200/60 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}
+                >
+                  <Save className="w-4 h-4" />
+                  {isPropertyOcrSaving ? 'Saving...' : 'Save to inventory'}
                 </button>
               </div>
             </div>
