@@ -6810,7 +6810,7 @@ ${internalCompany} Team`;
                             <col className="w-[120px]" />
                             <col className="w-[90px]" />
                             <col className="w-[85px]" />
-                            {isExpenseEditing && <col className="w-[90px]" />}
+                            {isExpenseEditing && <col className="w-10" />}
                         </colgroup>
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
                             <tr>
@@ -6894,10 +6894,11 @@ ${internalCompany} Team`;
                                                         <button
                                                             type="button"
                                                             onClick={() => handleDeleteExpenseGroup(group)}
-                                                            className="text-red-500 hover:text-red-400 p-1.5 rounded hover:bg-red-500/10 transition-colors inline-flex items-center gap-1 text-xs font-medium"
+                                                            className="p-1.5 text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
                                                             title="Видалити весь інвойс"
+                                                            aria-label="Видалити весь інвойс"
                                                         >
-                                                            <Trash2 className="w-4 h-4" /> Видалити інвойс
+                                                            <Trash2 className="w-4 h-4" />
                                                         </button>
                                                     </td>
                                                 )}
