@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Square } from 'lucide-react';
+import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Square, Download } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 import AdminCalendar from './AdminCalendar';
 import AdminMessages from './AdminMessages';
@@ -712,6 +712,7 @@ const AccountDashboard: React.FC = () => {
   const [isPropertyOcrSaving, setIsPropertyOcrSaving] = useState(false);
   const [propertyInventoryItems, setPropertyInventoryItems] = useState<PropertyInventoryItemWithDocument[]>([]);
   const [propertyInventoryLoading, setPropertyInventoryLoading] = useState(false);
+  const [isPropertyInventoryCollapsed, setIsPropertyInventoryCollapsed] = useState(true);
   const [transferPropertyId, setTransferPropertyId] = useState<string>('');
   const [transferWorkerId, setTransferWorkerId] = useState<string>('');
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -2817,6 +2818,29 @@ const AccountDashboard: React.FC = () => {
   const refreshPropertyInventory = useCallback(() => {
     if (!selectedPropertyId) return;
     propertyInventoryService.listItemsWithDocuments(selectedPropertyId).then(setPropertyInventoryItems);
+  }, [selectedPropertyId]);
+
+  const PROPERTY_INVENTORY_COLLAPSED_KEY = 'property_inventory_collapsed';
+  useEffect(() => {
+    if (!selectedPropertyId) return;
+    const key = `${PROPERTY_INVENTORY_COLLAPSED_KEY}:${selectedPropertyId}`;
+    try {
+      const stored = localStorage.getItem(key);
+      setIsPropertyInventoryCollapsed(stored !== 'false');
+    } catch {
+      setIsPropertyInventoryCollapsed(true);
+    }
+  }, [selectedPropertyId]);
+
+  const setPropertyInventoryCollapsed = useCallback((value: boolean) => {
+    setIsPropertyInventoryCollapsed(value);
+    if (selectedPropertyId) {
+      try {
+        localStorage.setItem(`${PROPERTY_INVENTORY_COLLAPSED_KEY}:${selectedPropertyId}`, String(value));
+      } catch {
+        // ignore
+      }
+    }
   }, [selectedPropertyId]);
 
   const handleViewInventoryDocument = useCallback(async (storagePath: string) => {
@@ -6426,10 +6450,24 @@ ${internalCompany} Team`;
             {/* Inventory */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold text-white">Меблі (Інвентар)</h2>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            aria-expanded={!isPropertyInventoryCollapsed}
+                            aria-label="Згорнути/розгорнути інвентар"
+                            onClick={() => setPropertyInventoryCollapsed(!isPropertyInventoryCollapsed)}
+                            className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
+                        >
+                            {isPropertyInventoryCollapsed ? <ChevronDown className="w-5 h-5" /> : <ChevronUp className="w-5 h-5" />}
+                        </button>
+                        <h2 className="text-xl font-bold text-white">Меблі (Інвентар)</h2>
+                    </div>
                     <div className="flex gap-2">
                         <button 
-                            onClick={() => isInventoryEditing ? handleSavePropertyInventory() : setIsInventoryEditing(true)}
+                            onClick={() => {
+                              if (isPropertyInventoryCollapsed) setPropertyInventoryCollapsed(false);
+                              if (isInventoryEditing) handleSavePropertyInventory(); else setIsInventoryEditing(true);
+                            }}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${isInventoryEditing ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}
                         >
                             {isInventoryEditing ? <Check className="w-3 h-3 mr-1 inline"/> : <Edit className="w-3 h-3 mr-1 inline"/>}
@@ -6437,7 +6475,10 @@ ${internalCompany} Team`;
                         </button>
                         {isInventoryEditing && (
                             <button
-                                onClick={handleAddInventoryRow}
+                                onClick={() => {
+                                  if (isPropertyInventoryCollapsed) setPropertyInventoryCollapsed(false);
+                                  handleAddInventoryRow();
+                                }}
                                 className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
                             >
                                 <Plus className="w-3 h-3 mr-1 inline" /> Додати
@@ -6451,6 +6492,8 @@ ${internalCompany} Team`;
                         </button>
                     </div>
                 </div>
+                {!isPropertyInventoryCollapsed && (
+                <>
                 <div className="overflow-hidden border border-gray-700 rounded-lg">
                     <table className="w-full text-sm text-left">
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
@@ -6563,20 +6606,24 @@ ${internalCompany} Team`;
                                         <span className="text-[10px] text-gray-500 truncate max-w-[120px]" title={item.property_inventory_documents.invoice_number || item.property_inventory_documents.file_name || ''}>
                                           {item.property_inventory_documents.invoice_number || item.property_inventory_documents.file_name || 'Документ'}
                                         </span>
-                                        <div className="flex gap-2">
+                                        <div className="flex items-center gap-1">
                                           <button
                                             type="button"
+                                            aria-label="Переглянути документ"
+                                            title="Переглянути документ"
                                             onClick={() => handleViewInventoryDocument(item.property_inventory_documents!.storage_path!)}
-                                            className="text-blue-400 hover:text-blue-300 text-[10px] font-medium"
+                                            className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
                                           >
-                                            Переглянути
+                                            <Eye className="w-4 h-4" />
                                           </button>
                                           <button
                                             type="button"
+                                            aria-label="Скачати документ"
+                                            title="Скачати документ"
                                             onClick={() => handleDownloadInventoryDocument(item.property_inventory_documents!.storage_path!, item.property_inventory_documents?.file_name || 'document')}
-                                            className="text-blue-400 hover:text-blue-300 text-[10px] font-medium"
+                                            className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
                                           >
-                                            Скачати
+                                            <Download className="w-4 h-4" />
                                           </button>
                                         </div>
                                       </div>
@@ -6611,6 +6658,8 @@ ${internalCompany} Team`;
                       </span>
                     </p>
                 </div>
+                </>
+                )}
             </section>
 
             {/* Meter Readings (History Log) - Accordion */}
