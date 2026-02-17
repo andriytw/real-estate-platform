@@ -173,7 +173,20 @@ export const propertyMediaService = {
   },
 
   async setCoverPhoto(propertyId: string, assetId: string | null): Promise<void> {
+    const { data: prop } = await supabase
+      .from('properties')
+      .select('cover_photo_asset_id')
+      .eq('id', propertyId)
+      .single();
+    const previousCoverId = (prop as { cover_photo_asset_id?: string | null } | null)?.cover_photo_asset_id ?? null;
+
     if (assetId == null) {
+      if (previousCoverId) {
+        await supabase
+          .from('property_media_assets')
+          .update({ is_public: false })
+          .eq('id', previousCoverId);
+      }
       const { error } = await supabase
         .from('properties')
         .update({ cover_photo_asset_id: null })
@@ -181,6 +194,7 @@ export const propertyMediaService = {
       if (error) throw error;
       return;
     }
+
     const { data: exists } = await supabase
       .from('property_media_assets')
       .select('id')
@@ -189,11 +203,22 @@ export const propertyMediaService = {
       .eq('type', 'photo')
       .maybeSingle();
     if (!exists?.id) return;
-    const { error } = await supabase
+
+    if (previousCoverId) {
+      await supabase
+        .from('property_media_assets')
+        .update({ is_public: false })
+        .eq('id', previousCoverId);
+    }
+    const { error: propError } = await supabase
       .from('properties')
       .update({ cover_photo_asset_id: assetId })
       .eq('id', propertyId);
-    if (error) throw error;
+    if (propError) throw propError;
+    await supabase
+      .from('property_media_assets')
+      .update({ is_public: true })
+      .eq('id', assetId);
   },
 
   async getPhotoSignedUrls(assets: PropertyMediaAssetRow[], expires = 3600): Promise<Record<string, string>> {
@@ -205,6 +230,43 @@ export const propertyMediaService = {
           const url = await propertyMediaService.getSignedUrl(a.storage_path!, expires);
           out[a.id] = url;
         })
+    );
+    return out;
+  },
+
+  async getCoverPhotoSignedUrlsForProperties(
+    propertyIds: string[],
+    expiresInSeconds = 3600
+  ): Promise<Record<string, string>> {
+    if (propertyIds.length === 0) return {};
+    const { data: properties, error: propError } = await supabase
+      .from('properties')
+      .select('id, cover_photo_asset_id')
+      .in('id', propertyIds)
+      .not('cover_photo_asset_id', 'is', null);
+    if (propError) throw propError;
+    const rows = (properties ?? []) as { id: string; cover_photo_asset_id: string }[];
+    if (rows.length === 0) return {};
+    const coverIds = [...new Set(rows.map((r) => r.cover_photo_asset_id))];
+    const { data: assets, error: assetError } = await supabase
+      .from('property_media_assets')
+      .select('id, storage_path')
+      .in('id', coverIds);
+    if (assetError) throw assetError;
+    const assetList = (assets ?? []) as { id: string; storage_path: string | null }[];
+    const pathById = new Map<string, string>();
+    assetList.forEach((a) => {
+      if (a.storage_path) pathById.set(a.id, a.storage_path);
+    });
+    const propertyIdByAssetId = new Map<string, string>();
+    rows.forEach((r) => propertyIdByAssetId.set(r.cover_photo_asset_id, r.id));
+    const out: Record<string, string> = {};
+    await Promise.all(
+      Array.from(pathById.entries()).map(async ([assetId, storagePath]) => {
+        const url = await propertyMediaService.getSignedUrl(storagePath, expiresInSeconds);
+        const pid = propertyIdByAssetId.get(assetId);
+        if (pid) out[pid] = url;
+      })
     );
     return out;
   },

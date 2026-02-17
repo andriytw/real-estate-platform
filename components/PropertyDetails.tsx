@@ -19,6 +19,7 @@ interface PropertyDetailsProps {
   onBookViewing?: () => void;
   worker?: Worker | null; // For checking if user is logged in
   onRequireLogin?: () => void; // Callback when login is required
+  coverPhotoUrl?: string | null; // MP-PROD-01: signed URL for cover photo (hero image)
 }
 
 const DetailRow: React.FC<{ label: string; value: string | number | boolean; highlight?: boolean }> = ({ label, value }) => (
@@ -35,7 +36,8 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
   hideActions = false, 
   onBookViewing,
   worker,
-  onRequireLogin
+  onRequireLogin,
+  coverPhotoUrl = null
 }) => {
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [isFloorPlanOpen, setIsFloorPlanOpen] = useState(false);
@@ -71,7 +73,10 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
     setCurrentImageIndex(0);
   }, [property.id]);
 
-  const images = property.images && property.images.length > 0 ? property.images : [property.image];
+  // MP-PROD-01: prefer cover photo for hero when present; else existing property.images / property.image
+  const images = coverPhotoUrl
+    ? [coverPhotoUrl, ...(property.images || [property.image]).filter(Boolean)]
+    : (property.images && property.images.length > 0 ? property.images : [property.image]);
   const currentImage = images[currentImageIndex];
 
   return (

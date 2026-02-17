@@ -7781,6 +7781,16 @@ ${internalCompany} Team`;
                           try {
                             await propertyMediaService.uploadAssetFiles(selectedPropertyId, 'photo', files);
                             await refreshMedia();
+                            const list = await propertyMediaService.listAssets(selectedPropertyId);
+                            setPropertyMediaAssets(list);
+                            const newPhotos = list.filter((a) => a.type === 'photo').sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                            const [coverId, urls] = await Promise.all([
+                              propertyMediaService.getCoverPhotoAssetId(selectedPropertyId),
+                              propertyMediaService.getPhotoSignedUrls(newPhotos),
+                            ]);
+                            setPhotoGalleryCoverId(coverId ?? null);
+                            setPhotoGallerySignedUrls(urls);
+                            setPhotoGallerySelectedId(newPhotos[0]?.id ?? null);
                           } catch (err) {
                             console.error(err);
                             alert('Не вдалося завантажити.');
@@ -7788,9 +7798,21 @@ ${internalCompany} Team`;
                         };
                         const handleDelete = async () => {
                           if (!photoGallerySelectedId || !confirm('Видалити фото?')) return;
+                          const wasCover = photoGalleryCoverId === photoGallerySelectedId;
                           try {
                             await propertyMediaService.deleteAsset(photoGallerySelectedId);
                             await refreshMedia();
+                            const list = await propertyMediaService.listAssets(selectedPropertyId);
+                            setPropertyMediaAssets(list);
+                            const remaining = list.filter((a) => a.type === 'photo').sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                            const [coverId, urls] = await Promise.all([
+                              propertyMediaService.getCoverPhotoAssetId(selectedPropertyId),
+                              propertyMediaService.getPhotoSignedUrls(remaining),
+                            ]);
+                            setPhotoGalleryCoverId(coverId ?? null);
+                            setPhotoGallerySignedUrls(urls);
+                            setPhotoGallerySelectedId(remaining[0]?.id ?? null);
+                            if (wasCover) setCoverPhotoUrl(null);
                           } catch (e) {
                             console.error(e);
                             alert('Не вдалося видалити.');
@@ -7821,7 +7843,7 @@ ${internalCompany} Team`;
                               {photoGallerySelectedId && (
                                 <div className="flex items-center gap-2 flex-wrap shrink-0">
                                   {isCover ? (
-                                    <span className="px-2 py-1 rounded text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/50">Головне</span>
+                                    <span className="px-2 py-1 rounded text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/50">Головне фото</span>
                                   ) : (
                                     <button type="button" onClick={async () => { try { await propertyMediaService.setCoverPhoto(selectedPropertyId, photoGallerySelectedId); setPhotoGalleryCoverId(photoGallerySelectedId); setCoverPhotoUrl(selectedUrl ?? null); } catch (e) { console.error(e); alert('Не вдалося встановити головне фото.'); } }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/50 hover:bg-amber-500/30">Зробити головним</button>
                                   )}

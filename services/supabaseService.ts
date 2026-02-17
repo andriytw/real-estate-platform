@@ -1057,6 +1057,27 @@ export const tasksService = {
        dbData.day = now.getDate();
     }
 
+    // Ensure transfer tasks (and any task with payload) persist property_id and description; production had NULLs without this
+    const propertyIdSrc = task.propertyId ?? (task as any).property_id;
+    if (propertyIdSrc != null && propertyIdSrc !== '') {
+      dbData.property_id = propertyIdSrc;
+    }
+    const descriptionSrc = task.description ?? (task as any).description;
+    if (descriptionSrc != null && descriptionSrc !== '') {
+      dbData.description = typeof descriptionSrc === 'string' ? descriptionSrc : JSON.stringify(descriptionSrc);
+    }
+
+    // Debug: verify payload before insert (safe, no PII)
+    if (task.title?.includes('Перевезти інвентар') || task.title?.includes('transfer')) {
+      console.log('[transfer task create]', {
+        title: task.title?.slice(0, 60),
+        hasPropertyId: !!dbData.property_id,
+        descriptionLength: (dbData.description?.length ?? 0),
+        dbDataPropertyId: dbData.property_id ?? null,
+        dbDataDescriptionLength: (dbData.description?.length ?? 0),
+      });
+    }
+
     const { data, error } = await supabase
       .from('calendar_events')
       .insert([dbData])
@@ -1147,7 +1168,7 @@ export const propertiesService = {
       console.log('📡 propertiesService.getAll called, lightweight:', lightweight);
       // For Marketplace/public views, only load essential fields for faster loading
       const selectFields = lightweight 
-        ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip, zweckentfremdung_flag, zweckentfremdung_updated_at'
+        ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip, zweckentfremdung_flag, zweckentfremdung_updated_at, cover_photo_asset_id'
         : '*';
       
       console.log('📡 Querying properties table with fields:', selectFields);
@@ -2113,6 +2134,7 @@ function transformPropertyFromDB(db: any): Property {
     energyEfficiencyClass: db.energy_efficiency_class || db.energyEfficiencyClass,
     parking: db.parking,
     marketplaceUrl: db.marketplace_url,
+    cover_photo_asset_id: db.cover_photo_asset_id ?? undefined,
   };
 }
 

@@ -14,6 +14,7 @@ import AdminTasksBoard from './components/AdminTasksBoard';
 import AuthGate from './components/AuthGate';
 import { WorkerProvider, useWorker } from './contexts/WorkerContext';
 import { propertiesService } from './services/supabaseService';
+import { propertyMediaService } from './services/propertyMediaService';
 import { Property, FilterState, RequestData } from './types';
 
 // Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks view.
@@ -30,6 +31,7 @@ const AppContent: React.FC = () => {
   const [pendingPropertyView, setPendingPropertyView] = useState<Property | null>(null);
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
   const [prefilledRequestData, setPrefilledRequestData] = useState<Partial<RequestData> | undefined>(undefined);
+  const [coverPhotoUrlByPropertyId, setCoverPhotoUrlByPropertyId] = useState<Record<string, string>>({});
   const [filters, setFilters] = useState<FilterState>({
     city: '',
     district: '',
@@ -57,7 +59,13 @@ const AppContent: React.FC = () => {
       console.log('📊 Properties data:', data.length > 0 ? data.slice(0, 3).map(p => ({ id: p.id, title: p.title })) : 'empty');
       
       setProperties(data);
-      
+      try {
+        const urls = await propertyMediaService.getCoverPhotoSignedUrlsForProperties(data.map((p) => p.id));
+        setCoverPhotoUrlByPropertyId(urls);
+      } catch (e) {
+        console.warn('Cover photo URLs fetch failed:', e);
+        setCoverPhotoUrlByPropertyId({});
+      }
       if (data.length > 0 && !selectedProperty) {
         setSelectedProperty(data[0]);
       } else if (data.length === 0) {
@@ -559,6 +567,7 @@ const AppContent: React.FC = () => {
             properties={properties}
             loading={loading}
             error={error}
+            coverPhotoUrlByPropertyId={coverPhotoUrlByPropertyId}
           />
         </div>
       );
@@ -582,6 +591,7 @@ const AppContent: React.FC = () => {
               <PropertyDetails 
                 property={selectedProperty} 
                 worker={worker}
+                coverPhotoUrl={selectedProperty.id ? (coverPhotoUrlByPropertyId[selectedProperty.id] ?? null) : null}
                 onBookViewing={() => setCurrentView('booking')}
                 onRequireLogin={() => {
                   // Save property and redirect to login

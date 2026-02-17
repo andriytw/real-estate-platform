@@ -514,6 +514,8 @@ export interface Property {
   parking?: string;
   description?: string;
   marketplaceUrl?: string; // Public marketplace listing URL (e.g., herorooms.de/market/{property-slug})
+  /** Cover photo asset id (property_media_assets). Used for marketplace cards + property hero. */
+  cover_photo_asset_id?: string | null;
 }
 
 export interface FilterState {

@@ -9,6 +9,7 @@ interface MarketplaceProps {
   properties?: Property[]; // Optional: if provided, use these instead of loading
   loading?: boolean; // Optional: loading state from parent
   error?: string | null; // Optional: error message from parent
+  coverPhotoUrlByPropertyId?: Record<string, string>; // MP-PROD-01: cover photo signed URLs for cards
 }
 
 const MarketFilterDropdown: React.FC<{ 
@@ -34,7 +35,7 @@ const MarketFilterDropdown: React.FC<{
   </div>
 );
 
-const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: propsProperties, loading: propsLoading, error: propsError }) => {
+const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: propsProperties, loading: propsLoading, error: propsError, coverPhotoUrlByPropertyId = {} }) => {
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   
   // Use properties from props if provided, otherwise empty array
@@ -47,7 +48,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: p
   const [priceFilter, setPriceFilter] = useState('Any');
   const [roomFilter, setRoomFilter] = useState('Any');
 
-  // Filtering Logic - convert Property to marketplace listing format
+  // Filtering Logic - convert Property to marketplace listing format (MP-PROD-01: card image = cover URL or fallback)
   const filteredListings = useMemo(() => {
     return properties
       .filter(property => {
@@ -78,12 +79,12 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: p
         price: property.price || 0,
         rooms: property.rooms || 0,
         area: property.area || 0,
-        image: property.image || property.images?.[0] || '',
+        image: coverPhotoUrlByPropertyId[property.id] || property.image || property.images?.[0] || '',
         postedBy: 'Property Owner',
         timeAgo: 'Recently',
         description: property.description || ''
       }));
-  }, [properties, searchQuery, priceFilter, roomFilter]);
+  }, [properties, searchQuery, priceFilter, roomFilter, coverPhotoUrlByPropertyId]);
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#111315] p-6 lg:p-8 font-sans">
