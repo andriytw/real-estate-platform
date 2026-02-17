@@ -22,6 +22,8 @@ export interface PropertyMeterRow {
   property_id: string;
   type: MeterType;
   meter_number: string | null;
+  unit?: string | null;
+  price_per_unit?: number | null;
   created_at: string;
 }
 
@@ -100,6 +102,22 @@ export const propertyMeterService = {
   },
 
   async deleteReading(id: string): Promise<void> {
+    try {
+      const photos = await this.listReadingPhotos(id);
+      for (const p of photos) {
+        try {
+          await supabase.storage.from(PROPERTY_METER_PHOTOS_BUCKET).remove([p.storage_path]);
+        } catch {
+          // best-effort: log but continue
+        }
+      }
+      const { error: photosDeleteError } = await supabase.from('property_meter_photos').delete().eq('reading_id', id);
+      if (photosDeleteError) {
+        // continue to delete reading
+      }
+    } catch {
+      // best-effort cleanup; proceed to delete reading
+    }
     const { error } = await supabase.from('property_meter_readings').delete().eq('id', id);
     if (error) throw error;
   },
@@ -113,7 +131,17 @@ export const propertyMeterService = {
     return (data ?? []) as PropertyMeterRow[];
   },
 
-  async upsertMeter(propertyId: string, type: MeterType, meter_number: string | null): Promise<PropertyMeterRow> {
+  async upsertMeter(
+    propertyId: string,
+    type: MeterType,
+    meter_number: string | null,
+    unit?: string | null,
+    price_per_unit?: number | null
+  ): Promise<PropertyMeterRow> {
+    const payload: { meter_number: string | null; unit?: string | null; price_per_unit?: number | null } = { meter_number };
+    if (unit !== undefined) payload.unit = unit;
+    if (price_per_unit !== undefined) payload.price_per_unit = price_per_unit;
+
     const { data: existing } = await supabase
       .from('property_meters')
       .select('id')
@@ -124,7 +152,7 @@ export const propertyMeterService = {
     if (existing?.id) {
       const { data, error } = await supabase
         .from('property_meters')
-        .update({ meter_number })
+        .update(payload)
         .eq('id', existing.id)
         .select()
         .single();
@@ -133,7 +161,7 @@ export const propertyMeterService = {
     }
     const { data, error } = await supabase
       .from('property_meters')
-      .insert([{ property_id: propertyId, type, meter_number }])
+      .insert([{ property_id: propertyId, type, ...payload }])
       .select()
       .single();
     if (error) throw error;
@@ -192,6 +220,13 @@ export const propertyMeterService = {
     if (error) throw new Error(error.message || 'Failed to create signed URL');
     if (!data?.signedUrl) throw new Error('No signed URL returned');
     return data.signedUrl;
+  },
+
+  async deleteReadingPhoto(photoId: string, storagePath: string): Promise<void> {
+    const { error: storageError } = await supabase.storage.from(PROPERTY_METER_PHOTOS_BUCKET).remove([storagePath]);
+    if (storageError) throw storageError;
+    const { error: dbError } = await supabase.from('property_meter_photos').delete().eq('id', photoId);
+    if (dbError) throw dbError;
   },
 };
 

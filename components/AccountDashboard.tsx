@@ -673,25 +673,19 @@ const AccountDashboard: React.FC = () => {
   const [meterReadingsManual, setMeterReadingsManual] = useState<PropertyMeterReadingRow[]>([]);
   const [meterMetersList, setMeterMetersList] = useState<PropertyMeterRow[]>([]);
   const [meterReadingsLoading, setMeterReadingsLoading] = useState(false);
-  const [meterTileTab, setMeterTileTab] = useState<'monthly' | 'history'>('monthly');
   const [isMeterNumbersModalOpen, setIsMeterNumbersModalOpen] = useState(false);
-  const [isAddMeterReadingModalOpen, setIsAddMeterReadingModalOpen] = useState(false);
   const [meterEditValues, setMeterEditValues] = useState<Record<MeterType, string>>({ strom: '', gas: '', wasser: '', heizung: '' });
-  const [addReadingDate, setAddReadingDate] = useState('');
-  const [addReadingStrom, setAddReadingStrom] = useState('');
-  const [addReadingGas, setAddReadingGas] = useState('');
-  const [addReadingWasser, setAddReadingWasser] = useState('');
-  const [addReadingHeizung, setAddReadingHeizung] = useState('');
-  const [addReadingNote, setAddReadingNote] = useState('');
-  const [addReadingPhotos, setAddReadingPhotos] = useState<File[]>([]);
+  const [meterEditUnit, setMeterEditUnit] = useState<Record<MeterType, string>>({ strom: '', gas: '', wasser: '', heizung: '' });
+  const [meterEditPricePerUnit, setMeterEditPricePerUnit] = useState<Record<MeterType, string>>({ strom: '', gas: '', wasser: '', heizung: '' });
   const [isMeterSaving, setIsMeterSaving] = useState(false);
   const [meterPhotoCountByReadingId, setMeterPhotoCountByReadingId] = useState<Record<string, number>>({});
   const [meterGalleryReadingId, setMeterGalleryReadingId] = useState<string | null>(null);
-  const [galleryPhotos, setGalleryPhotos] = useState<{ storage_path: string; signedUrl: string }[]>([]);
+  const [galleryPhotos, setGalleryPhotos] = useState<{ id: string; storage_path: string; signedUrl: string }[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
-  const meterMonthScrollRef = useRef<HTMLDivElement>(null);
-  const lastAutoScrolledPropertyIdRef = useRef<string | null>(null);
-  const [activeMonthIndex, setActiveMonthIndex] = useState(0);
+  const [meterEditingReadingId, setMeterEditingReadingId] = useState<string | null>(null);
+  const [meterAddingNewRow, setMeterAddingNewRow] = useState(false);
+  const [meterEditDraft, setMeterEditDraft] = useState<{ reading_date: string; strom: string; gas: string; wasser: string; heizung: string } | null>(null);
+  const [meterDeleteConfirmId, setMeterDeleteConfirmId] = useState<string | null>(null);
   const [warehouseTab, setWarehouseTab] = useState<'warehouses' | 'stock' | 'addInventory'>('warehouses');
   const [warehouseStock, setWarehouseStock] = useState<WarehouseStockItem[]>([]);
   const [isLoadingWarehouseStock, setIsLoadingWarehouseStock] = useState(false);
@@ -2959,23 +2953,6 @@ const AccountDashboard: React.FC = () => {
   }, [selectedPropertyId, refreshMeterData]);
 
   useEffect(() => {
-    if (meterTileTab !== 'monthly' || !selectedPropertyId || meterReadingsLoading) return;
-    if (lastAutoScrolledPropertyIdRef.current === selectedPropertyId) return;
-    const d = new Date();
-    const todayKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-    let months = Array.from(new Set(meterReadingsManual.map((r) => r.reading_date.slice(0, 7)))).sort();
-    if (!months.includes(todayKey)) months = [...months, todayKey].sort();
-    const monthIndex = months.indexOf(todayKey);
-    if (monthIndex >= 0) setActiveMonthIndex(monthIndex);
-    const timer = setTimeout(() => {
-      const el = meterMonthScrollRef.current?.querySelector('[data-month="' + todayKey + '"]');
-      if (el) (el as HTMLElement).scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
-      lastAutoScrolledPropertyIdRef.current = selectedPropertyId;
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [meterTileTab, selectedPropertyId, meterReadingsLoading, meterReadingsManual.length, meterMetersList.length]);
-
-  useEffect(() => {
     if (!meterGalleryReadingId) {
       setGalleryPhotos([]);
       return;
@@ -2987,7 +2964,7 @@ const AccountDashboard: React.FC = () => {
         setGalleryLoading(false);
         return;
       }
-      Promise.all(photos.map((p) => propertyMeterService.getPhotoSignedUrl(p.storage_path).then((signedUrl) => ({ storage_path: p.storage_path, signedUrl }))))
+      Promise.all(photos.map((p) => propertyMeterService.getPhotoSignedUrl(p.storage_path).then((signedUrl) => ({ id: p.id, storage_path: p.storage_path, signedUrl }))))
         .then(setGalleryPhotos)
         .catch(() => setGalleryPhotos([]))
         .finally(() => setGalleryLoading(false));
@@ -7370,173 +7347,122 @@ ${internalCompany} Team`;
             {selectedPropertyId && (
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6" data-meter-tile="manual">
                 <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-                    <h2 className="text-xl font-bold text-white">Показання Лічильників (Історія)</h2>
+                    <h2 className="text-xl font-bold text-white">Показання Лічильників</h2>
                     <div className="flex items-center gap-2">
                         <button
                             type="button"
                             onClick={() => {
                                 setMeterEditValues(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = m.meter_number ?? ''; return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
+                                setMeterEditUnit(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = m.unit ?? ''; return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
+                                setMeterEditPricePerUnit(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = m.price_per_unit != null ? String(m.price_per_unit) : ''; return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
                                 setIsMeterNumbersModalOpen(true);
                             }}
                             className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
                         >
-                            Редагувати номери лічильників
+                            Лічильники
                         </button>
                         <button
                             type="button"
-                            onClick={() => { setAddReadingDate(new Date().toISOString().slice(0, 10)); setIsAddMeterReadingModalOpen(true); }}
+                            onClick={() => {
+                                setMeterAddingNewRow(true);
+                                const d = new Date();
+                                setMeterEditDraft({ reading_date: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'), strom: '', gas: '', wasser: '', heizung: '' });
+                            }}
                             className="px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 transition-colors"
                         >
-                            + Додати показники
+                            + Додати зняття
                         </button>
                     </div>
                 </div>
-                <div className="flex gap-2 border-b border-gray-700 mb-3">
-                    <button
-                        type="button"
-                        onClick={() => setMeterTileTab('monthly')}
-                        className={`px-3 py-2 text-sm font-medium rounded-t transition-colors ${meterTileTab === 'monthly' ? 'bg-[#23262b] text-white border border-gray-700 border-b-0 -mb-px' : 'text-gray-400 hover:text-white'}`}
-                    >
-                        Місячна таблиця
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setMeterTileTab('history')}
-                        className={`px-3 py-2 text-sm font-medium rounded-t transition-colors ${meterTileTab === 'history' ? 'bg-[#23262b] text-white border border-gray-700 border-b-0 -mb-px' : 'text-gray-400 hover:text-white'}`}
-                    >
-                        Історія
-                    </button>
-                </div>
                 {meterReadingsLoading ? (
                     <div className="p-8 text-center text-gray-500 text-sm border border-gray-700 rounded-lg">Завантаження...</div>
-                ) : meterTileTab === 'history' ? (
-                    (() => {
-                        if (meterReadingsManual.length === 0) {
-                            return (
-                                <div className="p-8 text-center text-gray-500 text-sm border border-gray-700 rounded-lg">
-                                    <p className="mb-3">Історія показників пуста. Додайте перше показ.</p>
-                                    <button type="button" onClick={() => setIsAddMeterReadingModalOpen(true)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500/30">
-                                        + Додати показники
-                                    </button>
-                                </div>
-                            );
-                        }
-                        return (
-                            <div className="overflow-x-auto border border-gray-700 rounded-lg">
-                                <table className="w-full text-sm">
-                                    <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
-                                        <tr>
-                                            <th className="p-2 text-left font-bold text-xs uppercase">Дата</th>
-                                            <th className="p-2 text-right font-bold text-xs uppercase">Strom</th>
-                                            <th className="p-2 text-right font-bold text-xs uppercase">Gas</th>
-                                            <th className="p-2 text-right font-bold text-xs uppercase">Wasser</th>
-                                            <th className="p-2 text-right font-bold text-xs uppercase">Heizung</th>
-                                            <th className="p-2 text-center font-bold text-xs uppercase">Фото</th>
-                                            <th className="p-2 text-left font-bold text-xs uppercase">Примітка</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                                        {meterReadingsManual.map((r) => {
-                                            const photoCount = meterPhotoCountByReadingId[r.id] ?? 0;
-                                            return (
-                                            <tr key={r.id} className="hover:bg-[#1C1F24]">
-                                                <td className="p-2 text-gray-300 text-xs">{r.reading_date}</td>
-                                                <td className="p-2 text-right font-mono text-xs text-white">{r.strom != null ? r.strom : '—'}</td>
-                                                <td className="p-2 text-right font-mono text-xs text-white">{r.gas != null ? r.gas : '—'}</td>
-                                                <td className="p-2 text-right font-mono text-xs text-white">{r.wasser != null ? r.wasser : '—'}</td>
-                                                <td className="p-2 text-right font-mono text-xs text-white">{r.heizung != null ? r.heizung : '—'}</td>
-                                                <td className="p-2 text-center text-gray-500 text-xs">
-                                                    {photoCount}
-                                                    {photoCount > 0 && (
-                                                        <button type="button" onClick={() => setMeterGalleryReadingId(r.id)} className="ml-1 text-emerald-400 hover:text-emerald-300 text-xs">Переглянути</button>
-                                                    )}
-                                                </td>
-                                                <td className="p-2 text-gray-400 text-xs max-w-[200px] truncate" title={r.note ?? ''}>{r.note ?? '—'}</td>
-                                            </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        );
-                    })()
                 ) : (() => {
-                    const metersMap: Record<MeterType, string | null> = { strom: null, gas: null, wasser: null, heizung: null };
-                    meterMetersList.forEach((m) => { metersMap[m.type] = m.meter_number; });
-                    const d = new Date();
-                    const todayKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-                    let months = Array.from(new Set(meterReadingsManual.map((r) => r.reading_date.slice(0, 7)))).sort();
-                    if (!months.includes(todayKey)) months = [...months, todayKey].sort();
-                    const rowLabels: { type: MeterType; label: string }[] = [
-                        { type: 'strom', label: 'Strom' },
-                        { type: 'gas', label: 'Gas' },
-                        { type: 'wasser', label: 'Wasser' },
-                        { type: 'heizung', label: 'Heizung' },
-                    ];
-                    const getValue = (type: MeterType, month: string): number | null => {
-                        const inMonth = meterReadingsManual.filter((r) => r.reading_date.slice(0, 7) === month);
-                        const withVal = inMonth
-                            .map((r) => ({ date: r.reading_date, val: type === 'strom' ? r.strom : type === 'gas' ? r.gas : type === 'wasser' ? r.wasser : r.heizung }))
-                            .filter((x) => x.val != null) as { date: string; val: number }[];
-                        if (withVal.length === 0) return null;
-                        const latest = withVal.sort((a, b) => b.date.localeCompare(a.date))[0];
-                        return latest.val;
+                    const metersByType: Record<MeterType, PropertyMeterRow | undefined> = { strom: undefined, gas: undefined, wasser: undefined, heizung: undefined };
+                    meterMetersList.forEach((m) => { metersByType[m.type] = m; });
+                    const formatDate = (d: string) => {
+                        const [y, mo, day] = d.split('-');
+                        return `${day}.${mo}.${y}`;
                     };
-                    const scrollToMonthIndex = (idx: number) => {
-                        const el = meterMonthScrollRef.current?.querySelector('[data-month="' + months[idx] + '"]');
-                        if (el) (el as HTMLElement).scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
-                        setActiveMonthIndex(idx);
+                    const parseMeterValue = (s: string): number | null => {
+                        const t = s.trim();
+                        if (t === '') return null;
+                        const n = parseFloat(t.replace(',', '.'));
+                        return Number.isFinite(n) ? n : null;
                     };
+                    const consumptionByType: Record<MeterType, number> = { strom: 0, gas: 0, wasser: 0, heizung: 0 };
+                    const sortedReadings = [...meterReadingsManual].sort((a, b) => a.reading_date.localeCompare(b.reading_date));
+                    METER_TYPES.forEach((type) => {
+                        const key = type as MeterType;
+                        const vals = sortedReadings.map((r) => (r[key] as number | null)).filter((v): v is number => v != null);
+                        for (let i = 1; i < vals.length; i++) {
+                            const delta = vals[i] - vals[i - 1];
+                            if (delta > 0) consumptionByType[key] += delta;
+                        }
+                    });
                     return (
-                        <div className="border border-gray-700 rounded-lg flex">
-                            <table className="text-sm shrink-0 border-r border-gray-700" style={{ tableLayout: 'fixed' }}>
+                        <div className="overflow-x-auto border border-gray-700 rounded-lg">
+                            <table className="w-full text-sm">
                                 <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
                                     <tr>
-                                        <th className="p-2 text-left font-bold text-xs uppercase w-24">Тип</th>
-                                        <th className="p-2 text-left font-bold text-xs uppercase w-28">Номер</th>
+                                        <th className="p-2 text-left font-bold text-xs uppercase">Дата</th>
+                                        {METER_TYPES.map((t) => (
+                                            <th key={t} className="p-2 text-right font-bold text-xs uppercase">{t.charAt(0).toUpperCase() + t.slice(1)}</th>
+                                        ))}
+                                        <th className="p-2 text-center font-bold text-xs uppercase">Дії</th>
+                                    </tr>
+                                    <tr>
+                                        <th className="p-2 text-left text-xs text-gray-500">—</th>
+                                        {METER_TYPES.map((t) => (
+                                            <th key={t} className="p-2 text-right text-xs font-mono text-gray-500">№ {metersByType[t]?.meter_number ?? '—'}</th>
+                                        ))}
+                                        <th className="p-2" />
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                                    {rowLabels.map(({ type, label }) => (
-                                        <tr key={type} className="hover:bg-[#1C1F24]">
-                                            <td className="p-2 text-gray-300 text-xs">{label}</td>
-                                            <td className="p-2 text-gray-400 text-xs font-mono">{metersMap[type] ?? '—'}</td>
+                                    {meterAddingNewRow && meterEditDraft && (
+                                        <tr className="bg-[#23262b]/50">
+                                            <td className="p-2"><input type="date" value={meterEditDraft.reading_date} onChange={(e) => setMeterEditDraft((d) => d ? { ...d, reading_date: e.target.value } : null)} className="w-full max-w-[120px] bg-[#16181D] border border-gray-600 rounded px-2 py-1 text-xs text-white" /></td>
+                                            {METER_TYPES.map((t) => (
+                                                <td key={t} className="p-2"><input type="text" inputMode="decimal" value={meterEditDraft[t]} onChange={(e) => setMeterEditDraft((d) => d ? { ...d, [t]: e.target.value } : null)} className="w-full max-w-[80px] bg-[#16181D] border border-gray-600 rounded px-2 py-1 text-xs text-white text-right" placeholder="—" /></td>
+                                            ))}
+                                            <td className="p-2 text-center">
+                                                <span className="text-gray-500 text-xs">📷0</span>
+                                                <button type="button" onClick={async () => { if (!selectedPropertyId || !meterEditDraft.reading_date.trim()) return; const hasVal = METER_TYPES.some((k) => meterEditDraft![k].trim()); if (!hasVal) return; setIsMeterSaving(true); try { await propertyMeterService.createReading(selectedPropertyId, { reading_date: meterEditDraft.reading_date, strom: parseMeterValue(meterEditDraft.strom), gas: parseMeterValue(meterEditDraft.gas), wasser: parseMeterValue(meterEditDraft.wasser), heizung: parseMeterValue(meterEditDraft.heizung) }); refreshMeterData(); setMeterAddingNewRow(false); setMeterEditDraft(null); } catch (e) { console.error(e); alert('Не вдалося зберегти.'); } finally { setIsMeterSaving(false); } }} className="ml-1 text-emerald-400 hover:text-emerald-300 p-0.5" title="Зберегти">✅</button>
+                                                <button type="button" onClick={() => { setMeterAddingNewRow(false); setMeterEditDraft(null); }} className="ml-0.5 text-red-400 hover:text-red-300 p-0.5" title="Скасувати">✖</button>
+                                            </td>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                            <div className="flex-1 flex flex-col min-w-0">
-                                <div className="flex items-center gap-2 p-2 border-b border-gray-700 bg-[#23262b]">
-                                    <button type="button" onClick={() => scrollToMonthIndex(Math.max(0, activeMonthIndex - 1))} className="p-1 text-gray-400 hover:text-white rounded" aria-label="Попередній місяць">←</button>
-                                    <span className="text-xs text-gray-400 min-w-[60px]">{months[activeMonthIndex] ?? ''}</span>
-                                    <button type="button" onClick={() => scrollToMonthIndex(Math.min(months.length - 1, activeMonthIndex + 1))} className="p-1 text-gray-400 hover:text-white rounded" aria-label="Наступний місяць">→</button>
-                                </div>
-                                <div ref={meterMonthScrollRef} className="overflow-x-auto flex-1" style={{ scrollSnapType: 'x mandatory' }}>
-                                    <table className="text-sm w-max min-w-full">
-                                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
-                                            <tr>
-                                                {months.map((m) => (
-                                                    <th key={m} data-month={m} className="p-2 text-right font-bold text-xs uppercase min-w-[80px] w-[80px]" style={{ scrollSnapAlign: 'start' }}>{m}</th>
+                                    )}
+                                    {meterReadingsManual.map((r) => {
+                                        const photoCount = meterPhotoCountByReadingId[r.id] ?? 0;
+                                        const isEditing = meterEditingReadingId === r.id;
+                                        const draft = isEditing ? meterEditDraft : null;
+                                        return (
+                                            <tr key={r.id} className="hover:bg-[#1C1F24]">
+                                                <td className="p-2 text-gray-300 text-xs">
+                                                    {isEditing && draft ? <input type="date" value={draft.reading_date} onChange={(e) => setMeterEditDraft((d) => d ? { ...d, reading_date: e.target.value } : null)} className="w-full max-w-[120px] bg-[#16181D] border border-gray-600 rounded px-2 py-1 text-xs text-white" /> : formatDate(r.reading_date)}
+                                                </td>
+                                                {METER_TYPES.map((t) => (
+                                                    <td key={t} className="p-2 text-right font-mono text-xs text-white">
+                                                        {isEditing && draft ? <input type="text" inputMode="decimal" value={draft[t]} onChange={(e) => setMeterEditDraft((d) => d ? { ...d, [t]: e.target.value } : null)} className="w-full max-w-[80px] bg-[#16181D] border border-gray-600 rounded px-2 py-1 text-xs text-white text-right" placeholder="—" /> : (r[t] != null ? r[t] : '—')}
+                                                    </td>
                                                 ))}
+                                                <td className="p-2 text-center text-xs">
+                                                    {isEditing && draft ? (
+                                                        <><span className="text-gray-500">📷{photoCount}</span><button type="button" disabled={isMeterSaving} onClick={async () => { if (!draft) return; setIsMeterSaving(true); try { await propertyMeterService.updateReading(r.id, { reading_date: draft.reading_date, strom: parseMeterValue(draft.strom), gas: parseMeterValue(draft.gas), wasser: parseMeterValue(draft.wasser), heizung: parseMeterValue(draft.heizung) }); refreshMeterData(); setMeterEditingReadingId(null); setMeterEditDraft(null); } catch (e) { console.error(e); alert('Не вдалося зберегти.'); } finally { setIsMeterSaving(false); } }} className="ml-1 text-emerald-400 hover:text-emerald-300 p-0.5">✅</button><button type="button" onClick={() => { setMeterEditingReadingId(null); setMeterEditDraft(null); }} className="ml-0.5 text-red-400 hover:text-red-300 p-0.5">✖</button></>
+                                                    ) : (
+                                                        <><button type="button" onClick={() => setMeterGalleryReadingId(r.id)} className="text-gray-400 hover:text-white p-0.5" title="Фото">📷{photoCount}</button><button type="button" onClick={() => { setMeterEditingReadingId(r.id); setMeterEditDraft({ reading_date: r.reading_date, strom: r.strom != null ? String(r.strom) : '', gas: r.gas != null ? String(r.gas) : '', wasser: r.wasser != null ? String(r.wasser) : '', heizung: r.heizung != null ? String(r.heizung) : '' }); }} className="ml-1 text-gray-400 hover:text-white p-0.5" title="Редагувати">✏️</button>{meterDeleteConfirmId === r.id ? <><button type="button" onClick={async () => { try { await propertyMeterService.deleteReading(r.id); refreshMeterData(); setMeterDeleteConfirmId(null); } catch (e) { console.error(e); alert('Не вдалося видалити.'); } }} className="ml-1 text-red-400">Так</button><button type="button" onClick={() => setMeterDeleteConfirmId(null)} className="ml-0.5 text-gray-400">Ні</button></> : <button type="button" onClick={() => setMeterDeleteConfirmId(r.id)} className="ml-1 text-gray-400 hover:text-red-400 p-0.5" title="Видалити">🗑</button>}</>
+                                                    )}
+                                                </td>
                                             </tr>
-                                        </thead>
-                                    <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                                        {rowLabels.map(({ type }) => (
-                                            <tr key={type} className="hover:bg-[#1C1F24]">
-                                                {months.map((month) => {
-                                                    const val = getValue(type, month);
-                                                    return (
-                                                        <td key={month} data-month={month} className="p-2 text-right font-mono text-xs text-white min-w-[80px] w-[80px]" style={{ scrollSnapAlign: 'start' }}>
-                                                            {val != null ? val : '—'}
-                                                        </td>
-                                                    );
-                                                })}
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                            </div>
+                                        );
+                                    })}
+                                </tbody>
+                                <tfoot className="bg-[#23262b] text-gray-400 border-t-2 border-gray-600">
+                                    <tr><td className="p-2 text-xs font-bold">Споживання Δ</td>{METER_TYPES.map((t) => <td key={t} className="p-2 text-right font-mono text-xs text-white">{consumptionByType[t] || '—'}</td>)}<td className="p-2" /></tr>
+                                    <tr><td className="p-2 text-xs font-bold">Ціна</td>{METER_TYPES.map((t) => { const m = metersByType[t]; const price = m?.price_per_unit != null; const unit = m?.unit; return <td key={t} className="p-2 text-right text-xs text-white">{price && unit ? `${Number(m!.price_per_unit).toLocaleString('uk-UA')} €/${unit}` : '—'}</td>; })}<td className="p-2" /></tr>
+                                    <tr><td className="p-2 text-xs font-bold">Сума</td>{METER_TYPES.map((t) => { const m = metersByType[t]; const consumption = consumptionByType[t]; const price = m?.price_per_unit; if (consumption == null || price == null || consumption === 0) return <td key={t} className="p-2 text-right font-mono text-xs text-white">—</td>; return <td key={t} className="p-2 text-right font-mono text-xs text-white">{(consumption * price).toFixed(2)} €</td>; })}<td className="p-2" /></tr>
+                                </tfoot>
+                            </table>
                         </div>
                     );
                 })()}
@@ -7548,20 +7474,16 @@ ${internalCompany} Team`;
                 <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4" onClick={() => setIsMeterNumbersModalOpen(false)}>
                     <div className="bg-[#1C1F24] w-full max-w-md rounded-xl border border-gray-700 shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
                         <div className="p-4 border-b border-gray-700 flex justify-between items-center">
-                            <h3 className="text-lg font-bold text-white">Редагувати номери лічильників</h3>
+                            <h3 className="text-lg font-bold text-white">Лічильники</h3>
                             <button type="button" onClick={() => setIsMeterNumbersModalOpen(false)} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
                         </div>
                         <div className="p-4 space-y-3">
                             {METER_TYPES.map((type) => (
-                                <div key={type}>
-                                    <label className="block text-xs font-medium text-gray-400 mb-1 capitalize">{type}</label>
-                                    <input
-                                        type="text"
-                                        value={meterEditValues[type]}
-                                        onChange={(e) => setMeterEditValues(prev => ({ ...prev, [type]: e.target.value }))}
-                                        className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500"
-                                        placeholder="Номер лічильника"
-                                    />
+                                <div key={type} className="space-y-1">
+                                    <label className="block text-xs font-medium text-gray-400 capitalize">{type}</label>
+                                    <input type="text" value={meterEditValues[type]} onChange={(e) => setMeterEditValues(prev => ({ ...prev, [type]: e.target.value }))} className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="Номер лічильника" />
+                                    <input type="text" value={meterEditUnit[type]} onChange={(e) => setMeterEditUnit(prev => ({ ...prev, [type]: e.target.value }))} className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="Одиниця (kWh, m³, u.)" />
+                                    <input type="text" value={meterEditPricePerUnit[type]} onChange={(e) => setMeterEditPricePerUnit(prev => ({ ...prev, [type]: e.target.value }))} className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="Ціна за одиницю" />
                                 </div>
                             ))}
                         </div>
@@ -7575,84 +7497,13 @@ ${internalCompany} Team`;
                                     setIsMeterSaving(true);
                                     try {
                                         for (const t of METER_TYPES) {
-                                            const val = meterEditValues[t].trim() || null;
-                                            await propertyMeterService.upsertMeter(selectedPropertyId, t, val);
+                                            const meterNumber = meterEditValues[t].trim() || null;
+                                            const unit = meterEditUnit[t].trim() || null;
+                                            const pricePerUnit = meterEditPricePerUnit[t].trim() ? parseFloat(meterEditPricePerUnit[t]) : null;
+                                            await propertyMeterService.upsertMeter(selectedPropertyId, t, meterNumber, unit, pricePerUnit);
                                         }
                                         refreshMeterData();
                                         setIsMeterNumbersModalOpen(false);
-                                    } catch (e) {
-                                        console.error(e);
-                                        alert('Не вдалося зберегти.');
-                                    } finally {
-                                        setIsMeterSaving(false);
-                                    }
-                                }}
-                                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50"
-                            >
-                                {isMeterSaving ? 'Збереження...' : 'Зберегти'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-            {isAddMeterReadingModalOpen && selectedPropertyId && (
-                <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4" onClick={() => { setIsAddMeterReadingModalOpen(false); setAddReadingDate(''); setAddReadingStrom(''); setAddReadingGas(''); setAddReadingWasser(''); setAddReadingHeizung(''); setAddReadingNote(''); setAddReadingPhotos([]); }}>
-                    <div className="bg-[#1C1F24] w-full max-w-md rounded-xl border border-gray-700 shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
-                            <h3 className="text-lg font-bold text-white">Додати показники</h3>
-                            <button type="button" onClick={() => { setIsAddMeterReadingModalOpen(false); setAddReadingDate(''); setAddReadingStrom(''); setAddReadingGas(''); setAddReadingWasser(''); setAddReadingHeizung(''); setAddReadingNote(''); setAddReadingPhotos([]); }} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
-                        </div>
-                        <div className="p-4 space-y-3">
-                            <div>
-                                <label className="block text-xs font-medium text-gray-400 mb-1">Дата (обов’язково)</label>
-                                <input type="date" value={addReadingDate} onChange={(e) => setAddReadingDate(e.target.value)} className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" required />
-                            </div>
-                            {(['strom', 'gas', 'wasser', 'heizung'] as const).map((key) => (
-                                <div key={key}>
-                                    <label className="block text-xs font-medium text-gray-400 mb-1 capitalize">{key}</label>
-                                    <input type="number" step="any" value={key === 'strom' ? addReadingStrom : key === 'gas' ? addReadingGas : key === 'wasser' ? addReadingWasser : addReadingHeizung} onChange={(e) => { const v = e.target.value; if (key === 'strom') setAddReadingStrom(v); else if (key === 'gas') setAddReadingGas(v); else if (key === 'wasser') setAddReadingWasser(v); else setAddReadingHeizung(v); }} className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" placeholder="—" />
-                                </div>
-                            ))}
-                            <div>
-                                <label className="block text-xs font-medium text-gray-400 mb-1">Примітка</label>
-                                <input type="text" value={addReadingNote} onChange={(e) => setAddReadingNote(e.target.value)} className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" placeholder="Опційно" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-gray-400 mb-1">Фото</label>
-                                <input type="file" multiple accept="image/*" onChange={(e) => setAddReadingPhotos(e.target.files ? Array.from(e.target.files) : [])} className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-sm file:bg-emerald-500/20 file:text-emerald-400" />
-                                {addReadingPhotos.length > 0 && <p className="text-xs text-gray-500 mt-1">{addReadingPhotos.length} файл(ів)</p>}
-                            </div>
-                        </div>
-                        <div className="p-4 border-t border-gray-700 flex justify-end gap-2">
-                            <button type="button" onClick={() => { setIsAddMeterReadingModalOpen(false); setAddReadingDate(''); setAddReadingStrom(''); setAddReadingGas(''); setAddReadingWasser(''); setAddReadingHeizung(''); setAddReadingNote(''); setAddReadingPhotos([]); }} className="px-3 py-1.5 rounded-lg text-sm border border-gray-600 text-gray-300 hover:bg-gray-700/50">Скасувати</button>
-                            <button
-                                type="button"
-                                disabled={isMeterSaving || !addReadingDate.trim() || (!addReadingStrom.trim() && !addReadingGas.trim() && !addReadingWasser.trim() && !addReadingHeizung.trim() && !addReadingNote.trim() && addReadingPhotos.length === 0)}
-                                onClick={async () => {
-                                    if (!selectedPropertyId || !addReadingDate.trim()) return;
-                                    const hasValue = addReadingStrom.trim() || addReadingGas.trim() || addReadingWasser.trim() || addReadingHeizung.trim() || addReadingNote.trim() || addReadingPhotos.length > 0;
-                                    if (!hasValue) return;
-                                    setIsMeterSaving(true);
-                                    try {
-                                        const created = await propertyMeterService.createReading(selectedPropertyId, {
-                                            reading_date: addReadingDate.trim(),
-                                            strom: addReadingStrom.trim() ? parseFloat(addReadingStrom) : null,
-                                            gas: addReadingGas.trim() ? parseFloat(addReadingGas) : null,
-                                            wasser: addReadingWasser.trim() ? parseFloat(addReadingWasser) : null,
-                                            heizung: addReadingHeizung.trim() ? parseFloat(addReadingHeizung) : null,
-                                            note: addReadingNote.trim() || null,
-                                        });
-                                        if (addReadingPhotos.length > 0) {
-                                            try {
-                                                await propertyMeterService.uploadReadingPhotos(selectedPropertyId, created.id, addReadingPhotos);
-                                            } catch (photoErr) {
-                                                console.error(photoErr);
-                                                alert('Показники збережено, але фото не завантажились. Спробуйте ще раз.');
-                                            }
-                                        }
-                                        refreshMeterData();
-                                        setIsAddMeterReadingModalOpen(false);
-                                        setAddReadingDate(''); setAddReadingStrom(''); setAddReadingGas(''); setAddReadingWasser(''); setAddReadingHeizung(''); setAddReadingNote(''); setAddReadingPhotos([]);
                                     } catch (e) {
                                         console.error(e);
                                         alert('Не вдалося зберегти.');
@@ -7675,7 +7526,11 @@ ${internalCompany} Team`;
                     <div className="bg-[#1C1F24] w-full max-w-2xl max-h-[90vh] rounded-xl border border-gray-700 shadow-xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
                         <div className="p-4 border-b border-gray-700 flex justify-between items-center shrink-0">
                             <h3 className="text-lg font-bold text-white">Фото показників</h3>
-                            <button type="button" onClick={() => setMeterGalleryReadingId(null)} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
+                            <div className="flex items-center gap-2">
+                                <input type="file" multiple accept="image/*" className="hidden" id="meter-gallery-upload" onChange={async (e) => { const files = e.target.files ? Array.from(e.target.files) : []; e.target.value = ''; if (!selectedPropertyId || !meterGalleryReadingId || files.length === 0) return; setGalleryLoading(true); try { await propertyMeterService.uploadReadingPhotos(selectedPropertyId, meterGalleryReadingId, files); const photos = await propertyMeterService.listReadingPhotos(meterGalleryReadingId); const withUrls = await Promise.all(photos.map((p) => propertyMeterService.getPhotoSignedUrl(p.storage_path).then((signedUrl) => ({ id: p.id, storage_path: p.storage_path, signedUrl })))); setGalleryPhotos(withUrls); refreshMeterData(); } catch (err) { console.error(err); alert('Не вдалося завантажити фото.'); } finally { setGalleryLoading(false); } }} />
+                                <label htmlFor="meter-gallery-upload" className="px-2 py-1 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 cursor-pointer hover:bg-emerald-500/30">+ Додати фото</label>
+                                <button type="button" onClick={() => setMeterGalleryReadingId(null)} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
+                            </div>
                         </div>
                         <div className="p-4 overflow-auto flex-1">
                             {galleryLoading ? (
@@ -7685,9 +7540,12 @@ ${internalCompany} Team`;
                             ) : (
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                     {galleryPhotos.map((p, i) => (
-                                        <button key={i} type="button" onClick={() => window.open(p.signedUrl, '_blank')} className="block rounded-lg overflow-hidden border border-gray-700 hover:border-emerald-500/50 transition-colors">
-                                            <img src={p.signedUrl} alt="" className="w-full h-24 object-cover" />
-                                        </button>
+                                        <div key={p.id} className="relative group">
+                                            <button type="button" onClick={() => window.open(p.signedUrl, '_blank')} className="block w-full rounded-lg overflow-hidden border border-gray-700 hover:border-emerald-500/50 transition-colors">
+                                                <img src={p.signedUrl} alt="" className="w-full h-24 object-cover" />
+                                            </button>
+                                            <button type="button" onClick={async () => { try { await propertyMeterService.deleteReadingPhoto(p.id, p.storage_path); setGalleryPhotos((prev) => prev.filter((x) => x.id !== p.id)); refreshMeterData(); } catch (err) { console.error(err); alert('Не вдалося видалити фото.'); } }} className="absolute top-1 right-1 p-1 rounded bg-red-500/80 text-white text-xs opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-opacity" title="Видалити">🗑</button>
+                                        </div>
                                     ))}
                                 </div>
                             )}
