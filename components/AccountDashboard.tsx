@@ -694,6 +694,7 @@ const AccountDashboard: React.FC = () => {
   const [meterAddingNewRow, setMeterAddingNewRow] = useState(false);
   const [meterEditDraft, setMeterEditDraft] = useState<{ reading_date: string; strom: string; gas: string; wasser: string; heizung: string } | null>(null);
   const [meterDeleteConfirmId, setMeterDeleteConfirmId] = useState<string | null>(null);
+  const [isMeterReadingsCollapsed, setIsMeterReadingsCollapsed] = useState(true);
   const [warehouseTab, setWarehouseTab] = useState<'warehouses' | 'stock' | 'addInventory'>('warehouses');
   const [warehouseStock, setWarehouseStock] = useState<WarehouseStockItem[]>([]);
   const [isLoadingWarehouseStock, setIsLoadingWarehouseStock] = useState(false);
@@ -2885,6 +2886,29 @@ const AccountDashboard: React.FC = () => {
     if (selectedPropertyId) {
       try {
         localStorage.setItem(`${PROPERTY_INVENTORY_COLLAPSED_KEY}:${selectedPropertyId}`, String(value));
+      } catch {
+        // ignore
+      }
+    }
+  }, [selectedPropertyId]);
+
+  const METER_READINGS_COLLAPSED_KEY = 'meter_readings_collapsed';
+  useEffect(() => {
+    if (!selectedPropertyId) return;
+    const key = `${METER_READINGS_COLLAPSED_KEY}:${selectedPropertyId}`;
+    try {
+      const stored = localStorage.getItem(key);
+      setIsMeterReadingsCollapsed(stored !== 'false');
+    } catch {
+      setIsMeterReadingsCollapsed(true);
+    }
+  }, [selectedPropertyId]);
+
+  const setMeterReadingsCollapsed = useCallback((value: boolean) => {
+    setIsMeterReadingsCollapsed(value);
+    if (selectedPropertyId) {
+      try {
+        localStorage.setItem(`${METER_READINGS_COLLAPSED_KEY}:${selectedPropertyId}`, String(value));
       } catch {
         // ignore
       }
@@ -7355,11 +7379,23 @@ ${internalCompany} Team`;
             {selectedPropertyId && (
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6" data-meter-tile="manual">
                 <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-                    <h2 className="text-xl font-bold text-white">Показання Лічильників</h2>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            aria-expanded={!isMeterReadingsCollapsed}
+                            aria-label="Згорнути/розгорнути показання лічильників"
+                            onClick={() => setMeterReadingsCollapsed(!isMeterReadingsCollapsed)}
+                            className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
+                        >
+                            {isMeterReadingsCollapsed ? <ChevronDown className="w-5 h-5" /> : <ChevronUp className="w-5 h-5" />}
+                        </button>
+                        <h2 className="text-xl font-bold text-white">Показання Лічильників</h2>
+                    </div>
                     <div className="flex items-center gap-2">
                         <button
                             type="button"
                             onClick={() => {
+                                if (isMeterReadingsCollapsed) setMeterReadingsCollapsed(false);
                                 setMeterEditValues(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = m.meter_number ?? ''; return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
                                 setMeterEditUnit(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = (m.unit === 'm3' ? 'm³' : (m.unit ?? '')); return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
                                 setMeterEditPricePerUnit(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = m.price_per_unit != null ? String(m.price_per_unit) : ''; return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
@@ -7372,6 +7408,7 @@ ${internalCompany} Team`;
                         <button
                             type="button"
                             onClick={() => {
+                                if (isMeterReadingsCollapsed) setMeterReadingsCollapsed(false);
                                 setMeterAddingNewRow(true);
                                 const d = new Date();
                                 setMeterEditDraft({ reading_date: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'), strom: '', gas: '', wasser: '', heizung: '' });
@@ -7382,6 +7419,8 @@ ${internalCompany} Team`;
                         </button>
                     </div>
                 </div>
+                {!isMeterReadingsCollapsed && (
+                <>
                 {meterReadingsLoading ? (
                     <div className="p-8 text-center text-gray-500 text-sm border border-gray-700 rounded-lg">Завантаження...</div>
                 ) : (() => {
@@ -7486,6 +7525,8 @@ ${internalCompany} Team`;
                         </div>
                     );
                 })()}
+                </>
+                )}
             </section>
             )}
 
