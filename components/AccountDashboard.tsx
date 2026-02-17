@@ -49,6 +49,14 @@ import { propertyInventoryService, type PropertyInventoryItemRow, type PropertyI
 import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '../services/propertyExpenseService';
 import { propertyExpenseCategoryService, type PropertyExpenseCategoryRow } from '../services/propertyExpenseCategoryService';
 import { propertyMeterService, type PropertyMeterReadingRow, type PropertyMeterRow, type MeterType, METER_TYPES } from '../services/propertyMeterService';
+
+const METER_UNIT_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'Одиниця' },
+  { value: 'kWh', label: 'kWh' },
+  { value: 'm³', label: 'm³' },
+  { value: 'u.', label: 'u.' },
+  { value: 'L', label: 'L' },
+];
 import {
   ReservationData,
   OfferData,
@@ -7353,7 +7361,7 @@ ${internalCompany} Team`;
                             type="button"
                             onClick={() => {
                                 setMeterEditValues(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = m.meter_number ?? ''; return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
-                                setMeterEditUnit(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = m.unit ?? ''; return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
+                                setMeterEditUnit(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = (m.unit === 'm3' ? 'm³' : (m.unit ?? '')); return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
                                 setMeterEditPricePerUnit(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = m.price_per_unit != null ? String(m.price_per_unit) : ''; return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
                                 setIsMeterNumbersModalOpen(true);
                             }}
@@ -7389,13 +7397,25 @@ ${internalCompany} Team`;
                         const n = parseFloat(t.replace(',', '.'));
                         return Number.isFinite(n) ? n : null;
                     };
+                    const nf = (value: number | null | undefined, maxDecimals = 2) =>
+                        value == null || !Number.isFinite(value) ? '—' : new Intl.NumberFormat('uk-UA', { maximumFractionDigits: maxDecimals }).format(value);
+                    const nf2 = (value: number | null | undefined) =>
+                        value == null || !Number.isFinite(value) ? '—' : new Intl.NumberFormat('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+                    const eur = (value: number | null | undefined) =>
+                        value == null || !Number.isFinite(value) ? '—' : new Intl.NumberFormat('uk-UA', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
                     const consumptionByType: Record<MeterType, number> = { strom: 0, gas: 0, wasser: 0, heizung: 0 };
-                    const sortedReadings = [...meterReadingsManual].sort((a, b) => a.reading_date.localeCompare(b.reading_date));
+                    const sortedReadings = [...meterReadingsManual].sort((a, b) => {
+                        const d = a.reading_date.localeCompare(b.reading_date);
+                        if (d !== 0) return d;
+                        const c = (a.created_at || '').localeCompare(b.created_at || '');
+                        if (c !== 0) return c;
+                        return (a.id || '').localeCompare(b.id || '');
+                    });
                     METER_TYPES.forEach((type) => {
                         const key = type as MeterType;
-                        const vals = sortedReadings.map((r) => (r[key] as number | null)).filter((v): v is number => v != null);
-                        for (let i = 1; i < vals.length; i++) {
-                            const delta = vals[i] - vals[i - 1];
+                        const withVal = sortedReadings.filter((r) => (r[key] as number | null) != null).map((r) => r[key] as number);
+                        for (let i = 1; i < withVal.length; i++) {
+                            const delta = withVal[i] - withVal[i - 1];
                             if (delta > 0) consumptionByType[key] += delta;
                         }
                     });
@@ -7411,7 +7431,7 @@ ${internalCompany} Team`;
                                         <th className="p-2 text-center font-bold text-xs uppercase">Дії</th>
                                     </tr>
                                     <tr>
-                                        <th className="p-2 text-left text-xs text-gray-500">—</th>
+                                        <th className="p-2 text-left text-xs text-gray-500">{'\u00A0'}</th>
                                         {METER_TYPES.map((t) => (
                                             <th key={t} className="p-2 text-right text-xs font-mono text-gray-500">№ {metersByType[t]?.meter_number ?? '—'}</th>
                                         ))}
@@ -7443,7 +7463,7 @@ ${internalCompany} Team`;
                                                 </td>
                                                 {METER_TYPES.map((t) => (
                                                     <td key={t} className="p-2 text-right font-mono text-xs text-white">
-                                                        {isEditing && draft ? <input type="text" inputMode="decimal" value={draft[t]} onChange={(e) => setMeterEditDraft((d) => d ? { ...d, [t]: e.target.value } : null)} className="w-full max-w-[80px] bg-[#16181D] border border-gray-600 rounded px-2 py-1 text-xs text-white text-right" placeholder="—" /> : (r[t] != null ? r[t] : '—')}
+                                                        {isEditing && draft ? <input type="text" inputMode="decimal" value={draft[t]} onChange={(e) => setMeterEditDraft((d) => d ? { ...d, [t]: e.target.value } : null)} className="w-full max-w-[80px] bg-[#16181D] border border-gray-600 rounded px-2 py-1 text-xs text-white text-right" placeholder="—" /> : (r[t] != null ? nf(r[t] as number, 2) : '—')}
                                                     </td>
                                                 ))}
                                                 <td className="p-2 text-center text-xs">
@@ -7458,9 +7478,9 @@ ${internalCompany} Team`;
                                     })}
                                 </tbody>
                                 <tfoot className="bg-[#23262b] text-gray-400 border-t-2 border-gray-600">
-                                    <tr><td className="p-2 text-xs font-bold">Споживання Δ</td>{METER_TYPES.map((t) => <td key={t} className="p-2 text-right font-mono text-xs text-white">{consumptionByType[t] || '—'}</td>)}<td className="p-2" /></tr>
-                                    <tr><td className="p-2 text-xs font-bold">Ціна</td>{METER_TYPES.map((t) => { const m = metersByType[t]; const price = m?.price_per_unit != null; const unit = m?.unit; return <td key={t} className="p-2 text-right text-xs text-white">{price && unit ? `${Number(m!.price_per_unit).toLocaleString('uk-UA')} €/${unit}` : '—'}</td>; })}<td className="p-2" /></tr>
-                                    <tr><td className="p-2 text-xs font-bold">Сума</td>{METER_TYPES.map((t) => { const m = metersByType[t]; const consumption = consumptionByType[t]; const price = m?.price_per_unit; if (consumption == null || price == null || consumption === 0) return <td key={t} className="p-2 text-right font-mono text-xs text-white">—</td>; return <td key={t} className="p-2 text-right font-mono text-xs text-white">{(consumption * price).toFixed(2)} €</td>; })}<td className="p-2" /></tr>
+                                    <tr><td className="p-2 text-xs font-bold">Споживання Δ</td>{METER_TYPES.map((t) => <td key={t} className="p-2 text-right font-mono text-xs text-white">{nf(consumptionByType[t], 2)}</td>)}<td className="p-2" /></tr>
+                                    <tr><td className="p-2 text-xs font-bold">Ціна</td>{METER_TYPES.map((t) => { const m = metersByType[t]; const price = m?.price_per_unit; const unit = m?.unit; if (price == null || !Number.isFinite(price)) return <td key={t} className="p-2 text-right text-xs text-white">—</td>; if (unit) return <td key={t} className="p-2 text-right text-xs text-white">{`${nf2(price)} €/${unit}`}</td>; return <td key={t} className="p-2 text-right text-xs text-white">{`${nf2(price)} €`}</td>; })}<td className="p-2" /></tr>
+                                    <tr><td className="p-2 text-xs font-bold">Сума</td>{METER_TYPES.map((t) => { const m = metersByType[t]; const consumption = consumptionByType[t]; const price = m?.price_per_unit; if (consumption == null || price == null || !Number.isFinite(consumption) || !Number.isFinite(price)) return <td key={t} className="p-2 text-right font-mono text-xs text-white">—</td>; return <td key={t} className="p-2 text-right font-mono text-xs text-white">{eur(consumption * price)}</td>; })}<td className="p-2" /></tr>
                                 </tfoot>
                             </table>
                         </div>
@@ -7482,7 +7502,9 @@ ${internalCompany} Team`;
                                 <div key={type} className="space-y-1">
                                     <label className="block text-xs font-medium text-gray-400 capitalize">{type}</label>
                                     <input type="text" value={meterEditValues[type]} onChange={(e) => setMeterEditValues(prev => ({ ...prev, [type]: e.target.value }))} className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="Номер лічильника" />
-                                    <input type="text" value={meterEditUnit[type]} onChange={(e) => setMeterEditUnit(prev => ({ ...prev, [type]: e.target.value }))} className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="Одиниця (kWh, m³, u.)" />
+                                    <select value={meterEditUnit[type]} onChange={(e) => setMeterEditUnit(prev => ({ ...prev, [type]: e.target.value }))} className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50">
+                                                {METER_UNIT_OPTIONS.map((opt) => <option key={opt.value || 'empty'} value={opt.value}>{opt.label}</option>)}
+                                            </select>
                                     <input type="text" value={meterEditPricePerUnit[type]} onChange={(e) => setMeterEditPricePerUnit(prev => ({ ...prev, [type]: e.target.value }))} className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="Ціна за одиницю" />
                                 </div>
                             ))}
@@ -7498,8 +7520,9 @@ ${internalCompany} Team`;
                                     try {
                                         for (const t of METER_TYPES) {
                                             const meterNumber = meterEditValues[t].trim() || null;
-                                            const unit = meterEditUnit[t].trim() || null;
-                                            const pricePerUnit = meterEditPricePerUnit[t].trim() ? parseFloat(meterEditPricePerUnit[t]) : null;
+                                            let unit = meterEditUnit[t].trim() || null;
+                                            if (unit === 'm3') unit = 'm³';
+                                            const pricePerUnit = meterEditPricePerUnit[t].trim() ? parseFloat(meterEditPricePerUnit[t].replace(',', '.')) : null;
                                             await propertyMeterService.upsertMeter(selectedPropertyId, t, meterNumber, unit, pricePerUnit);
                                         }
                                         refreshMeterData();
