@@ -160,4 +160,52 @@ export const propertyMediaService = {
     if (!data?.signedUrl) throw new Error('No signed URL returned');
     return data.signedUrl;
   },
+
+  async getCoverPhotoAssetId(propertyId: string): Promise<string | null> {
+    const { data, error } = await supabase
+      .from('properties')
+      .select('cover_photo_asset_id')
+      .eq('id', propertyId)
+      .single();
+    if (error) throw error;
+    const id = (data as { cover_photo_asset_id?: string | null } | null)?.cover_photo_asset_id;
+    return id ?? null;
+  },
+
+  async setCoverPhoto(propertyId: string, assetId: string | null): Promise<void> {
+    if (assetId == null) {
+      const { error } = await supabase
+        .from('properties')
+        .update({ cover_photo_asset_id: null })
+        .eq('id', propertyId);
+      if (error) throw error;
+      return;
+    }
+    const { data: exists } = await supabase
+      .from('property_media_assets')
+      .select('id')
+      .eq('id', assetId)
+      .eq('property_id', propertyId)
+      .eq('type', 'photo')
+      .maybeSingle();
+    if (!exists?.id) return;
+    const { error } = await supabase
+      .from('properties')
+      .update({ cover_photo_asset_id: assetId })
+      .eq('id', propertyId);
+    if (error) throw error;
+  },
+
+  async getPhotoSignedUrls(assets: PropertyMediaAssetRow[], expires = 3600): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    await Promise.all(
+      assets
+        .filter((a) => a.storage_path)
+        .map(async (a) => {
+          const url = await propertyMediaService.getSignedUrl(a.storage_path!, expires);
+          out[a.id] = url;
+        })
+    );
+    return out;
+  },
 };

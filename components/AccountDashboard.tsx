@@ -713,6 +713,10 @@ const AccountDashboard: React.FC = () => {
   const [propertyMediaAssets, setPropertyMediaAssets] = useState<PropertyMediaAssetRow[]>([]);
   const [propertyMediaLoading, setPropertyMediaLoading] = useState(false);
   const [openMediaModalType, setOpenMediaModalType] = useState<PropertyMediaAssetType | null>(null);
+  const [coverPhotoUrl, setCoverPhotoUrl] = useState<string | null>(null);
+  const [photoGalleryCoverId, setPhotoGalleryCoverId] = useState<string | null>(null);
+  const [photoGallerySelectedId, setPhotoGallerySelectedId] = useState<string | null>(null);
+  const [photoGallerySignedUrls, setPhotoGallerySignedUrls] = useState<Record<string, string>>({});
   const [warehouseTab, setWarehouseTab] = useState<'warehouses' | 'stock' | 'addInventory'>('warehouses');
   const [warehouseStock, setWarehouseStock] = useState<WarehouseStockItem[]>([]);
   const [isLoadingWarehouseStock, setIsLoadingWarehouseStock] = useState(false);
@@ -2941,6 +2945,66 @@ const AccountDashboard: React.FC = () => {
     setPropertyMediaLoading(true);
     propertyMediaService.listAssets(selectedPropertyId).then(setPropertyMediaAssets).catch(() => setPropertyMediaAssets([])).finally(() => setPropertyMediaLoading(false));
   }, [selectedPropertyId]);
+
+  // Header cover photo: use cover_photo_asset_id when set, else fallback to image/images[0]
+  useEffect(() => {
+    if (!selectedPropertyId) {
+      setCoverPhotoUrl(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const coverId = await propertyMediaService.getCoverPhotoAssetId(selectedPropertyId);
+        if (cancelled) return;
+        if (!coverId) {
+          setCoverPhotoUrl(null);
+          return;
+        }
+        const photos = propertyMediaAssets.filter((a) => a.type === 'photo');
+        const asset = photos.find((a) => a.id === coverId);
+        if (!asset?.storage_path) {
+          setCoverPhotoUrl(null);
+          return;
+        }
+        const url = await propertyMediaService.getSignedUrl(asset.storage_path);
+        if (!cancelled) setCoverPhotoUrl(url);
+      } catch {
+        if (!cancelled) setCoverPhotoUrl(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedPropertyId, propertyMediaAssets]);
+
+  // Photo gallery modal: load cover + signed URLs when modal opens (type photo) or assets change
+  useEffect(() => {
+    if (openMediaModalType !== 'photo' || !selectedPropertyId) return;
+    const photos = propertyMediaAssets
+      .filter((a) => a.type === 'photo')
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    let cancelled = false;
+    (async () => {
+      try {
+        const [coverId, urls] = await Promise.all([
+          propertyMediaService.getCoverPhotoAssetId(selectedPropertyId),
+          propertyMediaService.getPhotoSignedUrls(photos),
+        ]);
+        if (cancelled) return;
+        setPhotoGalleryCoverId(coverId ?? null);
+        setPhotoGallerySignedUrls(urls);
+        setPhotoGallerySelectedId(
+          coverId && photos.some((p) => p.id === coverId) ? coverId : (photos[0]?.id ?? null)
+        );
+      } catch {
+        if (!cancelled) {
+          setPhotoGalleryCoverId(null);
+          setPhotoGallerySignedUrls({});
+          setPhotoGallerySelectedId(photos[0]?.id ?? null);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [openMediaModalType, selectedPropertyId, propertyMediaAssets]);
 
   // Expense invoices: load categories (ensure defaults) and items when property changes
   useEffect(() => {
@@ -5464,7 +5528,7 @@ ${internalCompany} Team`;
             {/* Header */}
             <div className="relative h-64 rounded-xl overflow-hidden mb-8 group">
                {(() => {
-                  const headerImageUrl = selectedProperty.image?.trim() || selectedProperty.images?.[0]?.trim() || '';
+                  const headerImageUrl = coverPhotoUrl?.trim() || selectedProperty.image?.trim() || selectedProperty.images?.[0]?.trim() || '';
                   return headerImageUrl ? (
                      <img src={headerImageUrl} alt={selectedProperty.title} className="w-full h-full object-cover" />
                   ) : (
@@ -7707,17 +7771,75 @@ ${internalCompany} Team`;
                             </div>
                           </div>
                         );
-                      })() : type === 'photo' ? (
-                        <div className="space-y-3">
-                          <input type="file" multiple accept="image/*" className="hidden" id="media-photo-upload" onChange={async (e) => { const files = e.target.files ? Array.from(e.target.files) : []; e.target.value = ''; if (!files.length) return; try { await propertyMediaService.uploadAssetFiles(selectedPropertyId, 'photo', files); refreshMedia(); } catch (err) { console.error(err); alert('Не вдалося завантажити.'); } }} />
-                          <label htmlFor="media-photo-upload" className="inline-block px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 cursor-pointer hover:bg-emerald-500/30">+ Додати фото</label>
-                          <div className="grid grid-cols-3 gap-2">
-                            {assets.map((a) => (
-                              <PropertyMediaPhotoThumb key={a.id} asset={a} onDelete={async () => { if (!confirm('Видалити фото?')) return; try { await propertyMediaService.deleteAsset(a.id); refreshMedia(); } catch (e) { console.error(e); alert('Не вдалося видалити.'); } }} />
-                            ))}
+                      })() : type === 'photo' ? (() => {
+                        const photos = assets.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                        const selectedUrl = photoGallerySelectedId ? photoGallerySignedUrls[photoGallerySelectedId] : null;
+                        const isCover = photoGallerySelectedId && photoGalleryCoverId === photoGallerySelectedId;
+                        const fileInputId = 'media-photo-upload';
+                        const handleUpload = async (files: File[]) => {
+                          if (!files.length) return;
+                          try {
+                            await propertyMediaService.uploadAssetFiles(selectedPropertyId, 'photo', files);
+                            await refreshMedia();
+                          } catch (err) {
+                            console.error(err);
+                            alert('Не вдалося завантажити.');
+                          }
+                        };
+                        const handleDelete = async () => {
+                          if (!photoGallerySelectedId || !confirm('Видалити фото?')) return;
+                          try {
+                            await propertyMediaService.deleteAsset(photoGallerySelectedId);
+                            await refreshMedia();
+                          } catch (e) {
+                            console.error(e);
+                            alert('Не вдалося видалити.');
+                          }
+                        };
+                        return (
+                          <div className="space-y-4 flex flex-col min-h-0">
+                            <div className="flex items-center gap-2 shrink-0">
+                              <input type="file" multiple accept="image/*" className="hidden" id={fileInputId} onChange={(e) => { const f = e.target.files ? Array.from(e.target.files) : []; e.target.value = ''; handleUpload(f); }} />
+                              <label htmlFor={fileInputId} className="inline-block px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 cursor-pointer hover:bg-emerald-500/30">+ Додати фото</label>
+                              <div
+                                className="flex-1 min-w-0 border border-dashed border-gray-600 rounded-lg px-4 py-3 text-center text-sm text-gray-400 cursor-pointer hover:border-emerald-500/50 hover:text-gray-300"
+                                onClick={() => document.getElementById(fileInputId)?.click()}
+                                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer?.files ? Array.from(e.dataTransfer.files).filter((x) => x.type.startsWith('image/')) : []; handleUpload(f); }}
+                              >
+                                Перетягни фото сюди або натисни щоб вибрати
+                              </div>
+                            </div>
+                            <div className="flex-1 min-h-0 flex flex-col gap-3">
+                              <div className="rounded-lg border border-gray-700 overflow-hidden bg-[#16181D] flex items-center justify-center min-h-[240px] shrink-0">
+                                {selectedUrl ? (
+                                  <img src={selectedUrl} alt="" className="max-h-[320px] w-auto object-contain" />
+                                ) : (
+                                  <span className="text-gray-500 text-sm">Обери фото знизу</span>
+                                )}
+                              </div>
+                              {photoGallerySelectedId && (
+                                <div className="flex items-center gap-2 flex-wrap shrink-0">
+                                  {isCover ? (
+                                    <span className="px-2 py-1 rounded text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/50">Головне</span>
+                                  ) : (
+                                    <button type="button" onClick={async () => { try { await propertyMediaService.setCoverPhoto(selectedPropertyId, photoGallerySelectedId); setPhotoGalleryCoverId(photoGallerySelectedId); setCoverPhotoUrl(selectedUrl ?? null); } catch (e) { console.error(e); alert('Не вдалося встановити головне фото.'); } }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/50 hover:bg-amber-500/30">Зробити головним</button>
+                                  )}
+                                  <button type="button" onClick={handleDelete} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-500/50 text-red-400 hover:bg-red-500/10">Видалити</button>
+                                </div>
+                              )}
+                              <div className="flex gap-2 overflow-x-auto pb-1 shrink-0" style={{ minHeight: 72 }}>
+                                {photos.map((a) => (
+                                  <button type="button" key={a.id} onClick={() => setPhotoGallerySelectedId(a.id)} className={`relative shrink-0 w-16 h-16 rounded border-2 overflow-hidden ${photoGallerySelectedId === a.id ? 'border-emerald-500 ring-1 ring-emerald-500' : 'border-gray-700'} ${photoGalleryCoverId === a.id ? 'ring-2 ring-amber-400' : ''}`}>
+                                    {photoGallerySignedUrls[a.id] ? <img src={photoGallerySignedUrls[a.id]} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full bg-gray-800 flex items-center justify-center text-gray-500 text-xs">...</div>}
+                                    {photoGalleryCoverId === a.id && <span className="absolute top-0.5 right-0.5 text-amber-400" title="Головне">★</span>}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      ) : (
+                        );
+                      })() : (
                         <div className="space-y-3">
                           <input type="file" accept="application/pdf" className="hidden" id={`media-${type}-upload`} onChange={async (e) => { const files = e.target.files ? Array.from(e.target.files) : []; e.target.value = ''; if (!files.length) return; try { await propertyMediaService.uploadAssetFiles(selectedPropertyId, type, files); refreshMedia(); } catch (err) { console.error(err); alert('Не вдалося завантажити.'); } }} />
                           <label htmlFor={`media-${type}-upload`} className="inline-block px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 cursor-pointer hover:bg-emerald-500/30">Upload PDF</label>
