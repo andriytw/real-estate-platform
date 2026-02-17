@@ -1,11 +1,21 @@
 /**
  * Manual-only meter readings: property_meters (Zählernummer) and property_meter_readings.
  * Tile "Показання Лічильників (Історія)" uses this service only; no task/reservation coupling.
+ * Photos: property_meter_photos + storage bucket property-meter-photos.
  */
 
 import { supabase } from '../utils/supabase/client';
 
+const PROPERTY_METER_PHOTOS_BUCKET = 'property-meter-photos';
+
 export type MeterType = 'strom' | 'gas' | 'wasser' | 'heizung';
+
+export interface PropertyMeterPhotoRow {
+  id: string;
+  reading_id: string;
+  storage_path: string;
+  created_at: string;
+}
 
 export interface PropertyMeterRow {
   id: string;
@@ -37,6 +47,13 @@ export interface CreateReadingPayload {
 }
 
 const METER_TYPES: MeterType[] = ['strom', 'gas', 'wasser', 'heizung'];
+
+function safeFilename(name: string): string {
+  const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
+  const base = name.includes('.') ? name.slice(0, name.lastIndexOf('.')) : name;
+  const safe = base.replace(/[^a-zA-Z0-9]/g, '_');
+  return (safe || 'file') + ext;
+}
 
 export const propertyMeterService = {
   async listReadings(propertyId: string): Promise<PropertyMeterReadingRow[]> {
@@ -121,6 +138,60 @@ export const propertyMeterService = {
       .single();
     if (error) throw error;
     return data as PropertyMeterRow;
+  },
+
+  async uploadReadingPhotos(
+    propertyId: string,
+    readingId: string,
+    files: File[]
+  ): Promise<PropertyMeterPhotoRow[]> {
+    const created: PropertyMeterPhotoRow[] = [];
+    for (const file of files) {
+      const ts = Date.now();
+      const name = safeFilename(file.name);
+      const storagePath = `property/${propertyId}/meter_readings/${readingId}/${ts}_${name}`;
+      const { error: uploadError } = await supabase.storage
+        .from(PROPERTY_METER_PHOTOS_BUCKET)
+        .upload(storagePath, file, { upsert: false });
+      if (uploadError) throw uploadError;
+      const { data: row, error: insertError } = await supabase
+        .from('property_meter_photos')
+        .insert([{ reading_id: readingId, storage_path: storagePath }])
+        .select()
+        .single();
+      if (insertError) throw insertError;
+      created.push(row as PropertyMeterPhotoRow);
+    }
+    return created;
+  },
+
+  async listReadingPhotos(readingId: string): Promise<PropertyMeterPhotoRow[]> {
+    const { data, error } = await supabase
+      .from('property_meter_photos')
+      .select('*')
+      .eq('reading_id', readingId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return (data ?? []) as PropertyMeterPhotoRow[];
+  },
+
+  async listPhotosByReadingIds(readingIds: string[]): Promise<PropertyMeterPhotoRow[]> {
+    if (readingIds.length === 0) return [];
+    const { data, error } = await supabase
+      .from('property_meter_photos')
+      .select('*')
+      .in('reading_id', readingIds);
+    if (error) throw error;
+    return (data ?? []) as PropertyMeterPhotoRow[];
+  },
+
+  async getPhotoSignedUrl(storagePath: string, expirySeconds = 3600): Promise<string> {
+    const { data, error } = await supabase.storage
+      .from(PROPERTY_METER_PHOTOS_BUCKET)
+      .createSignedUrl(storagePath, expirySeconds);
+    if (error) throw new Error(error.message || 'Failed to create signed URL');
+    if (!data?.signedUrl) throw new Error('No signed URL returned');
+    return data.signedUrl;
   },
 };
 
