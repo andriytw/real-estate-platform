@@ -48,6 +48,7 @@ import {
 import { propertyInventoryService, type PropertyInventoryItemRow, type PropertyInventoryItemWithDocument } from '../services/propertyInventoryService';
 import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '../services/propertyExpenseService';
 import { propertyExpenseCategoryService, type PropertyExpenseCategoryRow } from '../services/propertyExpenseCategoryService';
+import { propertyMeterService, type PropertyMeterReadingRow, type PropertyMeterRow, type MeterType, METER_TYPES } from '../services/propertyMeterService';
 import {
   ReservationData,
   OfferData,
@@ -668,6 +669,21 @@ const AccountDashboard: React.FC = () => {
 
   const [isInventoryEditing, setIsInventoryEditing] = useState(false);
   const [expandedMeterGroups, setExpandedMeterGroups] = useState<Set<string>>(new Set());
+  // Manual meter readings tile (property_meter_readings / property_meters; no meterLog)
+  const [meterReadingsManual, setMeterReadingsManual] = useState<PropertyMeterReadingRow[]>([]);
+  const [meterMetersList, setMeterMetersList] = useState<PropertyMeterRow[]>([]);
+  const [meterReadingsLoading, setMeterReadingsLoading] = useState(false);
+  const [meterTileTab, setMeterTileTab] = useState<'monthly' | 'history'>('monthly');
+  const [isMeterNumbersModalOpen, setIsMeterNumbersModalOpen] = useState(false);
+  const [isAddMeterReadingModalOpen, setIsAddMeterReadingModalOpen] = useState(false);
+  const [meterEditValues, setMeterEditValues] = useState<Record<MeterType, string>>({ strom: '', gas: '', wasser: '', heizung: '' });
+  const [addReadingDate, setAddReadingDate] = useState('');
+  const [addReadingStrom, setAddReadingStrom] = useState('');
+  const [addReadingGas, setAddReadingGas] = useState('');
+  const [addReadingWasser, setAddReadingWasser] = useState('');
+  const [addReadingHeizung, setAddReadingHeizung] = useState('');
+  const [addReadingNote, setAddReadingNote] = useState('');
+  const [isMeterSaving, setIsMeterSaving] = useState(false);
   const [warehouseTab, setWarehouseTab] = useState<'warehouses' | 'stock' | 'addInventory'>('warehouses');
   const [warehouseStock, setWarehouseStock] = useState<WarehouseStockItem[]>([]);
   const [isLoadingWarehouseStock, setIsLoadingWarehouseStock] = useState(false);
@@ -2894,6 +2910,33 @@ const AccountDashboard: React.FC = () => {
     propertyExpenseCategoryService.listCategories(true).then(setExpenseCategories);
   }, [selectedPropertyId]);
 
+  const refreshMeterData = useCallback(() => {
+    if (!selectedPropertyId) return;
+    setMeterReadingsLoading(true);
+    Promise.all([
+      propertyMeterService.listReadings(selectedPropertyId),
+      propertyMeterService.listMeters(selectedPropertyId),
+    ])
+      .then(([readings, meters]) => {
+        setMeterReadingsManual(readings);
+        setMeterMetersList(meters);
+      })
+      .catch(() => {
+        setMeterReadingsManual([]);
+        setMeterMetersList([]);
+      })
+      .finally(() => setMeterReadingsLoading(false));
+  }, [selectedPropertyId]);
+
+  useEffect(() => {
+    if (!selectedPropertyId) {
+      setMeterReadingsManual([]);
+      setMeterMetersList([]);
+      return;
+    }
+    refreshMeterData();
+  }, [selectedPropertyId, refreshMeterData]);
+
   const handleViewExpenseDocument = useCallback(async (storagePath: string) => {
     try {
       const url = await propertyExpenseService.getDocumentSignedUrl(storagePath);
@@ -4958,6 +5001,9 @@ ${internalCompany} Team`;
           }
       }
       
+      // Task-derived meterLog: tile now uses manual property_meter_readings. Kept for possible future use.
+      const METER_LOG_FROM_TASKS = false;
+      if (METER_LOG_FROM_TASKS) {
       // Update Meter Log in Property when Task is Verified or Archived (or when meter readings have actual values)
       const hasMeterReadings = updatedEvent.meterReadings && (
           updatedEvent.meterReadings.electricity || 
@@ -5023,6 +5069,7 @@ ${internalCompany} Team`;
               }
               return prop;
           }));
+      }
       }
 
       // Automatically add Tenant and Rental Agreement when 'Einzug' is Archived
@@ -7259,254 +7306,267 @@ ${internalCompany} Team`;
                 )}
             </section>
 
-            {/* Meter Readings (History Log) - Accordion */}
-            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                <h2 className="text-xl font-bold text-white mb-4">Показання Лічильників (Історія)</h2>
-                <div className="space-y-2">
-                    {(() => {
-                        const meterLog = selectedProperty.meterLog || [];
-                        const groups = groupMeterReadingsByRental(meterLog, reservations);
-                        
-                        if (groups.length === 0) {
+            {/* Meter Readings — manual-only (property_meter_readings + property_meters). No meterLog/reservations/groupMeterReadingsByRental. */}
+            {selectedPropertyId && (
+            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6" data-meter-tile="manual">
+                <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+                    <h2 className="text-xl font-bold text-white">Показання Лічильників (Історія)</h2>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMeterEditValues(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = m.meter_number ?? ''; return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
+                                setIsMeterNumbersModalOpen(true);
+                            }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
+                        >
+                            Редагувати номери лічильників
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { setAddReadingDate(new Date().toISOString().slice(0, 10)); setIsAddMeterReadingModalOpen(true); }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                        >
+                            + Додати показники
+                        </button>
+                    </div>
+                </div>
+                <div className="flex gap-2 border-b border-gray-700 mb-3">
+                    <button
+                        type="button"
+                        onClick={() => setMeterTileTab('monthly')}
+                        className={`px-3 py-2 text-sm font-medium rounded-t transition-colors ${meterTileTab === 'monthly' ? 'bg-[#23262b] text-white border border-gray-700 border-b-0 -mb-px' : 'text-gray-400 hover:text-white'}`}
+                    >
+                        Місячна таблиця
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setMeterTileTab('history')}
+                        className={`px-3 py-2 text-sm font-medium rounded-t transition-colors ${meterTileTab === 'history' ? 'bg-[#23262b] text-white border border-gray-700 border-b-0 -mb-px' : 'text-gray-400 hover:text-white'}`}
+                    >
+                        Історія
+                    </button>
+                </div>
+                {meterReadingsLoading ? (
+                    <div className="p-8 text-center text-gray-500 text-sm border border-gray-700 rounded-lg">Завантаження...</div>
+                ) : meterTileTab === 'history' ? (
+                    (() => {
+                        if (meterReadingsManual.length === 0) {
                             return (
                                 <div className="p-8 text-center text-gray-500 text-sm border border-gray-700 rounded-lg">
-                                    Історія показників пуста.
+                                    <p className="mb-3">Історія показників пуста. Додайте перше зняття.</p>
+                                    <button type="button" onClick={() => setIsAddMeterReadingModalOpen(true)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500/30">
+                                        + Додати показники
+                                    </button>
                                 </div>
                             );
                         }
-                        
-                        return groups.map((group) => (
-                            <div key={group.id} className="border border-gray-700/50 rounded overflow-hidden bg-[#16181D]">
-                                <button
-                                    onClick={() => {
-                                        const newExpanded = new Set(expandedMeterGroups);
-                                        if (newExpanded.has(group.id)) {
-                                            newExpanded.delete(group.id);
-                                        } else {
-                                            newExpanded.add(group.id);
-                                        }
-                                        setExpandedMeterGroups(newExpanded);
-                                    }}
-                                    className="w-full p-2 flex justify-between items-center hover:bg-[#1C1F24] transition-colors"
-                                >
-                                    <div className="flex items-center gap-2 flex-1">
-                                        <ChevronDown className={`w-3.5 h-3.5 text-gray-500 transition-transform ${expandedMeterGroups.has(group.id) ? 'rotate-180' : ''}`} />
-                                        <span className="font-medium text-gray-300 text-sm">{group.title}</span>
-                                        {group.type === 'rental' && (
-                                            <span className={`px-2 py-1 rounded text-xs font-bold ${
-                                                group.status === 'complete' 
-                                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                                                    : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                                            }`}>
-                                                {group.status === 'complete' ? 'Завершено' : 'Очікується'}
-                                            </span>
-                                        )}
-                                    </div>
-                                </button>
-                                
-                                {expandedMeterGroups.has(group.id) && (
-                                    <div className="p-2 border-t border-gray-700 bg-[#0D1117]">
-                                        {group.type === 'initial' ? (
-                                            // Initial readings display - show all meterReadings in compact table
-                                            <div className="space-y-1">
-                                                {selectedProperty.meterReadings && selectedProperty.meterReadings.length > 0 ? (
-                                                    <div className="overflow-hidden border border-gray-700 rounded">
-                                                        <table className="w-full text-xs">
-                                                            <thead className="bg-[#16181D] border-b border-gray-700">
-                                                                <tr>
-                                                                    <th className="p-1.5 text-left text-[10px] font-bold text-gray-400 uppercase">Тип</th>
-                                                                    <th className="p-1.5 text-left text-[10px] font-bold text-gray-400 uppercase">Номер</th>
-                                                                    <th className="p-1.5 text-right text-[10px] font-bold text-gray-400 uppercase">Початкове</th>
-                                                                    <th className="p-1.5 text-right text-[10px] font-bold text-gray-400 uppercase">Кінцеве</th>
-                                                                    <th className="p-1.5 text-right text-[10px] font-bold text-gray-400 uppercase">Спожито</th>
-                                                                    <th className="p-1.5 text-right text-[10px] font-bold text-gray-400 uppercase">Ціна</th>
-                                                                    <th className="p-1.5 text-right text-[10px] font-bold text-gray-400 uppercase">Сума</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody className="divide-y divide-gray-700/50">
-                                                                {selectedProperty.meterReadings.map((meter, idx) => {
-                                                                    const nameLower = meter.name.toLowerCase();
-                                                                    let icon = <Flame className="w-3 h-3 text-orange-500" />;
-                                                                    if (nameLower === 'electricity' || nameLower.includes('electric') || nameLower.includes('електро') || nameLower.includes('strom')) {
-                                                                        icon = <Zap className="w-3 h-3 text-yellow-500" />;
-                                                                    } else if (nameLower === 'water' || nameLower.includes('вода') || nameLower.includes('wasser')) {
-                                                                        icon = <Droplet className="w-3 h-3 text-blue-500" />;
-                                                                    } else if (nameLower === 'gas' || nameLower.includes('газ')) {
-                                                                        icon = <Flame className="w-3 h-3 text-orange-500" />;
-                                                                    } else if (nameLower === 'heating' || nameLower.includes('heizung') || nameLower.includes('опалення')) {
-                                                                        icon = <Flame className="w-3 h-3 text-orange-500" />;
-                                                                    }
-                                                                    
-                                                                    const initial = parseFloat(meter.initial || '0');
-                                                                    const current = parseFloat(meter.current || meter.initial || '0');
-                                                                    const consumed = current - initial;
-                                                                    const price = meter.price || 0;
-                                                                    const total = consumed * price;
-                                                                    const unit = getMeterUnit(meter.name);
-                                                                    
-                                                                    const handlePriceChange = async (newPrice: number) => {
-                                                                        const updatedMeterReadings = selectedProperty.meterReadings?.map((m, i) => 
-                                                                            i === idx ? { ...m, price: newPrice } : m
-                                                                        ) || [];
-                                                                        
-                                                                        try {
-                                                                            const updatedProperty = await propertiesService.update(selectedProperty.id, {
-                                                                                meterReadings: updatedMeterReadings
-                                                                            });
-                                                                            setProperties(prev => prev.map(p => p.id === updatedProperty.id ? updatedProperty : p));
-                                                                        } catch (error) {
-                                                                            console.error('Error updating meter price:', error);
-                                                                        }
-                                                                    };
-                                                                    
-                                                                    return (
-                                                                        <tr key={idx} className="hover:bg-[#16181D]">
-                                                                            <td className="p-1.5">
-                                                                                <div className="flex items-center gap-1.5">
-                                                                                    {icon}
-                                                                                    <span className="text-white text-xs">{meter.name}</span>
-                                                                                </div>
-                                                                            </td>
-                                                                            <td className="p-1.5">
-                                                                                <span className="text-gray-300 font-mono text-[10px]">{meter.number || '-'}</span>
-                                                                            </td>
-                                                                            <td className="p-1.5 text-right">
-                                                                                <span className="text-white font-mono text-xs font-semibold">{meter.initial || '-'}</span>
-                                                                            </td>
-                                                                            <td className="p-1.5 text-right">
-                                                                                <span className="text-white font-mono text-xs font-semibold">{meter.current || meter.initial || '-'}</span>
-                                                                            </td>
-                                                                            <td className="p-1.5 text-right">
-                                                                                <span className="text-gray-300 font-mono text-xs">{isNaN(consumed) ? '-' : consumed.toFixed(2)}</span>
-                                                                            </td>
-                                                                            <td className="p-1.5 text-right">
-                                                                                <div className="flex items-center justify-end gap-1">
-                                                                                    <input
-                                                                                        type="number"
-                                                                                        step="0.01"
-                                                                                        className="bg-transparent border-b border-gray-700 w-16 text-right text-white text-xs outline-none focus:border-emerald-500"
-                                                                                        value={price || ''}
-                                                                                        onChange={(e) => handlePriceChange(parseFloat(e.target.value) || 0)}
-                                                                                        placeholder="0.00"
-                                                                                    />
-                                                                                    <span className="text-gray-500 text-[10px]">{unit}</span>
-                                                                                </div>
-                                                                            </td>
-                                                                            <td className="p-1.5 text-right">
-                                                                                <span className="text-emerald-400 font-mono text-xs font-bold">
-                                                                                    {isNaN(total) || total <= 0 ? '-' : `€${total.toFixed(2)}`}
-                                                                                </span>
-                                                                            </td>
-                                                                        </tr>
-                                                                    );
-                                                                })}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                ) : (
-                                                    // Fallback to meterLog if meterReadings not available
-                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                        <div className="flex items-center gap-2">
-                                                            <Zap className="w-4 h-4 text-yellow-500" />
-                                                            <span className="text-xs text-gray-400">Electricity:</span>
-                                                            <span className="text-white font-mono font-bold">{group.checkInReadings?.electricity || '-'}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <Droplet className="w-4 h-4 text-blue-500" />
-                                                            <span className="text-xs text-gray-400">Water:</span>
-                                                            <span className="text-white font-mono font-bold">{group.checkInReadings?.water || '-'}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <Flame className="w-4 h-4 text-orange-500" />
-                                                            <span className="text-xs text-gray-400">Gas:</span>
-                                                            <span className="text-white font-mono font-bold">{group.checkInReadings?.gas || '-'}</span>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            // Rental period display
-                                            <div className="space-y-4">
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                    {/* Check-In */}
-                                                    <div>
-                                                        <div className="text-sm font-semibold text-emerald-400 mb-2">Check-In ({group.checkInDate})</div>
-                                                        <div className="space-y-2">
-                                                            <div className="flex items-center gap-2">
-                                                                <Zap className="w-3 h-3 text-yellow-500" />
-                                                                <span className="text-xs text-gray-400">Electricity:</span>
-                                                                <span className="text-white font-mono text-sm">{group.checkInReadings?.electricity || '-'}</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <Droplet className="w-3 h-3 text-blue-500" />
-                                                                <span className="text-xs text-gray-400">Water:</span>
-                                                                <span className="text-white font-mono text-sm">{group.checkInReadings?.water || '-'}</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <Flame className="w-3 h-3 text-orange-500" />
-                                                                <span className="text-xs text-gray-400">Gas:</span>
-                                                                <span className="text-white font-mono text-sm">{group.checkInReadings?.gas || '-'}</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* Check-Out */}
-                                                    <div>
-                                                        <div className="text-sm font-semibold text-red-400 mb-2">
-                                                            Check-Out {group.checkOutDate ? `(${group.checkOutDate})` : '(Ongoing)'}
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <div className="flex items-center gap-2">
-                                                                <Zap className="w-3 h-3 text-yellow-500" />
-                                                                <span className="text-xs text-gray-400">Electricity:</span>
-                                                                <span className="text-white font-mono text-sm">{group.checkOutReadings?.electricity || '-'}</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <Droplet className="w-3 h-3 text-blue-500" />
-                                                                <span className="text-xs text-gray-400">Water:</span>
-                                                                <span className="text-white font-mono text-sm">{group.checkOutReadings?.water || '-'}</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <Flame className="w-3 h-3 text-orange-500" />
-                                                                <span className="text-xs text-gray-400">Gas:</span>
-                                                                <span className="text-white font-mono text-sm">{group.checkOutReadings?.gas || '-'}</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                
-                                                {/* Used Amount */}
-                                                {group.usedAmount && (
-                                                    <div className="pt-4 border-t border-gray-700">
-                                                        <div className="text-sm font-semibold text-emerald-400 mb-2">Використано</div>
-                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                            <div className="flex items-center gap-2">
-                                                                <Zap className="w-3 h-3 text-yellow-500" />
-                                                                <span className="text-xs text-gray-400">Electricity:</span>
-                                                                <span className="text-emerald-400 font-mono font-bold">{group.usedAmount.electricity}</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <Droplet className="w-3 h-3 text-blue-500" />
-                                                                <span className="text-xs text-gray-400">Water:</span>
-                                                                <span className="text-emerald-400 font-mono font-bold">{group.usedAmount.water}</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <Flame className="w-3 h-3 text-orange-500" />
-                                                                <span className="text-xs text-gray-400">Gas:</span>
-                                                                <span className="text-emerald-400 font-mono font-bold">{group.usedAmount.gas}</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
+                        return (
+                            <div className="overflow-x-auto border border-gray-700 rounded-lg">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                                        <tr>
+                                            <th className="p-2 text-left font-bold text-xs uppercase">Дата</th>
+                                            <th className="p-2 text-right font-bold text-xs uppercase">Strom</th>
+                                            <th className="p-2 text-right font-bold text-xs uppercase">Gas</th>
+                                            <th className="p-2 text-right font-bold text-xs uppercase">Wasser</th>
+                                            <th className="p-2 text-right font-bold text-xs uppercase">Heizung</th>
+                                            <th className="p-2 text-center font-bold text-xs uppercase">Фото</th>
+                                            <th className="p-2 text-left font-bold text-xs uppercase">Примітка</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
+                                        {meterReadingsManual.map((r) => (
+                                            <tr key={r.id} className="hover:bg-[#1C1F24]">
+                                                <td className="p-2 text-gray-300 text-xs">{r.reading_date}</td>
+                                                <td className="p-2 text-right font-mono text-xs text-white">{r.strom != null ? r.strom : '—'}</td>
+                                                <td className="p-2 text-right font-mono text-xs text-white">{r.gas != null ? r.gas : '—'}</td>
+                                                <td className="p-2 text-right font-mono text-xs text-white">{r.wasser != null ? r.wasser : '—'}</td>
+                                                <td className="p-2 text-right font-mono text-xs text-white">{r.heizung != null ? r.heizung : '—'}</td>
+                                                <td className="p-2 text-center text-gray-500 text-xs">—</td>
+                                                <td className="p-2 text-gray-400 text-xs max-w-[200px] truncate" title={r.note ?? ''}>{r.note ?? '—'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
-                        ));
-                    })()}
-                </div>
+                        );
+                    })()
+                ) : (() => {
+                    const metersMap: Record<MeterType, string | null> = { strom: null, gas: null, wasser: null, heizung: null };
+                    meterMetersList.forEach((m) => { metersMap[m.type] = m.meter_number; });
+                    const months = Array.from(new Set(meterReadingsManual.map((r) => r.reading_date.slice(0, 7)))).sort();
+                    const rowLabels: { type: MeterType; label: string }[] = [
+                        { type: 'strom', label: 'Strom' },
+                        { type: 'gas', label: 'Gas' },
+                        { type: 'wasser', label: 'Wasser' },
+                        { type: 'heizung', label: 'Heizung' },
+                    ];
+                    const getValue = (type: MeterType, month: string): number | null => {
+                        const inMonth = meterReadingsManual.filter((r) => r.reading_date.slice(0, 7) === month);
+                        const withVal = inMonth
+                            .map((r) => ({ date: r.reading_date, val: type === 'strom' ? r.strom : type === 'gas' ? r.gas : type === 'wasser' ? r.wasser : r.heizung }))
+                            .filter((x) => x.val != null) as { date: string; val: number }[];
+                        if (withVal.length === 0) return null;
+                        const latest = withVal.sort((a, b) => b.date.localeCompare(a.date))[0];
+                        return latest.val;
+                    };
+                    if (months.length === 0) {
+                        return (
+                            <div className="p-8 text-center text-gray-500 text-sm border border-gray-700 rounded-lg">
+                                <p className="mb-3">Історія показників пуста. Додайте перше зняття.</p>
+                                <button type="button" onClick={() => setIsAddMeterReadingModalOpen(true)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500/30">
+                                    + Додати показники
+                                </button>
+                            </div>
+                        );
+                    }
+                    return (
+                        <div className="overflow-x-auto border border-gray-700 rounded-lg">
+                            <table className="w-full text-sm">
+                                <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                                    <tr>
+                                        <th className="p-2 text-left font-bold text-xs uppercase w-40">Тип</th>
+                                        {months.map((m) => (
+                                            <th key={m} className="p-2 text-right font-bold text-xs uppercase min-w-[80px]">{m}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
+                                    {rowLabels.map(({ type, label }) => (
+                                        <tr key={type} className="hover:bg-[#1C1F24]">
+                                            <td className="p-2 text-gray-300 text-xs">
+                                                {label}{metersMap[type] ? ` (№ ${metersMap[type]})` : ''}
+                                            </td>
+                                            {months.map((month) => {
+                                                const val = getValue(type, month);
+                                                return (
+                                                <td key={month} className="p-2 text-right font-mono text-xs text-white">
+                                                    {val != null ? val : '—'}
+                                                </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    );
+                })()}
             </section>
+            )}
+
+            {/* Modals for meter tile */}
+            {isMeterNumbersModalOpen && selectedPropertyId && (
+                <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4" onClick={() => setIsMeterNumbersModalOpen(false)}>
+                    <div className="bg-[#1C1F24] w-full max-w-md rounded-xl border border-gray-700 shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+                            <h3 className="text-lg font-bold text-white">Редагувати номери лічильників</h3>
+                            <button type="button" onClick={() => setIsMeterNumbersModalOpen(false)} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
+                        </div>
+                        <div className="p-4 space-y-3">
+                            {METER_TYPES.map((type) => (
+                                <div key={type}>
+                                    <label className="block text-xs font-medium text-gray-400 mb-1 capitalize">{type}</label>
+                                    <input
+                                        type="text"
+                                        value={meterEditValues[type]}
+                                        onChange={(e) => setMeterEditValues(prev => ({ ...prev, [type]: e.target.value }))}
+                                        className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500"
+                                        placeholder="Номер лічильника"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                        <div className="p-4 border-t border-gray-700 flex justify-end gap-2">
+                            <button type="button" onClick={() => setIsMeterNumbersModalOpen(false)} className="px-3 py-1.5 rounded-lg text-sm border border-gray-600 text-gray-300 hover:bg-gray-700/50">Скасувати</button>
+                            <button
+                                type="button"
+                                disabled={isMeterSaving}
+                                onClick={async () => {
+                                    if (!selectedPropertyId) return;
+                                    setIsMeterSaving(true);
+                                    try {
+                                        for (const t of METER_TYPES) {
+                                            const val = meterEditValues[t].trim() || null;
+                                            await propertyMeterService.upsertMeter(selectedPropertyId, t, val);
+                                        }
+                                        refreshMeterData();
+                                        setIsMeterNumbersModalOpen(false);
+                                    } catch (e) {
+                                        console.error(e);
+                                        alert('Не вдалося зберегти.');
+                                    } finally {
+                                        setIsMeterSaving(false);
+                                    }
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50"
+                            >
+                                {isMeterSaving ? 'Збереження...' : 'Зберегти'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {isAddMeterReadingModalOpen && selectedPropertyId && (
+                <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4" onClick={() => { setIsAddMeterReadingModalOpen(false); setAddReadingDate(''); setAddReadingStrom(''); setAddReadingGas(''); setAddReadingWasser(''); setAddReadingHeizung(''); setAddReadingNote(''); }}>
+                    <div className="bg-[#1C1F24] w-full max-w-md rounded-xl border border-gray-700 shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+                            <h3 className="text-lg font-bold text-white">Додати показники</h3>
+                            <button type="button" onClick={() => { setIsAddMeterReadingModalOpen(false); setAddReadingDate(''); setAddReadingStrom(''); setAddReadingGas(''); setAddReadingWasser(''); setAddReadingHeizung(''); setAddReadingNote(''); }} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
+                        </div>
+                        <div className="p-4 space-y-3">
+                            <div>
+                                <label className="block text-xs font-medium text-gray-400 mb-1">Дата (обов’язково)</label>
+                                <input type="date" value={addReadingDate} onChange={(e) => setAddReadingDate(e.target.value)} className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" required />
+                            </div>
+                            {(['strom', 'gas', 'wasser', 'heizung'] as const).map((key) => (
+                                <div key={key}>
+                                    <label className="block text-xs font-medium text-gray-400 mb-1 capitalize">{key}</label>
+                                    <input type="number" step="any" value={key === 'strom' ? addReadingStrom : key === 'gas' ? addReadingGas : key === 'wasser' ? addReadingWasser : addReadingHeizung} onChange={(e) => { const v = e.target.value; if (key === 'strom') setAddReadingStrom(v); else if (key === 'gas') setAddReadingGas(v); else if (key === 'wasser') setAddReadingWasser(v); else setAddReadingHeizung(v); }} className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" placeholder="—" />
+                                </div>
+                            ))}
+                            <div>
+                                <label className="block text-xs font-medium text-gray-400 mb-1">Примітка</label>
+                                <input type="text" value={addReadingNote} onChange={(e) => setAddReadingNote(e.target.value)} className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500" placeholder="Опційно" />
+                            </div>
+                            <p className="text-xs text-gray-500">Фото: буде додано пізніше.</p>
+                        </div>
+                        <div className="p-4 border-t border-gray-700 flex justify-end gap-2">
+                            <button type="button" onClick={() => { setIsAddMeterReadingModalOpen(false); setAddReadingDate(''); setAddReadingStrom(''); setAddReadingGas(''); setAddReadingWasser(''); setAddReadingHeizung(''); setAddReadingNote(''); }} className="px-3 py-1.5 rounded-lg text-sm border border-gray-600 text-gray-300 hover:bg-gray-700/50">Скасувати</button>
+                            <button
+                                type="button"
+                                disabled={isMeterSaving || !addReadingDate.trim()}
+                                onClick={async () => {
+                                    if (!selectedPropertyId || !addReadingDate.trim()) return;
+                                    setIsMeterSaving(true);
+                                    try {
+                                        await propertyMeterService.createReading(selectedPropertyId, {
+                                            reading_date: addReadingDate.trim(),
+                                            strom: addReadingStrom.trim() ? parseFloat(addReadingStrom) : null,
+                                            gas: addReadingGas.trim() ? parseFloat(addReadingGas) : null,
+                                            wasser: addReadingWasser.trim() ? parseFloat(addReadingWasser) : null,
+                                            heizung: addReadingHeizung.trim() ? parseFloat(addReadingHeizung) : null,
+                                            note: addReadingNote.trim() || null,
+                                        });
+                                        refreshMeterData();
+                                        setIsAddMeterReadingModalOpen(false);
+                                        setAddReadingDate(''); setAddReadingStrom(''); setAddReadingGas(''); setAddReadingWasser(''); setAddReadingHeizung(''); setAddReadingNote('');
+                                    } catch (e) {
+                                        console.error(e);
+                                        alert('Не вдалося зберегти.');
+                                    } finally {
+                                        setIsMeterSaving(false);
+                                    }
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50"
+                            >
+                                {isMeterSaving ? 'Збереження...' : 'Зберегти'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Media & Plans */}
             <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
