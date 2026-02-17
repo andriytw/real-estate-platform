@@ -1,0 +1,163 @@
+/**
+ * Property media assets: gallery photos, Magic Plan reports, floor plans, 3D tour.
+ * Table: property_media_assets. Bucket: property-media.
+ */
+
+import { supabase } from '../utils/supabase/client';
+
+const PROPERTY_MEDIA_BUCKET = 'property-media';
+
+export type PropertyMediaAssetType = 'photo' | 'magic_plan_report' | 'floor_plan' | 'tour3d';
+
+export interface PropertyMediaAssetRow {
+  id: string;
+  property_id: string;
+  type: PropertyMediaAssetType;
+  file_name: string | null;
+  storage_path: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  external_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function safeFilename(name: string): string {
+  return name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'file';
+}
+
+function buildStoragePath(propertyId: string, type: PropertyMediaAssetType, assetId: string, file: File): string {
+  const ts = Date.now();
+  const safe = safeFilename(file.name);
+  return `property/${propertyId}/${type}/${assetId}/${ts}_${safe}`;
+}
+
+export const propertyMediaService = {
+  async listAssets(propertyId: string): Promise<PropertyMediaAssetRow[]> {
+    const { data, error } = await supabase
+      .from('property_media_assets')
+      .select('*')
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data ?? []) as PropertyMediaAssetRow[];
+  },
+
+  async listAssetsByType(propertyId: string, type: PropertyMediaAssetType): Promise<PropertyMediaAssetRow[]> {
+    const { data, error } = await supabase
+      .from('property_media_assets')
+      .select('*')
+      .eq('property_id', propertyId)
+      .eq('type', type)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data ?? []) as PropertyMediaAssetRow[];
+  },
+
+  async uploadAssetFiles(
+    propertyId: string,
+    type: PropertyMediaAssetType,
+    files: File[]
+  ): Promise<PropertyMediaAssetRow[]> {
+    const created: PropertyMediaAssetRow[] = [];
+    for (const file of files) {
+      const assetId = crypto.randomUUID();
+      const storagePath = buildStoragePath(propertyId, type, assetId, file);
+      const { error: uploadError } = await supabase.storage
+        .from(PROPERTY_MEDIA_BUCKET)
+        .upload(storagePath, file, { upsert: false, contentType: file.type });
+      if (uploadError) throw uploadError;
+      const row = {
+        id: assetId,
+        property_id: propertyId,
+        type,
+        file_name: file.name,
+        storage_path: storagePath,
+        mime_type: file.type || null,
+        size_bytes: file.size,
+        external_url: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      const { data, error } = await supabase
+        .from('property_media_assets')
+        .insert([row])
+        .select()
+        .single();
+      if (error) {
+        try {
+          await supabase.storage.from(PROPERTY_MEDIA_BUCKET).remove([storagePath]);
+        } catch {
+          // best effort
+        }
+        throw error;
+      }
+      created.push(data as PropertyMediaAssetRow);
+    }
+    return created;
+  },
+
+  async createTour3d(propertyId: string, url: string): Promise<PropertyMediaAssetRow> {
+    const { data: existing } = await supabase
+      .from('property_media_assets')
+      .select('id')
+      .eq('property_id', propertyId)
+      .eq('type', 'tour3d')
+      .maybeSingle();
+    const now = new Date().toISOString();
+    if (existing?.id) {
+      const { data, error } = await supabase
+        .from('property_media_assets')
+        .update({ external_url: url, updated_at: now })
+        .eq('id', existing.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as PropertyMediaAssetRow;
+    }
+    const { data, error } = await supabase
+      .from('property_media_assets')
+      .insert([
+        {
+          property_id: propertyId,
+          type: 'tour3d',
+          external_url: url,
+          file_name: null,
+          storage_path: null,
+          mime_type: null,
+          size_bytes: null,
+          created_at: now,
+          updated_at: now,
+        },
+      ])
+      .select()
+      .single();
+    if (error) throw error;
+    return data as PropertyMediaAssetRow;
+  },
+
+  async deleteAsset(assetId: string): Promise<void> {
+    const { data: row, error: fetchError } = await supabase
+      .from('property_media_assets')
+      .select('storage_path, external_url')
+      .eq('id', assetId)
+      .single();
+    if (fetchError || !row) throw fetchError || new Error('Asset not found');
+    if (row.storage_path) {
+      const { error: removeError } = await supabase.storage.from(PROPERTY_MEDIA_BUCKET).remove([row.storage_path]);
+      if (removeError) throw removeError;
+    }
+    const { error: deleteError } = await supabase.from('property_media_assets').delete().eq('id', assetId);
+    if (deleteError) throw deleteError;
+    // If only external_url (tour3d), no storage to remove; delete row only
+  },
+
+  async getSignedUrl(storagePath: string, expires = 3600): Promise<string> {
+    const { data, error } = await supabase.storage
+      .from(PROPERTY_MEDIA_BUCKET)
+      .createSignedUrl(storagePath, expires);
+    if (error) throw error;
+    if (!data?.signedUrl) throw new Error('No signed URL returned');
+    return data.signedUrl;
+  },
+};

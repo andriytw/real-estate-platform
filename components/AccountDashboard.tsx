@@ -49,6 +49,7 @@ import { propertyInventoryService, type PropertyInventoryItemRow, type PropertyI
 import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '../services/propertyExpenseService';
 import { propertyExpenseCategoryService, type PropertyExpenseCategoryRow } from '../services/propertyExpenseCategoryService';
 import { propertyMeterService, type PropertyMeterReadingRow, type PropertyMeterRow, type MeterType, METER_TYPES } from '../services/propertyMeterService';
+import { propertyMediaService, type PropertyMediaAssetRow, type PropertyMediaAssetType } from '../services/propertyMediaService';
 
 const METER_UNIT_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: 'Одиниця' },
@@ -57,6 +58,20 @@ const METER_UNIT_OPTIONS: { value: string; label: string }[] = [
   { value: 'u.', label: 'u.' },
   { value: 'L', label: 'L' },
 ];
+
+function PropertyMediaPhotoThumb({ asset, onDelete }: { asset: PropertyMediaAssetRow; onDelete: () => void }) {
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!asset.storage_path) return;
+    propertyMediaService.getSignedUrl(asset.storage_path).then(setSignedUrl).catch(() => setSignedUrl(null));
+  }, [asset.storage_path]);
+  return (
+    <div className="relative group">
+      {signedUrl ? <img src={signedUrl} alt="" className="w-full h-20 object-cover rounded border border-gray-700" /> : <div className="w-full h-20 rounded border border-gray-700 bg-gray-800 flex items-center justify-center text-gray-500 text-xs">...</div>}
+      <button type="button" onClick={onDelete} className="absolute top-1 right-1 p-1 rounded bg-red-500/80 text-white text-xs opacity-0 group-hover:opacity-100 hover:bg-red-500" title="Видалити">Delete</button>
+    </div>
+  );
+}
 import {
   ReservationData,
   OfferData,
@@ -695,6 +710,9 @@ const AccountDashboard: React.FC = () => {
   const [meterEditDraft, setMeterEditDraft] = useState<{ reading_date: string; strom: string; gas: string; wasser: string; heizung: string } | null>(null);
   const [meterDeleteConfirmId, setMeterDeleteConfirmId] = useState<string | null>(null);
   const [isMeterReadingsCollapsed, setIsMeterReadingsCollapsed] = useState(true);
+  const [propertyMediaAssets, setPropertyMediaAssets] = useState<PropertyMediaAssetRow[]>([]);
+  const [propertyMediaLoading, setPropertyMediaLoading] = useState(false);
+  const [openMediaModalType, setOpenMediaModalType] = useState<PropertyMediaAssetType | null>(null);
   const [warehouseTab, setWarehouseTab] = useState<'warehouses' | 'stock' | 'addInventory'>('warehouses');
   const [warehouseStock, setWarehouseStock] = useState<WarehouseStockItem[]>([]);
   const [isLoadingWarehouseStock, setIsLoadingWarehouseStock] = useState(false);
@@ -2913,6 +2931,15 @@ const AccountDashboard: React.FC = () => {
         // ignore
       }
     }
+  }, [selectedPropertyId]);
+
+  useEffect(() => {
+    if (!selectedPropertyId) {
+      setPropertyMediaAssets([]);
+      return;
+    }
+    setPropertyMediaLoading(true);
+    propertyMediaService.listAssets(selectedPropertyId).then(setPropertyMediaAssets).catch(() => setPropertyMediaAssets([])).finally(() => setPropertyMediaLoading(false));
   }, [selectedPropertyId]);
 
   // Expense invoices: load categories (ensure defaults) and items when property changes
@@ -7618,37 +7645,100 @@ ${internalCompany} Team`;
                 </div>
             )}
 
-            {/* Media & Plans */}
-            <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div className="bg-[#1C1F24] p-4 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors flex justify-between items-center group cursor-pointer">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-yellow-500/10 p-2 rounded text-yellow-500"><Camera className="w-5 h-5"/></div>
-                        <div><h3 className="font-bold text-white text-sm">Галерея Фото</h3><p className="text-[10px] text-gray-500">12 items</p></div>
-                    </div>
-                    <button className="bg-emerald-500 text-white w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Plus className="w-4 h-4"/></button>
-                </div>
-                <div className="bg-[#1C1F24] p-4 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors flex justify-between items-center group cursor-pointer">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-blue-500/10 p-2 rounded text-blue-500"><AreaChart className="w-5 h-5"/></div>
-                        <div><h3 className="font-bold text-white text-sm">Magic Plan Report</h3><p className="text-[10px] text-gray-500">Generated: 05.09.2025</p></div>
-                    </div>
-                    <button className="bg-emerald-500 text-white w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Plus className="w-4 h-4"/></button>
-                </div>
-                <div className="bg-[#1C1F24] p-4 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors flex justify-between items-center group cursor-pointer">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-purple-500/10 p-2 rounded text-purple-500"><Box className="w-5 h-5"/></div>
-                        <div><h3 className="font-bold text-white text-sm">3D Тур</h3><p className="text-[10px] text-gray-500">Active</p></div>
-                    </div>
-                    <button className="bg-emerald-500 text-white w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Plus className="w-4 h-4"/></button>
-                </div>
-                <div className="bg-[#1C1F24] p-4 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors flex justify-between items-center group cursor-pointer">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-emerald-500/10 p-2 rounded text-emerald-500"><PenTool className="w-5 h-5"/></div>
-                        <div><h3 className="font-bold text-white text-sm">План (Floor Plan)</h3><p className="text-[10px] text-gray-500">PDF, 2.4 MB</p></div>
-                    </div>
-                    <button className="bg-emerald-500 text-white w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Plus className="w-4 h-4"/></button>
-                </div>
+            {/* Media & Plans — 4 tiles in one row, compact */}
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                {(() => {
+                  const photos = propertyMediaAssets.filter((a) => a.type === 'photo');
+                  const reports = propertyMediaAssets.filter((a) => a.type === 'magic_plan_report').sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                  const floorPlans = propertyMediaAssets.filter((a) => a.type === 'floor_plan').sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                  const tour3d = propertyMediaAssets.find((a) => a.type === 'tour3d');
+                  const formatDate = (d: string) => { const x = new Date(d); const day = String(x.getDate()).padStart(2, '0'); const mo = String(x.getMonth() + 1).padStart(2, '0'); const y = x.getFullYear(); return `${day}.${mo}.${y}`; };
+                  const photosCount = photos.length;
+                  const latestMagicPlanStr = reports.length > 0 ? `Generated: ${formatDate(reports[0].created_at)}` : '—';
+                  const latestFloorPlan = floorPlans[0];
+                  const latestFloorPlanStr = latestFloorPlan && latestFloorPlan.size_bytes != null ? `PDF, ${(latestFloorPlan.size_bytes / (1024 * 1024)).toFixed(1)} MB` : '—';
+                  const tour3dActive = !!(tour3d?.external_url);
+                  return (
+                    <>
+                      <button type="button" onClick={() => setOpenMediaModalType('photo')} className="bg-[#1C1F24] p-3 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors flex items-center gap-2 text-left min-h-0">
+                        <div className="bg-yellow-500/10 p-2 rounded shrink-0 text-yellow-500"><Camera className="w-4 h-4"/></div>
+                        <div className="min-w-0 flex-1"><h3 className="font-bold text-white text-xs">Галерея Фото</h3><p className="text-[10px] text-gray-500 truncate">{propertyMediaLoading ? '...' : `${photosCount} items`}</p></div>
+                      </button>
+                      <button type="button" onClick={() => setOpenMediaModalType('magic_plan_report')} className="bg-[#1C1F24] p-3 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors flex items-center gap-2 text-left min-h-0">
+                        <div className="bg-blue-500/10 p-2 rounded shrink-0 text-blue-500"><AreaChart className="w-4 h-4"/></div>
+                        <div className="min-w-0 flex-1"><h3 className="font-bold text-white text-xs">Magic Plan Report</h3><p className="text-[10px] text-gray-500 truncate">{propertyMediaLoading ? '...' : latestMagicPlanStr}</p></div>
+                      </button>
+                      <button type="button" onClick={() => setOpenMediaModalType('tour3d')} className="bg-[#1C1F24] p-3 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors flex items-center gap-2 text-left min-h-0">
+                        <div className="bg-purple-500/10 p-2 rounded shrink-0 text-purple-500"><Box className="w-4 h-4"/></div>
+                        <div className="min-w-0 flex-1"><h3 className="font-bold text-white text-xs">3D Тур</h3><p className="text-[10px] text-gray-500 truncate">{propertyMediaLoading ? '...' : (tour3dActive ? 'Active' : 'Not set')}</p></div>
+                      </button>
+                      <button type="button" onClick={() => setOpenMediaModalType('floor_plan')} className="bg-[#1C1F24] p-3 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors flex items-center gap-2 text-left min-h-0">
+                        <div className="bg-emerald-500/10 p-2 rounded shrink-0 text-emerald-500"><PenTool className="w-4 h-4"/></div>
+                        <div className="min-w-0 flex-1"><h3 className="font-bold text-white text-xs">План (Floor Plan)</h3><p className="text-[10px] text-gray-500 truncate">{propertyMediaLoading ? '...' : latestFloorPlanStr}</p></div>
+                      </button>
+                    </>
+                  );
+                })()}
             </section>
+
+            {/* Property Media modals (Photo / Magic Plan / Floor Plan / 3D Tour) */}
+            {openMediaModalType && selectedPropertyId && (() => {
+              const type = openMediaModalType;
+              const refreshMedia = () => propertyMediaService.listAssets(selectedPropertyId).then(setPropertyMediaAssets);
+              const assets = propertyMediaAssets.filter((a) => a.type === type);
+              const titles: Record<PropertyMediaAssetType, string> = { photo: 'Галерея Фото', magic_plan_report: 'Magic Plan Report', floor_plan: 'План (Floor Plan)', tour3d: '3D Тур' };
+              return (
+                <div className="fixed inset-0 z-[222] flex items-center justify-center bg-black/60 p-4" onClick={() => setOpenMediaModalType(null)}>
+                  <div className="bg-[#1C1F24] w-full max-w-2xl max-h-[90vh] rounded-xl border border-gray-700 shadow-xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                    <div className="p-4 border-b border-gray-700 flex justify-between items-center shrink-0">
+                      <h3 className="text-lg font-bold text-white">{titles[type]}</h3>
+                      <button type="button" onClick={() => setOpenMediaModalType(null)} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
+                    </div>
+                    <div className="p-4 overflow-auto flex-1">
+                      {type === 'tour3d' ? (() => {
+                        const tour3dRow = assets[0];
+                        return (
+                          <div className="space-y-3">
+                            <p className="text-sm text-gray-400">{tour3dRow?.external_url ? 'Active' : 'Not set'}</p>
+                            <input type="url" id="media-tour3d-url" defaultValue={tour3dRow?.external_url ?? ''} placeholder="URL 3D туру" className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
+                            <div className="flex gap-2">
+                              <button type="button" onClick={async () => { const input = document.getElementById('media-tour3d-url') as HTMLInputElement; const url = input?.value?.trim(); if (!url) return; try { await propertyMediaService.createTour3d(selectedPropertyId, url); refreshMedia(); } catch (e) { console.error(e); alert('Не вдалося зберегти.'); } }} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600">Зберегти</button>
+                              {tour3dRow?.external_url && <button type="button" onClick={() => window.open(tour3dRow.external_url!, '_blank')} className="px-3 py-1.5 rounded-lg text-sm border border-gray-600 text-gray-300 hover:bg-gray-700/50">Open</button>}
+                            </div>
+                          </div>
+                        );
+                      })() : type === 'photo' ? (
+                        <div className="space-y-3">
+                          <input type="file" multiple accept="image/*" className="hidden" id="media-photo-upload" onChange={async (e) => { const files = e.target.files ? Array.from(e.target.files) : []; e.target.value = ''; if (!files.length) return; try { await propertyMediaService.uploadAssetFiles(selectedPropertyId, 'photo', files); refreshMedia(); } catch (err) { console.error(err); alert('Не вдалося завантажити.'); } }} />
+                          <label htmlFor="media-photo-upload" className="inline-block px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 cursor-pointer hover:bg-emerald-500/30">+ Додати фото</label>
+                          <div className="grid grid-cols-3 gap-2">
+                            {assets.map((a) => (
+                              <PropertyMediaPhotoThumb key={a.id} asset={a} onDelete={async () => { if (!confirm('Видалити фото?')) return; try { await propertyMediaService.deleteAsset(a.id); refreshMedia(); } catch (e) { console.error(e); alert('Не вдалося видалити.'); } }} />
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <input type="file" accept="application/pdf" className="hidden" id={`media-${type}-upload`} onChange={async (e) => { const files = e.target.files ? Array.from(e.target.files) : []; e.target.value = ''; if (!files.length) return; try { await propertyMediaService.uploadAssetFiles(selectedPropertyId, type, files); refreshMedia(); } catch (err) { console.error(err); alert('Не вдалося завантажити.'); } }} />
+                          <label htmlFor={`media-${type}-upload`} className="inline-block px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 cursor-pointer hover:bg-emerald-500/30">Upload PDF</label>
+                          <ul className="space-y-2">
+                            {assets.map((a) => (
+                              <li key={a.id} className="flex items-center justify-between gap-2 py-2 border-b border-gray-700/50">
+                                <span className="text-sm text-white truncate">{a.file_name || a.storage_path || a.id}</span>
+                                <div className="flex gap-1 shrink-0">
+                                  {a.storage_path && <button type="button" onClick={async () => { try { const url = await propertyMediaService.getSignedUrl(a.storage_path!); window.open(url, '_blank'); } catch (e) { console.error(e); alert('Не вдалося відкрити.'); } }} className="px-2 py-1 rounded text-xs border border-gray-600 text-gray-300 hover:bg-gray-700/50">Open</button>}
+                                  <button type="button" onClick={async () => { if (!confirm('Видалити?')) return; try { await propertyMediaService.deleteAsset(a.id); refreshMedia(); } catch (e) { console.error(e); alert('Не вдалося видалити.'); } }} className="px-2 py-1 rounded text-xs border border-red-500/50 text-red-400 hover:bg-red-500/10">Delete</button>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Current Tenant - TODO: Rename "Актуальний Орендар" -> "Актуальний Клієнт" and decouple from Parties (future task) */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
