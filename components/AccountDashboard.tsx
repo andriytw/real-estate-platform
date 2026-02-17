@@ -7354,7 +7354,7 @@ ${internalCompany} Team`;
                         if (meterReadingsManual.length === 0) {
                             return (
                                 <div className="p-8 text-center text-gray-500 text-sm border border-gray-700 rounded-lg">
-                                    <p className="mb-3">Історія показників пуста. Додайте перше зняття.</p>
+                                    <p className="mb-3">Історія показників пуста. Додайте перше показ.</p>
                                     <button type="button" onClick={() => setIsAddMeterReadingModalOpen(true)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500/30">
                                         + Додати показники
                                     </button>
@@ -7414,7 +7414,7 @@ ${internalCompany} Team`;
                     if (months.length === 0) {
                         return (
                             <div className="p-8 text-center text-gray-500 text-sm border border-gray-700 rounded-lg">
-                                <p className="mb-3">Історія показників пуста. Додайте перше зняття.</p>
+                                <p className="mb-3">Історія показників пуста. Додайте перше показ.</p>
                                 <button type="button" onClick={() => setIsAddMeterReadingModalOpen(true)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500/30">
                                     + Додати показники
                                 </button>
