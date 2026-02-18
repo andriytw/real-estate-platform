@@ -270,4 +270,34 @@ export const propertyMediaService = {
     );
     return out;
   },
+
+  /**
+   * Marketplace property detail: all photo URLs for gallery (cover-first, then by created_at DESC).
+   * Works for anon when property has at least one is_public photo (cover). Returns [] if none.
+   */
+  async getMarketplacePhotoUrlsForProperty(
+    propertyId: string,
+    expiresInSeconds = 3600
+  ): Promise<string[]> {
+    const { data: rows, error } = await supabase
+      .from('property_media_assets')
+      .select('id, storage_path, created_at, is_public')
+      .eq('property_id', propertyId)
+      .eq('type', 'photo')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    const assets = (rows ?? []) as { id: string; storage_path: string | null; created_at: string; is_public?: boolean }[];
+    const withPath = assets.filter((a) => a.storage_path);
+    if (withPath.length === 0) return [];
+    // Cover first (is_public), then rest by created_at desc (already ordered)
+    const sorted = [...withPath].sort((a, b) => {
+      if (a.is_public && !b.is_public) return -1;
+      if (!a.is_public && b.is_public) return 1;
+      return 0;
+    });
+    const urls = await Promise.all(
+      sorted.map((a) => propertyMediaService.getSignedUrl(a.storage_path!, expiresInSeconds))
+    );
+    return urls;
+  },
 };

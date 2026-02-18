@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   MapPin, Home, Ruler, Bath, ArrowUpFromLine, Coins, 
   Wind, Construction, Calendar, ShieldCheck, Info,
@@ -7,6 +7,7 @@ import {
   ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { Property, Worker } from '../types';
+import { propertyMediaService } from '../services/propertyMediaService';
 import TourModal from './TourModal';
 import FloorPlanModal from './FloorPlanModal';
 import GalleryModal from './GalleryModal';
@@ -45,6 +46,27 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [galleryImageUrls, setGalleryImageUrls] = useState<string[]>([]);
+
+  // Marketplace gallery: load all photo assets for this property (cover-first), avoid resign on every render
+  useEffect(() => {
+    if (!property.id) {
+      setGalleryImageUrls([]);
+      return;
+    }
+    let cancelled = false;
+    propertyMediaService
+      .getMarketplacePhotoUrlsForProperty(property.id)
+      .then((urls) => {
+        if (!cancelled) setGalleryImageUrls(urls);
+      })
+      .catch(() => {
+        if (!cancelled) setGalleryImageUrls([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [property.id]);
 
   // Function to check login before performing action
   const handleActionClick = (action: () => void) => {
@@ -58,26 +80,31 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
     }
   };
 
+  // Reset image index when property changes
+  useEffect(() => {
+    setCurrentImageIndex(0);
+  }, [property.id]);
+
+  // Gallery + hero: use property_media_assets photos when available (cover-first); else fallback to cover + legacy images
+  const fallbackImages =
+    coverPhotoUrl
+      ? [coverPhotoUrl, ...(property.images || [property.image]).filter(Boolean)]
+      : (property.images && property.images.length > 0 ? property.images : [property.image]);
+  const images = galleryImageUrls.length > 0 ? galleryImageUrls : fallbackImages.filter(Boolean);
+  const safeIndex = images.length ? Math.min(currentImageIndex, images.length - 1) : 0;
+  const currentImage = images[safeIndex] ?? '';
+
   const handleNextImage = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setCurrentImageIndex((prev) => (prev === (property.images?.length || 1) - 1 ? 0 : prev + 1));
+    if (!images.length) return;
+    setCurrentImageIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
   };
 
   const handlePrevImage = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setCurrentImageIndex((prev) => (prev === 0 ? (property.images?.length || 1) - 1 : prev - 1));
+    if (!images.length) return;
+    setCurrentImageIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
   };
-
-  // Reset image index when property changes
-  React.useEffect(() => {
-    setCurrentImageIndex(0);
-  }, [property.id]);
-
-  // MP-PROD-01: prefer cover photo for hero when present; else existing property.images / property.image
-  const images = coverPhotoUrl
-    ? [coverPhotoUrl, ...(property.images || [property.image]).filter(Boolean)]
-    : (property.images && property.images.length > 0 ? property.images : [property.image]);
-  const currentImage = images[currentImageIndex];
 
   return (
     <div className="flex flex-col h-full font-sans">
@@ -151,7 +178,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
                {images.map((_, idx) => (
                  <div 
                     key={idx} 
-                    className={`w-2 h-2 rounded-full transition-colors ${idx === currentImageIndex ? 'bg-white' : 'bg-white/30'}`}
+                    className={`w-2 h-2 rounded-full transition-colors ${idx === safeIndex ? 'bg-white' : 'bg-white/30'}`}
                  />
                ))}
             </div>
