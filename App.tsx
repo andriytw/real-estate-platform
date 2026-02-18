@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Navbar from './components/Navbar';
 import FilterBar from './components/FilterBar';
 import PropertyCard from './components/PropertyCard';
@@ -41,6 +41,15 @@ const AppContent: React.FC = () => {
     pets: '',
     status: ''
   });
+
+  const navigate = useCallback((path: string, opts?: { replace?: boolean }) => {
+    if (opts?.replace) {
+      window.history.replaceState({}, '', path);
+    } else {
+      window.history.pushState({}, '', path);
+    }
+    window.dispatchEvent(new Event('popstate'));
+  }, []);
 
   // Load properties from Supabase
   const loadProperties = async () => {
@@ -98,9 +107,14 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Sync view with URL path - helper function
+  // Sync view with URL path - helper function (single place for path → view)
   const syncViewWithPath = () => {
-    const path = window.location.pathname;
+    let path = window.location.pathname;
+    if (path === '/') {
+      navigate('/market', { replace: true });
+      setCurrentView('market');
+      return;
+    }
     if (path === '/worker') {
       setCurrentView('worker');
     } else if (path === '/admin/tasks') {
@@ -111,11 +125,15 @@ const AppContent: React.FC = () => {
       setCurrentView('tasks');
     } else if (path === '/account' || path === '/dashboard') {
       setCurrentView('account');
-    } else if (path === '/' || path === '/market') {
+    } else if (path === '/market') {
       setCurrentView('market');
     } else if (path.startsWith('/property/')) {
-      // Property route - handled by property-details logic
-      // Don't change view here to avoid conflicts
+      const propertyId = path.replace(/^\/property\//, '').split('?')[0];
+      if (propertyId) {
+        setCurrentView('property-details');
+        const found = properties.find(p => p.id === propertyId);
+        if (found) setSelectedProperty(found);
+      }
     }
   };
 
@@ -199,12 +217,12 @@ const AppContent: React.FC = () => {
         } else if (path === '/worker' && worker.role !== 'worker') {
           // Non-worker trying to access worker view -> redirect to account
           setCurrentView('account');
-          window.history.pushState({}, '', '/account');
+          navigate('/account');
           return;
         } else if (path === '/tasks' && worker.role === 'worker') {
           // Workers shouldn't see full board, redirect to account
           setCurrentView('account');
-          window.history.pushState({}, '', '/account');
+          navigate('/account');
           return;
         } else if (path === '/tasks') {
           // Allow access to tasks if explicitly on /tasks route
@@ -217,7 +235,7 @@ const AppContent: React.FC = () => {
         } else if (path === '/dashboard') {
           // Dashboard route -> redirect to account (Properties)
           setCurrentView('account');
-          window.history.pushState({}, '', '/account');
+          navigate('/account');
           return;
         } else if (path === '/' || path === '/market') {
           // Root or market - stay on market (public)
@@ -231,20 +249,18 @@ const AppContent: React.FC = () => {
         } else {
           // Default: All users go to account (Properties category) after login
           setCurrentView('account');
-          window.history.pushState({}, '', '/account');
+          navigate('/account');
         }
       }
       if (!worker && !authLoading) {
         console.log('⚠️ App: No worker (profile loading failed or pending)');
         const path = window.location.pathname;
         const protectedPaths = ['/account', '/worker', '/admin/tasks', '/tasks'];
-        
-        // Redirect to account for protected paths (AuthGate shows Login when session is null)
+        // Do not redirect from public paths: guest is allowed on /, /market, /property/*
         if (protectedPaths.includes(path)) {
           setCurrentView('account');
-          window.history.pushState({}, '', '/account');
+          navigate('/account');
         }
-        // For dashboard/market, let renderContent handle showing login
       }
     // Use only primitive values in dependencies to avoid React error #310
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -265,8 +281,23 @@ const AppContent: React.FC = () => {
     };
   }, []);
 
-  // Update selected property when properties change
+  // Update selected property when properties change (or resolve from path when on /property/:id)
   useEffect(() => {
+    const path = window.location.pathname;
+    if (path.startsWith('/property/')) {
+      const propertyId = path.replace(/^\/property\//, '').split('?')[0];
+      if (propertyId) {
+        const found = properties.find(p => p.id === propertyId);
+        if (found && (!selectedProperty || selectedProperty.id !== propertyId)) {
+          setSelectedProperty(found);
+        } else if (!found && properties.length > 0) {
+          propertiesService.getById(propertyId).then(p => {
+            if (p) setSelectedProperty(p);
+          }).catch(() => {});
+        }
+        return;
+      }
+    }
     if (properties.length > 0 && !selectedProperty) {
       setSelectedProperty(properties[0]);
     }
@@ -290,7 +321,7 @@ const AppContent: React.FC = () => {
         // Then set property and view
         setSelectedProperty(property);
         setCurrentView('property-details');
-        window.history.pushState({}, '', `/property/${property.id}`);
+        navigate(`/property/${property.id}`);
         console.log('✅ Post-login: PropertyDetails view set, property:', property.id);
       }, 0);
     }
@@ -316,7 +347,7 @@ const AppContent: React.FC = () => {
       // Always show PropertyDetails - no login required for viewing
       setSelectedProperty(prop);
       setCurrentView('property-details');
-      window.history.pushState({}, '', `/property/${prop.id}`);
+      navigate(`/property/${prop.id}`);
     };
     
     // First try to find in existing properties
@@ -597,7 +628,7 @@ const AppContent: React.FC = () => {
                   // Save property and redirect to login
                   setPendingPropertyView(selectedProperty);
                   setCurrentView('account');
-                  window.history.pushState({}, '', '/account');
+                  navigate('/account');
                 }}
               />
             </div>
@@ -613,7 +644,7 @@ const AppContent: React.FC = () => {
     // Fallback: If no view matches, redirect to market (public landing page)
     console.warn('⚠️ No view handler for currentView:', currentView);
     setCurrentView('market');
-    window.history.pushState({}, '', '/market');
+    navigate('/market');
     return null;
   };
 
@@ -633,18 +664,13 @@ const AppContent: React.FC = () => {
         onNavigate={(view) => {
           console.log('Navigating to:', view);
           if (view === 'tasks') {
-             // Check permissions? Handled in render
-             setCurrentView('tasks');
-             window.history.pushState({}, '', '/tasks');
+            navigate('/tasks');
           } else if (view === 'account') {
-             setCurrentView('account');
-             window.history.pushState({}, '', '/account');
+            navigate('/account');
           } else if (view === 'dashboard') {
-             setCurrentView('dashboard');
-             window.history.pushState({}, '', '/dashboard');
+            navigate('/dashboard');
           } else if (view === 'market') {
-             setCurrentView('market');
-             window.history.pushState({}, '', '/market');
+            navigate('/market');
           }
         }}
       />

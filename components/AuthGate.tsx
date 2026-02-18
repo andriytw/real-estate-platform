@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWorker } from '../contexts/WorkerContext';
 import LoginPage from './LoginPage';
 import RegisterPage from './RegisterPage';
@@ -19,6 +19,14 @@ function isPublicPath(path: string): boolean {
  */
 export default function AuthGate({ children }: AuthGateProps) {
   const { session } = useWorker();
+  const [navTick, setNavTick] = useState(0);
+
+  useEffect(() => {
+    const onPopState = () => setNavTick((t) => t + 1);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
   const search = typeof window !== 'undefined' ? window.location.search : '';
   const isRegister = pathname === '/register';
