@@ -7,15 +7,21 @@ interface AuthGateProps {
   children: React.ReactNode;
 }
 
+function isPublicPath(path: string): boolean {
+  return path === '/' || path === '/market' || path.startsWith('/property/');
+}
+
 /**
- * Session is the source of truth. No login shown due to timeout.
- * - session === undefined → still determining (Loading / Reconnecting…)
- * - session === null → signed out → Login or Register
+ * Session is the source of truth. Public-first: guests see Marketplace on / and /market.
+ * - session === undefined → still determining (Reconnecting…)
+ * - session === null → signed out → Login/Register on protected paths, or render app on public paths
  * - session exists → render app (children)
  */
 export default function AuthGate({ children }: AuthGateProps) {
   const { session } = useWorker();
-  const isRegister = typeof window !== 'undefined' && window.location.pathname === '/register';
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+  const search = typeof window !== 'undefined' ? window.location.search : '';
+  const isRegister = pathname === '/register';
 
   if (session === undefined) {
     return (
@@ -36,13 +42,11 @@ export default function AuthGate({ children }: AuthGateProps) {
         />
       );
     }
-    return (
-      <LoginPage
-        onLoginSuccess={async () => {
-          window.history.pushState({}, '', '/account');
-        }}
-      />
-    );
+    if (isPublicPath(pathname)) {
+      return <>{children}</>;
+    }
+    const redirectTo = (pathname + search) || '/account';
+    return <LoginPage redirectTo={redirectTo} />;
   }
 
   return <>{children}</>;

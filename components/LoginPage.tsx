@@ -3,10 +3,11 @@ import { LogIn, Mail, Lock, AlertCircle } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 
 interface LoginPageProps {
+  redirectTo?: string;
   onLoginSuccess?: () => void;
 }
 
-const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
+const LoginPage: React.FC<LoginPageProps> = ({ redirectTo = '/account', onLoginSuccess }) => {
   const { login, loading } = useWorker();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,11 +24,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
     try {
       await login(email, password);
-      // Wait a bit to ensure worker is loaded
       await new Promise(resolve => setTimeout(resolve, 500));
-      if (onLoginSuccess) {
-        await onLoginSuccess();
-      }
+      const target = redirectTo || '/account';
+      window.history.pushState({}, '', target);
+      window.dispatchEvent(new Event('popstate'));
+      onLoginSuccess?.();
     } catch (err: any) {
       console.error('❌ LoginPage: Login error:', err);
       setError(err.message || 'Помилка входу. Перевірте email та пароль.');
