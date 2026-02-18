@@ -1988,6 +1988,23 @@ export const requestsService = {
     return transformRequestFromDB(data);
   },
 
+  /** Guest (anon) flow: uses RPC so no SELECT on requests is required. Returns new request id. */
+  async createMarketplaceRequest(request: Omit<RequestData, 'id'>): Promise<{ id: string }> {
+    const { data, error } = await supabase.rpc('create_marketplace_request', {
+      p_first_name: request.firstName,
+      p_last_name: request.lastName,
+      p_email: request.email,
+      p_phone: request.phone,
+      p_people_count: request.peopleCount ?? 1,
+      p_start_date: request.startDate,
+      p_end_date: request.endDate,
+      p_message: request.message ?? '',
+      p_property_id: request.propertyId,
+    });
+    if (error) throw error;
+    return { id: data as string };
+  },
+
   async update(id: string, updates: Partial<RequestData>): Promise<RequestData> {
     const dbData = transformRequestToDB(updates as RequestData);
     const { data, error } = await supabase
@@ -2041,6 +2058,21 @@ export const chatRoomsService = {
       .order('last_message_at', { ascending: false, nullsFirst: false });
     if (error) throw error;
     return (data ?? []).map(transformChatRoomFromDB);
+  },
+
+  /** Guest (anon) flow: creates marketplace room + first message via RPC (no SELECT needed). */
+  async createMarketplaceGuestChat(
+    propertyId: string,
+    contactLine: string,
+    messageText: string
+  ): Promise<{ roomId: string }> {
+    const { data, error } = await supabase.rpc('create_marketplace_guest_chat', {
+      p_property_id: propertyId,
+      p_contact_line: contactLine,
+      p_message_text: messageText || '(no message)',
+    });
+    if (error) throw error;
+    return { roomId: data as string };
   },
 
   async create(payload: {

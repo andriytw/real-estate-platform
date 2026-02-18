@@ -571,18 +571,12 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, propertyTitle, p
     if (!propertyId || guestSubmitting) return;
     setGuestSubmitting(true);
     try {
-      const room = await chatRoomsService.create({
-        property_id: propertyId,
-        request_id: null,
-        client_id: null,
-      });
       const contactLine = `Name: ${guestName.trim()} | Email: ${guestEmail.trim()} | Phone: ${guestPhone.trim()}`;
-      const text = `${contactLine}\n\nMessage: ${guestMessage.trim() || '(no message)'}`;
-      await messagesService.create({
-        chat_room_id: room.id,
-        sender_type: 'client',
-        text,
-      });
+      await chatRoomsService.createMarketplaceGuestChat(
+        propertyId,
+        contactLine,
+        guestMessage.trim()
+      );
       setGuestSent(true);
       setTimeout(() => onClose(), 2000);
     } catch (err) {

@@ -35,7 +35,7 @@ const SendRequestModal: React.FC<SendRequestModalProps> = ({
     const firstName = space > 0 ? trimName.slice(0, space) : trimName || 'Guest';
     const lastName = space > 0 ? trimName.slice(space + 1) : '';
     try {
-      await requestsService.create({
+      await requestsService.createMarketplaceRequest({
         firstName,
         lastName,
         email: email.trim(),
