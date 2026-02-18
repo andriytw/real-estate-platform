@@ -40,6 +40,8 @@ import {
   PaymentChainTileKey,
   RentTimelineRowDB,
   RentalAgreement,
+  ChatRoom,
+  Message as MessageType,
 } from '../types';
 import { isoToEu } from '../utils/leaseTermDates';
 
@@ -1998,6 +2000,101 @@ export const requestsService = {
     if (error) throw error;
     return transformRequestFromDB(data);
   }
+};
+
+// ==================== CHAT ROOMS & MESSAGES (Sales / Marketplace guest) ====================
+
+function transformChatRoomFromDB(db: any): ChatRoom {
+  return {
+    id: db.id,
+    requestId: db.request_id ?? undefined,
+    propertyId: db.property_id ?? undefined,
+    clientId: db.client_id ?? undefined,
+    status: db.status || 'active',
+    lastMessageAt: db.last_message_at,
+    unreadCountManager: db.unread_count_manager ?? 0,
+    unreadCountClient: db.unread_count_client ?? 0,
+    createdAt: db.created_at,
+    updatedAt: db.updated_at,
+  };
+}
+
+function transformMessageFromDB(db: any): MessageType {
+  return {
+    id: db.id,
+    chatRoomId: db.chat_room_id,
+    senderType: db.sender_type || 'client',
+    senderId: db.sender_id,
+    text: db.text,
+    attachments: db.attachments,
+    isRead: db.is_read ?? false,
+    readAt: db.read_at,
+    createdAt: db.created_at,
+  };
+}
+
+export const chatRoomsService = {
+  async getAll(): Promise<ChatRoom[]> {
+    const { data, error } = await supabase
+      .from('chat_rooms')
+      .select('*')
+      .order('last_message_at', { ascending: false, nullsFirst: false });
+    if (error) throw error;
+    return (data ?? []).map(transformChatRoomFromDB);
+  },
+
+  async create(payload: {
+    property_id: string;
+    request_id?: null;
+    client_id?: null;
+  }): Promise<ChatRoom> {
+    const { data, error } = await supabase
+      .from('chat_rooms')
+      .insert([
+        {
+          property_id: payload.property_id,
+          request_id: payload.request_id ?? null,
+          client_id: payload.client_id ?? null,
+          status: 'active',
+        },
+      ])
+      .select()
+      .single();
+    if (error) throw error;
+    return transformChatRoomFromDB(data);
+  },
+};
+
+export const messagesService = {
+  async getByRoomId(roomId: string): Promise<MessageType[]> {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('chat_room_id', roomId)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map(transformMessageFromDB);
+  },
+
+  async create(payload: {
+    chat_room_id: string;
+    sender_type: 'client' | 'manager' | 'system';
+    text: string;
+  }): Promise<MessageType> {
+    const { data, error } = await supabase
+      .from('messages')
+      .insert([
+        {
+          chat_room_id: payload.chat_room_id,
+          sender_type: payload.sender_type,
+          text: payload.text,
+        },
+      ])
+      .select()
+      .single();
+    if (error) throw error;
+    return transformMessageFromDB(data);
+  },
 };
 
 // ==================== CALENDAR EVENTS (Legacy / Replaced by tasksService) ====================

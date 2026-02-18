@@ -887,9 +887,9 @@ export interface Client {
 
 export interface ChatRoom {
   id: string;
-  requestId: string;
-  propertyId?: string;
-  clientId: string;
+  requestId?: string | null;
+  propertyId?: string | null;
+  clientId?: string | null;
   status: 'active' | 'archived' | 'closed';
   lastMessageAt?: string;
   unreadCountManager: number;

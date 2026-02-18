@@ -6,6 +6,7 @@ interface TourModalProps {
   isOpen: boolean;
   onClose: () => void;
   propertyTitle: string;
+  tourUrl?: string | null;
 }
 
 // Using equirectangular panoramic images for proper 360 projection
@@ -36,7 +37,7 @@ const TOUR_ROOMS = [
   },
 ];
 
-const TourModal: React.FC<TourModalProps> = ({ isOpen, onClose, propertyTitle }) => {
+const TourModal: React.FC<TourModalProps> = ({ isOpen, onClose, propertyTitle, tourUrl = null }) => {
   const [activeRoomIndex, setActiveRoomIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -194,6 +195,30 @@ const TourModal: React.FC<TourModalProps> = ({ isOpen, onClose, propertyTitle })
   };
 
   if (!isOpen) return null;
+
+  if (tourUrl) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-black flex flex-col font-sans">
+        <div className="absolute top-0 left-0 right-0 p-4 z-20 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent">
+          <h2 className="text-white text-lg font-bold drop-shadow-md">{propertyTitle}</h2>
+          <button
+            onClick={onClose}
+            className="bg-black/50 hover:bg-white/20 text-white p-2 rounded-full transition-colors backdrop-blur-md"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+        <div className="flex-1 pt-14">
+          <iframe
+            src={tourUrl}
+            title="3D Tour"
+            className="w-full h-full border-0"
+            allowFullScreen
+          />
+        </div>
+      </div>
+    );
+  }
 
   const activeRoom = TOUR_ROOMS[activeRoomIndex];
 

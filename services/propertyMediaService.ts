@@ -273,11 +273,12 @@ export const propertyMediaService = {
 
   /**
    * Marketplace property detail: all photo URLs for gallery (cover-first, then by created_at DESC).
-   * Works for anon when property has at least one is_public photo (cover). Returns [] if none.
+   * coverAssetId optional: put this asset first when is_public ordering is not enough.
    */
   async getMarketplacePhotoUrlsForProperty(
     propertyId: string,
-    expiresInSeconds = 3600
+    expiresInSeconds = 3600,
+    coverAssetId?: string | null
   ): Promise<string[]> {
     const { data: rows, error } = await supabase
       .from('property_media_assets')
@@ -289,15 +290,45 @@ export const propertyMediaService = {
     const assets = (rows ?? []) as { id: string; storage_path: string | null; created_at: string; is_public?: boolean }[];
     const withPath = assets.filter((a) => a.storage_path);
     if (withPath.length === 0) return [];
-    // Cover first (is_public), then rest by created_at desc (already ordered)
+    // Cover first: is_public, then coverAssetId, then created_at desc
     const sorted = [...withPath].sort((a, b) => {
       if (a.is_public && !b.is_public) return -1;
       if (!a.is_public && b.is_public) return 1;
+      if (coverAssetId && a.id === coverAssetId && b.id !== coverAssetId) return -1;
+      if (coverAssetId && a.id !== coverAssetId && b.id === coverAssetId) return 1;
       return 0;
     });
     const urls = await Promise.all(
       sorted.map((a) => propertyMediaService.getSignedUrl(a.storage_path!, expiresInSeconds))
     );
     return urls;
+  },
+
+  async getMarketplaceFloorPlanUrl(
+    propertyId: string,
+    expiresInSeconds = 60 * 30
+  ): Promise<string | null> {
+    const assets = await propertyMediaService.listAssetsByType(propertyId, 'floor_plan');
+    const latest = assets.find((a) => a.storage_path);
+    if (!latest?.storage_path) return null;
+    try {
+      return await propertyMediaService.getSignedUrl(latest.storage_path, expiresInSeconds);
+    } catch {
+      return null;
+    }
+  },
+
+  async getMarketplaceMagicPlanReportUrl(
+    propertyId: string,
+    expiresInSeconds = 60 * 30
+  ): Promise<string | null> {
+    const assets = await propertyMediaService.listAssetsByType(propertyId, 'magic_plan_report');
+    const latest = assets.find((a) => a.storage_path);
+    if (!latest?.storage_path) return null;
+    try {
+      return await propertyMediaService.getSignedUrl(latest.storage_path, expiresInSeconds);
+    } catch {
+      return null;
+    }
   },
 };

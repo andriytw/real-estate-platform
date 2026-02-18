@@ -13,6 +13,7 @@ import FloorPlanModal from './FloorPlanModal';
 import GalleryModal from './GalleryModal';
 import ShareModal from './ShareModal';
 import ChatModal from './ChatModal';
+import SendRequestModal from './SendRequestModal';
 
 interface PropertyDetailsProps {
   property: Property;
@@ -45,8 +46,17 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
+  const [isSendRequestModalOpen, setIsSendRequestModalOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [galleryImageUrls, setGalleryImageUrls] = useState<string[]>([]);
+  const [floorPlanImageUrl, setFloorPlanImageUrl] = useState<string | null>(null);
+  const [tour3dUrl, setTour3dUrl] = useState<string | null>(null);
+
+  const isPropertyRoute =
+    typeof window !== 'undefined' &&
+    window.location.pathname.startsWith('/property/');
+  const isGuest = !worker;
+  const isPublicMarketplaceProperty = isPropertyRoute && isGuest;
 
   // Marketplace gallery: load all photo assets for this property (cover-first), avoid resign on every render
   useEffect(() => {
@@ -56,28 +66,34 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
     }
     let cancelled = false;
     propertyMediaService
-      .getMarketplacePhotoUrlsForProperty(property.id)
+      .getMarketplacePhotoUrlsForProperty(property.id, 3600, property.cover_photo_asset_id ?? undefined)
       .then((urls) => {
-        if (!cancelled) setGalleryImageUrls(urls);
+        if (!cancelled) {
+          if (import.meta.env.DEV) console.log('[marketplace-gallery] urls', urls.length);
+          setGalleryImageUrls(urls);
+        }
       })
-      .catch(() => {
-        if (!cancelled) setGalleryImageUrls([]);
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('[marketplace-gallery] getMarketplacePhotoUrlsForProperty failed', err);
+          setGalleryImageUrls([]);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [property.id]);
 
-  // Function to check login before performing action
   const handleActionClick = (action: () => void) => {
-    if (!worker && onRequireLogin) {
-      // Not logged in - redirect to login
-      console.log('🔒 Action requires login, redirecting...');
-      onRequireLogin();
-    } else {
-      // Logged in - perform action
+    if (isPublicMarketplaceProperty) {
       action();
+      return;
     }
+    if (!worker && onRequireLogin) {
+      onRequireLogin();
+      return;
+    }
+    action();
   };
 
   // Reset image index when property changes
@@ -85,25 +101,71 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
     setCurrentImageIndex(0);
   }, [property.id]);
 
-  // Gallery + hero: use property_media_assets photos when available (cover-first); else fallback to cover + legacy images
+  // Load floor plan URL when Floor Plan modal opens
+  useEffect(() => {
+    if (!isFloorPlanOpen || !property.id) {
+      setFloorPlanImageUrl(null);
+      return;
+    }
+    let cancelled = false;
+    propertyMediaService
+      .getMarketplaceFloorPlanUrl(property.id, 1800)
+      .then((url) => {
+        if (!cancelled) setFloorPlanImageUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setFloorPlanImageUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isFloorPlanOpen, property.id]);
+
+  // Load 3D tour URL when Tour modal opens
+  useEffect(() => {
+    if (!isTourOpen || !property.id) {
+      setTour3dUrl(null);
+      return;
+    }
+    let cancelled = false;
+    propertyMediaService
+      .listAssetsByType(property.id, 'tour3d')
+      .then((assets) => {
+        if (!cancelled) {
+          const first = assets[0];
+          setTour3dUrl(first?.external_url ?? null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setTour3dUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isTourOpen, property.id]);
+
+  // Fallback: cover + legacy images (for gallery when no property_media_assets loaded)
   const fallbackImages =
     coverPhotoUrl
       ? [coverPhotoUrl, ...(property.images || [property.image]).filter(Boolean)]
       : (property.images && property.images.length > 0 ? property.images : [property.image]);
-  const images = galleryImageUrls.length > 0 ? galleryImageUrls : fallbackImages.filter(Boolean);
-  const safeIndex = images.length ? Math.min(currentImageIndex, images.length - 1) : 0;
-  const currentImage = images[safeIndex] ?? '';
+  // Hero always shows cover (no regression when gallery loads with different order)
+  const heroImage = coverPhotoUrl ?? (fallbackImages.filter(Boolean)[0] ?? '');
+  // Full gallery for modal only (N/N)
+  const galleryImages = galleryImageUrls.length > 0 ? galleryImageUrls : fallbackImages.filter(Boolean);
+  const safeIndex = galleryImages.length ? Math.min(currentImageIndex, galleryImages.length - 1) : 0;
+  const currentImage = heroImage;
 
   const handleNextImage = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!images.length) return;
-    setCurrentImageIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
+    if (!galleryImages.length) return;
+    setCurrentImageIndex((prev) => (prev === galleryImages.length - 1 ? 0 : prev + 1));
   };
 
   const handlePrevImage = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!images.length) return;
-    setCurrentImageIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
+    if (!galleryImages.length) return;
+    setCurrentImageIndex((prev) => (prev === 0 ? galleryImages.length - 1 : prev - 1));
   };
 
   return (
@@ -113,19 +175,30 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
         isOpen={isTourOpen} 
         onClose={() => setIsTourOpen(false)} 
         propertyTitle={property.address}
+        tourUrl={tour3dUrl}
       />
 
       {/* Floor Plan Modal */}
       <FloorPlanModal 
         isOpen={isFloorPlanOpen}
         onClose={() => setIsFloorPlanOpen(false)}
+        imageUrl={floorPlanImageUrl}
+        title={property.address}
+      />
+
+      {/* Send Request Modal (marketplace guest) */}
+      <SendRequestModal
+        isOpen={isSendRequestModalOpen}
+        onClose={() => setIsSendRequestModalOpen(false)}
+        propertyId={property.id}
+        propertyTitle={property.title}
       />
 
       {/* Gallery Modal */}
       <GalleryModal
         isOpen={isGalleryOpen}
         onClose={() => setIsGalleryOpen(false)}
-        images={images}
+        images={galleryImages}
         title={property.address}
       />
 
@@ -144,6 +217,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
         onClose={() => setIsChatModalOpen(false)}
         propertyTitle={property.address}
         propertyId={property.id}
+        worker={worker}
       />
 
       {/* Hero Image Section */}
@@ -158,7 +232,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
         />
         
         {/* Image Navigation Overlay */}
-        {images.length > 1 && (
+        {galleryImages.length > 1 && (
           <>
             <button 
               onClick={handlePrevImage}
@@ -175,7 +249,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
             
             {/* Pagination Dots */}
             <div className="absolute bottom-24 left-1/2 -translate-x-1/2 flex gap-2 z-10">
-               {images.map((_, idx) => (
+               {galleryImages.map((_, idx) => (
                  <div 
                     key={idx} 
                     className={`w-2 h-2 rounded-full transition-colors ${idx === safeIndex ? 'bg-white' : 'bg-white/30'}`}
@@ -314,15 +388,29 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
       {!hideActions && (
         <div className="mt-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pb-2">
           <button 
-            onClick={() => handleActionClick(() => onBookViewing?.())}
+            onClick={() => handleActionClick(() => {
+              if (isPublicMarketplaceProperty) {
+                setIsSendRequestModalOpen(true);
+              } else {
+                onBookViewing?.();
+              }
+            })}
             className="bg-[#1C1F24] hover:bg-[#2A2E35] text-white border border-[#2E323A] font-semibold text-sm py-3 rounded-md transition-colors"
           >
-            Book Viewing
+            {isPublicMarketplaceProperty ? 'Send Request' : 'Book Viewing'}
           </button>
           <button 
-            onClick={() => handleActionClick(() => {
-              // TODO: Implement download functionality
-              console.log('Download MagicPlan Report');
+            onClick={() => handleActionClick(async () => {
+              try {
+                const url = await propertyMediaService.getMarketplaceMagicPlanReportUrl(property.id, 1800);
+                if (url) {
+                  window.open(url, '_blank');
+                } else {
+                  alert('Report unavailable');
+                }
+              } catch {
+                alert('Report unavailable');
+              }
             })}
             className="bg-[#1C1F24] hover:bg-[#2A2E35] text-white border border-[#2E323A] font-semibold text-sm py-3 rounded-md transition-colors"
           >

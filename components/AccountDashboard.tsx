@@ -44,6 +44,7 @@ import {
   paymentChainService,
   paymentChainFilesService,
   rentTimelineService,
+  requestsService,
 } from '../services/supabaseService';
 import { propertyInventoryService, type PropertyInventoryItemRow, type PropertyInventoryItemWithDocument } from '../services/propertyInventoryService';
 import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '../services/propertyExpenseService';
@@ -802,16 +803,21 @@ const AccountDashboard: React.FC = () => {
 
   const [activities, setActivities] = useState<ActivityItem[]>(INITIAL_ACTIVITIES);
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [requests, setRequests] = useState<RequestData[]>(() => {
-    // Завантажити requests з localStorage при ініціалізації
-    try {
-      const stored = localStorage.getItem('requests');
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
-  
+  const [requests, setRequests] = useState<RequestData[]>([]);
+
+  // Sales → Requests: load from DB (source of truth)
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const data = await requestsService.getAll();
+        setRequests(data);
+      } catch (e) {
+        console.error('Failed to load requests from DB:', e);
+      }
+    };
+    load();
+  }, []);
+
   // Нормалізація для перевірки дублікатів лідів по email/phone (один контакт = один лід)
   const leadExistsByContact = (email: string, phone: string, currentLeads: Lead[]) => {
     const normEmail = (email || '').trim().toLowerCase();
@@ -853,13 +859,6 @@ const AccountDashboard: React.FC = () => {
     return () => window.removeEventListener('requestAdded', handleRequestAdded as EventListener);
   }, []);
   
-  // Синхронізувати requests з localStorage при змінах
-  // Use length instead of array to avoid React error #310
-  React.useEffect(() => {
-    localStorage.setItem('requests', JSON.stringify(requests));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requests.length]); // Only depend on length, not the array itself
-
   const [offers, setOffers] = useState<OfferData[]>([]);
 
   const [reservations, setReservations] = useState<ReservationData[]>([]);

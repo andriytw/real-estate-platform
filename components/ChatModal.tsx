@@ -1,37 +1,25 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, Paperclip, MoreVertical, Check, CheckCheck, Bot, User } from 'lucide-react';
-import { requestsService } from '../services/supabaseService';
-import { Client, ChatRoom, Message as SupabaseMessage } from '../types';
-
-// TODO: Implement these services in supabaseService.ts
-// Temporary placeholders to prevent import errors
-const chatRoomsService = {
-  getAll: async () => [] as ChatRoom[],
-  getById: async (id: string) => null as ChatRoom | null,
-  create: async (data: any) => ({} as ChatRoom),
-};
-
-const messagesService = {
-  getByRoomId: async (roomId: string) => [] as SupabaseMessage[],
-  create: async (data: any) => ({} as SupabaseMessage),
-};
+import { requestsService, chatRoomsService, messagesService } from '../services/supabaseService';
+import { Client, ChatRoom, Message as SupabaseMessage, Worker } from '../types';
 
 const clientsService = {
-  getById: async (id: string) => null as Client | null,
-  getByEmailOrPhone: async (email: string, phone: string) => null as Client | null,
-  create: async (data: any) => ({} as Client),
+  getById: async (_id: string) => null as Client | null,
+  getByEmailOrPhone: async (_email: string, _phone: string) => null as Client | null,
+  create: async (_data: any) => ({} as Client),
 };
 
 const leadsServiceEnhanced = {
-  createOrUpdate: async (data: any) => ({} as any),
+  createOrUpdate: async (_data: any) => ({} as any),
 };
 
 interface ChatModalProps {
   isOpen: boolean;
   onClose: () => void;
   propertyTitle: string;
-  propertyId?: string; // Додаємо propertyId для збереження
+  propertyId?: string;
+  worker?: Worker | null;
 }
 
 interface Message {
@@ -70,11 +58,19 @@ type ChatStage =
   | 'summary' // Новий етап підтвердження
   | 'connected';
 
-const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, propertyTitle, propertyId }) => {
+const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, propertyTitle, propertyId, worker }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  
+
+  // Guest mode: simple form state
+  const [guestName, setGuestName] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
+  const [guestMessage, setGuestMessage] = useState('');
+  const [guestSubmitting, setGuestSubmitting] = useState(false);
+  const [guestSent, setGuestSent] = useState(false);
+
   // Data Collection State
   const [chatStage, setChatStage] = useState<ChatStage>('ask_name');
   const [userDetails, setUserDetails] = useState<UserDetails>({ name: '', email: '', phone: '' });
@@ -82,9 +78,8 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, propertyTitle, p
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Agent Details
-  const agentName = "Julia Müller";
-  const agentAvatar = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=1887&auto=format&fit=crop";
+  const isGuestMode = !worker;
+  const showGuestForm = isGuestMode && propertyId;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -571,7 +566,76 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, propertyTitle, p
 
   const inputConfig = getInputConfig();
 
+  const handleGuestSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!propertyId || guestSubmitting) return;
+    setGuestSubmitting(true);
+    try {
+      const room = await chatRoomsService.create({
+        property_id: propertyId,
+        request_id: null,
+        client_id: null,
+      });
+      const contactLine = `Name: ${guestName.trim()} | Email: ${guestEmail.trim()} | Phone: ${guestPhone.trim()}`;
+      const text = `${contactLine}\n\nMessage: ${guestMessage.trim() || '(no message)'}`;
+      await messagesService.create({
+        chat_room_id: room.id,
+        sender_type: 'client',
+        text,
+      });
+      setGuestSent(true);
+      setTimeout(() => onClose(), 2000);
+    } catch (err) {
+      console.error('Guest chat submit failed:', err);
+      setGuestSubmitting(false);
+    }
+  };
+
   if (!isOpen) return null;
+
+  if (showGuestForm) {
+    return (
+      <div className="fixed inset-0 z-[120] flex items-center justify-center px-4 font-sans">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+        <div className="relative bg-[#1C1F24] border border-gray-700 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
+          <div className="flex items-center justify-between p-5 border-b border-gray-800">
+            <h3 className="text-lg font-bold text-white">Chat</h3>
+            <button onClick={onClose} className="text-gray-400 hover:text-white">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="p-6">
+            {guestSent ? (
+              <p className="text-emerald-400 font-medium">Sent. We will get back to you soon.</p>
+            ) : (
+              <form onSubmit={handleGuestSubmit} className="space-y-4">
+                <p className="text-sm text-gray-400">{propertyTitle}</p>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Name</label>
+                  <input type="text" value={guestName} onChange={(e) => setGuestName(e.target.value)} required className="w-full bg-[#111315] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="Your name" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Email</label>
+                  <input type="email" value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} required className="w-full bg-[#111315] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="your@email.com" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Phone</label>
+                  <input type="tel" value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} required className="w-full bg-[#111315] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" placeholder="+49 ..." />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Message</label>
+                  <textarea value={guestMessage} onChange={(e) => setGuestMessage(e.target.value)} rows={3} className="w-full bg-[#111315] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white resize-none" placeholder="Your message..." />
+                </div>
+                <button type="submit" disabled={guestSubmitting} className="w-full px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-sm font-bold">
+                  {guestSubmitting ? 'Sending…' : 'Send'}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center px-0 sm:px-4 font-sans pointer-events-none">

@@ -2,21 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, MessageSquare, User, Calendar, FileText, Plus, Send, CheckCircle2, Clock } from 'lucide-react';
 import { ChatRoom, Message, RequestData, Client } from '../types';
-
-// TODO: Implement these services in supabaseService.ts
-// Temporary placeholders to prevent import errors
-const chatRoomsService = {
-  getAll: async () => [] as ChatRoom[],
-  getById: async (id: string) => null as ChatRoom | null,
-};
-
-const messagesService = {
-  getByRoomId: async (roomId: string) => [] as Message[],
-  create: async (data: any) => ({} as Message),
-};
+import { chatRoomsService, messagesService } from '../services/supabaseService';
 
 const clientsService = {
-  getById: async (id: string) => null as Client | null,
+  getById: async (_id: string) => null as Client | null,
 };
 
 interface SalesChatProps {
@@ -46,17 +35,15 @@ const SalesChat: React.FC<SalesChatProps> = ({ onCreateOffer, onViewRequest }) =
   useEffect(() => {
     if (selectedRoom) {
       loadMessages(selectedRoom.id);
-      loadRequest(selectedRoom.requestId);
-      loadClient(selectedRoom.clientId);
+      if (selectedRoom.requestId) loadRequest(selectedRoom.requestId);
+      if (selectedRoom.clientId) loadClient(selectedRoom.clientId);
     }
   }, [selectedRoom]);
 
   const loadChatRooms = async () => {
     try {
       setLoading(true);
-      // TODO: Implement chatRoomsService.getAll() with filters
-      // For now, using empty array
-      const rooms: ChatRoom[] = [];
+      const rooms = await chatRoomsService.getAll();
       setChatRooms(rooms);
     } catch (error) {
       console.error('Error loading chat rooms:', error);
@@ -67,8 +54,7 @@ const SalesChat: React.FC<SalesChatProps> = ({ onCreateOffer, onViewRequest }) =
 
   const loadMessages = async (roomId: string) => {
     try {
-      // TODO: Implement messagesService.getByRoomId()
-      const roomMessages: Message[] = [];
+      const roomMessages = await messagesService.getByRoomId(roomId);
       setMessages(roomMessages);
     } catch (error) {
       console.error('Error loading messages:', error);
