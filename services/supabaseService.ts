@@ -1964,16 +1964,38 @@ export const leadsService = {
   }
 };
 
+// Request with joined property for Sales UI (address — title)
+export type RequestWithProperty = RequestData & {
+  property?: { id: string; title: string | null; address: string | null } | null;
+};
+
 // ==================== REQUESTS ====================
 export const requestsService = {
-  async getAll(): Promise<RequestData[]> {
-    const { data, error } = await supabase
+  async getAll(): Promise<RequestWithProperty[]> {
+    const selector = '*, property:properties(id, title, address)';
+    let { data, error } = await supabase
       .from('requests')
-      .select('*')
+      .select(selector)
       .order('created_at', { ascending: false });
-    
     if (error) throw error;
-    return data.map(transformRequestFromDB);
+    let mapped = (data ?? []).map((row: any) => ({
+      ...transformRequestFromDB(row),
+      property: row.property ? { id: row.property.id, title: row.property.title ?? null, address: row.property.address ?? null } : null,
+    }));
+    const allNullProperty = mapped.length > 0 && mapped.every((r) => r.property == null);
+    if (allNullProperty) {
+      const { data: data2, error: error2 } = await supabase
+        .from('requests')
+        .select('*, property:properties!requests_property_id_fkey(id, title, address)')
+        .order('created_at', { ascending: false });
+      if (!error2 && data2?.length) {
+        mapped = data2.map((row: any) => ({
+          ...transformRequestFromDB(row),
+          property: row.property ? { id: row.property.id, title: row.property.title ?? null, address: row.property.address ?? null } : null,
+        }));
+      }
+    }
+    return mapped;
   },
 
   async create(request: Omit<RequestData, 'id'>): Promise<RequestData> {
@@ -2021,7 +2043,13 @@ export const requestsService = {
 
 // ==================== CHAT ROOMS & MESSAGES (Sales / Marketplace guest) ====================
 
-function transformChatRoomFromDB(db: any): ChatRoom {
+// Chat room with joined property and first message text for Sales UI
+export type ChatRoomWithContext = ChatRoom & {
+  property?: { id: string; title: string | null; address: string | null } | null;
+  first_message_text?: string | null;
+};
+
+function transformChatRoomFromDB(db: any): ChatRoomWithContext {
   return {
     id: db.id,
     requestId: db.request_id ?? undefined,
@@ -2033,6 +2061,8 @@ function transformChatRoomFromDB(db: any): ChatRoom {
     unreadCountClient: db.unread_count_client ?? 0,
     createdAt: db.created_at,
     updatedAt: db.updated_at,
+    property: db.property ? { id: db.property.id, title: db.property.title ?? null, address: db.property.address ?? null } : null,
+    first_message_text: db.first_message_text ?? null,
   };
 }
 
@@ -2051,13 +2081,37 @@ function transformMessageFromDB(db: any): MessageType {
 }
 
 export const chatRoomsService = {
-  async getAll(): Promise<ChatRoom[]> {
-    const { data, error } = await supabase
+  async getAll(): Promise<ChatRoomWithContext[]> {
+    let { data: roomsData, error: roomsError } = await supabase
       .from('chat_rooms')
-      .select('*')
+      .select('*, property:properties(id, title, address)')
       .order('last_message_at', { ascending: false, nullsFirst: false });
-    if (error) throw error;
-    return (data ?? []).map(transformChatRoomFromDB);
+    if (roomsError) throw roomsError;
+    let rooms = (roomsData ?? []).map(transformChatRoomFromDB);
+    const allNullProperty = rooms.length > 0 && rooms.every((r) => r.property == null);
+    if (allNullProperty) {
+      const { data: roomsData2, error: roomsError2 } = await supabase
+        .from('chat_rooms')
+        .select('*, property:properties!chat_rooms_property_id_fkey(id, title, address)')
+        .order('last_message_at', { ascending: false, nullsFirst: false });
+      if (!roomsError2 && roomsData2?.length) {
+        rooms = roomsData2.map(transformChatRoomFromDB);
+      }
+    }
+    const roomIds = rooms.map((r) => r.id).filter(Boolean);
+    if (roomIds.length === 0) return rooms;
+    const { data: messagesData, error: messagesError } = await supabase
+      .from('messages')
+      .select('chat_room_id, text, created_at')
+      .in('chat_room_id', roomIds)
+      .order('created_at', { ascending: true });
+    if (messagesError) throw messagesError;
+    const firstByRoom = new Map<string, string>();
+    for (const m of messagesData ?? []) {
+      const rid = m.chat_room_id;
+      if (rid && !firstByRoom.has(rid)) firstByRoom.set(rid, m.text ?? '');
+    }
+    return rooms.map((r) => ({ ...r, first_message_text: firstByRoom.get(r.id) ?? null }));
   },
 
   /** Guest (anon) flow: creates marketplace room + first message via RPC (no SELECT needed). */

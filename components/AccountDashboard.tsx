@@ -45,6 +45,7 @@ import {
   paymentChainFilesService,
   rentTimelineService,
   requestsService,
+  type RequestWithProperty,
 } from '../services/supabaseService';
 import { propertyInventoryService, type PropertyInventoryItemRow, type PropertyInventoryItemWithDocument } from '../services/propertyInventoryService';
 import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '../services/propertyExpenseService';
@@ -803,7 +804,7 @@ const AccountDashboard: React.FC = () => {
 
   const [activities, setActivities] = useState<ActivityItem[]>(INITIAL_ACTIVITIES);
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [requests, setRequests] = useState<RequestData[]>([]);
+  const [requests, setRequests] = useState<RequestWithProperty[]>([]);
 
   // Sales → Requests: load from DB (source of truth)
   useEffect(() => {
@@ -830,30 +831,10 @@ const AccountDashboard: React.FC = () => {
     });
   };
 
-  // Слухати події додавання нових requests
+  // Слухати події додавання нових requests (Leads створюються тільки через DB triggers)
   React.useEffect(() => {
-    const handleRequestAdded = async (event: CustomEvent<RequestData>) => {
-      setRequests(prev => [event.detail, ...prev]);
-      const req = event.detail;
-      const name = req.companyName || `${req.firstName || ''} ${req.lastName || ''}`.trim() || 'Unknown';
-      try {
-        const leadsNow = await leadsService.getAll();
-        if (leadExistsByContact(req.email || '', req.phone || '', leadsNow)) return;
-        const newLead = await leadsService.create({
-          name,
-          type: req.companyName ? 'Company' : 'Private',
-          contactPerson: req.companyName ? `${req.firstName || ''} ${req.lastName || ''}`.trim() || undefined : undefined,
-          email: req.email || '',
-          phone: req.phone || '',
-          address: '',
-          status: 'Active',
-          createdAt: new Date().toISOString().split('T')[0],
-          source: req.id
-        });
-        setLeads(prev => [...prev, newLead].sort((a, b) => a.name.localeCompare(b.name)));
-      } catch (e) {
-        console.error('Failed to create lead from request:', e);
-      }
+    const handleRequestAdded = (event: CustomEvent<RequestData>) => {
+      setRequests(prev => [event.detail as RequestWithProperty, ...prev]);
     };
     window.addEventListener('requestAdded', handleRequestAdded as EventListener);
     return () => window.removeEventListener('requestAdded', handleRequestAdded as EventListener);
@@ -9269,7 +9250,7 @@ ${internalCompany} Team`;
                         <tbody className="divide-y divide-gray-800">
                             {requests.filter(req => req.status !== 'archived').map(req => (
                                 <tr key={req.id} className="hover:bg-[#16181D]">
-                                    <td className="p-4 text-gray-400">#{req.id}</td>
+                                    <td className="p-4 text-gray-400">{req.property ? `${req.property.address ?? ''} — ${req.property.title ?? ''}`.trim() || `#${req.id}` : `#${req.id}`}</td>
                                     <td className="p-4 font-bold">{req.firstName} {req.lastName}</td>
                                     <td className="p-4">{req.email}</td>
                                     <td className="p-4">{req.phone}</td>

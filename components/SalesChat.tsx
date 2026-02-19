@@ -2,7 +2,39 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Filter, MessageSquare, User, Calendar, FileText, Plus, Send, CheckCircle2, Clock } from 'lucide-react';
 import { ChatRoom, Message, RequestData, Client } from '../types';
-import { chatRoomsService, messagesService } from '../services/supabaseService';
+import { chatRoomsService, messagesService, type ChatRoomWithContext } from '../services/supabaseService';
+
+// Parse marketplace guest first message (contact header + optional message)
+function parseMarketplaceHeader(text: string | null | undefined): { isHeader: boolean; name: string; email: string; phone: string; message: string } {
+  const t = (text ?? '').trim();
+  const hasAll = t.includes('Name:') && t.includes('Email:') && t.includes('Phone:') && t.includes('Message:');
+  if (!hasAll) return { isHeader: false, name: '', email: '', phone: '', message: '' };
+  const after = (key: string) => {
+    const i = t.indexOf(key);
+    if (i === -1) return '';
+    const start = i + key.length;
+    const rest = t.slice(start);
+    const pipe = rest.indexOf('|');
+    const nl = rest.indexOf('\n');
+    const end = pipe === -1 ? (nl === -1 ? rest.length : nl) : (nl === -1 ? pipe : Math.min(pipe, nl));
+    return rest.slice(0, end).trim();
+  };
+  const msgStart = t.indexOf('Message:');
+  const messagePart = msgStart === -1 ? '' : t.slice(msgStart + 'Message:'.length).trim();
+  const message = (messagePart === '' || /^\(no message\)$/i.test(messagePart.trim())) ? '' : messagePart;
+  return {
+    isHeader: true,
+    name: after('Name:'),
+    email: after('Email:'),
+    phone: after('Phone:'),
+    message,
+  };
+}
+
+function extractGuestName(text: string | null | undefined): string {
+  const parsed = parseMarketplaceHeader(text);
+  return parsed.isHeader && parsed.name ? parsed.name : 'Client';
+}
 
 const clientsService = {
   getById: async (_id: string) => null as Client | null,
@@ -16,8 +48,8 @@ interface SalesChatProps {
 type FilterType = 'all' | 'active' | 'unread' | 'archived';
 
 const SalesChat: React.FC<SalesChatProps> = ({ onCreateOffer, onViewRequest }) => {
-  const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
-  const [selectedRoom, setSelectedRoom] = useState<ChatRoom | null>(null);
+  const [chatRooms, setChatRooms] = useState<ChatRoomWithContext[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<ChatRoomWithContext | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [request, setRequest] = useState<RequestData | null>(null);
   const [client, setClient] = useState<Client | null>(null);
@@ -161,7 +193,7 @@ const SalesChat: React.FC<SalesChatProps> = ({ onCreateOffer, onViewRequest }) =
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <User className="w-4 h-4 text-gray-400" />
-                      <span className="font-medium text-white">Client</span>
+                      <span className="font-medium text-white">{extractGuestName(room.first_message_text)}</span>
                       {room.unreadCountManager > 0 && (
                         <span className="bg-emerald-500 text-white text-xs px-2 py-0.5 rounded-full">
                           {room.unreadCountManager}
@@ -169,7 +201,7 @@ const SalesChat: React.FC<SalesChatProps> = ({ onCreateOffer, onViewRequest }) =
                       )}
                     </div>
                     <p className="text-sm text-gray-400 truncate">
-                      {room.lastMessageAt ? new Date(room.lastMessageAt).toLocaleDateString() : 'No messages'}
+                      {room.property ? `${room.property.address ?? ''} — ${room.property.title ?? ''}`.trim() : (room.lastMessageAt ? new Date(room.lastMessageAt).toLocaleDateString() : 'No messages')}
                     </p>
                   </div>
                   <div className={`w-2 h-2 rounded-full ${
@@ -226,30 +258,67 @@ const SalesChat: React.FC<SalesChatProps> = ({ onCreateOffer, onViewRequest }) =
               </div>
             )}
 
-            {/* Messages */}
+            {/* Chat context header (guest + property) when no Request Details */}
+            {selectedRoom && !request && (
+              <div className="p-4 border-b border-gray-800 bg-[#1C1F24]">
+                <p className="text-sm text-white">
+                  {extractGuestName(selectedRoom.first_message_text)}
+                  {selectedRoom.property && (selectedRoom.property.address || selectedRoom.property.title) && (
+                    <> · {`${selectedRoom.property.address ?? ''} — ${selectedRoom.property.title ?? ''}`.trim()}</>
+                  )}
+                </p>
+              </div>
+            )}
+
+            {/* Messages: contact header never as bubble; show only real message text */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.length === 0 ? (
                 <div className="text-center text-gray-400 py-8">No messages yet</div>
               ) : (
-                messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.senderType === 'manager' ? 'justify-end' : 'justify-start'}`}
-                  >
+                messages.map((msg) => {
+                  const parsed = parseMarketplaceHeader(msg.text);
+                  if (parsed.isHeader) {
+                    if (parsed.message === '') return null;
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`flex ${msg.senderType === 'manager' ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div
+                          className={`max-w-[70%] rounded-lg p-3 ${
+                            msg.senderType === 'manager'
+                              ? 'bg-emerald-500 text-white'
+                              : 'bg-[#1C1F24] text-gray-300'
+                          }`}
+                        >
+                          <p className="text-sm">{parsed.message}</p>
+                          <p className="text-xs mt-1 opacity-70">
+                            {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : ''}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
                     <div
-                      className={`max-w-[70%] rounded-lg p-3 ${
-                        msg.senderType === 'manager'
-                          ? 'bg-emerald-500 text-white'
-                          : 'bg-[#1C1F24] text-gray-300'
-                      }`}
+                      key={msg.id}
+                      className={`flex ${msg.senderType === 'manager' ? 'justify-end' : 'justify-start'}`}
                     >
-                      <p className="text-sm">{msg.text}</p>
-                      <p className="text-xs mt-1 opacity-70">
-                        {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : ''}
-                      </p>
+                      <div
+                        className={`max-w-[70%] rounded-lg p-3 ${
+                          msg.senderType === 'manager'
+                            ? 'bg-emerald-500 text-white'
+                            : 'bg-[#1C1F24] text-gray-300'
+                        }`}
+                      >
+                        <p className="text-sm">{msg.text}</p>
+                        <p className="text-xs mt-1 opacity-70">
+                          {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : ''}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
