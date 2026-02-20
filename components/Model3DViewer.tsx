@@ -8,7 +8,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 export interface Model3DViewerProps {
   url: string;
-  kind: 'obj' | 'glb' | 'usdz';
+  kind: 'obj' | 'glb' | 'usdz' | 'ifc';
   className?: string;
   onError?: (info: { code: string; message: string }) => void;
 }
@@ -227,6 +227,66 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     } else if (kind === 'usdz') {
       const loader = new USDZLoader();
       loader.loadAsync(url).then((group) => onLoaded(group)).catch(onLoadError);
+    } else if (kind === 'ifc') {
+      (async () => {
+        try {
+          const { IfcAPI } = await import('web-ifc');
+          const ifcApi = new IfcAPI();
+          ifcApi.SetWasmPath('/web-ifc/');
+          await ifcApi.Init();
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const buffer = await res.arrayBuffer();
+          const modelID = ifcApi.OpenModel(new Uint8Array(buffer));
+          if (modelID === -1) throw new Error('IFC open failed');
+          const flatMeshes = ifcApi.LoadAllGeometry(modelID);
+          const group = new THREE.Group();
+          for (let i = 0; i < flatMeshes.size(); i++) {
+            const flatMesh = flatMeshes.get(i);
+            for (let g = 0; g < flatMesh.geometries.size(); g++) {
+              const placed = flatMesh.geometries.get(g);
+              const geom = ifcApi.GetGeometry(modelID, placed.geometryExpressID);
+              if (!geom) continue;
+              const vPtr = geom.GetVertexData();
+              const vSize = geom.GetVertexDataSize();
+              const iPtr = geom.GetIndexData();
+              const iSize = geom.GetIndexDataSize();
+              const vertexFloats = ifcApi.GetVertexArray(vPtr, vSize);
+              const indices = ifcApi.GetIndexArray(iPtr, iSize);
+              geom.delete();
+              if (vertexFloats.length < 3 || indices.length < 3) continue;
+              const isInterleaved = vertexFloats.length % 6 === 0 && vertexFloats.length / 6 >= indices.length / 3;
+              const positionArray = isInterleaved
+                ? new Float32Array((vertexFloats.length / 6) * 3)
+                : vertexFloats;
+              if (isInterleaved) {
+                for (let vi = 0; vi < vertexFloats.length / 6; vi++) {
+                  positionArray[vi * 3] = vertexFloats[vi * 6];
+                  positionArray[vi * 3 + 1] = vertexFloats[vi * 6 + 1];
+                  positionArray[vi * 3 + 2] = vertexFloats[vi * 6 + 2];
+                }
+              }
+              const position = new THREE.BufferAttribute(positionArray, 3);
+              const geometry = new THREE.BufferGeometry();
+              geometry.setAttribute('position', position);
+              geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+              geometry.computeVertexNormals();
+              const material = new THREE.MeshStandardMaterial({ color: 0xe5e7eb, side: THREE.DoubleSide });
+              const mesh = new THREE.Mesh(geometry, material);
+              if (placed.flatTransformation && placed.flatTransformation.length >= 16) {
+                mesh.matrix.fromArray(placed.flatTransformation);
+                mesh.matrix.decompose(mesh.position, mesh.quaternion, mesh.scale);
+              }
+              group.add(mesh);
+            }
+            flatMesh.delete();
+          }
+          ifcApi.CloseModel(modelID);
+          onLoaded(group);
+        } catch (e) {
+          onLoadError(e);
+        }
+      })();
     } else {
       const loader = new OBJLoader();
       loader.load(url, onLoaded, undefined, onLoadError);

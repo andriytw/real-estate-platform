@@ -7759,13 +7759,13 @@ ${internalCompany} Team`;
                     </div>
                     <div className="p-4 overflow-auto flex-1">
                       {type === 'tour3d' ? (() => {
-                        const TOUR3D_ACCEPT = '.usdz,.obj,.glb,model/gltf-binary,application/octet-stream';
+                        const TOUR3D_ACCEPT = '.glb,.obj,.ifc,.usdz,model/gltf-binary,application/octet-stream';
                         const MAX_TOUR3D_SIZE = 50 * 1024 * 1024;
-                        const allowedExts = ['.obj', '.glb', '.usdz'];
+                        const allowedExts = ['.obj', '.glb', '.ifc', '.usdz'];
                         const validateTour3dFile = (file: File): { ok: true } | { ok: false; message: string } => {
                           if (file.size > MAX_TOUR3D_SIZE) return { ok: false, message: 'Файл завеликий (max 50 MB)' };
                           const ext = file.name.toLowerCase().replace(/^.*\./, '.');
-                          if (!allowedExts.includes(ext)) return { ok: false, message: 'Дозволені формати: OBJ, GLB, USDZ' };
+                          if (!allowedExts.includes(ext)) return { ok: false, message: 'Дозволені формати: OBJ, GLB, IFC, USDZ' };
                           return { ok: true };
                         };
                         const handleTour3dFileSelect = (file: File | null): boolean => {
@@ -7816,6 +7816,7 @@ ${internalCompany} Team`;
                           const n = mediaStagedFile?.name?.toLowerCase() ?? '';
                           if (n.endsWith('.usdz')) return 'usdz' as const;
                           if (n.endsWith('.glb')) return 'glb' as const;
+                          if (n.endsWith('.ifc')) return 'ifc' as const;
                           return 'obj' as const;
                         })();
                         const formatSize = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${(bytes / 1024).toFixed(1)} KB`;
@@ -7836,21 +7837,24 @@ ${internalCompany} Team`;
                               onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                               onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const list = e.dataTransfer.files; const f = list?.[0] ?? null; const multiple = list && list.length > 1; const accepted = handleTour3dFileSelect(f); if (multiple && accepted) { setMediaMultiFileHint(true); setTimeout(() => setMediaMultiFileHint(false), 2500); } }}
                             >
-                              {mediaStagedFile ? <span className="text-sm text-gray-300">{mediaStagedFile.name} · {formatSize(mediaStagedFile.size)}</span> : <span className="text-sm text-gray-400">Перетягніть OBJ, GLB або USDZ сюди або натисніть для вибору</span>}
+                              {mediaStagedFile ? <span className="text-sm text-gray-300">{mediaStagedFile.name} · {formatSize(mediaStagedFile.size)}</span> : <span className="text-sm text-gray-400">Перетягніть OBJ, GLB, IFC або USDZ сюди або натисніть для вибору</span>}
                             </div>
                             {mediaMultiFileHint && <p className="text-xs text-gray-400">Використано перший файл з кількох.</p>}
                             {mediaStagedFile && mediaPreviewUrl && (
                               <>
-                                <div className="rounded-lg border border-gray-700 overflow-hidden bg-[#16181D] min-h-[280px] max-h-[420px] h-72">
-                                  <Model3DViewer
-                                    url={mediaPreviewUrl}
-                                    kind={tour3dKind}
-                                    className="w-full h-full"
-                                    onError={(info) => setTour3dViewerErrorCode(info.code)}
-                                  />
-                                </div>
-                                {tour3dKind === 'usdz' && tour3dViewerErrorCode === 'USDZ_CRATE_UNSUPPORTED' && (
-                                  <p className="text-amber-200/90 text-sm">Для веб-перегляду рекомендовано GLB. USDZ збережено.</p>
+                                {tour3dKind === 'usdz' ? (
+                                  <div className="rounded-lg border border-gray-700 bg-[#16181D] min-h-[120px] p-4 flex flex-col justify-center">
+                                    <p className="text-amber-200/90 text-sm">USDZ збережемо, але для веб-перегляду потрібен GLB або IFC. Рекомендовано експортувати IFC з MagicPlan.</p>
+                                  </div>
+                                ) : (
+                                  <div className="rounded-lg border border-gray-700 overflow-hidden bg-[#16181D] min-h-[280px] max-h-[420px] h-72">
+                                    <Model3DViewer
+                                      url={mediaPreviewUrl}
+                                      kind={tour3dKind}
+                                      className="w-full h-full"
+                                      onError={(info) => setTour3dViewerErrorCode(info.code)}
+                                    />
+                                  </div>
                                 )}
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <button type="button" onClick={() => document.getElementById('media-tour3d-upload')?.click()} className="px-2 py-1 rounded text-xs border border-gray-600 text-gray-300 hover:bg-gray-700/50">Змінити</button>

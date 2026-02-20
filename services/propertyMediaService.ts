@@ -37,6 +37,7 @@ function getUploadContentType(file: File): string {
   const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
   if (ext === 'obj') return 'application/octet-stream';
   if (ext === 'usdz') return 'application/octet-stream';
+  if (ext === 'ifc') return 'application/octet-stream';
   if (ext === 'glb') return 'model/gltf-binary';
   if (file.type && file.type.trim().length > 0) return file.type;
   return 'application/octet-stream';
@@ -352,21 +353,22 @@ export const propertyMediaService = {
     return candidates.length > 0 ? candidates[0].url : null;
   },
 
-  /** Returns all tour3d assets as { kind, url } sorted by web priority: glb → obj → usdz. */
+  /** Returns all tour3d assets as { kind, url } sorted by web priority: glb → ifc → obj → usdz. */
   async getMarketplaceTour3dCandidates(
     propertyId: string,
     expiresInSeconds = 60 * 30
-  ): Promise<Array<{ kind: 'glb' | 'obj' | 'usdz'; url: string }>> {
+  ): Promise<Array<{ kind: 'glb' | 'ifc' | 'obj' | 'usdz'; url: string }>> {
     const assets = await propertyMediaService.listAssetsByType(propertyId, 'tour3d');
-    const extKind = (pathOrName: string): 'glb' | 'obj' | 'usdz' | null => {
+    const extKind = (pathOrName: string): 'glb' | 'ifc' | 'obj' | 'usdz' | null => {
       const ext = (pathOrName || '').split('.').pop()?.toLowerCase();
       if (ext === 'glb') return 'glb';
+      if (ext === 'ifc') return 'ifc';
       if (ext === 'obj') return 'obj';
       if (ext === 'usdz') return 'usdz';
       return null;
     };
-    const priority = (k: 'glb' | 'obj' | 'usdz') => (k === 'glb' ? 3 : k === 'obj' ? 2 : 1);
-    const withUrl: Array<{ kind: 'glb' | 'obj' | 'usdz'; url: string }> = [];
+    const priority = (k: 'glb' | 'ifc' | 'obj' | 'usdz') => (k === 'glb' ? 4 : k === 'ifc' ? 3 : k === 'obj' ? 2 : 1);
+    const withUrl: Array<{ kind: 'glb' | 'ifc' | 'obj' | 'usdz'; url: string }> = [];
     for (const a of assets) {
       const kind = extKind(a.file_name ?? a.storage_path ?? '');
       if (!kind) continue;

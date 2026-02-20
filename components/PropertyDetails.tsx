@@ -50,7 +50,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [galleryImageUrls, setGalleryImageUrls] = useState<string[]>([]);
   const [floorPlanImageUrl, setFloorPlanImageUrl] = useState<string | null>(null);
-  const [tour3dCandidates, setTour3dCandidates] = useState<Array<{ kind: 'glb' | 'obj' | 'usdz'; url: string }>>([]);
+  const [tour3dCandidates, setTour3dCandidates] = useState<Array<{ kind: 'glb' | 'ifc' | 'obj' | 'usdz'; url: string }>>([]);
 
   const isPropertyRoute =
     typeof window !== 'undefined' &&
