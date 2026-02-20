@@ -74,19 +74,45 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     const sizeVec = new THREE.Vector3();
     const centerVec = new THREE.Vector3();
 
-    function centerAndFrame(object: THREE.Object3D): boolean {
-      const box = new THREE.Box3().setFromObject(object);
-      if (box.isEmpty()) {
-        setError('Модель не містить геометрії');
-        return false;
-      }
+    function countRenderableGeometry(root: THREE.Object3D): number {
+      let count = 0;
+      root.traverse((child: THREE.Object3D) => {
+        const geom = (child as THREE.Mesh).geometry;
+        const pos = geom?.attributes?.position;
+        if (pos && (pos as THREE.BufferAttribute).count > 0) count += 1;
+      });
+      return count;
+    }
+
+    function computeSafeWorldBox(root: THREE.Object3D): THREE.Box3 | null {
+      const out = new THREE.Box3();
+      let hasAny = false;
+      root.updateWorldMatrix(true, true);
+      root.traverse((child: THREE.Object3D) => {
+        const geom = (child as THREE.Mesh).geometry as THREE.BufferGeometry | undefined;
+        const pos = geom?.attributes?.position;
+        if (!geom || !pos || (pos as THREE.BufferAttribute).count === 0) return;
+        if (!geom.boundingBox) geom.computeBoundingBox();
+        const bb = geom.boundingBox;
+        if (!bb) return;
+        const vals = [bb.min.x, bb.min.y, bb.min.z, bb.max.x, bb.max.y, bb.max.z];
+        if (!vals.every(Number.isFinite)) return;
+        const worldBB = bb.clone().applyMatrix4(child.matrixWorld);
+        if (!hasAny) {
+          out.copy(worldBB);
+          hasAny = true;
+        } else {
+          out.union(worldBB);
+        }
+      });
+      return hasAny ? out : null;
+    }
+
+    function frameWithBox(box: THREE.Box3): boolean {
       const size = box.getSize(sizeVec);
       const center = box.getCenter(centerVec);
       const maxDim = Math.max(size.x, size.y, size.z);
-      if (!Number.isFinite(maxDim) || maxDim <= 0) {
-        setError('Модель не містить геометрії');
-        return false;
-      }
+      if (!Number.isFinite(maxDim) || maxDim <= 0) return false;
       const fovRad = (camera.fov * Math.PI) / 180;
       let dist = (maxDim / 2) / Math.tan(fovRad / 2);
       dist *= 1.6;
@@ -98,8 +124,22 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
       controls.update();
       return true;
     }
+
+    function centerAndFrame(object: THREE.Object3D): boolean {
+      let box = new THREE.Box3().setFromObject(object);
+      if (box.isEmpty() || !box.getSize(sizeVec).toArray().every(Number.isFinite)) {
+        const safe = computeSafeWorldBox(object);
+        if (safe && !safe.isEmpty()) box = safe;
+        else return false;
+      }
+      return frameWithBox(box);
+    }
+
     fitCameraRef.current = () => {
-      if (meshRef.current && cameraRef.current && controlsRef.current) centerAndFrame(meshRef.current);
+      if (!meshRef.current || !cameraRef.current || !controlsRef.current) return;
+      const ok = centerAndFrame(meshRef.current);
+      if (ok) setError(null);
+      else setError('Кадрування не вдалося — спробуйте обертати камеру.');
     };
 
     function applyDefaultMaterial(obj: THREE.Object3D) {
@@ -141,11 +181,8 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
 
     const onLoaded = (model: THREE.Object3D) => {
       if (loadIdRef.current !== loadId) return;
-      let meshCount = 0;
-      model.traverse((child) => {
-        if ((child as THREE.Mesh).isMesh) meshCount++;
-      });
-      if (meshCount === 0) {
+      const renderableCount = countRenderableGeometry(model);
+      if (renderableCount === 0) {
         setError(kind === 'usdz' ? usdzUnsupportedMessage : 'Модель не містить геометрії');
         setLoading(false);
         return;
@@ -154,8 +191,9 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
       scene.add(model);
       meshRef.current = model;
       if (!centerAndFrame(model)) {
-        scene.remove(model);
-        meshRef.current = null;
+        setError('Кадрування не вдалося — натисніть Fit камера.');
+      } else {
+        setError(null);
       }
       setLoading(false);
     };
@@ -243,7 +281,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
           <p className="text-gray-500 text-xs text-center">Можна закрити модалку та оновити сторінку.</p>
         </div>
       )}
-      {!loading && !error && (
+      {!loading && (
         <button
           type="button"
           onClick={() => fitCameraRef.current?.()}
