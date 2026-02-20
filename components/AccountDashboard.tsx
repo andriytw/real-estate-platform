@@ -7758,7 +7758,7 @@ ${internalCompany} Team`;
                     </div>
                     <div className="p-4 overflow-auto flex-1">
                       {type === 'tour3d' ? (() => {
-                        const TOUR3D_ACCEPT = 'model/obj,.obj,model/gltf-binary,.glb';
+                        const TOUR3D_ACCEPT = '.obj,.glb,model/gltf-binary,application/octet-stream';
                         const MAX_TOUR3D_SIZE = 50 * 1024 * 1024;
                         const allowedExts = ['.obj', '.glb'];
                         const validateTour3dFile = (file: File): { ok: true } | { ok: false; message: string } => {

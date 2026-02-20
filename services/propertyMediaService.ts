@@ -32,6 +32,15 @@ function buildStoragePath(propertyId: string, type: PropertyMediaAssetType, asse
   return `property/${propertyId}/${type}/${assetId}/${ts}_${safe}`;
 }
 
+function getUploadContentType(file: File): string {
+  const name = file.name || '';
+  const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
+  if (ext === 'obj') return 'application/octet-stream';
+  if (ext === 'glb') return 'model/gltf-binary';
+  if (file.type && file.type.trim().length > 0) return file.type;
+  return 'application/octet-stream';
+}
+
 export const propertyMediaService = {
   async listAssets(propertyId: string): Promise<PropertyMediaAssetRow[]> {
     const { data, error } = await supabase
@@ -63,9 +72,10 @@ export const propertyMediaService = {
     for (const file of files) {
       const assetId = crypto.randomUUID();
       const storagePath = buildStoragePath(propertyId, type, assetId, file);
+      const contentType = getUploadContentType(file);
       const { error: uploadError } = await supabase.storage
         .from(PROPERTY_MEDIA_BUCKET)
-        .upload(storagePath, file, { upsert: false, contentType: file.type });
+        .upload(storagePath, file, { upsert: false, contentType });
       if (uploadError) throw uploadError;
       const row = {
         id: assetId,
@@ -73,7 +83,7 @@ export const propertyMediaService = {
         type,
         file_name: file.name,
         storage_path: storagePath,
-        mime_type: file.type || null,
+        mime_type: contentType,
         size_bytes: file.size,
         external_url: null,
         created_at: new Date().toISOString(),
