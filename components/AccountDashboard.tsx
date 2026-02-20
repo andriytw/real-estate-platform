@@ -719,6 +719,10 @@ const AccountDashboard: React.FC = () => {
   const [photoGalleryCoverId, setPhotoGalleryCoverId] = useState<string | null>(null);
   const [photoGallerySelectedId, setPhotoGallerySelectedId] = useState<string | null>(null);
   const [photoGallerySignedUrls, setPhotoGallerySignedUrls] = useState<Record<string, string>>({});
+  const [mediaStagedFile, setMediaStagedFile] = useState<File | null>(null);
+  const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
+  const [mediaUploading, setMediaUploading] = useState(false);
+  const [mediaMultiFileHint, setMediaMultiFileHint] = useState(false);
   const [warehouseTab, setWarehouseTab] = useState<'warehouses' | 'stock' | 'addInventory'>('warehouses');
   const [warehouseStock, setWarehouseStock] = useState<WarehouseStockItem[]>([]);
   const [isLoadingWarehouseStock, setIsLoadingWarehouseStock] = useState(false);
@@ -2985,6 +2989,19 @@ const AccountDashboard: React.FC = () => {
     })();
     return () => { cancelled = true; };
   }, [openMediaModalType, selectedPropertyId, propertyMediaAssets]);
+
+  // Media modal (floor_plan / magic_plan_report): clear staged file and revoke preview when modal or property changes
+  useEffect(() => {
+    if (mediaPreviewUrl) {
+      URL.revokeObjectURL(mediaPreviewUrl);
+    }
+    setMediaPreviewUrl(null);
+    setMediaStagedFile(null);
+    setMediaMultiFileHint(false);
+    return () => {
+      if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+    };
+  }, [openMediaModalType, selectedPropertyId]);
 
   // Expense invoices: load categories (ensure defaults) and items when property changes
   useEffect(() => {
@@ -7841,23 +7858,140 @@ ${internalCompany} Team`;
                             </div>
                           </div>
                         );
-                      })() : (
-                        <div className="space-y-3">
-                          <input type="file" accept="application/pdf" className="hidden" id={`media-${type}-upload`} onChange={async (e) => { const files = e.target.files ? Array.from(e.target.files) : []; e.target.value = ''; if (!files.length) return; try { await propertyMediaService.uploadAssetFiles(selectedPropertyId, type, files); refreshMedia(); } catch (err) { console.error(err); alert('Не вдалося завантажити.'); } }} />
-                          <label htmlFor={`media-${type}-upload`} className="inline-block px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 cursor-pointer hover:bg-emerald-500/30">Upload PDF</label>
-                          <ul className="space-y-2">
-                            {assets.map((a) => (
-                              <li key={a.id} className="flex items-center justify-between gap-2 py-2 border-b border-gray-700/50">
-                                <span className="text-sm text-white truncate">{a.file_name || a.storage_path || a.id}</span>
-                                <div className="flex gap-1 shrink-0">
-                                  {a.storage_path && <button type="button" onClick={async () => { try { const url = await propertyMediaService.getSignedUrl(a.storage_path!); window.open(url, '_blank'); } catch (e) { console.error(e); alert('Не вдалося відкрити.'); } }} className="px-2 py-1 rounded text-xs border border-gray-600 text-gray-300 hover:bg-gray-700/50">Open</button>}
-                                  <button type="button" onClick={async () => { if (!confirm('Видалити?')) return; try { await propertyMediaService.deleteAsset(a.id); refreshMedia(); } catch (e) { console.error(e); alert('Не вдалося видалити.'); } }} className="px-2 py-1 rounded text-xs border border-red-500/50 text-red-400 hover:bg-red-500/10">Delete</button>
+                      })() : (() => {
+                        const MEDIA_ACCEPT = 'application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp';
+                        const MAX_FILE_SIZE = 30 * 1024 * 1024;
+                        const allowedMimes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+                        const allowedExts = ['.pdf', '.jpg', '.jpeg', '.png', '.webp'];
+                        const validateMediaFile = (file: File): { ok: true } | { ok: false; message: string } => {
+                          if (file.size > MAX_FILE_SIZE) return { ok: false, message: 'Файл завеликий (max 30 MB)' };
+                          const mimeOk = allowedMimes.includes(file.type);
+                          const ext = file.name.toLowerCase().replace(/^.*\./, '.');
+                          const extOk = allowedExts.includes(ext);
+                          if (!mimeOk && !extOk) return { ok: false, message: 'Дозволені формати: PDF, JPG, PNG, WebP' };
+                          return { ok: true };
+                        };
+                        const handleFileSelect = (file: File | null): boolean => {
+                          if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+                          setMediaPreviewUrl(null);
+                          setMediaStagedFile(null);
+                          if (!file) return false;
+                          const v = validateMediaFile(file);
+                          if (!v.ok) { alert(v.message); return false; }
+                          setMediaStagedFile(file);
+                          setMediaPreviewUrl(URL.createObjectURL(file));
+                          return true;
+                        };
+                        const handleClearStaged = () => {
+                          if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+                          setMediaPreviewUrl(null);
+                          setMediaStagedFile(null);
+                        };
+                        const handleSave = async () => {
+                          if (!mediaStagedFile) return;
+                          const urlToRevoke = mediaPreviewUrl;
+                          setMediaUploading(true);
+                          try {
+                            await propertyMediaService.uploadAssetFiles(selectedPropertyId, type, [mediaStagedFile]);
+                            await refreshMedia();
+                            setMediaPreviewUrl(null);
+                            setMediaStagedFile(null);
+                            setOpenMediaModalType(null);
+                          } catch (err) {
+                            console.error(err);
+                            alert('Не вдалося завантажити.');
+                          } finally {
+                            if (urlToRevoke) URL.revokeObjectURL(urlToRevoke);
+                            setMediaPreviewUrl(null);
+                            setMediaStagedFile(null);
+                            setMediaUploading(false);
+                          }
+                        };
+                        const handleCancel = () => {
+                          if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+                          setMediaPreviewUrl(null);
+                          setMediaStagedFile(null);
+                          setOpenMediaModalType(null);
+                        };
+                        const isPdf = mediaStagedFile?.type === 'application/pdf' || /\.pdf$/i.test(mediaStagedFile?.name ?? '');
+                        const isImage = mediaStagedFile && ['image/jpeg', 'image/png', 'image/webp'].includes(mediaStagedFile.type);
+                        const formatSize = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${(bytes / 1024).toFixed(1)} KB`;
+                        return (
+                          <div className="space-y-3">
+                            <input
+                              type="file"
+                              accept={MEDIA_ACCEPT}
+                              className="hidden"
+                              id={`media-${type}-upload`}
+                              onChange={(e) => {
+                                const list = e.target.files;
+                                const f = list?.[0] ?? null;
+                                const multiple = list && list.length > 1;
+                                const accepted = handleFileSelect(f);
+                                e.currentTarget.value = '';
+                                if (multiple && accepted) { setMediaMultiFileHint(true); setTimeout(() => setMediaMultiFileHint(false), 2500); }
+                              }}
+                            />
+                            <div
+                              className="border border-dashed border-gray-600 rounded-lg p-4 text-center cursor-pointer hover:border-gray-500 hover:bg-gray-800/30 transition-colors"
+                              onClick={() => document.getElementById(`media-${type}-upload`)?.click()}
+                              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                              onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const list = e.dataTransfer.files; const f = list?.[0] ?? null; const multiple = list && list.length > 1; const accepted = handleFileSelect(f); if (multiple && accepted) { setMediaMultiFileHint(true); setTimeout(() => setMediaMultiFileHint(false), 2500); } }}
+                            >
+                              {mediaStagedFile ? (
+                                <span className="text-sm text-gray-300">{mediaStagedFile.name} · {formatSize(mediaStagedFile.size)}</span>
+                              ) : (
+                                <span className="text-sm text-gray-400">Перетягніть файл сюди або натисніть для вибору (PDF, JPG, PNG, WebP)</span>
+                              )}
+                            </div>
+                            {mediaMultiFileHint && <p className="text-xs text-gray-400">Використано перший файл з кількох.</p>}
+                            {mediaStagedFile && mediaPreviewUrl && (
+                              <>
+                                <div className="rounded-lg border border-gray-700 overflow-hidden bg-gray-900 min-h-[200px] max-h-[320px] flex items-center justify-center">
+                                  {isPdf ? (
+                                    <object data={mediaPreviewUrl} type="application/pdf" className="w-full h-[300px]" title="PDF preview">
+                                      <p className="text-gray-500 text-sm p-2">Preview not available. <a href={mediaPreviewUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-400 underline">Open</a></p>
+                                    </object>
+                                  ) : isImage ? (
+                                    <img src={mediaPreviewUrl} alt="" className="max-w-full max-h-[300px] object-contain" />
+                                  ) : (
+                                    <p className="text-gray-500 text-sm">Preview not available</p>
+                                  )}
                                 </div>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <button type="button" onClick={() => document.getElementById(`media-${type}-upload`)?.click()} className="px-2 py-1 rounded text-xs border border-gray-600 text-gray-300 hover:bg-gray-700/50">Змінити</button>
+                                  <button type="button" onClick={handleClearStaged} className="px-2 py-1 rounded text-xs border border-red-500/50 text-red-400 hover:bg-red-500/10">Видалити</button>
+                                  <button type="button" onClick={handleSave} disabled={mediaUploading} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500/30 disabled:opacity-50">{mediaUploading ? '...' : 'Зберегти'}</button>
+                                  <button type="button" onClick={handleCancel} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-600 text-gray-400 hover:bg-gray-700/50">Скасувати</button>
+                                </div>
+                              </>
+                            )}
+                            {mediaStagedFile && !mediaPreviewUrl && (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <button type="button" onClick={handleClearStaged} className="px-2 py-1 rounded text-xs border border-red-500/50 text-red-400 hover:bg-red-500/10">Видалити</button>
+                                <button type="button" onClick={handleSave} disabled={mediaUploading} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500/30 disabled:opacity-50">{mediaUploading ? '...' : 'Зберегти'}</button>
+                                <button type="button" onClick={handleCancel} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-600 text-gray-400 hover:bg-gray-700/50">Скасувати</button>
+                              </div>
+                            )}
+                            {!mediaStagedFile && (
+                              <div className="flex gap-2">
+                                <button type="button" onClick={handleCancel} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-600 text-gray-400 hover:bg-gray-700/50">Скасувати</button>
+                              </div>
+                            )}
+                            <ul className="space-y-2">
+                              {assets.map((a) => (
+                                <li key={a.id} className="flex items-center justify-between gap-2 py-2 border-b border-gray-700/50">
+                                  <span className="text-sm text-white truncate">{a.file_name || a.storage_path || a.id}</span>
+                                  <div className="flex gap-1 shrink-0">
+                                    {a.storage_path && <button type="button" onClick={async () => { try { const url = await propertyMediaService.getSignedUrl(a.storage_path!); window.open(url, '_blank'); } catch (e) { console.error(e); alert('Не вдалося відкрити.'); } }} className="px-2 py-1 rounded text-xs border border-gray-600 text-gray-300 hover:bg-gray-700/50">Open</button>}
+                                    <button type="button" onClick={async () => { if (!confirm('Видалити?')) return; try { await propertyMediaService.deleteAsset(a.id); refreshMedia(); } catch (e) { console.error(e); alert('Не вдалося видалити.'); } }} className="px-2 py-1 rounded text-xs border border-red-500/50 text-red-400 hover:bg-red-500/10">Delete</button>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
