@@ -198,8 +198,12 @@ const TourModal: React.FC<TourModalProps> = ({ isOpen, onClose, propertyTitle, t
   if (!isOpen) return null;
 
   if (tourUrl) {
-    const isModelUrl = tourUrl.startsWith('blob:') || /\.(obj|glb)(\?|$)/i.test(tourUrl);
-    const modelKind = /\.glb(\?|$)/i.test(tourUrl) ? 'glb' as const : 'obj' as const;
+    const isModelUrl = tourUrl.startsWith('blob:') || /\.(obj|glb|usdz)(\?|$)/i.test(tourUrl);
+    const modelKind = (() => {
+      if (/\.usdz(\?|$)/i.test(tourUrl)) return 'usdz' as const;
+      if (/\.glb(\?|$)/i.test(tourUrl)) return 'glb' as const;
+      return 'obj' as const;
+    })();
     return (
       <div className="fixed inset-0 z-[100] bg-black flex flex-col font-sans">
         <div className="absolute top-0 left-0 right-0 p-4 z-20 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent">

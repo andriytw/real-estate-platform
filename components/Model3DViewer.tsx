@@ -2,11 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { USDZLoader } from 'three/examples/jsm/loaders/USDZLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 export interface Model3DViewerProps {
   url: string;
-  kind: 'obj' | 'glb';
+  kind: 'obj' | 'glb' | 'usdz';
   className?: string;
 }
 
@@ -18,12 +19,15 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
   const controlsRef = useRef<OrbitControls | null>(null);
   const meshRef = useRef<THREE.Group | THREE.Object3D | null>(null);
   const frameIdRef = useRef<number>(0);
+  const loadIdRef = useRef<number>(0);
+  const fitCameraRef = useRef<(() => void) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!containerRef.current || !url) return;
 
+    const loadId = ++loadIdRef.current;
     const container = containerRef.current;
     const width = container.clientWidth;
     const height = container.clientHeight || 320;
@@ -43,11 +47,16 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambient);
-    const directional = new THREE.DirectionalLight(0xffffff, 0.8);
+    const hemisphere = new THREE.HemisphereLight(0xffffff, 0x444460, 0.45);
+    scene.add(hemisphere);
+    const directional = new THREE.DirectionalLight(0xffffff, 0.6);
     directional.position.set(10, 10, 10);
     scene.add(directional);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.25);
+    fill.position.set(-6, 4, -6);
+    scene.add(fill);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -66,6 +75,9 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
       controls.target.set(0, 0, 0);
       controls.update();
     }
+    fitCameraRef.current = () => {
+      if (meshRef.current && cameraRef.current && controlsRef.current) centerAndFrame(meshRef.current);
+    };
 
     function applyDefaultMaterial(obj: THREE.Object3D) {
       obj.traverse((child) => {
@@ -84,43 +96,30 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     setError(null);
     setLoading(true);
 
+    const onLoaded = (model: THREE.Object3D) => {
+      if (loadIdRef.current !== loadId) return;
+      applyDefaultMaterial(model);
+      scene.add(model);
+      meshRef.current = model;
+      centerAndFrame(model);
+      setLoading(false);
+    };
+    const onLoadError = (e: unknown) => {
+      if (loadIdRef.current !== loadId) return;
+      setError('Не вдалося завантажити модель. Закрийте та спробуйте ще раз.');
+      setLoading(false);
+      console.error(e);
+    };
+
     if (kind === 'glb') {
       const loader = new GLTFLoader();
-      loader.load(
-        url,
-        (gltf) => {
-          const model = gltf.scene;
-          applyDefaultMaterial(model);
-          scene.add(model);
-          meshRef.current = model;
-          centerAndFrame(model);
-          setLoading(false);
-        },
-        undefined,
-        (e) => {
-          setError('Не вдалося завантажити модель');
-          setLoading(false);
-          console.error(e);
-        }
-      );
+      loader.load(url, (gltf) => onLoaded(gltf.scene), undefined, onLoadError);
+    } else if (kind === 'usdz') {
+      const loader = new USDZLoader();
+      loader.loadAsync(url).then((group) => onLoaded(group)).catch(onLoadError);
     } else {
       const loader = new OBJLoader();
-      loader.load(
-        url,
-        (object) => {
-          applyDefaultMaterial(object);
-          scene.add(object);
-          meshRef.current = object;
-          centerAndFrame(object);
-          setLoading(false);
-        },
-        undefined,
-        (e) => {
-          setError('Не вдалося завантажити модель');
-          setLoading(false);
-          console.error(e);
-        }
-      );
+      loader.load(url, onLoaded, undefined, onLoadError);
     }
 
     function animate() {
@@ -141,6 +140,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     resizeObserver.observe(container);
 
     return () => {
+      fitCameraRef.current = null;
       resizeObserver.disconnect();
       cancelAnimationFrame(frameIdRef.current);
       if (meshRef.current && sceneRef.current) {
@@ -175,14 +175,25 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
   return (
     <div ref={containerRef} className={`relative bg-[#16181D] ${className}`} style={{ minHeight: 320 }}>
       {loading && (
-        <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
-          Завантаження…
+        <div className="absolute inset-0 flex items-center justify-center bg-[#16181D]/90 z-10">
+          <span className="text-gray-300 text-sm">Завантаження 3D…</span>
         </div>
       )}
       {error && (
-        <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
-          {error}
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#16181D]/95 z-10 p-4">
+          <p className="text-gray-300 text-sm text-center">{error}</p>
+          <p className="text-gray-500 text-xs text-center">Можна закрити модалку та оновити сторінку.</p>
         </div>
+      )}
+      {!loading && !error && (
+        <button
+          type="button"
+          onClick={() => fitCameraRef.current?.()}
+          className="absolute bottom-2 right-2 z-10 px-2.5 py-1.5 rounded text-xs font-medium bg-black/50 text-gray-300 hover:bg-black/70 hover:text-white border border-gray-600/80 transition-colors"
+          title="Повернути камеру (Fit / Reset)"
+        >
+          Fit камера
+        </button>
       )}
     </div>
   );

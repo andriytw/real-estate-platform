@@ -36,6 +36,7 @@ function getUploadContentType(file: File): string {
   const name = file.name || '';
   const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
   if (ext === 'obj') return 'application/octet-stream';
+  if (ext === 'usdz') return 'application/octet-stream';
   if (ext === 'glb') return 'model/gltf-binary';
   if (file.type && file.type.trim().length > 0) return file.type;
   return 'application/octet-stream';
@@ -347,15 +348,27 @@ export const propertyMediaService = {
     expiresInSeconds = 60 * 30
   ): Promise<string | null> {
     const assets = await propertyMediaService.listAssetsByType(propertyId, 'tour3d');
-    const first = assets[0];
-    if (!first) return null;
-    if (first.storage_path) {
+    if (assets.length === 0) return null;
+    const extPriority = (pathOrName: string): number => {
+      const ext = (pathOrName || '').split('.').pop()?.toLowerCase();
+      if (ext === 'usdz') return 3;
+      if (ext === 'glb') return 2;
+      if (ext === 'obj') return 1;
+      return 0;
+    };
+    const sorted = [...assets].sort(
+      (a, b) =>
+        extPriority(b.file_name ?? b.storage_path ?? '') -
+        extPriority(a.file_name ?? a.storage_path ?? '')
+    );
+    const chosen = sorted[0];
+    if (chosen.storage_path) {
       try {
-        return await propertyMediaService.getSignedUrl(first.storage_path, expiresInSeconds);
+        return await propertyMediaService.getSignedUrl(chosen.storage_path, expiresInSeconds);
       } catch {
         return null;
       }
     }
-    return first.external_url ?? null;
+    return chosen.external_url ?? null;
   },
 };

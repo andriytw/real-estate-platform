@@ -7758,13 +7758,13 @@ ${internalCompany} Team`;
                     </div>
                     <div className="p-4 overflow-auto flex-1">
                       {type === 'tour3d' ? (() => {
-                        const TOUR3D_ACCEPT = '.obj,.glb,model/gltf-binary,application/octet-stream';
+                        const TOUR3D_ACCEPT = '.usdz,.obj,.glb,model/gltf-binary,application/octet-stream';
                         const MAX_TOUR3D_SIZE = 50 * 1024 * 1024;
-                        const allowedExts = ['.obj', '.glb'];
+                        const allowedExts = ['.obj', '.glb', '.usdz'];
                         const validateTour3dFile = (file: File): { ok: true } | { ok: false; message: string } => {
                           if (file.size > MAX_TOUR3D_SIZE) return { ok: false, message: 'Файл завеликий (max 50 MB)' };
                           const ext = file.name.toLowerCase().replace(/^.*\./, '.');
-                          if (!allowedExts.includes(ext)) return { ok: false, message: 'Дозволені формати: OBJ, GLB' };
+                          if (!allowedExts.includes(ext)) return { ok: false, message: 'Дозволені формати: OBJ, GLB, USDZ' };
                           return { ok: true };
                         };
                         const handleTour3dFileSelect = (file: File | null): boolean => {
@@ -7809,7 +7809,12 @@ ${internalCompany} Team`;
                           setMediaStagedFile(null);
                           setOpenMediaModalType(null);
                         };
-                        const tour3dKind = mediaStagedFile?.name?.toLowerCase().endsWith('.glb') ? 'glb' as const : 'obj' as const;
+                        const tour3dKind = (() => {
+                          const n = mediaStagedFile?.name?.toLowerCase() ?? '';
+                          if (n.endsWith('.usdz')) return 'usdz' as const;
+                          if (n.endsWith('.glb')) return 'glb' as const;
+                          return 'obj' as const;
+                        })();
                         const formatSize = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${(bytes / 1024).toFixed(1)} KB`;
                         return (
                           <div className="space-y-3">
@@ -7828,7 +7833,7 @@ ${internalCompany} Team`;
                               onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                               onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const list = e.dataTransfer.files; const f = list?.[0] ?? null; const multiple = list && list.length > 1; const accepted = handleTour3dFileSelect(f); if (multiple && accepted) { setMediaMultiFileHint(true); setTimeout(() => setMediaMultiFileHint(false), 2500); } }}
                             >
-                              {mediaStagedFile ? <span className="text-sm text-gray-300">{mediaStagedFile.name} · {formatSize(mediaStagedFile.size)}</span> : <span className="text-sm text-gray-400">Перетягніть OBJ або GLB сюди або натисніть для вибору</span>}
+                              {mediaStagedFile ? <span className="text-sm text-gray-300">{mediaStagedFile.name} · {formatSize(mediaStagedFile.size)}</span> : <span className="text-sm text-gray-400">Перетягніть OBJ, GLB або USDZ сюди або натисніть для вибору</span>}
                             </div>
                             {mediaMultiFileHint && <p className="text-xs text-gray-400">Використано перший файл з кількох.</p>}
                             {mediaStagedFile && mediaPreviewUrl && (
