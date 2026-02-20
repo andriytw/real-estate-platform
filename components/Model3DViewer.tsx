@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { USDZLoader } from 'three/examples/jsm/loaders/USDZLoader.js';
@@ -41,11 +42,18 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(width, height);
-    renderer.setClearColor(0x16181d);
-    container.appendChild(renderer.domElement);
+    renderer.setClearColor(0x16181d, 1);
+    container.insertBefore(renderer.domElement, container.firstChild);
     rendererRef.current = renderer;
+
+    const pmremGen = new THREE.PMREMGenerator(renderer);
+    const envRT = pmremGen.fromScene(new RoomEnvironment(), 0.04);
+    scene.environment = envRT.texture;
 
     const ambient = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambient);
@@ -63,17 +71,32 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     controls.dampingFactor = 0.05;
     controlsRef.current = controls;
 
-    function centerAndFrame(object: THREE.Object3D) {
+    const sizeVec = new THREE.Vector3();
+    const centerVec = new THREE.Vector3();
+
+    function centerAndFrame(object: THREE.Object3D): boolean {
       const box = new THREE.Box3().setFromObject(object);
-      const center = box.getCenter(new THREE.Vector3());
-      const size = box.getSize(new THREE.Vector3());
-      object.position.sub(center);
+      if (box.isEmpty()) {
+        setError('Модель не містить геометрії');
+        return false;
+      }
+      const size = box.getSize(sizeVec);
+      const center = box.getCenter(centerVec);
       const maxDim = Math.max(size.x, size.y, size.z);
-      const distance = Math.max(maxDim * 1.5, 4);
-      camera.position.set(distance, distance * 0.7, distance);
-      camera.lookAt(0, 0, 0);
-      controls.target.set(0, 0, 0);
+      if (!Number.isFinite(maxDim) || maxDim <= 0) {
+        setError('Модель не містить геометрії');
+        return false;
+      }
+      const fovRad = (camera.fov * Math.PI) / 180;
+      let dist = (maxDim / 2) / Math.tan(fovRad / 2);
+      dist *= 1.6;
+      camera.near = Math.max(0.01, maxDim / 1000);
+      camera.far = maxDim * 1000;
+      camera.position.set(center.x + dist, center.y + dist * 0.3, center.z + dist);
+      camera.updateProjectionMatrix();
+      controls.target.copy(center);
       controls.update();
+      return true;
     }
     fitCameraRef.current = () => {
       if (meshRef.current && cameraRef.current && controlsRef.current) centerAndFrame(meshRef.current);
@@ -83,11 +106,28 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
       obj.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
-          if (!mesh.material || (Array.isArray(mesh.material) && mesh.material.length === 0)) {
-            mesh.material = new THREE.MeshLambertMaterial({ color: 0x9ca3af });
+          mesh.castShadow = false;
+          mesh.receiveShadow = false;
+          let mat: THREE.Material | THREE.Material[] | null = mesh.material;
+          if (!mat || (Array.isArray(mat) && mat.length === 0)) {
+            mesh.material = new THREE.MeshStandardMaterial({ color: 0xe5e7eb, metalness: 0, roughness: 1 });
+            return;
+          }
+          const mats = Array.isArray(mat) ? mat : [mat];
+          for (const m of mats) {
+            if (!m) continue;
+            m.side = THREE.DoubleSide;
+            if (m.map) {
+              m.map.colorSpace = THREE.SRGBColorSpace;
+              m.map.needsUpdate = true;
+            }
+            if (!m.map && 'metalness' in m) {
+              (m as THREE.MeshStandardMaterial).metalness = 0;
+              (m as THREE.MeshStandardMaterial).roughness = 1;
+            }
           }
           if (Array.isArray(mesh.material)) {
-            mesh.material = mesh.material[0] ?? new THREE.MeshLambertMaterial({ color: 0x9ca3af });
+            mesh.material = mesh.material[0];
           }
         }
       });
@@ -96,17 +136,32 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     setError(null);
     setLoading(true);
 
+    const usdzUnsupportedMessage =
+      'Цей USDZ не підтримується у веб-перегляді (MagicPlan часто експортує crate .usdc). Завантажте GLB або OBJ.';
+
     const onLoaded = (model: THREE.Object3D) => {
       if (loadIdRef.current !== loadId) return;
+      let meshCount = 0;
+      model.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) meshCount++;
+      });
+      if (meshCount === 0) {
+        setError(kind === 'usdz' ? usdzUnsupportedMessage : 'Модель не містить геометрії');
+        setLoading(false);
+        return;
+      }
       applyDefaultMaterial(model);
       scene.add(model);
       meshRef.current = model;
-      centerAndFrame(model);
+      if (!centerAndFrame(model)) {
+        scene.remove(model);
+        meshRef.current = null;
+      }
       setLoading(false);
     };
     const onLoadError = (e: unknown) => {
       if (loadIdRef.current !== loadId) return;
-      setError('Не вдалося завантажити модель. Закрийте та спробуйте ще раз.');
+      setError(kind === 'usdz' ? usdzUnsupportedMessage : 'Не вдалося завантажити модель. Закрийте та спробуйте ще раз.');
       setLoading(false);
       console.error(e);
     };
@@ -143,6 +198,9 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
       fitCameraRef.current = null;
       resizeObserver.disconnect();
       cancelAnimationFrame(frameIdRef.current);
+      envRT?.dispose();
+      pmremGen.dispose();
+      if (sceneRef.current) sceneRef.current.environment = null;
       if (meshRef.current && sceneRef.current) {
         sceneRef.current.remove(meshRef.current);
         meshRef.current.traverse((child) => {
@@ -189,7 +247,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
         <button
           type="button"
           onClick={() => fitCameraRef.current?.()}
-          className="absolute bottom-2 right-2 z-10 px-2.5 py-1.5 rounded text-xs font-medium bg-black/50 text-gray-300 hover:bg-black/70 hover:text-white border border-gray-600/80 transition-colors"
+          className="absolute bottom-3 right-3 z-20 px-2.5 py-1.5 rounded text-xs font-medium bg-black/50 text-gray-300 hover:bg-black/70 hover:text-white border border-gray-600/80 transition-colors"
           title="Повернути камеру (Fit / Reset)"
         >
           Fit камера
