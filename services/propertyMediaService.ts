@@ -343,32 +343,46 @@ export const propertyMediaService = {
     }
   },
 
+  /** Web preview priority: GLB (best) → OBJ → USDZ (USDC crate often fails in browser). */
   async getMarketplaceTour3dUrl(
     propertyId: string,
     expiresInSeconds = 60 * 30
   ): Promise<string | null> {
+    const candidates = await propertyMediaService.getMarketplaceTour3dCandidates(propertyId, expiresInSeconds);
+    return candidates.length > 0 ? candidates[0].url : null;
+  },
+
+  /** Returns all tour3d assets as { kind, url } sorted by web priority: glb → obj → usdz. */
+  async getMarketplaceTour3dCandidates(
+    propertyId: string,
+    expiresInSeconds = 60 * 30
+  ): Promise<Array<{ kind: 'glb' | 'obj' | 'usdz'; url: string }>> {
     const assets = await propertyMediaService.listAssetsByType(propertyId, 'tour3d');
-    if (assets.length === 0) return null;
-    const extPriority = (pathOrName: string): number => {
+    const extKind = (pathOrName: string): 'glb' | 'obj' | 'usdz' | null => {
       const ext = (pathOrName || '').split('.').pop()?.toLowerCase();
-      if (ext === 'usdz') return 3;
-      if (ext === 'glb') return 2;
-      if (ext === 'obj') return 1;
-      return 0;
+      if (ext === 'glb') return 'glb';
+      if (ext === 'obj') return 'obj';
+      if (ext === 'usdz') return 'usdz';
+      return null;
     };
-    const sorted = [...assets].sort(
-      (a, b) =>
-        extPriority(b.file_name ?? b.storage_path ?? '') -
-        extPriority(a.file_name ?? a.storage_path ?? '')
-    );
-    const chosen = sorted[0];
-    if (chosen.storage_path) {
-      try {
-        return await propertyMediaService.getSignedUrl(chosen.storage_path, expiresInSeconds);
-      } catch {
-        return null;
+    const priority = (k: 'glb' | 'obj' | 'usdz') => (k === 'glb' ? 3 : k === 'obj' ? 2 : 1);
+    const withUrl: Array<{ kind: 'glb' | 'obj' | 'usdz'; url: string }> = [];
+    for (const a of assets) {
+      const kind = extKind(a.file_name ?? a.storage_path ?? '');
+      if (!kind) continue;
+      let url: string | null = null;
+      if (a.storage_path) {
+        try {
+          url = await propertyMediaService.getSignedUrl(a.storage_path, expiresInSeconds);
+        } catch {
+          /* skip */
+        }
+      } else if (a.external_url) {
+        url = a.external_url;
       }
+      if (url) withUrl.push({ kind, url });
     }
-    return chosen.external_url ?? null;
+    withUrl.sort((a, b) => priority(b.kind) - priority(a.kind));
+    return withUrl;
   },
 };

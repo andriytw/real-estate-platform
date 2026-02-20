@@ -10,9 +10,10 @@ export interface Model3DViewerProps {
   url: string;
   kind: 'obj' | 'glb' | 'usdz';
   className?: string;
+  onError?: (info: { code: string; message: string }) => void;
 }
 
-const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = '' }) => {
+const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = '', onError }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -177,14 +178,20 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     setLoading(true);
 
     const usdzUnsupportedMessage =
-      'Цей USDZ не підтримується у веб-перегляді (MagicPlan часто експортує crate .usdc). Завантажте GLB або OBJ.';
+      'Цей USDZ містить USDC (crate) і не підтримується у веб-перегляді. Завантажте GLB або OBJ.';
 
     const onLoaded = (model: THREE.Object3D) => {
       if (loadIdRef.current !== loadId) return;
       const renderableCount = countRenderableGeometry(model);
       if (renderableCount === 0) {
-        setError(kind === 'usdz' ? usdzUnsupportedMessage : 'Модель не містить геометрії');
+        const msg = kind === 'usdz' ? usdzUnsupportedMessage : 'Модель не містить геометрії';
+        setError(msg);
         setLoading(false);
+        if (kind === 'usdz') {
+          onError?.({ code: 'USDZ_CRATE_UNSUPPORTED', message: usdzUnsupportedMessage });
+        } else {
+          onError?.({ code: 'MODEL_LOAD_FAILED', message: msg });
+        }
         return;
       }
       applyDefaultMaterial(model);
@@ -199,8 +206,18 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     };
     const onLoadError = (e: unknown) => {
       if (loadIdRef.current !== loadId) return;
-      setError(kind === 'usdz' ? usdzUnsupportedMessage : 'Не вдалося завантажити модель. Закрийте та спробуйте ще раз.');
+      const errMsg = String((e as Error)?.message ?? e);
+      const isUsdcCrate = /usdc|crate/i.test(errMsg);
+      const msg = kind === 'usdz' || isUsdcCrate
+        ? usdzUnsupportedMessage
+        : 'Не вдалося завантажити модель. Закрийте та спробуйте ще раз.';
+      setError(msg);
       setLoading(false);
+      if (kind === 'usdz' || isUsdcCrate) {
+        onError?.({ code: 'USDZ_CRATE_UNSUPPORTED', message: usdzUnsupportedMessage });
+      } else {
+        onError?.({ code: 'MODEL_LOAD_FAILED', message: msg });
+      }
       console.error(e);
     };
 

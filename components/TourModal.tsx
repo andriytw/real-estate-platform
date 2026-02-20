@@ -3,11 +3,14 @@ import * as THREE from 'three';
 import { X, Maximize2, Home, BedDouble, Utensils, Bath, Loader2 } from 'lucide-react';
 import Model3DViewer from './Model3DViewer';
 
+export type Tour3dCandidate = { kind: 'glb' | 'obj' | 'usdz'; url: string };
+
 interface TourModalProps {
   isOpen: boolean;
   onClose: () => void;
   propertyTitle: string;
   tourUrl?: string | null;
+  tour3dCandidates?: Tour3dCandidate[];
 }
 
 // Using equirectangular panoramic images for proper 360 projection
@@ -38,8 +41,17 @@ const TOUR_ROOMS = [
   },
 ];
 
-const TourModal: React.FC<TourModalProps> = ({ isOpen, onClose, propertyTitle, tourUrl = null }) => {
+const TourModal: React.FC<TourModalProps> = ({ isOpen, onClose, propertyTitle, tourUrl = null, tour3dCandidates = [] }) => {
+  const candidates = tour3dCandidates.length > 0 ? tour3dCandidates : (tourUrl ? [{ kind: (tourUrl.match(/\.(glb|obj|usdz)(\?|$)/i)?.[1]?.toLowerCase() ?? 'glb') as 'glb' | 'obj' | 'usdz', url: tourUrl }] : []);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [viewerError, setViewerError] = useState<{ code: string; message: string } | null>(null);
   const [activeRoomIndex, setActiveRoomIndex] = useState(0);
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedIndex(0);
+      setViewerError(null);
+    }
+  }, [isOpen]);
   const [isLoading, setIsLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -197,13 +209,16 @@ const TourModal: React.FC<TourModalProps> = ({ isOpen, onClose, propertyTitle, t
 
   if (!isOpen) return null;
 
-  if (tourUrl) {
-    const isModelUrl = tourUrl.startsWith('blob:') || /\.(obj|glb|usdz)(\?|$)/i.test(tourUrl);
-    const modelKind = (() => {
-      if (/\.usdz(\?|$)/i.test(tourUrl)) return 'usdz' as const;
-      if (/\.glb(\?|$)/i.test(tourUrl)) return 'glb' as const;
-      return 'obj' as const;
-    })();
+  if (candidates.length > 0) {
+    const current = candidates[selectedIndex];
+    const isModel = current && ['glb', 'obj', 'usdz'].includes(current.kind);
+    const handleViewerError = (info: { code: string; message: string }) => {
+      setViewerError(info);
+      if (info.code === 'USDZ_CRATE_UNSUPPORTED' && current?.kind === 'usdz' && selectedIndex < candidates.length - 1) {
+        setSelectedIndex((i) => i + 1);
+        setViewerError(null);
+      }
+    };
     return (
       <div className="fixed inset-0 z-[100] bg-black flex flex-col font-sans">
         <div className="absolute top-0 left-0 right-0 p-4 z-20 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent">
@@ -215,12 +230,44 @@ const TourModal: React.FC<TourModalProps> = ({ isOpen, onClose, propertyTitle, t
             <X className="w-6 h-6" />
           </button>
         </div>
+        {candidates.length > 1 && (
+          <div className="absolute top-14 left-0 right-0 px-4 py-2 z-20 flex justify-center gap-1">
+            {(['glb', 'obj', 'usdz'] as const).map((k) => {
+              if (!candidates.some((c) => c.kind === k)) return null;
+              const isActive = current?.kind === k;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => { setSelectedIndex(candidates.findIndex((c) => c.kind === k)); setViewerError(null); }}
+                  className={`px-3 py-1.5 rounded text-xs font-medium ${isActive ? 'bg-white/20 text-white' : 'bg-black/40 text-gray-400 hover:text-white'}`}
+                >
+                  {k.toUpperCase()}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <div className="flex-1 pt-14 min-h-0">
-          {isModelUrl ? (
-            <Model3DViewer url={tourUrl} kind={modelKind} className="w-full h-full min-h-[300px]" />
+          {isModel ? (
+            <>
+              <Model3DViewer
+                key={`${current.url}-${current.kind}`}
+                url={current.url}
+                kind={current.kind}
+                className="w-full h-full min-h-[300px]"
+                onError={handleViewerError}
+              />
+              {viewerError && viewerError.code === 'USDZ_CRATE_UNSUPPORTED' && selectedIndex >= candidates.length - 1 && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/90 z-30 p-4 pointer-events-none">
+                  <p className="text-gray-300 text-sm text-center max-w-md">{viewerError.message}</p>
+                  <p className="text-gray-500 text-xs text-center">USDZ from MagicPlan (USDC crate) can&apos;t be previewed in browser. Upload GLB (recommended) or OBJ. USDZ is stored, and we can add automatic conversion later.</p>
+                </div>
+              )}
+            </>
           ) : (
             <iframe
-              src={tourUrl}
+              src={current.url}
               title="3D Tour"
               className="w-full h-full border-0"
               allowFullScreen

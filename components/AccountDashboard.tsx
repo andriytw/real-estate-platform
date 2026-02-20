@@ -722,6 +722,7 @@ const AccountDashboard: React.FC = () => {
   const [photoGallerySignedUrls, setPhotoGallerySignedUrls] = useState<Record<string, string>>({});
   const [mediaStagedFile, setMediaStagedFile] = useState<File | null>(null);
   const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
+  const [tour3dViewerErrorCode, setTour3dViewerErrorCode] = useState<string | null>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
   const [mediaMultiFileHint, setMediaMultiFileHint] = useState(false);
   const [warehouseTab, setWarehouseTab] = useState<'warehouses' | 'stock' | 'addInventory'>('warehouses');
@@ -7771,6 +7772,7 @@ ${internalCompany} Team`;
                           if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
                           setMediaPreviewUrl(null);
                           setMediaStagedFile(null);
+                          setTour3dViewerErrorCode(null);
                           if (!file) return false;
                           const v = validateTour3dFile(file);
                           if (!v.ok) { alert(v.message); return false; }
@@ -7782,6 +7784,7 @@ ${internalCompany} Team`;
                           if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
                           setMediaPreviewUrl(null);
                           setMediaStagedFile(null);
+                          setTour3dViewerErrorCode(null);
                         };
                         const handleTour3dSave = async () => {
                           if (!mediaStagedFile) return;
@@ -7839,8 +7842,16 @@ ${internalCompany} Team`;
                             {mediaStagedFile && mediaPreviewUrl && (
                               <>
                                 <div className="rounded-lg border border-gray-700 overflow-hidden bg-[#16181D] min-h-[280px] max-h-[420px] h-72">
-                                  <Model3DViewer url={mediaPreviewUrl} kind={tour3dKind} className="w-full h-full" />
+                                  <Model3DViewer
+                                    url={mediaPreviewUrl}
+                                    kind={tour3dKind}
+                                    className="w-full h-full"
+                                    onError={(info) => setTour3dViewerErrorCode(info.code)}
+                                  />
                                 </div>
+                                {tour3dKind === 'usdz' && tour3dViewerErrorCode === 'USDZ_CRATE_UNSUPPORTED' && (
+                                  <p className="text-amber-200/90 text-sm">Для веб-перегляду рекомендовано GLB. USDZ збережено.</p>
+                                )}
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <button type="button" onClick={() => document.getElementById('media-tour3d-upload')?.click()} className="px-2 py-1 rounded text-xs border border-gray-600 text-gray-300 hover:bg-gray-700/50">Змінити</button>
                                   <button type="button" onClick={handleTour3dClear} className="px-2 py-1 rounded text-xs border border-red-500/50 text-red-400 hover:bg-red-500/10">Видалити</button>

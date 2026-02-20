@@ -50,7 +50,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [galleryImageUrls, setGalleryImageUrls] = useState<string[]>([]);
   const [floorPlanImageUrl, setFloorPlanImageUrl] = useState<string | null>(null);
-  const [tour3dUrl, setTour3dUrl] = useState<string | null>(null);
+  const [tour3dCandidates, setTour3dCandidates] = useState<Array<{ kind: 'glb' | 'obj' | 'usdz'; url: string }>>([]);
 
   const isPropertyRoute =
     typeof window !== 'undefined' &&
@@ -121,20 +121,20 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
     };
   }, [isFloorPlanOpen, property.id]);
 
-  // Load 3D tour URL when Tour modal opens (signed URL for uploaded file or external_url)
+  // Load 3D tour candidates when Tour modal opens (glb → obj → usdz priority)
   useEffect(() => {
     if (!isTourOpen || !property.id) {
-      setTour3dUrl(null);
+      setTour3dCandidates([]);
       return;
     }
     let cancelled = false;
     propertyMediaService
-      .getMarketplaceTour3dUrl(property.id, 60 * 30)
-      .then((url) => {
-        if (!cancelled) setTour3dUrl(url);
+      .getMarketplaceTour3dCandidates(property.id, 60 * 30)
+      .then((list) => {
+        if (!cancelled) setTour3dCandidates(list);
       })
       .catch(() => {
-        if (!cancelled) setTour3dUrl(null);
+        if (!cancelled) setTour3dCandidates([]);
       });
     return () => {
       cancelled = true;
@@ -172,7 +172,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
         isOpen={isTourOpen} 
         onClose={() => setIsTourOpen(false)} 
         propertyTitle={property.address}
-        tourUrl={tour3dUrl}
+        tour3dCandidates={tour3dCandidates}
       />
 
       {/* Floor Plan Modal */}
