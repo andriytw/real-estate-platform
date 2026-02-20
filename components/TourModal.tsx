@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { X, Maximize2, Home, BedDouble, Utensils, Bath, Loader2 } from 'lucide-react';
+import Model3DViewer from './Model3DViewer';
 
 interface TourModalProps {
   isOpen: boolean;
@@ -197,6 +198,8 @@ const TourModal: React.FC<TourModalProps> = ({ isOpen, onClose, propertyTitle, t
   if (!isOpen) return null;
 
   if (tourUrl) {
+    const isModelUrl = tourUrl.startsWith('blob:') || /\.(obj|glb)(\?|$)/i.test(tourUrl);
+    const modelKind = /\.glb(\?|$)/i.test(tourUrl) ? 'glb' as const : 'obj' as const;
     return (
       <div className="fixed inset-0 z-[100] bg-black flex flex-col font-sans">
         <div className="absolute top-0 left-0 right-0 p-4 z-20 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent">
@@ -208,13 +211,17 @@ const TourModal: React.FC<TourModalProps> = ({ isOpen, onClose, propertyTitle, t
             <X className="w-6 h-6" />
           </button>
         </div>
-        <div className="flex-1 pt-14">
-          <iframe
-            src={tourUrl}
-            title="3D Tour"
-            className="w-full h-full border-0"
-            allowFullScreen
-          />
+        <div className="flex-1 pt-14 min-h-0">
+          {isModelUrl ? (
+            <Model3DViewer url={tourUrl} kind={modelKind} className="w-full h-full min-h-[300px]" />
+          ) : (
+            <iframe
+              src={tourUrl}
+              title="3D Tour"
+              className="w-full h-full border-0"
+              allowFullScreen
+            />
+          )}
         </div>
       </div>
     );

@@ -13,6 +13,7 @@ import LeadEditModal from './LeadEditModal';
 import PropertyAddModal from './PropertyAddModal';
 import RequestModal from './RequestModal';
 import ConfirmPaymentModal from './ConfirmPaymentModal';
+import Model3DViewer from './Model3DViewer';
 import PaymentProofPdfModal from './PaymentProofPdfModal';
 import ExpenseCategoriesModal from './ExpenseCategoriesModal';
 import BankingDashboard from './BankingDashboard';
@@ -7757,15 +7758,112 @@ ${internalCompany} Team`;
                     </div>
                     <div className="p-4 overflow-auto flex-1">
                       {type === 'tour3d' ? (() => {
-                        const tour3dRow = assets[0];
+                        const TOUR3D_ACCEPT = 'model/obj,.obj,model/gltf-binary,.glb';
+                        const MAX_TOUR3D_SIZE = 50 * 1024 * 1024;
+                        const allowedExts = ['.obj', '.glb'];
+                        const validateTour3dFile = (file: File): { ok: true } | { ok: false; message: string } => {
+                          if (file.size > MAX_TOUR3D_SIZE) return { ok: false, message: 'Файл завеликий (max 50 MB)' };
+                          const ext = file.name.toLowerCase().replace(/^.*\./, '.');
+                          if (!allowedExts.includes(ext)) return { ok: false, message: 'Дозволені формати: OBJ, GLB' };
+                          return { ok: true };
+                        };
+                        const handleTour3dFileSelect = (file: File | null): boolean => {
+                          if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+                          setMediaPreviewUrl(null);
+                          setMediaStagedFile(null);
+                          if (!file) return false;
+                          const v = validateTour3dFile(file);
+                          if (!v.ok) { alert(v.message); return false; }
+                          setMediaStagedFile(file);
+                          setMediaPreviewUrl(URL.createObjectURL(file));
+                          return true;
+                        };
+                        const handleTour3dClear = () => {
+                          if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+                          setMediaPreviewUrl(null);
+                          setMediaStagedFile(null);
+                        };
+                        const handleTour3dSave = async () => {
+                          if (!mediaStagedFile) return;
+                          const urlToRevoke = mediaPreviewUrl;
+                          setMediaUploading(true);
+                          try {
+                            await propertyMediaService.uploadAssetFiles(selectedPropertyId, 'tour3d', [mediaStagedFile]);
+                            await refreshMedia();
+                            setMediaPreviewUrl(null);
+                            setMediaStagedFile(null);
+                            setOpenMediaModalType(null);
+                          } catch (err) {
+                            console.error(err);
+                            alert('Не вдалося завантажити.');
+                          } finally {
+                            if (urlToRevoke) URL.revokeObjectURL(urlToRevoke);
+                            setMediaPreviewUrl(null);
+                            setMediaStagedFile(null);
+                            setMediaUploading(false);
+                          }
+                        };
+                        const handleTour3dCancel = () => {
+                          if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+                          setMediaPreviewUrl(null);
+                          setMediaStagedFile(null);
+                          setOpenMediaModalType(null);
+                        };
+                        const tour3dKind = mediaStagedFile?.name?.toLowerCase().endsWith('.glb') ? 'glb' as const : 'obj' as const;
+                        const formatSize = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${(bytes / 1024).toFixed(1)} KB`;
                         return (
                           <div className="space-y-3">
-                            <p className="text-sm text-gray-400">{tour3dRow?.external_url ? 'Active' : 'Not set'}</p>
-                            <input type="url" id="media-tour3d-url" defaultValue={tour3dRow?.external_url ?? ''} placeholder="URL 3D туру" className="w-full bg-[#16181D] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
-                            <div className="flex gap-2">
-                              <button type="button" onClick={async () => { const input = document.getElementById('media-tour3d-url') as HTMLInputElement; const url = input?.value?.trim(); if (!url) return; try { await propertyMediaService.createTour3d(selectedPropertyId, url); refreshMedia(); } catch (e) { console.error(e); alert('Не вдалося зберегти.'); } }} className="px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600">Зберегти</button>
-                              {tour3dRow?.external_url && <button type="button" onClick={() => window.open(tour3dRow.external_url!, '_blank')} className="px-3 py-1.5 rounded-lg text-sm border border-gray-600 text-gray-300 hover:bg-gray-700/50">Open</button>}
+                            <input type="file" accept={TOUR3D_ACCEPT} className="hidden" id="media-tour3d-upload"
+                              onChange={(e) => {
+                                const list = e.target.files;
+                                const f = list?.[0] ?? null;
+                                const multiple = list && list.length > 1;
+                                const accepted = handleTour3dFileSelect(f);
+                                e.currentTarget.value = '';
+                                if (multiple && accepted) { setMediaMultiFileHint(true); setTimeout(() => setMediaMultiFileHint(false), 2500); }
+                              }}
+                            />
+                            <div className="border border-dashed border-gray-600 rounded-lg p-4 text-center cursor-pointer hover:border-gray-500 hover:bg-gray-800/30 transition-colors"
+                              onClick={() => document.getElementById('media-tour3d-upload')?.click()}
+                              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                              onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const list = e.dataTransfer.files; const f = list?.[0] ?? null; const multiple = list && list.length > 1; const accepted = handleTour3dFileSelect(f); if (multiple && accepted) { setMediaMultiFileHint(true); setTimeout(() => setMediaMultiFileHint(false), 2500); } }}
+                            >
+                              {mediaStagedFile ? <span className="text-sm text-gray-300">{mediaStagedFile.name} · {formatSize(mediaStagedFile.size)}</span> : <span className="text-sm text-gray-400">Перетягніть OBJ або GLB сюди або натисніть для вибору</span>}
                             </div>
+                            {mediaMultiFileHint && <p className="text-xs text-gray-400">Використано перший файл з кількох.</p>}
+                            {mediaStagedFile && mediaPreviewUrl && (
+                              <>
+                                <div className="rounded-lg border border-gray-700 overflow-hidden bg-[#16181D] min-h-[280px] max-h-[420px] h-72">
+                                  <Model3DViewer url={mediaPreviewUrl} kind={tour3dKind} className="w-full h-full" />
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <button type="button" onClick={() => document.getElementById('media-tour3d-upload')?.click()} className="px-2 py-1 rounded text-xs border border-gray-600 text-gray-300 hover:bg-gray-700/50">Змінити</button>
+                                  <button type="button" onClick={handleTour3dClear} className="px-2 py-1 rounded text-xs border border-red-500/50 text-red-400 hover:bg-red-500/10">Видалити</button>
+                                  <button type="button" onClick={handleTour3dSave} disabled={mediaUploading} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500/30 disabled:opacity-50">{mediaUploading ? '...' : 'Зберегти'}</button>
+                                  <button type="button" onClick={handleTour3dCancel} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-600 text-gray-400 hover:bg-gray-700/50">Скасувати</button>
+                                </div>
+                              </>
+                            )}
+                            {mediaStagedFile && !mediaPreviewUrl && (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <button type="button" onClick={handleTour3dClear} className="px-2 py-1 rounded text-xs border border-red-500/50 text-red-400 hover:bg-red-500/10">Видалити</button>
+                                <button type="button" onClick={handleTour3dSave} disabled={mediaUploading} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500/30 disabled:opacity-50">{mediaUploading ? '...' : 'Зберегти'}</button>
+                                <button type="button" onClick={handleTour3dCancel} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-600 text-gray-400 hover:bg-gray-700/50">Скасувати</button>
+                              </div>
+                            )}
+                            {!mediaStagedFile && <div className="flex gap-2"><button type="button" onClick={handleTour3dCancel} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-600 text-gray-400 hover:bg-gray-700/50">Скасувати</button></div>}
+                            <ul className="space-y-2">
+                              {assets.map((a) => (
+                                <li key={a.id} className="flex items-center justify-between gap-2 py-2 border-b border-gray-700/50">
+                                  <span className="text-sm text-white truncate">{a.file_name || a.storage_path || (a.external_url ? 'External link' : a.id)}</span>
+                                  <div className="flex gap-1 shrink-0">
+                                    {a.storage_path && <button type="button" onClick={async () => { try { const url = await propertyMediaService.getSignedUrl(a.storage_path!); window.open(url, '_blank'); } catch (e) { console.error(e); alert('Не вдалося відкрити.'); } }} className="px-2 py-1 rounded text-xs border border-gray-600 text-gray-300 hover:bg-gray-700/50">Open</button>}
+                                    {a.external_url && <button type="button" onClick={() => window.open(a.external_url!, '_blank')} className="px-2 py-1 rounded text-xs border border-gray-600 text-gray-300 hover:bg-gray-700/50">Open</button>}
+                                    <button type="button" onClick={async () => { if (!confirm('Видалити?')) return; try { await propertyMediaService.deleteAsset(a.id); refreshMedia(); } catch (e) { console.error(e); alert('Не вдалося видалити.'); } }} className="px-2 py-1 rounded text-xs border border-red-500/50 text-red-400 hover:bg-red-500/10">Delete</button>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
                           </div>
                         );
                       })() : type === 'photo' ? (() => {

@@ -121,7 +121,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
     };
   }, [isFloorPlanOpen, property.id]);
 
-  // Load 3D tour URL when Tour modal opens
+  // Load 3D tour URL when Tour modal opens (signed URL for uploaded file or external_url)
   useEffect(() => {
     if (!isTourOpen || !property.id) {
       setTour3dUrl(null);
@@ -129,12 +129,9 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
     }
     let cancelled = false;
     propertyMediaService
-      .listAssetsByType(property.id, 'tour3d')
-      .then((assets) => {
-        if (!cancelled) {
-          const first = assets[0];
-          setTour3dUrl(first?.external_url ?? null);
-        }
+      .getMarketplaceTour3dUrl(property.id, 60 * 30)
+      .then((url) => {
+        if (!cancelled) setTour3dUrl(url);
       })
       .catch(() => {
         if (!cancelled) setTour3dUrl(null);

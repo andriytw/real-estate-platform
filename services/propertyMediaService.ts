@@ -331,4 +331,21 @@ export const propertyMediaService = {
       return null;
     }
   },
+
+  async getMarketplaceTour3dUrl(
+    propertyId: string,
+    expiresInSeconds = 60 * 30
+  ): Promise<string | null> {
+    const assets = await propertyMediaService.listAssetsByType(propertyId, 'tour3d');
+    const first = assets[0];
+    if (!first) return null;
+    if (first.storage_path) {
+      try {
+        return await propertyMediaService.getSignedUrl(first.storage_path, expiresInSeconds);
+      } catch {
+        return null;
+      }
+    }
+    return first.external_url ?? null;
+  },
 };
