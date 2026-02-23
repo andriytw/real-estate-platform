@@ -33,13 +33,12 @@ function buildStoragePath(propertyId: string, type: PropertyMediaAssetType, asse
 }
 
 function getUploadContentType(file: File): string {
-  const name = file.name || '';
-  const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
-  if (ext === 'obj') return 'application/octet-stream';
-  if (ext === 'usdz') return 'application/octet-stream';
-  if (ext === 'ifc') return 'application/octet-stream';
-  if (ext === 'glb') return 'model/gltf-binary';
-  if (file.type && file.type.trim().length > 0) return file.type;
+  const name = (file.name || '').toLowerCase();
+  if (name.endsWith('.usdz')) return 'application/octet-stream';
+  if (name.endsWith('.obj')) return 'application/octet-stream';
+  if (name.endsWith('.ifc')) return 'application/octet-stream';
+  if (name.endsWith('.glb')) return 'model/gltf-binary';
+  if (file.type?.trim()) return file.type;
   return 'application/octet-stream';
 }
 
