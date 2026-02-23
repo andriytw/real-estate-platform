@@ -1,0 +1,15 @@
+/* Local styles for MarketMap only. Do not add to tailwind.config. */
+.marker-selected {
+  animation: marker-pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes marker-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.9;
+  }
+}

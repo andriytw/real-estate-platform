@@ -516,6 +516,13 @@ export interface Property {
   marketplaceUrl?: string; // Public marketplace listing URL (e.g., herorooms.de/market/{property-slug})
   /** Cover photo asset id (property_media_assets). Used for marketplace cards + property hero. */
   cover_photo_asset_id?: string | null;
+  /** Map coordinates (market map markers, Haversine). Valid only if finite and not (0,0). */
+  lat?: number | null;
+  lng?: number | null;
+  geocoded_at?: string | null;
+  geocode_provider?: string | null;
+  geocode_confidence?: string | null;
+  geocode_failed_reason?: string | null;
 }
 
 export interface FilterState {

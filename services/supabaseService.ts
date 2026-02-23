@@ -1170,7 +1170,7 @@ export const propertiesService = {
       console.log('📡 propertiesService.getAll called, lightweight:', lightweight);
       // For Marketplace/public views, only load essential fields for faster loading
       const selectFields = lightweight 
-        ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip, zweckentfremdung_flag, zweckentfremdung_updated_at, cover_photo_asset_id'
+        ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip, zweckentfremdung_flag, zweckentfremdung_updated_at, cover_photo_asset_id, lat, lng'
         : '*';
       
       console.log('📡 Querying properties table with fields:', selectFields);
@@ -2318,6 +2318,12 @@ function transformPropertyFromDB(db: any): Property {
     parking: db.parking,
     marketplaceUrl: db.marketplace_url,
     cover_photo_asset_id: db.cover_photo_asset_id ?? undefined,
+    lat: db.lat != null ? parseFloat(db.lat) : undefined,
+    lng: db.lng != null ? parseFloat(db.lng) : undefined,
+    geocoded_at: db.geocoded_at ?? undefined,
+    geocode_provider: db.geocode_provider ?? undefined,
+    geocode_confidence: db.geocode_confidence ?? undefined,
+    geocode_failed_reason: db.geocode_failed_reason ?? undefined,
   };
 }
 
@@ -2386,7 +2392,13 @@ function transformPropertyToDB(property: Property): any {
   if (property.energyEfficiencyClass !== undefined) result.energy_efficiency_class = property.energyEfficiencyClass;
   if (property.parking !== undefined) result.parking = property.parking;
   if (property.marketplaceUrl !== undefined) result.marketplace_url = property.marketplaceUrl;
-  
+  if (property.lat !== undefined) result.lat = property.lat;
+  if (property.lng !== undefined) result.lng = property.lng;
+  if (property.geocoded_at !== undefined) result.geocoded_at = property.geocoded_at;
+  if (property.geocode_provider !== undefined) result.geocode_provider = property.geocode_provider;
+  if (property.geocode_confidence !== undefined) result.geocode_confidence = property.geocode_confidence;
+  if (property.geocode_failed_reason !== undefined) result.geocode_failed_reason = property.geocode_failed_reason;
+
   return result;
 }
 
