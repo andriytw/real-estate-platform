@@ -35,7 +35,8 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     const height = container.clientHeight || 320;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x16181d);
+    const bgColor = 0x0b1220;
+    scene.background = new THREE.Color(bgColor);
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
@@ -48,7 +49,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     renderer.toneMappingExposure = 1;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(width, height);
-    renderer.setClearColor(0x16181d, 1);
+    renderer.setClearColor(bgColor, 1);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.insertBefore(renderer.domElement, container.firstChild);
@@ -58,11 +59,11 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     const envRT = pmremGen.fromScene(new RoomEnvironment(), 0.04);
     scene.environment = envRT.texture;
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
     scene.add(ambient);
-    const hemisphere = new THREE.HemisphereLight(0xffffff, 0x444460, 0.45);
+    const hemisphere = new THREE.HemisphereLight(0xffffff, 0x444460, 0.6);
     scene.add(hemisphere);
-    const directional = new THREE.DirectionalLight(0xffffff, 0.6);
+    const directional = new THREE.DirectionalLight(0xffffff, 0.65);
     directional.position.set(10, 10, 10);
     directional.castShadow = true;
     directional.shadow.mapSize.width = 1024;
@@ -154,16 +155,19 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
       else setError('Кадрування не вдалося — спробуйте обертати камеру.');
     };
 
+    const MAX_VERTICES_FOR_NORMALS = 2_000_000;
     function ensureNormals(root: THREE.Object3D) {
       root.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
           const geom = mesh.geometry as THREE.BufferGeometry | undefined;
-          if (geom) {
-            const normals = geom.attributes.normal;
-            if (!normals || (normals as THREE.BufferAttribute).count === 0) {
-              geom.computeVertexNormals();
-            }
+          if (!geom) return;
+          const pos = geom.attributes.position as THREE.BufferAttribute | undefined;
+          const count = pos?.count ?? 0;
+          if (count >= MAX_VERTICES_FOR_NORMALS) return;
+          const normals = geom.attributes.normal;
+          if (!normals || (normals as THREE.BufferAttribute).count === 0) {
+            geom.computeVertexNormals();
           }
         }
       });
@@ -178,9 +182,9 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
           let mat: THREE.Material | THREE.Material[] | null = mesh.material;
           if (!mat || (Array.isArray(mat) && mat.length === 0)) {
             mesh.material = new THREE.MeshStandardMaterial({
-              color: 0xE5E7EB,
+              color: 0xf3f4f6,
               metalness: 0,
-              roughness: 0.9,
+              roughness: 0.88,
               side: THREE.DoubleSide,
             });
             return;
@@ -195,7 +199,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
             }
             if (!m.map && 'metalness' in m) {
               (m as THREE.MeshStandardMaterial).metalness = 0;
-              (m as THREE.MeshStandardMaterial).roughness = 0.9;
+              (m as THREE.MeshStandardMaterial).roughness = 0.88;
             }
           }
           if (Array.isArray(mesh.material)) {
@@ -212,6 +216,10 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
       'Цей USDZ містить USDC (crate) і не підтримується у веб-перегляді. Завантажте GLB або OBJ.';
 
     let groundPlaneMesh: THREE.Mesh | null = null;
+    let gridHelper: THREE.GridHelper | null = null;
+    const edgeObjects: Array<{ geometry: THREE.BufferGeometry; material: THREE.Material }> = [];
+    const MAX_VERTICES_FOR_EDGES = 1_200_000;
+    const EDGE_THRESHOLD_DEG = 35;
 
     const onLoaded = (model: THREE.Object3D) => {
       if (loadIdRef.current !== loadId) return;
@@ -234,22 +242,62 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
 
       const box = new THREE.Box3().setFromObject(model);
       box.getSize(sizeVec);
-      const groundSize = Math.max(10, Math.max(sizeVec.x, sizeVec.y, sizeVec.z) * 2);
-      const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize);
-      const groundMaterial = new THREE.ShadowMaterial({ opacity: 0.25 });
-      groundPlaneMesh = new THREE.Mesh(groundGeometry, groundMaterial);
-      groundPlaneMesh.rotation.x = -Math.PI / 2;
-      groundPlaneMesh.receiveShadow = true;
+      const maxDim = Math.max(sizeVec.x, sizeVec.y, sizeVec.z);
       const center = box.getCenter(new THREE.Vector3());
-      const minY = box.min.y;
-      groundPlaneMesh.position.set(center.x, minY - 0.02, center.z);
-      scene.add(groundPlaneMesh);
 
       if (!centerAndFrame(model)) {
         setError('Кадрування не вдалося — натисніть Fit камера.');
       } else {
         setError(null);
       }
+
+      scene.fog = new THREE.Fog(bgColor, Math.max(1, maxDim * 0.15), Math.max(60, maxDim * 8));
+
+      const planeSize = maxDim * 3;
+      const groundGeometry = new THREE.PlaneGeometry(planeSize, planeSize);
+      const groundMaterial = new THREE.MeshStandardMaterial({
+        color: 0x111827,
+        roughness: 1,
+        metalness: 0,
+      });
+      groundPlaneMesh = new THREE.Mesh(groundGeometry, groundMaterial);
+      groundPlaneMesh.rotation.x = -Math.PI / 2;
+      groundPlaneMesh.receiveShadow = true;
+      groundPlaneMesh.position.set(center.x, box.min.y - maxDim * 0.01, center.z);
+      scene.add(groundPlaneMesh);
+
+      const grid = new THREE.GridHelper(planeSize, 30, 0x334155, 0x334155);
+      grid.position.set(center.x, groundPlaneMesh.position.y, center.z);
+      const gridMat = grid.material as THREE.Material;
+      if (gridMat) {
+        gridMat.transparent = true;
+        gridMat.opacity = 0.2;
+      }
+      scene.add(grid);
+      gridHelper = grid;
+
+      model.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          const geom = mesh.geometry as THREE.BufferGeometry | undefined;
+          if (!geom) return;
+          const pos = geom.attributes.position as THREE.BufferAttribute | undefined;
+          const count = pos?.count ?? 0;
+          if (count >= MAX_VERTICES_FOR_EDGES) return;
+          try {
+            const edgeGeom = new THREE.EdgesGeometry(geom, EDGE_THRESHOLD_DEG);
+            const edgeMat = new THREE.LineBasicMaterial({
+              color: 0x0f172a,
+              transparent: true,
+              opacity: 0.35,
+            });
+            const line = new THREE.LineSegments(edgeGeom, edgeMat);
+            mesh.add(line);
+            edgeObjects.push({ geometry: edgeGeom, material: edgeMat });
+          } catch (_) {}
+        }
+      });
+
       setLoading(false);
     };
     const onLoadError = (e: unknown) => {
@@ -407,6 +455,21 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
           sceneRef.current.environment = null;
         } catch (_) {}
       }
+      if (gridHelper && sceneRef.current) {
+        try {
+          sceneRef.current.remove(gridHelper);
+          gridHelper.geometry?.dispose();
+          (gridHelper.material as THREE.Material)?.dispose();
+        } catch (_) {}
+        gridHelper = null;
+      }
+      edgeObjects.forEach(({ geometry, material }) => {
+        try {
+          geometry.dispose();
+          material.dispose();
+        } catch (_) {}
+      });
+      edgeObjects.length = 0;
       if (groundPlaneMesh && sceneRef.current) {
         try {
           sceneRef.current.remove(groundPlaneMesh);
@@ -453,14 +516,14 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
   }, [url, kind]);
 
   return (
-    <div ref={containerRef} className={`relative bg-[#16181D] ${className}`} style={{ minHeight: 320 }}>
+    <div ref={containerRef} className={`relative bg-[#0B1220] ${className}`} style={{ minHeight: 320 }}>
       {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#16181D]/90 z-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-[#0B1220]/90 z-10">
           <span className="text-gray-300 text-sm">Завантаження 3D…</span>
         </div>
       )}
       {error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#16181D]/95 z-10 p-4">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#0B1220]/95 z-10 p-4">
           <p className="text-gray-300 text-sm text-center">{error}</p>
           <p className="text-gray-500 text-xs text-center">Можна закрити модалку та оновити сторінку.</p>
         </div>
