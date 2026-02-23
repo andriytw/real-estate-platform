@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { RequestData, Property } from '../types';
-import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar, Search, Square, LayoutGrid, Bed } from 'lucide-react';
 import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus, Lead, PaymentProof } from '../types';
 import BookingDetailsModal from './BookingDetailsModal';
 import BookingStatsTiles from './BookingStatsTiles';
@@ -1171,13 +1171,25 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                         {room.details && (
                             <span className="text-[10px] text-gray-500 truncate mb-0.5 block">{room.details}</span>
                         )}
-                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[9px] text-gray-400">
-                            {room.area && (
-                                <span>Площа: <span className="text-gray-300 font-medium">{room.area} м²</span></span>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[9px] text-gray-400">
+                            {(room.area != null && room.area !== '' && Number(room.area) > 0) && (
+                                <span className="flex items-center gap-1" title="Площа">
+                                    <Square className="w-3 h-3 text-gray-500 shrink-0" />
+                                    <span className="text-gray-300 font-medium">{room.area} м²</span>
+                                </span>
                             )}
-                            {(room.rooms || room.beds) ? (
-                                <span>Кімнати/Ліжка: <span className="text-gray-300 font-medium">{room.rooms}/{room.beds}</span></span>
-                            ) : null}
+                            {(room.rooms != null || room.beds != null) && (
+                                <span className="flex items-center gap-1.5">
+                                    <span className="flex items-center gap-0.5" title="Кімнати">
+                                        <LayoutGrid className="w-3 h-3 text-gray-500 shrink-0" />
+                                        <span className="text-gray-300 font-medium">{room.rooms ?? 0}</span>
+                                    </span>
+                                    <span className="flex items-center gap-0.5" title="Ліжка">
+                                        <Bed className="w-3 h-3 text-gray-500 shrink-0" />
+                                        <span className="text-gray-300 font-medium">{room.beds ?? 0}</span>
+                                    </span>
+                                </span>
+                            )}
                         </div>
                     </div>
                     );
