@@ -1160,18 +1160,18 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                         className="border-b border-gray-800 flex flex-col justify-center px-4 py-2 hover:bg-[#1C1F24] transition-colors group relative"
                         style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
                     >
-                        <div className="flex justify-between items-start gap-2 mb-1">
-                            <span className="text-sm font-bold text-white truncate">{room.name}</span>
+                        <div className="flex justify-between items-start gap-2 mb-0.5">
+                            <span className="text-xs font-bold text-white truncate">{room.name}</span>
                             {room.termStatus != null && (
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${room.termStatus === 'green' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
+                                <span className={`text-[9px] px-1 py-0.5 rounded shrink-0 ${room.termStatus === 'green' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
                                     {room.termStatus === 'green' ? 'Active' : 'Expiring'}
                                 </span>
                             )}
                         </div>
                         {room.details && (
-                            <span className="text-xs text-gray-500 truncate mb-1">{room.details}</span>
+                            <span className="text-[10px] text-gray-500 truncate mb-0.5 block">{room.details}</span>
                         )}
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-gray-400">
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[9px] text-gray-400">
                             {room.area && (
                                 <span>Площа: <span className="text-gray-300 font-medium">{room.area} м²</span></span>
                             )}
@@ -1360,7 +1360,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                             hoverLeaveTimeoutRef.current = setTimeout(() => setHoveredBooking(null), 350);
                                         }}
                                         className={`
-                                            absolute rounded-md text-xs text-white flex shadow-lg z-10 cursor-pointer items-center pointer-events-auto
+                                            absolute rounded-md text-[10px] text-white flex shadow-lg z-10 cursor-pointer items-center pointer-events-auto
                                             ${isReservation 
                                                 ? 'bg-sky-500/70 hover:bg-sky-500/85 ' + reservationBorderClass
                                                 : 'h-12 px-2 ' + getBookingColor(booking.status) + ' ' + getBookingBorderStyle(booking.status)
@@ -1385,39 +1385,39 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                             };
                                             
                                             return (
-                                                <div className="flex items-center w-full h-full px-2.5 whitespace-nowrap">
+                                                <div className="flex items-center w-full h-full px-2 whitespace-nowrap">
                                                     {showOnlyInitials ? (
                                                         // Very narrow: show only initial
-                                                        <span className="font-bold text-[12px] w-full text-center">
+                                                        <span className="font-bold text-[10px] w-full text-center">
                                                             {getInitial(displayGuest)}
                                                         </span>
                                                     ) : showTimes ? (
                                                         <>
                                                             {/* Left: Check-in time (fixed width) */}
-                                                            <span className="font-mono text-[10px] opacity-70 w-[44px] text-left shrink-0 whitespace-nowrap">
+                                                            <span className="font-mono text-[9px] opacity-70 w-[40px] text-left shrink-0 whitespace-nowrap">
                                                                 {booking.checkInTime}
                                                             </span>
                                                             
                                                             {/* Center: Guest/Company label */}
-                                                            <span className="font-medium text-[11px] truncate flex-1 min-w-0 text-center whitespace-nowrap px-1">
+                                                            <span className="font-medium text-[10px] truncate flex-1 min-w-0 text-center whitespace-nowrap px-0.5">
                                                                 {displayGuest}
                                                             </span>
                                                             
                                                             {/* Right: Check-out time (fixed width) */}
-                                                            <span className="font-mono text-[10px] opacity-70 w-[44px] text-right shrink-0 whitespace-nowrap">
+                                                            <span className="font-mono text-[9px] opacity-70 w-[40px] text-right shrink-0 whitespace-nowrap">
                                                                 {booking.checkOutTime}
                                                             </span>
                                                             
                                                             {/* Optional: Nights/Guests (if space allows) */}
                                                             {showDetails && (
-                                                                <span className="text-[9px] opacity-60 ml-2 shrink-0 whitespace-nowrap">
+                                                                <span className="text-[8px] opacity-60 ml-1 shrink-0 whitespace-nowrap">
                                                                     {nights}N · {parseInt(booking.guests || '0')}G
                                                                 </span>
                                                             )}
                                                         </>
                                                     ) : (
                                                         // Narrow: show only label centered
-                                                        <span className="font-medium text-[11px] truncate w-full text-center whitespace-nowrap">
+                                                        <span className="font-medium text-[10px] truncate w-full text-center whitespace-nowrap">
                                                             {displayGuest}
                                                         </span>
                                                     )}
@@ -1425,20 +1425,20 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                             );
                                         })() : (
                                             // Full confirmed booking: check-in, guest, nights/guests, check-out
-                                            <div className="flex justify-between items-center w-full h-full px-4">
+                                            <div className="flex justify-between items-center w-full h-full px-2">
                                                 {/* Left: Check-in */}
-                                                <span className="font-mono text-[10px] font-bold opacity-80 ml-2">{booking.checkInTime}</span>
+                                                <span className="font-mono text-[9px] font-bold opacity-80 shrink-0">{booking.checkInTime}</span>
                                                 
                                                 {/* Center */}
-                                                <div className="flex flex-col items-center justify-center flex-1 px-2 min-w-0">
-                                                    <span className="font-bold text-xs truncate w-full text-center leading-tight">{displayGuest}</span>
-                                                    <span className="text-[9px] opacity-80 truncate leading-tight mt-0.5">
+                                                <div className="flex flex-col items-center justify-center flex-1 px-1 min-w-0">
+                                                    <span className="font-bold text-[10px] truncate w-full text-center leading-tight">{displayGuest}</span>
+                                                    <span className="text-[8px] opacity-80 truncate leading-tight mt-0.5">
                                                         {nights}N | {parseInt(booking.guests || '0')}G
                                                     </span>
                                                 </div>
 
                                                 {/* Right: Check-out */}
-                                                <span className="font-mono text-[10px] font-bold opacity-80 mr-2">{booking.checkOutTime}</span>
+                                                <span className="font-mono text-[9px] font-bold opacity-80 shrink-0">{booking.checkOutTime}</span>
                                             </div>
                                         )}
                                     </div>
