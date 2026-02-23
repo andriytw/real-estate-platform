@@ -206,11 +206,12 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     };
     const onLoadError = (e: unknown) => {
       if (loadIdRef.current !== loadId) return;
-      const errMsg = String((e as Error)?.message ?? e);
+      const err = e as Error | undefined;
+      const errMsg = String(err?.message ?? e);
       const isUsdcCrate = /usdc|crate/i.test(errMsg);
       const msg = kind === 'usdz' || isUsdcCrate
         ? usdzUnsupportedMessage
-        : 'Не вдалося завантажити модель. Закрийте та спробуйте ще раз.';
+        : (err?.message ?? 'Не вдалося завантажити модель.');
       setError(msg);
       setLoading(false);
       if (kind === 'usdz' || isUsdcCrate) {
@@ -218,7 +219,11 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
       } else {
         onError?.({ code: 'MODEL_LOAD_FAILED', message: msg });
       }
-      console.error(e);
+      if (kind === 'ifc') {
+        console.error('[Model3DViewer] IFC load failed', err ?? e);
+      } else {
+        console.error('[Model3DViewer] load failed', err ?? e);
+      }
     };
 
     if (kind === 'glb') {
@@ -230,9 +235,25 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     } else if (kind === 'ifc') {
       (async () => {
         try {
+          // DEV-only: fail fast if wasm is not served (e.g. missing postinstall copy or deploy)
+          if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+            const wasmCheck = await fetch('/web-ifc/web-ifc.wasm', { method: 'HEAD' });
+            if (!wasmCheck.ok) {
+              throw new Error(
+                'web-ifc.wasm not found at /web-ifc/web-ifc.wasm (check postinstall copy + Vercel deploy).'
+              );
+            }
+          }
           const { IfcAPI } = await import('web-ifc');
           const ifcApi = new IfcAPI();
           ifcApi.SetWasmPath('/web-ifc/');
+          try {
+            if (typeof ifcApi.useWebWorkers === 'function') {
+              (ifcApi as { useWebWorkers: (v: boolean) => void }).useWebWorkers(false);
+            }
+          } catch (_) {
+            // ignore if not available
+          }
           await ifcApi.Init();
           const res = await fetch(url);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -241,6 +262,15 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
           if (modelID === -1) throw new Error('IFC open failed');
           const flatMeshes = ifcApi.LoadAllGeometry(modelID);
           const group = new THREE.Group();
+          const safeDelete = (obj: unknown) => {
+            try {
+              if (obj != null && typeof (obj as { delete?: () => void }).delete === 'function') {
+                (obj as { delete: () => void }).delete();
+              }
+            } catch (_) {
+              // avoid "delete is not a function" / minified runtime errors
+            }
+          };
           for (let i = 0; i < flatMeshes.size(); i++) {
             const flatMesh = flatMeshes.get(i);
             for (let g = 0; g < flatMesh.geometries.size(); g++) {
@@ -253,7 +283,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
               const iSize = geom.GetIndexDataSize();
               const vertexFloats = ifcApi.GetVertexArray(vPtr, vSize);
               const indices = ifcApi.GetIndexArray(iPtr, iSize);
-              geom.delete();
+              safeDelete(geom);
               if (vertexFloats.length < 3 || indices.length < 3) continue;
               const isInterleaved = vertexFloats.length % 6 === 0 && vertexFloats.length / 6 >= indices.length / 3;
               const positionArray = isInterleaved
@@ -279,9 +309,14 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
               }
               group.add(mesh);
             }
-            flatMesh.delete();
+            safeDelete(flatMesh);
           }
           ifcApi.CloseModel(modelID);
+          try {
+            if (typeof (ifcApi as { dispose?: () => void }).dispose === 'function') {
+              (ifcApi as { dispose: () => void }).dispose();
+            }
+          } catch (_) {}
           onLoaded(group);
         } catch (e) {
           onLoadError(e);
@@ -313,32 +348,48 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
       fitCameraRef.current = null;
       resizeObserver.disconnect();
       cancelAnimationFrame(frameIdRef.current);
-      envRT?.dispose();
-      pmremGen.dispose();
-      if (sceneRef.current) sceneRef.current.environment = null;
+      try {
+        envRT?.dispose();
+      } catch (_) {}
+      try {
+        pmremGen.dispose();
+      } catch (_) {}
+      if (sceneRef.current) {
+        try {
+          sceneRef.current.environment = null;
+        } catch (_) {}
+      }
       if (meshRef.current && sceneRef.current) {
-        sceneRef.current.remove(meshRef.current);
-        meshRef.current.traverse((child) => {
-          if ((child as THREE.Mesh).isMesh) {
-            const mesh = child as THREE.Mesh;
-            if (mesh.geometry) mesh.geometry.dispose();
-            if (mesh.material) {
-              const mat = mesh.material as THREE.Material;
-              if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-              else mat.dispose();
-            }
-          }
-        });
+        try {
+          sceneRef.current.remove(meshRef.current);
+          meshRef.current.traverse((child) => {
+            try {
+              if ((child as THREE.Mesh).isMesh) {
+                const mesh = child as THREE.Mesh;
+                if (mesh.geometry) mesh.geometry.dispose();
+                if (mesh.material) {
+                  const mat = mesh.material as THREE.Material;
+                  if (Array.isArray(mat)) mat.forEach((m) => m?.dispose?.());
+                  else mat.dispose();
+                }
+              }
+            } catch (_) {}
+          });
+        } catch (_) {}
         meshRef.current = null;
       }
-      controlsRef.current?.dispose();
+      try {
+        controlsRef.current?.dispose();
+      } catch (_) {}
       controlsRef.current = null;
       const renderer = rendererRef.current;
       rendererRef.current = null;
       if (renderer) {
-        const canvas = renderer.domElement;
-        renderer.dispose();
-        if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
+        try {
+          const canvas = renderer.domElement;
+          renderer.dispose();
+          if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
+        } catch (_) {}
       }
       sceneRef.current = null;
       cameraRef.current = null;
