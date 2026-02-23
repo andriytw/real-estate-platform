@@ -38,8 +38,8 @@ function getUploadContentType(file: File): string {
   if (name.endsWith('.obj')) return 'application/octet-stream';
   if (name.endsWith('.ifc')) return 'application/octet-stream';
   if (name.endsWith('.glb')) return 'model/gltf-binary';
-  if (file.type?.trim()) return file.type;
-  return 'application/octet-stream';
+  const t = (file.type || '').trim();
+  return t ? t : 'application/octet-stream';
 }
 
 export const propertyMediaService = {
