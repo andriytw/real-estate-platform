@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "postinstall": "node scripts/copy-web-ifc-assets.js"
+    "postinstall": "node scripts/copy-web-ifc-assets.js",
+    "backfill:geocode-properties": "node scripts/geocode-missing-properties.js"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",

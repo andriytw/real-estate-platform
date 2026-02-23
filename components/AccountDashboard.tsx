@@ -112,6 +112,7 @@ import {
 } from '../types';
 import { euToIso, validateEuDate } from '../utils/leaseTermDates';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
+import { ensurePropertyHasCoords } from '../utils/ensurePropertyHasCoords';
 import { MOCK_PROPERTIES } from '../constants';
 import { createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 import { supabase } from '../utils/supabase/client';
@@ -2337,6 +2338,15 @@ const AccountDashboard: React.FC = () => {
         // Оновити локальний стан з об'єктом з бази (з правильним ID)
         setProperties([...properties, savedProperty]);
         setSelectedPropertyId(savedProperty.id);
+        void ensurePropertyHasCoords({
+          id: savedProperty.id,
+          address: savedProperty.address ?? undefined,
+          city: savedProperty.city ?? undefined,
+          country: savedProperty.country ?? undefined,
+          postalCode: savedProperty.zip ?? undefined,
+          existingLat: savedProperty.lat ?? undefined,
+          existingLng: savedProperty.lng ?? undefined,
+        });
       }
       
       setIsPropertyAddModalOpen(false);
