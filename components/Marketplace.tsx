@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Search, MapPin, Euro, Home, Clock, Plus, ChevronDown, Filter, AlertCircle } from 'lucide-react';
 import MarketPostModal from './MarketPostModal';
 import { Property } from '../types';
+import { formatPropertyAddress } from '../utils/formatPropertyAddress';
 
 interface MarketplaceProps {
   onListingClick: (listing: any) => void;
@@ -75,7 +76,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: p
       .map(property => ({
         id: property.id,
         title: property.title,
-        location: property.fullAddress || `${property.address}, ${property.city}`,
+        location: formatPropertyAddress(property),
         price: property.price || 0,
         rooms: property.rooms || 0,
         area: property.area || 0,

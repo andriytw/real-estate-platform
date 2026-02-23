@@ -8,6 +8,7 @@ import BookingDetailsModal from './BookingDetailsModal';
 import BookingStatsTiles from './BookingStatsTiles';
 import BookingListModal from './BookingListModal';
 import { getBookingColor, getBookingBorderStyle, getBookingStyle } from '../bookingUtils';
+import { formatPropertyAddress } from '../utils/formatPropertyAddress';
 
 // Helper to normalize date strings for stacking key
 const normalizeDateKey = (v: string) => {
@@ -548,7 +549,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         id: p.id,
         name: p.title,
         city: p.city,
-        details: p.address || p.fullAddress || '',
+        details: formatPropertyAddress(p),
         rooms: p.details?.rooms ?? p.rooms ?? 0,
         beds: p.details?.beds ?? 0,
         area: p.details?.area ?? p.area ?? 0,

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Download, Mail } from 'lucide-react';
 import { Booking, CalendarEvent, Property } from '../types';
+import { formatPropertyAddress } from '../utils/formatPropertyAddress';
 
 interface BookingListModalProps {
   isOpen: boolean;
@@ -24,22 +25,11 @@ const getPropertyName = (propertyId: string | undefined, properties: Property[])
   const property = properties.find(p => p.id === propertyId);
   if (!property) return propertyId;
 
-  // Використовуємо address або fullAddress як вулицю (як в SalesCalendar: details = p.address || p.fullAddress)
-  const street = (property.fullAddress as string | undefined) || property.address || '';
-  
-  // Використовуємо title як назву квартири (як в SalesCalendar: name = p.title)
+  const street = formatPropertyAddress(property);
   const title = property.title || '';
-  
-  // Формуємо частини: вулиця + назва квартири
   const parts: string[] = [];
-  if (street && street.trim().length > 0) {
-    parts.push(street.trim());
-  }
-  if (title && title.trim().length > 0) {
-    parts.push(title.trim());
-  }
-
-  // Якщо нічого не знайшли, повертаємо propertyId
+  if (street && street !== '-') parts.push(street.trim());
+  if (title && title.trim().length > 0) parts.push(title.trim());
   return parts.length > 0 ? parts.join(' — ') : propertyId;
 };
 
@@ -56,7 +46,8 @@ const getAddress = (propertyId: string | undefined, properties: Property[]): str
   if (!propertyId) return 'Unknown';
   const property = properties.find(p => p.id === propertyId);
   if (!property) return propertyId;
-  return (property.fullAddress as string | undefined) || property.address || propertyId;
+  const addr = formatPropertyAddress(property);
+  return addr === '-' ? propertyId : addr;
 };
 
 // Отримуємо актуальне ім'я/прізвище/назву компанії для звернення

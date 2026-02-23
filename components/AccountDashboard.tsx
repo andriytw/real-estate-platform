@@ -111,6 +111,7 @@ import {
   PaymentChainFile,
 } from '../types';
 import { euToIso, validateEuDate } from '../utils/leaseTermDates';
+import { formatPropertyAddress } from '../utils/formatPropertyAddress';
 import { MOCK_PROPERTIES } from '../constants';
 import { createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 import { supabase } from '../utils/supabase/client';
@@ -1035,7 +1036,9 @@ const AccountDashboard: React.FC = () => {
     if (!id) return '';
     const stringId = String(id);
     const p = properties.find((prop) => prop.id === stringId);
-    return p?.fullAddress || p?.address || '';
+    if (!p) return '';
+    const addr = formatPropertyAddress(p);
+    return addr === '-' ? '' : addr;
   };
 
   const toggleStockSelection = (stockId: string) => {
@@ -2712,11 +2715,18 @@ const AccountDashboard: React.FC = () => {
           breakdown: Object.keys(paymentTiles.from_company2_to_company1.breakdown).length ? paymentTiles.from_company2_to_company1.breakdown : null,
         }),
       ]);
+      const fullAddressDisplay = formatPropertyAddress({
+        address: draftSnapshot.address,
+        zip: draftSnapshot.zip,
+        city: draftSnapshot.city,
+        country: draftSnapshot.country,
+      });
       const updated = await propertiesService.update(prop.id, {
         address: draftSnapshot.address,
         zip: draftSnapshot.zip,
         city: draftSnapshot.city,
         country: draftSnapshot.country,
+        fullAddress: fullAddressDisplay,
         title: draftSnapshot.title,
         details: { ...(prop.details ?? {}), floor: draftSnapshot.floor, buildingFloors: draftSnapshot.buildingFloors },
         apartmentStatus: draftSnapshot.apartmentStatus,
@@ -5506,7 +5516,7 @@ ${internalCompany} Team`;
                         <span className={`text-[10px] px-1.5 py-0.5 rounded ${prop.termStatus === 'green' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>{prop.termStatus === 'green' ? 'Active' : 'Expiring'}</span>
                      </div>
                   </div>
-                  <p className="text-xs text-gray-500 truncate mb-2">{prop.address}</p>
+                  <p className="text-xs text-gray-500 truncate mb-2">{formatPropertyAddress(prop)}</p>
                   
                   {/* Characteristics */}
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-gray-400">
@@ -5540,7 +5550,7 @@ ${internalCompany} Team`;
                <div className="absolute inset-0 bg-gradient-to-t from-[#0D1117] via-transparent to-transparent opacity-90"></div>
                <div className="absolute bottom-6 left-6 right-6">
                   <h1 className="text-4xl font-extrabold text-white mb-1 drop-shadow-md">{selectedProperty.title}</h1>
-                  <p className="text-lg text-gray-300 flex items-center gap-2"><MapPin className="w-5 h-5 text-emerald-500" /> {selectedProperty.fullAddress}</p>
+                  <p className="text-lg text-gray-300 flex items-center gap-2"><MapPin className="w-5 h-5 text-emerald-500" /> {formatPropertyAddress(selectedProperty)}</p>
                </div>
             </div>
 
@@ -6187,7 +6197,7 @@ ${internalCompany} Team`;
                     ) : (
                         <>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
-                                <div><span className="text-xs text-gray-500 block mb-1">Адреса</span><span className="text-sm text-white font-bold">{selectedProperty.fullAddress || [selectedProperty.address, selectedProperty.zip, selectedProperty.city].filter(Boolean).join(', ') || '—'}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Адреса</span><span className="text-sm text-white font-bold">{formatPropertyAddress(selectedProperty)}</span></div>
                                 <div><span className="text-xs text-gray-500 block mb-1">Поверх / Сторона</span><span className="text-sm text-white">{selectedProperty.details?.floor != null ? `${selectedProperty.details.floor} OG` : '—'} {selectedProperty.details?.buildingFloors != null ? ` / ${selectedProperty.details.buildingFloors} поверхов` : ''}</span></div>
                                 <div><span className="text-xs text-gray-500 block mb-1">Квартира / Код</span><span className="text-sm text-white">{selectedProperty.title || '—'}</span></div>
                             </div>
