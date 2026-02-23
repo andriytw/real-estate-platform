@@ -366,22 +366,34 @@ export const propertyMediaService = {
       if (ext === 'usdz') return 'usdz';
       return null;
     };
+    const kindFromUrl = (urlStr: string): 'glb' | 'ifc' | 'obj' | 'usdz' | null => {
+      try {
+        const pathname = new URL(urlStr, 'https://x').pathname;
+        return extKind(pathname);
+      } catch {
+        return extKind(urlStr);
+      }
+    };
     const priority = (k: 'glb' | 'ifc' | 'obj' | 'usdz') => (k === 'glb' ? 4 : k === 'ifc' ? 3 : k === 'obj' ? 2 : 1);
     const withUrl: Array<{ kind: 'glb' | 'ifc' | 'obj' | 'usdz'; url: string }> = [];
     for (const a of assets) {
-      const kind = extKind(a.file_name ?? a.storage_path ?? '');
-      if (!kind) continue;
+      let kind = extKind(a.file_name ?? a.storage_path ?? '');
       let url: string | null = null;
       if (a.storage_path) {
         try {
           url = await propertyMediaService.getSignedUrl(a.storage_path, expiresInSeconds);
+          if (!kind) kind = extKind(a.storage_path);
         } catch {
           /* skip */
         }
       } else if (a.external_url) {
+        const urlKind = kindFromUrl(a.external_url);
+        if (!urlKind) continue;
+        kind = urlKind;
         url = a.external_url;
       }
-      if (url) withUrl.push({ kind, url });
+      if (!kind || !url) continue;
+      withUrl.push({ kind, url });
     }
     withUrl.sort((a, b) => priority(b.kind) - priority(a.kind));
     return withUrl;

@@ -51,6 +51,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
   const [galleryImageUrls, setGalleryImageUrls] = useState<string[]>([]);
   const [floorPlanImageUrl, setFloorPlanImageUrl] = useState<string | null>(null);
   const [tour3dCandidates, setTour3dCandidates] = useState<Array<{ kind: 'glb' | 'ifc' | 'obj' | 'usdz'; url: string }>>([]);
+  const [tour3dLoading, setTour3dLoading] = useState(false);
 
   const isPropertyRoute =
     typeof window !== 'undefined' &&
@@ -121,20 +122,28 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
     };
   }, [isFloorPlanOpen, property.id]);
 
-  // Load 3D tour candidates when Tour modal opens (glb → obj → usdz priority)
+  // Load 3D tour candidates when Tour modal opens (glb → ifc → obj → usdz priority)
   useEffect(() => {
     if (!isTourOpen || !property.id) {
       setTour3dCandidates([]);
+      setTour3dLoading(false);
       return;
     }
     let cancelled = false;
+    setTour3dLoading(true);
     propertyMediaService
       .getMarketplaceTour3dCandidates(property.id, 60 * 30)
       .then((list) => {
-        if (!cancelled) setTour3dCandidates(list);
+        if (!cancelled) {
+          setTour3dCandidates(list);
+          setTour3dLoading(false);
+        }
       })
       .catch(() => {
-        if (!cancelled) setTour3dCandidates([]);
+        if (!cancelled) {
+          setTour3dCandidates([]);
+          setTour3dLoading(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -173,6 +182,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
         onClose={() => setIsTourOpen(false)} 
         propertyTitle={property.address}
         tour3dCandidates={tour3dCandidates}
+        isLoading={tour3dLoading}
       />
 
       {/* Floor Plan Modal */}
@@ -315,7 +325,10 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
       {/* Media Tabs Buttons */}
       <div className="flex gap-4 mb-6">
         <button 
-          onClick={() => handleActionClick(() => setIsTourOpen(true))}
+          onClick={() => handleActionClick(() => {
+            setIsTourOpen(true);
+            setTour3dLoading(true);
+          })}
           className="flex-1 bg-emerald-500 text-white font-bold py-3 text-sm rounded-md hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-900/20"
         >
           3D Tour
