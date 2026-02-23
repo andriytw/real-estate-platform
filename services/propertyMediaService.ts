@@ -343,59 +343,72 @@ export const propertyMediaService = {
     }
   },
 
-  /** Web preview priority: GLB (best) → OBJ → USDZ (USDC crate often fails in browser). */
+  /** Web preview: best candidate URL or null. */
   async getMarketplaceTour3dUrl(
     propertyId: string,
     expiresInSeconds = 60 * 30
   ): Promise<string | null> {
-    const candidates = await propertyMediaService.getMarketplaceTour3dCandidates(propertyId, expiresInSeconds);
+    const { candidates } = await propertyMediaService.getMarketplaceTour3dCandidates(propertyId, expiresInSeconds);
     return candidates.length > 0 ? candidates[0].url : null;
   },
 
-  /** Returns all tour3d assets as { kind, url } sorted by web priority: glb → ifc → obj → usdz. */
+  /** Enqueue USDZ → GLB conversion. Call only for .usdz assets. */
+  async enqueueTour3dConversion(
+    propertyId: string,
+    sourceAssetId: string,
+    sourceStoragePath: string,
+    sourceFileName: string
+  ): Promise<{ status: string }> {
+    const { data, error } = await supabase.functions.invoke('tour3d-convert-enqueue', {
+      body: { propertyId, sourceAssetId, sourceStoragePath, sourceFileName },
+    });
+    if (error) throw error;
+    const status = (data as { status?: string })?.status ?? 'queued';
+    return { status };
+  },
+
+  /** Marketplace 3D Tour: candidates (obj/glb/ifc only, OBJ first). DB-only; no USDZ, no conversion. */
   async getMarketplaceTour3dCandidates(
     propertyId: string,
     expiresInSeconds = 60 * 30
-  ): Promise<Array<{ kind: 'glb' | 'ifc' | 'obj' | 'usdz'; url: string }>> {
+  ): Promise<{ candidates: Array<{ kind: 'obj' | 'glb' | 'ifc'; url: string }> }> {
     const assets = await propertyMediaService.listAssetsByType(propertyId, 'tour3d');
-    const extKind = (pathOrName: string): 'glb' | 'ifc' | 'obj' | 'usdz' | null => {
+    const extKind = (pathOrName: string): 'glb' | 'ifc' | 'obj' | null => {
       const ext = (pathOrName || '').split('.').pop()?.toLowerCase();
+      if (ext === 'obj') return 'obj';
       if (ext === 'glb') return 'glb';
       if (ext === 'ifc') return 'ifc';
-      if (ext === 'obj') return 'obj';
-      if (ext === 'usdz') return 'usdz';
       return null;
     };
-    const kindFromUrl = (urlStr: string): 'glb' | 'ifc' | 'obj' | 'usdz' | null => {
+    const kindFromUrl = (urlStr: string): 'glb' | 'ifc' | 'obj' | null => {
       try {
-        const pathname = new URL(urlStr, 'https://x').pathname;
-        return extKind(pathname);
+        return extKind(new URL(urlStr, 'https://x').pathname);
       } catch {
         return extKind(urlStr);
       }
     };
-    const priority = (k: 'glb' | 'ifc' | 'obj' | 'usdz') => (k === 'glb' ? 4 : k === 'ifc' ? 3 : k === 'obj' ? 2 : 1);
-    const withUrl: Array<{ kind: 'glb' | 'ifc' | 'obj' | 'usdz'; url: string }> = [];
+
+    // OBJ first (3), then GLB (2), then IFC (1)
+    const priority = (k: 'obj' | 'glb' | 'ifc') => (k === 'obj' ? 3 : k === 'glb' ? 2 : 1);
+    const candidates: Array<{ kind: 'obj' | 'glb' | 'ifc'; url: string }> = [];
     for (const a of assets) {
-      let kind = extKind(a.file_name ?? a.storage_path ?? '');
+      const kind = extKind(a.file_name ?? a.storage_path ?? '');
+      if (!kind) continue;
       let url: string | null = null;
       if (a.storage_path) {
         try {
           url = await propertyMediaService.getSignedUrl(a.storage_path, expiresInSeconds);
-          if (!kind) kind = extKind(a.storage_path);
         } catch {
           /* skip */
         }
       } else if (a.external_url) {
-        const urlKind = kindFromUrl(a.external_url);
-        if (!urlKind) continue;
-        kind = urlKind;
-        url = a.external_url;
+        const k = kindFromUrl(a.external_url);
+        if (k) url = a.external_url;
       }
-      if (!kind || !url) continue;
-      withUrl.push({ kind, url });
+      if (!url) continue;
+      candidates.push({ kind, url });
     }
-    withUrl.sort((a, b) => priority(b.kind) - priority(a.kind));
-    return withUrl;
+    candidates.sort((a, b) => priority(b.kind) - priority(a.kind));
+    return { candidates };
   },
 };

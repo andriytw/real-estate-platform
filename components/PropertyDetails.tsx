@@ -50,7 +50,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [galleryImageUrls, setGalleryImageUrls] = useState<string[]>([]);
   const [floorPlanImageUrl, setFloorPlanImageUrl] = useState<string | null>(null);
-  const [tour3dCandidates, setTour3dCandidates] = useState<Array<{ kind: 'glb' | 'ifc' | 'obj' | 'usdz'; url: string }>>([]);
+  const [tour3dCandidates, setTour3dCandidates] = useState<Array<{ kind: 'glb' | 'ifc' | 'obj'; url: string }>>([]);
   const [tour3dLoading, setTour3dLoading] = useState(false);
 
   const isPropertyRoute =
@@ -122,7 +122,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
     };
   }, [isFloorPlanOpen, property.id]);
 
-  // Load 3D tour candidates when Tour modal opens (glb → ifc → obj → usdz priority)
+  // Load 3D tour candidates once when Tour modal opens (no polling)
   useEffect(() => {
     if (!isTourOpen || !property.id) {
       setTour3dCandidates([]);
@@ -133,9 +133,9 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
     setTour3dLoading(true);
     propertyMediaService
       .getMarketplaceTour3dCandidates(property.id, 60 * 30)
-      .then((list) => {
+      .then((result) => {
         if (!cancelled) {
-          setTour3dCandidates(list);
+          setTour3dCandidates(result.candidates);
           setTour3dLoading(false);
         }
       })

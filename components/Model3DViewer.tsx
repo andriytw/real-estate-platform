@@ -49,6 +49,8 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(width, height);
     renderer.setClearColor(0x16181d, 1);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.insertBefore(renderer.domElement, container.firstChild);
     rendererRef.current = renderer;
 
@@ -62,6 +64,15 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     scene.add(hemisphere);
     const directional = new THREE.DirectionalLight(0xffffff, 0.6);
     directional.position.set(10, 10, 10);
+    directional.castShadow = true;
+    directional.shadow.mapSize.width = 1024;
+    directional.shadow.mapSize.height = 1024;
+    const shadowCam = directional.shadow.camera as THREE.OrthographicCamera;
+    shadowCam.near = 0.5;
+    shadowCam.far = 50;
+    shadowCam.left = shadowCam.bottom = -25;
+    shadowCam.right = shadowCam.top = 25;
+    directional.shadow.bias = -0.0001;
     scene.add(directional);
     const fill = new THREE.DirectionalLight(0xffffff, 0.25);
     fill.position.set(-6, 4, -6);
@@ -143,15 +154,35 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
       else setError('Кадрування не вдалося — спробуйте обертати камеру.');
     };
 
+    function ensureNormals(root: THREE.Object3D) {
+      root.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          const geom = mesh.geometry as THREE.BufferGeometry | undefined;
+          if (geom) {
+            const normals = geom.attributes.normal;
+            if (!normals || (normals as THREE.BufferAttribute).count === 0) {
+              geom.computeVertexNormals();
+            }
+          }
+        }
+      });
+    }
+
     function applyDefaultMaterial(obj: THREE.Object3D) {
       obj.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
-          mesh.castShadow = false;
+          mesh.castShadow = true;
           mesh.receiveShadow = false;
           let mat: THREE.Material | THREE.Material[] | null = mesh.material;
           if (!mat || (Array.isArray(mat) && mat.length === 0)) {
-            mesh.material = new THREE.MeshStandardMaterial({ color: 0xe5e7eb, metalness: 0, roughness: 1 });
+            mesh.material = new THREE.MeshStandardMaterial({
+              color: 0xE5E7EB,
+              metalness: 0,
+              roughness: 0.9,
+              side: THREE.DoubleSide,
+            });
             return;
           }
           const mats = Array.isArray(mat) ? mat : [mat];
@@ -164,7 +195,7 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
             }
             if (!m.map && 'metalness' in m) {
               (m as THREE.MeshStandardMaterial).metalness = 0;
-              (m as THREE.MeshStandardMaterial).roughness = 1;
+              (m as THREE.MeshStandardMaterial).roughness = 0.9;
             }
           }
           if (Array.isArray(mesh.material)) {
@@ -180,6 +211,8 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
     const usdzUnsupportedMessage =
       'Цей USDZ містить USDC (crate) і не підтримується у веб-перегляді. Завантажте GLB або OBJ.';
 
+    let groundPlaneMesh: THREE.Mesh | null = null;
+
     const onLoaded = (model: THREE.Object3D) => {
       if (loadIdRef.current !== loadId) return;
       const renderableCount = countRenderableGeometry(model);
@@ -194,9 +227,24 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
         }
         return;
       }
+      ensureNormals(model);
       applyDefaultMaterial(model);
       scene.add(model);
       meshRef.current = model;
+
+      const box = new THREE.Box3().setFromObject(model);
+      box.getSize(sizeVec);
+      const groundSize = Math.max(10, Math.max(sizeVec.x, sizeVec.y, sizeVec.z) * 2);
+      const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize);
+      const groundMaterial = new THREE.ShadowMaterial({ opacity: 0.25 });
+      groundPlaneMesh = new THREE.Mesh(groundGeometry, groundMaterial);
+      groundPlaneMesh.rotation.x = -Math.PI / 2;
+      groundPlaneMesh.receiveShadow = true;
+      const center = box.getCenter(new THREE.Vector3());
+      const minY = box.min.y;
+      groundPlaneMesh.position.set(center.x, minY - 0.02, center.z);
+      scene.add(groundPlaneMesh);
+
       if (!centerAndFrame(model)) {
         setError('Кадрування не вдалося — натисніть Fit камера.');
       } else {
@@ -358,6 +406,14 @@ const Model3DViewer: React.FC<Model3DViewerProps> = ({ url, kind, className = ''
         try {
           sceneRef.current.environment = null;
         } catch (_) {}
+      }
+      if (groundPlaneMesh && sceneRef.current) {
+        try {
+          sceneRef.current.remove(groundPlaneMesh);
+          groundPlaneMesh.geometry?.dispose();
+          (groundPlaneMesh.material as THREE.Material)?.dispose();
+        } catch (_) {}
+        groundPlaneMesh = null;
       }
       if (meshRef.current && sceneRef.current) {
         try {

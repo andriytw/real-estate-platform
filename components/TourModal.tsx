@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { X, Maximize2, Home, BedDouble, Utensils, Bath, Loader2 } from 'lucide-react';
 import Model3DViewer from './Model3DViewer';
 
-export type Tour3dCandidate = { kind: 'glb' | 'ifc' | 'obj' | 'usdz'; url: string };
+export type Tour3dCandidate = { kind: 'glb' | 'ifc' | 'obj'; url: string };
 
 interface TourModalProps {
   isOpen: boolean;
@@ -43,11 +43,18 @@ const TOUR_ROOMS = [
   },
 ];
 
-const TourModal: React.FC<TourModalProps> = ({ isOpen, onClose, propertyTitle, tourUrl = null, tour3dCandidates = [], isLoading: isLoadingProp = false }) => {
-  // When tour3dCandidates is provided (e.g. from marketplace), use only it; ignore tourUrl to avoid legacy walkthrough.
+const TourModal: React.FC<TourModalProps> = ({
+  isOpen,
+  onClose,
+  propertyTitle,
+  tourUrl = null,
+  tour3dCandidates = [],
+  isLoading: isLoadingProp = false,
+}) => {
+  // When tour3dCandidates is provided (e.g. from marketplace), use only it; ignore tourUrl. Never 360 demo; never USDZ.
   const candidates = tour3dCandidates !== undefined
     ? (tour3dCandidates ?? [])
-    : (tourUrl ? [{ kind: (tourUrl.match(/\.(glb|ifc|obj|usdz)(\?|$)/i)?.[1]?.toLowerCase() ?? 'glb') as 'glb' | 'ifc' | 'obj' | 'usdz', url: tourUrl }] : []);
+    : (tourUrl ? [{ kind: (tourUrl.match(/\.(glb|ifc|obj)(\?|$)/i)?.[1]?.toLowerCase() ?? 'glb') as 'glb' | 'ifc' | 'obj', url: tourUrl }] : []);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [viewerError, setViewerError] = useState<{ code: string; message: string } | null>(null);
   const [activeRoomIndex, setActiveRoomIndex] = useState(0);
@@ -242,20 +249,14 @@ const TourModal: React.FC<TourModalProps> = ({ isOpen, onClose, propertyTitle, t
 
   if (candidates.length > 0) {
     const current = candidates[selectedIndex];
-    const isModel = current && ['glb', 'ifc', 'obj', 'usdz'].includes(current.kind);
-    const handleViewerError = (info: { code: string; message: string }) => {
-      setViewerError(info);
-      if (info.code === 'USDZ_CRATE_UNSUPPORTED' && current?.kind === 'usdz' && selectedIndex < candidates.length - 1) {
-        setSelectedIndex((i) => i + 1);
-        setViewerError(null);
-      }
-    };
+    const isModel = current && ['glb', 'ifc', 'obj'].includes(current.kind);
+    const handleViewerError = (info: { code: string; message: string }) => setViewerError(info);
     return (
       <div className="fixed inset-0 z-[100] bg-black flex flex-col font-sans">
         {modalShell}
         {candidates.length > 1 && (
           <div className="absolute top-14 left-0 right-0 px-4 py-2 z-20 flex justify-center gap-1">
-            {(['glb', 'ifc', 'obj', 'usdz'] as const).map((k) => {
+            {(['glb', 'ifc', 'obj'] as const).map((k) => {
               if (!candidates.some((c) => c.kind === k)) return null;
               const isActive = current?.kind === k;
               return (
@@ -273,21 +274,13 @@ const TourModal: React.FC<TourModalProps> = ({ isOpen, onClose, propertyTitle, t
         )}
         <div className="flex-1 pt-14 min-h-0">
           {isModel ? (
-            <>
-              <Model3DViewer
-                key={`${current.url}-${current.kind}`}
-                url={current.url}
-                kind={current.kind}
-                className="w-full h-full min-h-[300px]"
-                onError={handleViewerError}
-              />
-              {viewerError && viewerError.code === 'USDZ_CRATE_UNSUPPORTED' && selectedIndex >= candidates.length - 1 && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/90 z-30 p-4 pointer-events-none">
-                  <p className="text-gray-300 text-sm text-center max-w-md">{viewerError.message}</p>
-                  <p className="text-gray-500 text-xs text-center">USDZ from MagicPlan (USDC crate) can&apos;t be previewed in browser. Upload IFC (recommended) or GLB/OBJ. USDZ is stored, and we can add automatic conversion later.</p>
-                </div>
-              )}
-            </>
+            <Model3DViewer
+              key={`${current.url}-${current.kind}`}
+              url={current.url}
+              kind={current.kind}
+              className="w-full h-full min-h-[300px]"
+              onError={handleViewerError}
+            />
           ) : (
             <iframe
               src={current.url}
@@ -306,8 +299,7 @@ const TourModal: React.FC<TourModalProps> = ({ isOpen, onClose, propertyTitle, t
       {modalShell}
       <div className="flex-1 pt-14 flex items-center justify-center min-h-0">
         <div className="flex flex-col items-center gap-2 text-center px-4">
-          <p className="text-gray-300 text-sm">3D model not available</p>
-          <p className="text-gray-500 text-xs">Upload GLB or IFC for web preview.</p>
+          <p className="text-gray-300 text-sm">3D model not available. Upload OBJ.</p>
         </div>
       </div>
     </div>
