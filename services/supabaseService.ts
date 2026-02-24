@@ -1170,7 +1170,7 @@ export const propertiesService = {
       console.log('📡 propertiesService.getAll called, lightweight:', lightweight);
       // For Marketplace/public views, only load essential fields for faster loading
       const selectFields = lightweight 
-        ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip, zweckentfremdung_flag, zweckentfremdung_updated_at, cover_photo_asset_id, lat, lng'
+        ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip, zweckentfremdung_flag, zweckentfremdung_updated_at, cover_photo_asset_id, lat, lng, details'
         : '*';
       
       console.log('📡 Querying properties table with fields:', selectFields);

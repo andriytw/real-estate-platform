@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import MarketPostModal from './MarketPostModal';
 import MarketSplitView from './MarketSplitView';
 import { Property } from '../types';
+import { getPropertyStats } from '../utils/propertyStats';
 
 interface MarketplaceProps {
   onListingClick: (listing: Property) => void;
@@ -31,10 +32,10 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: p
 
       let matchesRooms = true;
       if (roomFilter !== 'Any') {
-        matchesRooms = (property.rooms ?? 0) >= parseFloat(roomFilter);
+        matchesRooms = getPropertyStats(property).rooms >= parseFloat(roomFilter);
       }
 
-      const beds = property.details?.beds ?? 0;
+      const { beds } = getPropertyStats(property);
       const matchesBeds = bedsFilter === 'any' || beds >= Number(bedsFilter);
 
       return matchesPrice && matchesRooms && matchesBeds;

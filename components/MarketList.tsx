@@ -2,6 +2,7 @@ import React from 'react';
 import { MapPin, Home } from 'lucide-react';
 import type { Property } from '../types';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
+import { getPropertyStats } from '../utils/propertyStats';
 
 interface MarketListProps {
   properties: Property[];
@@ -51,9 +52,7 @@ export default function MarketList({
           property.image ||
           property.images?.[0] ||
           '';
-        const beds = property.details?.beds ?? 0;
-        const rooms = property.rooms ?? 0;
-        const area = property.area ?? 0;
+        const { rooms, beds, area } = getPropertyStats(property);
         const price = property.price ?? 0;
         const location = formatPropertyAddress(property);
 
