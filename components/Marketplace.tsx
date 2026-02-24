@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import MarketPostModal from './MarketPostModal';
 import MarketSplitView from './MarketSplitView';
 import { Property } from '../types';
 import { getPropertyStats } from '../utils/propertyStats';
+import { fetchBlockedPropertyIds } from '../services/marketAvailabilityService';
 
 interface MarketplaceProps {
   onListingClick: (listing: Property) => void;
@@ -23,8 +24,49 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: p
   const [roomFilter, setRoomFilter] = useState('Any');
   const [bedsFilter, setBedsFilter] = useState<'any' | '1' | '2' | '3' | '4' | '5'>('any');
 
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
+  const [blockedIds, setBlockedIds] = useState<Set<string> | null>(null);
+  const [loadingAvailability, setLoadingAvailability] = useState(false);
+
+  const datesValid = useMemo(() => {
+    const from = dateFrom?.trim().slice(0, 10);
+    const to = dateTo?.trim().slice(0, 10);
+    return !!from && !!to && from < to;
+  }, [dateFrom, dateTo]);
+
+  useEffect(() => {
+    if (!datesValid) {
+      setBlockedIds(null);
+      return;
+    }
+    const from = dateFrom!.trim().slice(0, 10);
+    const to = dateTo!.trim().slice(0, 10);
+    let cancelled = false;
+    const timeoutId = setTimeout(() => {
+      setLoadingAvailability(true);
+      fetchBlockedPropertyIds(from, to)
+        .then((ids) => {
+          if (!cancelled) setBlockedIds(ids);
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingAvailability(false);
+        });
+    }, 280);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [datesValid, dateFrom, dateTo]);
+
+  const clearDates = useCallback(() => {
+    setDateFrom(null);
+    setDateTo(null);
+    setBlockedIds(null);
+  }, []);
+
   const filteredProperties = useMemo(() => {
-    return properties.filter((property) => {
+    let list = properties.filter((property) => {
       let matchesPrice = true;
       if (priceFilter !== 'Any' && property.price != null) {
         matchesPrice = property.price <= parseInt(priceFilter, 10);
@@ -40,7 +82,12 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: p
 
       return matchesPrice && matchesRooms && matchesBeds;
     });
-  }, [properties, priceFilter, roomFilter, bedsFilter]);
+
+    if (blockedIds != null) {
+      list = list.filter((p) => !blockedIds.has(p.id));
+    }
+    return list;
+  }, [properties, priceFilter, roomFilter, bedsFilter, blockedIds]);
 
   return (
     <div className="h-[100dvh] flex flex-col min-h-0 bg-[#111315] font-sans">
@@ -70,7 +117,14 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: p
             setPriceFilter('Any');
             setRoomFilter('Any');
             setBedsFilter('any');
+            clearDates();
           }}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          setDateFrom={setDateFrom}
+          setDateTo={setDateTo}
+          onClearDates={clearDates}
+          loadingAvailability={loadingAvailability}
         />
       </div>
     </div>

@@ -36,7 +36,7 @@ export default function MarketList({
               onClick={onClearFilters}
               className="mt-3 text-emerald-500 hover:text-emerald-400 hover:underline text-sm font-medium"
             >
-              Clear filters
+              Clear filters/dates
             </button>
           )}
         </div>

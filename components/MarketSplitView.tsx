@@ -29,6 +29,12 @@ interface MarketSplitViewProps {
   setRoomFilter: (v: string) => void;
   setBedsFilter: (v: 'any' | '1' | '2' | '3' | '4' | '5') => void;
   onClearFilters?: () => void;
+  dateFrom: string | null;
+  dateTo: string | null;
+  setDateFrom: (v: string | null) => void;
+  setDateTo: (v: string | null) => void;
+  onClearDates: () => void;
+  loadingAvailability: boolean;
 }
 
 export default function MarketSplitView({
@@ -46,6 +52,12 @@ export default function MarketSplitView({
   setRoomFilter,
   setBedsFilter,
   onClearFilters,
+  dateFrom,
+  dateTo,
+  setDateFrom,
+  setDateTo,
+  onClearDates,
+  loadingAvailability,
 }: MarketSplitViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchPoint, setSearchPoint] = useState<{ lat: number; lng: number; label: string } | null>(null);
@@ -163,6 +175,12 @@ export default function MarketSplitView({
           setPriceFilter={setPriceFilter}
           setRoomFilter={setRoomFilter}
           setBedsFilter={setBedsFilter}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          setDateFrom={setDateFrom}
+          setDateTo={setDateTo}
+          onClearDates={onClearDates}
+          loadingAvailability={loadingAvailability}
         />
       </div>
     </div>

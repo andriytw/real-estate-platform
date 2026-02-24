@@ -50,6 +50,12 @@ interface MarketMapProps {
   setPriceFilter: (v: string) => void;
   setRoomFilter: (v: string) => void;
   setBedsFilter: (v: 'any' | '1' | '2' | '3' | '4' | '5') => void;
+  dateFrom: string | null;
+  dateTo: string | null;
+  setDateFrom: (v: string | null) => void;
+  setDateTo: (v: string | null) => void;
+  onClearDates: () => void;
+  loadingAvailability: boolean;
 }
 
 export default function MarketMap({
@@ -65,6 +71,12 @@ export default function MarketMap({
   setPriceFilter,
   setRoomFilter,
   setBedsFilter,
+  dateFrom,
+  dateTo,
+  setDateFrom,
+  setDateTo,
+  onClearDates,
+  loadingAvailability,
 }: MarketMapProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
@@ -174,6 +186,37 @@ export default function MarketMap({
             { label: '5+ Beds', value: '5' },
           ]}
         />
+        <div className="flex items-center gap-1.5">
+          <input
+            type="date"
+            value={dateFrom ?? ''}
+            onChange={(e) => setDateFrom(e.target.value || null)}
+            className="bg-[#1C1F24] border border-gray-700 rounded-lg py-2 px-2 text-sm text-white focus:outline-none focus:border-emerald-500 min-w-0 max-w-[130px]"
+            title="From (check-in)"
+            aria-label="From (check-in)"
+          />
+          <span className="text-gray-500 text-xs">–</span>
+          <input
+            type="date"
+            value={dateTo ?? ''}
+            onChange={(e) => setDateTo(e.target.value || null)}
+            className="bg-[#1C1F24] border border-gray-700 rounded-lg py-2 px-2 text-sm text-white focus:outline-none focus:border-emerald-500 min-w-0 max-w-[130px]"
+            title="To (check-out)"
+            aria-label="To (check-out)"
+          />
+          {(dateFrom != null || dateTo != null) && (
+            <button
+              type="button"
+              onClick={onClearDates}
+              className="text-xs text-gray-400 hover:text-emerald-400 whitespace-nowrap"
+            >
+              Clear dates
+            </button>
+          )}
+          {loadingAvailability && (
+            <span className="text-[10px] text-gray-500">Checking…</span>
+          )}
+        </div>
       </div>
 
       <Map
