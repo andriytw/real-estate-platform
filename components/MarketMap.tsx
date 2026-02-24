@@ -1,12 +1,13 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { ChevronDown } from 'lucide-react';
-import Map, { Marker } from 'react-map-gl';
+import Map, { Marker, Source, Layer } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import './MarketMap.css';
 import { fetchSuggestions, type GeocodeSuggestion } from '../utils/mapboxGeocode';
 
 const DEFAULT_CENTER: [number, number] = [13.405, 52.52];
 const DEFAULT_ZOOM = 10;
+const MAX_RAYS = 30;
 
 export interface ListingForMap {
   id: string;
@@ -43,7 +44,11 @@ interface MarketMapProps {
   onSelectMarker: (id: string) => void;
   searchPoint: { lat: number; lng: number; label: string } | null;
   onSearchPointSelect: (point: { lat: number; lng: number; label: string }) => void;
+  onClearSearchPoint?: () => void;
   mapRef: React.RefObject<mapboxgl.Map | null>;
+  radiusKm: number | null;
+  setRadiusKm: (v: number | null) => void;
+  distancesById: Record<string, number>;
   priceFilter: string;
   roomFilter: string;
   bedsFilter: string;
@@ -64,7 +69,11 @@ export default function MarketMap({
   onSelectMarker,
   searchPoint,
   onSearchPointSelect,
+  onClearSearchPoint,
   mapRef,
+  radiusKm,
+  setRadiusKm,
+  distancesById,
   priceFilter,
   roomFilter,
   bedsFilter,
@@ -117,7 +126,45 @@ export default function MarketMap({
     [onSearchPointSelect, mapRef]
   );
 
-  const mapInstanceRef = useRef<mapboxgl.Map | null>(null);
+  const { raysLineGeoJson, raysLabelGeoJson } = useMemo(() => {
+    if (!searchPoint || listings.length === 0) {
+      return {
+        raysLineGeoJson: { type: 'FeatureCollection' as const, features: [] },
+        raysLabelGeoJson: { type: 'FeatureCollection' as const, features: [] },
+      };
+    }
+    const sorted = [...listings]
+      .map((item) => ({ item, km: distancesById[item.id] ?? Infinity }))
+      .filter(({ km }) => Number.isFinite(km))
+      .sort((a, b) => a.km - b.km)
+      .slice(0, MAX_RAYS)
+      .map(({ item, km }) => ({ item, km }));
+    const sLng = searchPoint.lng;
+    const sLat = searchPoint.lat;
+    const lineFeatures = sorted.map(({ item, km }) => ({
+      type: 'Feature' as const,
+      geometry: {
+        type: 'LineString' as const,
+        coordinates: [
+          [sLng, sLat],
+          [item.lng, item.lat],
+        ],
+      },
+      properties: { id: item.id, kmLabel: `${km.toFixed(1)} km` },
+    }));
+    const labelFeatures = sorted.map(({ item, km }) => ({
+      type: 'Feature' as const,
+      geometry: {
+        type: 'Point' as const,
+        coordinates: [(sLng + item.lng) / 2, (sLat + item.lat) / 2],
+      },
+      properties: { kmLabel: `${km.toFixed(1)} km` },
+    }));
+    return {
+      raysLineGeoJson: { type: 'FeatureCollection' as const, features: lineFeatures },
+      raysLabelGeoJson: { type: 'FeatureCollection' as const, features: labelFeatures },
+    };
+  }, [searchPoint, listings, distancesById]);
 
   return (
     <div className="relative w-full h-full min-h-0 bg-[#0D1117]">
@@ -152,7 +199,48 @@ export default function MarketMap({
           {searchLoading && (
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">...</span>
           )}
+          {searchPoint && onClearSearchPoint && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setSuggestions([]);
+                setSuggestionsOpen(false);
+                onClearSearchPoint();
+              }}
+              className="ml-1 text-xs text-gray-400 hover:text-emerald-400 whitespace-nowrap"
+            >
+              Clear address
+            </button>
+          )}
         </div>
+        {searchPoint != null ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-gray-400 text-sm">Radius</span>
+            <span className="text-white text-sm min-w-[3rem]">
+              {radiusKm == null ? 'Any' : `${radiusKm} km`}
+            </span>
+            <input
+              type="range"
+              min={1}
+              max={50}
+              step={1}
+              value={radiusKm ?? 25}
+              onChange={(e) => setRadiusKm(Number(e.target.value))}
+              className="w-24 h-2 bg-[#1C1F24] rounded-lg appearance-none cursor-pointer accent-emerald-500"
+              aria-label="Radius in km"
+            />
+            <button
+              type="button"
+              onClick={() => setRadiusKm(null)}
+              className="text-xs text-gray-400 hover:text-emerald-400 whitespace-nowrap"
+            >
+              Clear radius
+            </button>
+          </div>
+        ) : (
+          <span className="text-gray-500 text-xs">Set a search address</span>
+        )}
         <MapFilterDropdown
           value={priceFilter}
           onChange={setPriceFilter}
@@ -265,6 +353,39 @@ export default function MarketMap({
           >
             <div className="w-6 h-6 rounded-full bg-blue-500 border-2 border-white shadow-lg" />
           </Marker>
+        )}
+        {searchPoint && raysLineGeoJson.features.length > 0 && (
+          <Source id="rays-lines" type="geojson" data={raysLineGeoJson}>
+            <Layer
+              id="rays-line-layer"
+              type="line"
+              layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+              paint={{
+                'line-color': 'rgba(255,255,255,0.5)',
+                'line-width': 1.5,
+                'line-opacity': 0.7,
+              }}
+            />
+          </Source>
+        )}
+        {searchPoint && raysLabelGeoJson.features.length > 0 && (
+          <Source id="rays-labels" type="geojson" data={raysLabelGeoJson}>
+            <Layer
+              id="rays-label-layer"
+              type="symbol"
+              layout={{
+                'text-field': ['get', 'kmLabel'],
+                'text-size': 12,
+                'text-allow-overlap': true,
+                'text-ignore-placement': true,
+              }}
+              paint={{
+                'text-halo-color': 'rgba(0,0,0,0.85)',
+                'text-halo-width': 1.5,
+                'text-color': '#e5e7eb',
+              }}
+            />
+          </Source>
         )}
       </Map>
     </div>

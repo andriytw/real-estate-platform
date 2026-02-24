@@ -61,7 +61,7 @@ export default function MarketSplitView({
 }: MarketSplitViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchPoint, setSearchPoint] = useState<{ lat: number; lng: number; label: string } | null>(null);
-  const [distancesById, setDistancesById] = useState<Record<string, number>>({});
+  const [radiusKm, setRadiusKm] = useState<number | null>(null);
   const cardRefsMap = useRef<Record<string, HTMLDivElement | null>>({});
   const mapRef = useRef<mapboxgl.Map | null>(null);
 
@@ -69,13 +69,32 @@ export default function MarketSplitView({
     cardRefsMap.current[id] = el;
   }, []);
 
-  const filteredIdSet = useMemo(() => new Set(filteredProperties.map((p) => p.id)), [filteredProperties]);
+  // Single Haversine source: one distanceKmById for list, radius filter, and rays
+  const distanceKmById = useMemo(() => {
+    if (!searchPoint) return {};
+    const out: Record<string, number> = {};
+    properties.forEach((p) => {
+      if (validCoords(p.lat, p.lng)) {
+        out[p.id] = haversineKm(searchPoint.lat, searchPoint.lng, p.lat!, p.lng!);
+      }
+    });
+    return out;
+  }, [searchPoint, properties]);
+
+  const visibleProperties = useMemo(() => {
+    if (!searchPoint || radiusKm == null) return filteredProperties;
+    return filteredProperties.filter((p) => {
+      if (!validCoords(p.lat, p.lng)) return false;
+      const d = distanceKmById[p.id];
+      return d != null && d <= radiusKm;
+    });
+  }, [filteredProperties, searchPoint, radiusKm, distanceKmById]);
 
   const listingsForMap: ListingForMap[] = useMemo(() => {
-    return properties
-      .filter((p) => filteredIdSet.has(p.id) && validCoords(p.lat, p.lng))
+    return visibleProperties
+      .filter((p) => validCoords(p.lat, p.lng))
       .map((p) => ({ id: p.id, lat: p.lat!, lng: p.lng!, title: p.title }));
-  }, [properties, filteredIdSet]);
+  }, [visibleProperties]);
 
   const handleSelectListing = useCallback(
     (id: string) => {
@@ -100,19 +119,14 @@ export default function MarketSplitView({
     }
   }, []);
 
-  const handleSearchPointSelect = useCallback(
-    (point: { lat: number; lng: number; label: string }) => {
-      setSearchPoint(point);
-      const next: Record<string, number> = {};
-      properties.forEach((p) => {
-        if (validCoords(p.lat, p.lng)) {
-          next[p.id] = haversineKm(point.lat, point.lng, p.lat!, p.lng!);
-        }
-      });
-      setDistancesById(next);
-    },
-    [properties]
-  );
+  const handleSearchPointSelect = useCallback((point: { lat: number; lng: number; label: string }) => {
+    setSearchPoint(point);
+  }, []);
+
+  const handleClearSearchPoint = useCallback(() => {
+    setSearchPoint(null);
+    setRadiusKm(null);
+  }, []);
 
   if (loading) {
     return (
@@ -150,12 +164,12 @@ export default function MarketSplitView({
         </div>
         <div className="min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-4">
           <MarketList
-            properties={filteredProperties}
+            properties={visibleProperties}
             coverPhotoUrlByPropertyId={coverPhotoUrlByPropertyId}
             selectedId={selectedId}
             onSelect={handleSelectListing}
             onListingClick={onListingClick}
-            distancesById={distancesById}
+            distancesById={distanceKmById}
             setCardRef={setCardRef}
             onClearFilters={onClearFilters}
           />
@@ -168,7 +182,11 @@ export default function MarketSplitView({
           onSelectMarker={handleSelectMarker}
           searchPoint={searchPoint}
           onSearchPointSelect={handleSearchPointSelect}
+          onClearSearchPoint={handleClearSearchPoint}
           mapRef={mapRef}
+          radiusKm={radiusKm}
+          setRadiusKm={setRadiusKm}
+          distancesById={distanceKmById}
           priceFilter={priceFilter}
           roomFilter={roomFilter}
           bedsFilter={bedsFilter}
