@@ -8,6 +8,7 @@ import { fetchSuggestions, type GeocodeSuggestion } from '../utils/mapboxGeocode
 const DEFAULT_CENTER: [number, number] = [13.405, 52.52];
 const DEFAULT_ZOOM = 10;
 const MAX_RAYS = 30;
+const ORIGIN_RADIUS_PX = 14;
 
 export interface ListingForMap {
   id: string;
@@ -91,6 +92,7 @@ export default function MarketMap({
   const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const token = import.meta.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -118,53 +120,94 @@ export default function MarketMap({
       onSearchPointSelect({ lat: s.lat, lng: s.lng, label: s.label });
       setSuggestionsOpen(false);
       setSearchQuery(s.label);
-      const map = mapRef.current;
-      if (map) {
+      const map = mapRef.current?.getMap?.() ?? mapRef.current;
+      if (map && typeof map.flyTo === 'function') {
         map.flyTo({ center: [s.lng, s.lat], zoom: 13, essential: true });
       }
     },
     [onSearchPointSelect, mapRef]
   );
 
-  const { raysLineGeoJson, raysLabelGeoJson } = useMemo(() => {
-    if (!searchPoint || listings.length === 0) {
-      return {
-        raysLineGeoJson: { type: 'FeatureCollection' as const, features: [] },
-        raysLabelGeoJson: { type: 'FeatureCollection' as const, features: [] },
-      };
-    }
+  const { raysLineGeoJson, rayLabels } = useMemo(() => {
+    const empty = {
+      raysLineGeoJson: { type: 'FeatureCollection' as const, features: [] as GeoJSON.Feature<GeoJSON.LineString>[] },
+      rayLabels: [] as { midLng: number; midLat: number; km: number }[],
+    };
+    if (!searchPoint || listings.length === 0) return empty;
+
+    const map = mapRef.current?.getMap?.() ?? mapRef.current;
+    const hasProject = map && typeof map.project === 'function' && typeof map.unproject === 'function';
+
     const sorted = [...listings]
       .map((item) => ({ item, km: distancesById[item.id] ?? Infinity }))
       .filter(({ km }) => Number.isFinite(km))
       .sort((a, b) => a.km - b.km)
       .slice(0, MAX_RAYS)
       .map(({ item, km }) => ({ item, km }));
+
     const sLng = searchPoint.lng;
     const sLat = searchPoint.lat;
-    const lineFeatures = sorted.map(({ item, km }) => ({
-      type: 'Feature' as const,
-      geometry: {
-        type: 'LineString' as const,
-        coordinates: [
-          [sLng, sLat],
-          [item.lng, item.lat],
-        ],
-      },
-      properties: { id: item.id, kmLabel: `${km.toFixed(1)} km` },
-    }));
-    const labelFeatures = sorted.map(({ item, km }) => ({
-      type: 'Feature' as const,
-      geometry: {
-        type: 'Point' as const,
-        coordinates: [(sLng + item.lng) / 2, (sLat + item.lat) / 2],
-      },
-      properties: { kmLabel: `${km.toFixed(1)} km` },
-    }));
+    const lineFeatures: GeoJSON.Feature<GeoJSON.LineString>[] = [];
+    const rayLabelsResult: { midLng: number; midLat: number; km: number }[] = [];
+
+    for (const { item, km } of sorted) {
+      let startLng = sLng;
+      let startLat = sLat;
+      let shiftedOriginPx: { x: number; y: number } | null = null;
+      let targetPx: { x: number; y: number } | null = null;
+
+      if (hasProject && map) {
+        const originPx = map.project([sLng, sLat]);
+        const tPx = map.project([item.lng, item.lat]);
+        targetPx = tPx;
+        const dx = tPx.x - originPx.x;
+        const dy = tPx.y - originPx.y;
+        const len = Math.hypot(dx, dy);
+        if (len > 0) {
+          const u = { x: dx / len, y: dy / len };
+          shiftedOriginPx = {
+            x: originPx.x + u.x * ORIGIN_RADIUS_PX,
+            y: originPx.y + u.y * ORIGIN_RADIUS_PX,
+          };
+          const shiftedLngLat = map.unproject(shiftedOriginPx);
+          startLng = shiftedLngLat.lng;
+          startLat = shiftedLngLat.lat;
+        }
+      }
+
+      lineFeatures.push({
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [startLng, startLat],
+            [item.lng, item.lat],
+          ],
+        },
+        properties: { id: item.id, kmLabel: `${km.toFixed(1)} km` },
+      });
+
+      if (hasProject && map && shiftedOriginPx && targetPx) {
+        const midPx = {
+          x: (shiftedOriginPx.x + targetPx.x) / 2,
+          y: (shiftedOriginPx.y + targetPx.y) / 2,
+        };
+        const midLngLat = map.unproject(midPx);
+        rayLabelsResult.push({ midLng: midLngLat.lng, midLat: midLngLat.lat, km });
+      } else {
+        rayLabelsResult.push({
+          midLng: (startLng + item.lng) / 2,
+          midLat: (startLat + item.lat) / 2,
+          km,
+        });
+      }
+    }
+
     return {
       raysLineGeoJson: { type: 'FeatureCollection' as const, features: lineFeatures },
-      raysLabelGeoJson: { type: 'FeatureCollection' as const, features: labelFeatures },
+      rayLabels: rayLabelsResult,
     };
-  }, [searchPoint, listings, distancesById]);
+  }, [searchPoint, listings, distancesById, mapReady]);
 
   return (
     <div className="relative w-full h-full min-h-0 bg-[#0D1117]">
@@ -310,9 +353,11 @@ export default function MarketMap({
       <Map
         onLoad={({ target }) => {
           if (mapRef && typeof mapRef === 'object') (mapRef as React.MutableRefObject<mapboxgl.Map | null>).current = target;
+          setMapReady(true);
         }}
         onUnload={() => {
           if (mapRef && typeof mapRef === 'object') (mapRef as React.MutableRefObject<mapboxgl.Map | null>).current = null;
+          setMapReady(false);
         }}
         mapboxAccessToken={token || ''}
         initialViewState={{
@@ -328,18 +373,18 @@ export default function MarketMap({
             key={item.id}
             longitude={item.lng}
             latitude={item.lat}
-            anchor="bottom"
+            anchor="center"
             onClick={(e) => {
               e.originalEvent.stopPropagation();
               onSelectMarker(item.id);
             }}
-            style={{ cursor: 'pointer' }}
+            style={{ cursor: 'pointer', transform: 'translate(0,0)' }}
           >
             <div
               className={
                 selectedId === item.id
                   ? 'market-map-marker marker-selected w-6 h-6 rounded-full bg-emerald-500 border-2 border-white shadow-lg'
-                  : 'market-map-marker w-5 h-5 rounded-full bg-emerald-500 border-2 border-white shadow'
+                  : 'market-map-marker w-6 h-6 rounded-full bg-emerald-500 border-2 border-white shadow'
               }
             />
           </Marker>
@@ -348,8 +393,8 @@ export default function MarketMap({
           <Marker
             longitude={searchPoint.lng}
             latitude={searchPoint.lat}
-            anchor="bottom"
-            style={{ pointerEvents: 'none' }}
+            anchor="center"
+            style={{ pointerEvents: 'none', transform: 'translate(0,0)' }}
           >
             <div className="w-6 h-6 rounded-full bg-blue-500 border-2 border-white shadow-lg" />
           </Marker>
@@ -368,26 +413,17 @@ export default function MarketMap({
             />
           </Source>
         )}
-        {searchPoint && raysLabelGeoJson.features.length > 0 && (
-          <Source id="rays-labels" type="geojson" data={raysLabelGeoJson}>
-            <Layer
-              id="rays-label-layer"
-              type="symbol"
-              layout={{
-                'text-field': ['get', 'kmLabel'],
-                'text-size': 12,
-                'text-allow-overlap': true,
-                'text-ignore-placement': true,
-              }}
-              paint={{
-                'text-color': 'rgba(46, 213, 196, 0.98)',
-                'text-halo-color': 'rgba(0,0,0,0.90)',
-                'text-halo-width': 3,
-                'text-halo-blur': 0.6,
-              }}
-            />
-          </Source>
-        )}
+        {searchPoint &&
+          rayLabels.map((label, idx) => (
+            <Marker
+              key={`ray-label-${idx}`}
+              longitude={label.midLng}
+              latitude={label.midLat}
+              anchor="center"
+            >
+              <div className="ray-km-label">{label.km.toFixed(1)} km</div>
+            </Marker>
+          ))}
       </Map>
     </div>
   );
