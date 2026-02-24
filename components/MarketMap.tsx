@@ -380,9 +380,10 @@ export default function MarketMap({
                 'text-ignore-placement': true,
               }}
               paint={{
-                'text-halo-color': 'rgba(0,0,0,0.85)',
-                'text-halo-width': 1.5,
-                'text-color': '#e5e7eb',
+                'text-color': 'rgba(46, 213, 196, 0.98)',
+                'text-halo-color': 'rgba(0,0,0,0.90)',
+                'text-halo-width': 3,
+                'text-halo-blur': 0.6,
               }}
             />
           </Source>
