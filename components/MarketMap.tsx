@@ -41,6 +41,7 @@ const MapFilterDropdown: React.FC<{
 
 interface MarketMapProps {
   listings: ListingForMap[];
+  withinRadiusIds: Set<string> | null;
   selectedId: string | null;
   onSelectMarker: (id: string) => void;
   searchPoint: { lat: number; lng: number; label: string } | null;
@@ -66,6 +67,7 @@ interface MarketMapProps {
 
 export default function MarketMap({
   listings,
+  withinRadiusIds,
   selectedId,
   onSelectMarker,
   searchPoint,
@@ -133,12 +135,15 @@ export default function MarketMap({
       raysLineGeoJson: { type: 'FeatureCollection' as const, features: [] as GeoJSON.Feature<GeoJSON.LineString>[] },
       rayLabels: [] as { midLng: number; midLat: number; km: number }[],
     };
-    if (!searchPoint || listings.length === 0) return empty;
+    const forRays = withinRadiusIds
+      ? listings.filter((item) => withinRadiusIds.has(item.id))
+      : listings;
+    if (!searchPoint || forRays.length === 0) return empty;
 
     const map = mapRef.current?.getMap?.() ?? mapRef.current;
     const hasProject = map && typeof map.project === 'function' && typeof map.unproject === 'function';
 
-    const sorted = [...listings]
+    const sorted = [...forRays]
       .map((item) => ({ item, km: distancesById[item.id] ?? Infinity }))
       .filter(({ km }) => Number.isFinite(km))
       .sort((a, b) => a.km - b.km)
@@ -207,7 +212,7 @@ export default function MarketMap({
       raysLineGeoJson: { type: 'FeatureCollection' as const, features: lineFeatures },
       rayLabels: rayLabelsResult,
     };
-  }, [searchPoint, listings, distancesById, mapReady]);
+  }, [searchPoint, listings, withinRadiusIds, distancesById, mapReady]);
 
   return (
     <div className="relative w-full h-full min-h-0 bg-[#0D1117]">
@@ -368,27 +373,26 @@ export default function MarketMap({
         style={{ width: '100%', height: '100%' }}
         mapStyle="mapbox://styles/mapbox/dark-v11"
       >
-        {listings.map((item) => (
-          <Marker
-            key={item.id}
-            longitude={item.lng}
-            latitude={item.lat}
-            anchor="center"
-            onClick={(e) => {
-              e.originalEvent.stopPropagation();
-              onSelectMarker(item.id);
-            }}
-            style={{ cursor: 'pointer', transform: 'translate(0,0)' }}
-          >
-            <div
-              className={
-                selectedId === item.id
-                  ? 'market-map-marker marker-selected w-6 h-6 rounded-full bg-emerald-500 border-2 border-white shadow-lg'
-                  : 'market-map-marker w-6 h-6 rounded-full bg-emerald-500 border-2 border-white shadow'
-              }
-            />
-          </Marker>
-        ))}
+        {listings.map((item) => {
+          const inRadius = !withinRadiusIds || withinRadiusIds.has(item.id);
+          return (
+            <Marker
+              key={item.id}
+              longitude={item.lng}
+              latitude={item.lat}
+              anchor="center"
+              onClick={(e) => {
+                e.originalEvent.stopPropagation();
+                onSelectMarker(item.id);
+              }}
+              style={{ cursor: 'pointer', transform: 'translate(0,0)' }}
+            >
+              <div
+                className={`marker-fade market-map-marker w-6 h-6 rounded-full bg-emerald-500 border-2 border-white ${!inRadius ? 'marker-hidden' : ''} ${selectedId === item.id ? 'marker-selected shadow-lg' : 'shadow'}`}
+              />
+            </Marker>
+          );
+        })}
         {searchPoint && (
           <Marker
             longitude={searchPoint.lng}

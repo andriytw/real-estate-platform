@@ -69,32 +69,49 @@ export default function MarketSplitView({
     cardRefsMap.current[id] = el;
   }, []);
 
-  // Single Haversine source: one distanceKmById for list, radius filter, and rays
+  // Base set: filtered properties with valid coords (used for map + distances)
+  const baseVisibleWithCoords = useMemo(
+    () => filteredProperties.filter((p) => validCoords(p.lat, p.lng)),
+    [filteredProperties]
+  );
+
+  // Immutable: new object every time so children re-render
   const distanceKmById = useMemo(() => {
     if (!searchPoint) return {};
     const out: Record<string, number> = {};
-    properties.forEach((p) => {
-      if (validCoords(p.lat, p.lng)) {
-        out[p.id] = haversineKm(searchPoint.lat, searchPoint.lng, p.lat!, p.lng!);
-      }
-    });
+    for (const p of baseVisibleWithCoords) {
+      out[p.id] = haversineKm(searchPoint.lat, searchPoint.lng, p.lat!, p.lng!);
+    }
     return out;
-  }, [searchPoint, properties]);
+  }, [searchPoint, baseVisibleWithCoords]);
+
+  // Immutable: new Set every time (never mutate in place)
+  const withinRadiusIds = useMemo(() => {
+    if (!searchPoint || radiusKm == null) return null;
+    const s = new Set<string>();
+    for (const p of baseVisibleWithCoords) {
+      const d = distanceKmById[p.id];
+      if (Number.isFinite(d) && d <= radiusKm) s.add(p.id);
+    }
+    return s;
+  }, [searchPoint, radiusKm, baseVisibleWithCoords, distanceKmById]);
 
   const visibleProperties = useMemo(() => {
-    if (!searchPoint || radiusKm == null) return filteredProperties;
-    return filteredProperties.filter((p) => {
-      if (!validCoords(p.lat, p.lng)) return false;
-      const d = distanceKmById[p.id];
-      return d != null && d <= radiusKm;
-    });
-  }, [filteredProperties, searchPoint, radiusKm, distanceKmById]);
+    if (withinRadiusIds === null) return filteredProperties;
+    return filteredProperties.filter((p) => withinRadiusIds.has(p.id));
+  }, [filteredProperties, withinRadiusIds]);
 
-  const listingsForMap: ListingForMap[] = useMemo(() => {
-    return visibleProperties
-      .filter((p) => validCoords(p.lat, p.lng))
-      .map((p) => ({ id: p.id, lat: p.lat!, lng: p.lng!, title: p.title }));
-  }, [visibleProperties]);
+  // Full list for map (all base visible); visibility by CSS via withinRadiusIds
+  const listingsForMap: ListingForMap[] = useMemo(
+    () =>
+      baseVisibleWithCoords.map((p) => ({
+        id: p.id,
+        lat: p.lat!,
+        lng: p.lng!,
+        title: p.title,
+      })),
+    [baseVisibleWithCoords]
+  );
 
   const handleSelectListing = useCallback(
     (id: string) => {
@@ -178,6 +195,7 @@ export default function MarketSplitView({
       <div className="flex-1 min-h-0 min-w-0">
         <MarketMap
           listings={listingsForMap}
+          withinRadiusIds={withinRadiusIds}
           selectedId={selectedId}
           onSelectMarker={handleSelectMarker}
           searchPoint={searchPoint}

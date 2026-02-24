@@ -1,4 +1,11 @@
 /* Local styles for MarketMap only. Do not add to tailwind.config. */
+.marker-fade {
+  transition: opacity 120ms ease;
+}
+.marker-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
 .marker-selected {
   animation: marker-pulse 0.8s ease-in-out infinite;
 }
