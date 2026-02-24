@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Square, Download } from 'lucide-react';
+import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Square, Download, LayoutGrid, Bed } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 import AdminCalendar from './AdminCalendar';
 import AdminMessages from './AdminMessages';
@@ -5529,12 +5529,24 @@ ${internalCompany} Team`;
                   <p className="text-xs text-gray-500 truncate mb-2">{formatPropertyAddress(prop)}</p>
                   
                   {/* Characteristics */}
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-gray-400">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-gray-400">
                      {(prop.details?.area != null && prop.details.area !== 0) && (
-                        <span>Площа: <span className="text-gray-300 font-medium">{prop.details.area} м²</span></span>
+                        <span className="flex items-center gap-1" title="Площа">
+                           <Square className="w-3 h-3 text-gray-500 shrink-0" />
+                           <span className="text-gray-300 font-medium">{prop.details.area} м²</span>
+                        </span>
                      )}
-                     {(prop.details?.rooms || prop.details?.beds) && (
-                        <span>Кімнати/Ліжка: <span className="text-gray-300 font-medium">{prop.details.rooms || 0}/{prop.details.beds || 0}</span></span>
+                     {(prop.details?.rooms != null || prop.details?.beds != null) && (
+                        <span className="flex items-center gap-3">
+                           <span className="flex items-center gap-0.5" title="Кімнати">
+                              <LayoutGrid className="w-3 h-3 text-gray-500 shrink-0" />
+                              <span className="text-gray-300 font-medium">{prop.details.rooms ?? 0}</span>
+                           </span>
+                           <span className="flex items-center gap-0.5" title="Ліжка">
+                              <Bed className="w-3 h-3 text-gray-500 shrink-0" />
+                              <span className="text-gray-300 font-medium">{prop.details.beds ?? 0}</span>
+                           </span>
+                        </span>
                      )}
                   </div>
                </div>
