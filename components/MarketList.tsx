@@ -11,6 +11,7 @@ interface MarketListProps {
   onListingClick: (property: Property) => void;
   distancesById: Record<string, number>;
   setCardRef: (id: string, el: HTMLDivElement | null) => void;
+  onClearFilters?: () => void;
 }
 
 export default function MarketList({
@@ -21,7 +22,27 @@ export default function MarketList({
   onListingClick,
   distancesById,
   setCardRef,
+  onClearFilters,
 }: MarketListProps) {
+  if (properties.length === 0) {
+    return (
+      <div className="flex flex-col gap-4 pb-6">
+        <div className="py-8 px-4 text-center">
+          <p className="text-gray-500 text-sm">No listings match your filters.</p>
+          {onClearFilters && (
+            <button
+              type="button"
+              onClick={onClearFilters}
+              className="mt-3 text-emerald-500 hover:text-emerald-400 hover:underline text-sm font-medium"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4 pb-6">
       {properties.map((property) => {

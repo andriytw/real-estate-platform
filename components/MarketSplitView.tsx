@@ -121,19 +121,6 @@ export default function MarketSplitView({
     );
   }
 
-  if (filteredProperties.length === 0) {
-    return (
-      <div className="flex-1 min-h-0 flex flex-col items-center justify-center text-gray-500 gap-2">
-        <p className="text-lg font-medium">No listings match your filters.</p>
-        {onClearFilters && (
-          <button type="button" onClick={onClearFilters} className="text-emerald-500 hover:underline text-sm">
-            Clear all filters
-          </button>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="h-full min-h-0 flex gap-4">
       <div className="w-[460px] max-w-[520px] shrink-0 min-h-0 flex flex-col border-r border-gray-800 bg-[#111315]">
@@ -158,6 +145,7 @@ export default function MarketSplitView({
             onListingClick={onListingClick}
             distancesById={distancesById}
             setCardRef={setCardRef}
+            onClearFilters={onClearFilters}
           />
         </div>
       </div>
