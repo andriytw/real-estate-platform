@@ -118,8 +118,8 @@ export default function MarketSplitView({
   }
 
   return (
-    <div className="flex-1 min-h-0 flex">
-      <div className="w-[460px] min-w-[420px] max-w-[520px] min-h-0 overflow-y-auto flex flex-col gap-4 p-4 border-r border-gray-800 bg-[#111315]">
+    <div className="h-full min-h-0 flex gap-4">
+      <div className="w-[460px] max-w-[520px] min-w-[420px] flex-shrink-0 min-h-0 overflow-y-auto flex flex-col gap-4 p-4 border-r border-gray-800 bg-[#111315]">
         <MarketList
           listings={filteredListings}
           selectedId={selectedId}
@@ -129,7 +129,7 @@ export default function MarketSplitView({
           setCardRef={setCardRef}
         />
       </div>
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 min-w-0">
         <MarketMap
           listings={listingsForMap}
           selectedId={selectedId}

@@ -88,7 +88,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: p
   }, [properties, searchQuery, priceFilter, roomFilter, coverPhotoUrlByPropertyId]);
 
   return (
-    <div className="flex-1 flex flex-col h-full min-h-0 bg-[#111315] font-sans">
+    <div className="h-[100dvh] flex flex-col min-h-0 bg-[#111315] font-sans">
       <MarketPostModal isOpen={isPostModalOpen} onClose={() => setIsPostModalOpen(false)} />
 
       <div className="flex-shrink-0 p-6 lg:p-8 pb-4">
@@ -151,7 +151,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: p
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 overflow-hidden">
         <MarketSplitView
           properties={properties}
           filteredListings={filteredListings}
