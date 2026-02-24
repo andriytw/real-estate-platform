@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
-import MarketList, { type MarketListItem } from './MarketList';
+import { Plus } from 'lucide-react';
+import MarketList from './MarketList';
 import MarketMap, { type ListingForMap } from './MarketMap';
 import { haversineKm } from '../utils/haversine';
 import type { Property } from '../types';
@@ -15,19 +16,35 @@ function validCoords(lat: number | null | undefined, lng: number | null | undefi
 
 interface MarketSplitViewProps {
   properties: Property[];
-  filteredListings: MarketListItem[];
+  filteredProperties: Property[];
+  coverPhotoUrlByPropertyId?: Record<string, string>;
   loading: boolean;
   error: string | null;
-  onListingClick: (item: MarketListItem) => void;
+  onListingClick: (property: Property) => void;
+  onPostAdClick?: () => void;
+  priceFilter: string;
+  roomFilter: string;
+  bedsFilter: string;
+  setPriceFilter: (v: string) => void;
+  setRoomFilter: (v: string) => void;
+  setBedsFilter: (v: 'any' | '1' | '2' | '3' | '4' | '5') => void;
   onClearFilters?: () => void;
 }
 
 export default function MarketSplitView({
   properties,
-  filteredListings,
+  filteredProperties,
+  coverPhotoUrlByPropertyId = {},
   loading,
   error,
   onListingClick,
+  onPostAdClick,
+  priceFilter,
+  roomFilter,
+  bedsFilter,
+  setPriceFilter,
+  setRoomFilter,
+  setBedsFilter,
   onClearFilters,
 }: MarketSplitViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -40,13 +57,13 @@ export default function MarketSplitView({
     cardRefsMap.current[id] = el;
   }, []);
 
-  const listingsForMap: ListingForMap[] = useMemo(
-    () =>
-      properties
-        .filter((p) => validCoords(p.lat, p.lng))
-        .map((p) => ({ id: p.id, lat: p.lat!, lng: p.lng!, title: p.title })),
-    [properties]
-  );
+  const filteredIdSet = useMemo(() => new Set(filteredProperties.map((p) => p.id)), [filteredProperties]);
+
+  const listingsForMap: ListingForMap[] = useMemo(() => {
+    return properties
+      .filter((p) => filteredIdSet.has(p.id) && validCoords(p.lat, p.lng))
+      .map((p) => ({ id: p.id, lat: p.lat!, lng: p.lng!, title: p.title }));
+  }, [properties, filteredIdSet]);
 
   const handleSelectListing = useCallback(
     (id: string) => {
@@ -104,7 +121,7 @@ export default function MarketSplitView({
     );
   }
 
-  if (filteredListings.length === 0) {
+  if (filteredProperties.length === 0) {
     return (
       <div className="flex-1 min-h-0 flex flex-col items-center justify-center text-gray-500 gap-2">
         <p className="text-lg font-medium">No listings match your filters.</p>
@@ -119,15 +136,30 @@ export default function MarketSplitView({
 
   return (
     <div className="h-full min-h-0 flex gap-4">
-      <div className="w-[460px] max-w-[520px] min-w-[420px] flex-shrink-0 min-h-0 overflow-y-auto flex flex-col gap-4 p-4 border-r border-gray-800 bg-[#111315]">
-        <MarketList
-          listings={filteredListings}
-          selectedId={selectedId}
-          onSelect={handleSelectListing}
-          onListingClick={onListingClick}
-          distancesById={distancesById}
-          setCardRef={setCardRef}
-        />
+      <div className="w-[460px] max-w-[520px] shrink-0 min-h-0 flex flex-col border-r border-gray-800 bg-[#111315]">
+        <div className="sticky top-0 z-10 bg-[#111315] pt-2 pb-2 px-4">
+          {onPostAdClick && (
+            <button
+              type="button"
+              onClick={onPostAdClick}
+              className="w-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/50 text-emerald-500 font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all group text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Post a New Ad to Market</span>
+            </button>
+          )}
+        </div>
+        <div className="min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-4">
+          <MarketList
+            properties={filteredProperties}
+            coverPhotoUrlByPropertyId={coverPhotoUrlByPropertyId}
+            selectedId={selectedId}
+            onSelect={handleSelectListing}
+            onListingClick={onListingClick}
+            distancesById={distancesById}
+            setCardRef={setCardRef}
+          />
+        </div>
       </div>
       <div className="flex-1 min-h-0 min-w-0">
         <MarketMap
@@ -137,6 +169,12 @@ export default function MarketSplitView({
           searchPoint={searchPoint}
           onSearchPointSelect={handleSearchPointSelect}
           mapRef={mapRef}
+          priceFilter={priceFilter}
+          roomFilter={roomFilter}
+          bedsFilter={bedsFilter}
+          setPriceFilter={setPriceFilter}
+          setRoomFilter={setRoomFilter}
+          setBedsFilter={setBedsFilter}
         />
       </div>
     </div>
