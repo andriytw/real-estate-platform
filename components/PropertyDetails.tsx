@@ -14,6 +14,7 @@ import GalleryModal from './GalleryModal';
 import ShareModal from './ShareModal';
 import ChatModal from './ChatModal';
 import SendRequestModal from './SendRequestModal';
+import ApartmentDataSection from './ApartmentDataSection';
 
 interface PropertyDetailsProps {
   property: Property;
@@ -22,16 +23,9 @@ interface PropertyDetailsProps {
   worker?: Worker | null; // For checking if user is logged in
   onRequireLogin?: () => void; // Callback when login is required
   coverPhotoUrl?: string | null; // MP-PROD-01: signed URL for cover photo (hero image)
+  /** When true (e.g. in modal), use smaller hero and tighter spacing */
+  compact?: boolean;
 }
-
-const DetailRow: React.FC<{ label: string; value: string | number | boolean; highlight?: boolean }> = ({ label, value }) => (
-  <div className="flex justify-between items-center py-3 border-b border-[#272A30] last:border-0">
-    <span className="text-[#9CA3AF] text-[13px] font-medium">{label}</span>
-    <span className="text-[13px] font-bold text-white">
-      {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : value}
-    </span>
-  </div>
-);
 
 const PropertyDetails: React.FC<PropertyDetailsProps> = ({ 
   property, 
@@ -39,7 +33,8 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
   onBookViewing,
   worker,
   onRequireLogin,
-  coverPhotoUrl = null
+  coverPhotoUrl = null,
+  compact = false
 }) => {
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [isFloorPlanOpen, setIsFloorPlanOpen] = useState(false);
@@ -229,7 +224,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
 
       {/* Hero Image Section */}
       <div 
-        className="relative h-[400px] w-full rounded-xl overflow-hidden group shrink-0 bg-[#1C1F24] mb-6 cursor-pointer"
+        className={`relative w-full rounded-xl overflow-hidden group shrink-0 bg-[#1C1F24] mb-6 cursor-pointer ${compact ? 'h-[280px]' : 'h-[400px]'}`}
         onClick={() => handleActionClick(() => setIsGalleryOpen(true))}
       >
         <img 
@@ -314,12 +309,6 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
             </div>
         </div>
 
-        <div className="w-px h-4 bg-gray-700 mr-5 hidden sm:block"></div>
-
-        <div className="flex items-baseline gap-1 ml-auto">
-            <span className="text-gray-500">€</span>
-            <span className="text-white font-bold text-lg">{property.price ? property.price.toLocaleString('de-DE') : '0'}/mo</span>
-        </div>
       </div>
 
       {/* Media Tabs Buttons */}
@@ -354,45 +343,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
         </p>
       </div>
 
-      {/* Data Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-8">
-        <div>
-          <h3 className="text-base font-bold text-white mb-3">Costs</h3>
-          <div className="divide-y divide-[#272A30]">
-            <DetailRow label="Net rent (Kaltmiete)" value={property.netRent != null ? `€${property.netRent.toLocaleString('de-DE')}` : 'N/A'} />
-            <DetailRow label="Ancillary costs (Nebenkosten)" value={property.ancillaryCosts != null ? `€${property.ancillaryCosts.toLocaleString('de-DE')}` : 'N/A'} />
-            <DetailRow label="Heating costs (Heizkosten)" value={property.heatingCosts != null ? `€${property.heatingCosts.toLocaleString('de-DE')}` : 'N/A'} />
-            <DetailRow label="Heating incl. in ancillaries" value={property.heatingIncluded ? 'Yes' : 'No'} />
-            <DetailRow label="Total rent (Warmmiete)" value={property.price ? `€${property.price.toLocaleString('de-DE')}` : 'N/A'} />
-            <DetailRow label="Deposit (Kaution)" value={property.deposit || 'N/A'} />
-            <DetailRow label="Price per m²" value={property.pricePerSqm ? `€${property.pricePerSqm.toLocaleString('de-DE')} / m²` : 'N/A'} />
-          </div>
-        </div>
-
-        <div>
-          <h3 className="text-base font-bold text-white mb-3">Building details</h3>
-          <div className="divide-y divide-[#272A30]">
-            <DetailRow label="Building type" value={property.buildingType} />
-            <DetailRow label="Construction year" value={property.builtYear} />
-            <DetailRow label="Renovation year" value={property.renovationYear || property.builtYear} />
-            <DetailRow label="Floors in building" value={property.totalFloors} />
-            <DetailRow label="Type of heating" value={property.heatingType} />
-            <DetailRow label="Energy certificate" value={property.energyCertificate} />
-            <div className="flex justify-between items-center py-3 border-b border-[#272A30]">
-              <span className="text-[#9CA3AF] text-[13px] font-medium">End energy demand</span>
-              <span className="text-[13px] font-bold text-white">{property.endEnergyDemand}</span>
-            </div>
-            <div className="flex justify-between items-center py-3 border-b border-[#272A30]">
-              <span className="text-[#9CA3AF] text-[13px] font-medium">Energy efficiency category</span>
-              <span className="bg-[#4D3800] text-[#FFD700] border border-[#664D00] w-6 h-6 flex items-center justify-center rounded-sm text-xs font-bold">
-                {property.energyEfficiencyClass}
-              </span>
-            </div>
-             <DetailRow label="Energy source" value="District heating" />
-             <DetailRow label="Parking" value={property.parking} />
-          </div>
-        </div>
-      </div>
+      <ApartmentDataSection property={property} />
 
       {/* Action Buttons - Conditionally Rendered */}
       {!hideActions && (

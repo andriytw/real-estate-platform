@@ -3,6 +3,7 @@ import Navbar from './components/Navbar';
 import FilterBar from './components/FilterBar';
 import PropertyCard from './components/PropertyCard';
 import PropertyDetails from './components/PropertyDetails';
+import PropertyDetailsModal from './components/PropertyDetailsModal';
 import BookingForm from './components/BookingForm';
 import PartnerModal from './components/PartnerModal';
 import Marketplace from './components/Marketplace';
@@ -27,7 +28,8 @@ const AppContent: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'booking' | 'market' | 'account' | 'test-db' | 'worker' | 'admin-tasks' | 'register' | 'tasks' | 'property-details'>('market');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'booking' | 'market' | 'account' | 'test-db' | 'worker' | 'admin-tasks' | 'register' | 'tasks' | 'property-overlay'>('market');
+  const [propertyDetailsModalPropertyId, setPropertyDetailsModalPropertyId] = useState<string | null>(null);
   const [pendingPropertyView, setPendingPropertyView] = useState<Property | null>(null);
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
   const [prefilledRequestData, setPrefilledRequestData] = useState<Partial<RequestData> | undefined>(undefined);
@@ -42,14 +44,51 @@ const AppContent: React.FC = () => {
     status: ''
   });
 
-  const navigate = useCallback((path: string, opts?: { replace?: boolean }) => {
-    if (opts?.replace) {
-      window.history.replaceState({}, '', path);
-    } else {
-      window.history.pushState({}, '', path);
+  const syncViewWithPath = useCallback(() => {
+    const path = window.location.pathname;
+    if (path === '/') {
+      window.history.replaceState(window.history.state, '', '/market');
+      setCurrentView('market');
+      setPropertyDetailsModalPropertyId(null);
+      return;
     }
-    window.dispatchEvent(new Event('popstate'));
-  }, []);
+    if (path === '/worker') {
+      setCurrentView('worker');
+    } else if (path === '/admin/tasks') {
+      setCurrentView('admin-tasks');
+    } else if (path === '/register') {
+      setCurrentView('register');
+    } else if (path === '/tasks') {
+      setCurrentView('tasks');
+    } else if (path === '/account' || path === '/dashboard') {
+      setCurrentView('account');
+    } else if (path === '/market') {
+      setCurrentView('market');
+      setPropertyDetailsModalPropertyId(null);
+    } else if (path.startsWith('/property/')) {
+      const propertyId = path.replace(/^\/property\//, '').split('?')[0];
+      if (propertyId) {
+        const fromMarket = (window.history.state && typeof window.history.state === 'object' && (window.history.state as { fromMarket?: boolean }).fromMarket) === true;
+        setPropertyDetailsModalPropertyId(propertyId);
+        const found = properties.find(p => p.id === propertyId);
+        if (found) setSelectedProperty(found);
+        if (fromMarket) {
+          setCurrentView('market');
+        } else {
+          setCurrentView('property-overlay');
+        }
+      }
+    }
+  }, [properties]);
+
+  const navigate = useCallback((path: string, opts?: { replace?: boolean; state?: Record<string, unknown> }) => {
+    if (opts?.replace) {
+      window.history.replaceState(opts?.state ?? window.history.state, '', path);
+    } else {
+      window.history.pushState(opts?.state ?? null, '', path);
+    }
+    syncViewWithPath();
+  }, [syncViewWithPath]);
 
   // Load properties from Supabase
   const loadProperties = async () => {
@@ -107,40 +146,10 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Sync view with URL path - helper function (single place for path → view)
-  const syncViewWithPath = () => {
-    let path = window.location.pathname;
-    if (path === '/') {
-      navigate('/market', { replace: true });
-      setCurrentView('market');
-      return;
-    }
-    if (path === '/worker') {
-      setCurrentView('worker');
-    } else if (path === '/admin/tasks') {
-      setCurrentView('admin-tasks');
-    } else if (path === '/register') {
-      setCurrentView('register');
-    } else if (path === '/tasks') {
-      setCurrentView('tasks');
-    } else if (path === '/account' || path === '/dashboard') {
-      setCurrentView('account');
-    } else if (path === '/market') {
-      setCurrentView('market');
-    } else if (path.startsWith('/property/')) {
-      const propertyId = path.replace(/^\/property\//, '').split('?')[0];
-      if (propertyId) {
-        setCurrentView('property-details');
-        const found = properties.find(p => p.id === propertyId);
-        if (found) setSelectedProperty(found);
-      }
-    }
-  };
-
   // Check URL path for routing (early initialization)
   useEffect(() => {
     syncViewWithPath();
-  }, []);
+  }, [syncViewWithPath]);
 
   // Handle browser back/forward navigation
   useEffect(() => {
@@ -151,7 +160,7 @@ const AppContent: React.FC = () => {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [syncViewWithPath]);
 
   // Handle page visibility changes (when returning to tab)
   useEffect(() => {
@@ -164,7 +173,7 @@ const AppContent: React.FC = () => {
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
+  }, [syncViewWithPath]);
 
   // Handle bfcache (back/forward cache) restoration
   useEffect(() => {
@@ -178,7 +187,7 @@ const AppContent: React.FC = () => {
 
     window.addEventListener('pageshow', handlePageShow);
     return () => window.removeEventListener('pageshow', handlePageShow);
-  }, []);
+  }, [syncViewWithPath]);
 
   // Check authentication and redirect (session is source of truth; we only redirect when worker is known)
   useEffect(() => {
@@ -191,21 +200,19 @@ const AppContent: React.FC = () => {
           return;
         }
         
-        // IMPORTANT: If already on property-details view, don't redirect
-        if (currentView === 'property-details' && selectedProperty) {
-          console.log('🔄 App: Already on PropertyDetails, staying here');
+        // IMPORTANT: If already on property-overlay view, don't redirect
+        if (currentView === 'property-overlay' && selectedProperty) {
+          console.log('🔄 App: Already on property overlay (modal), staying here');
           return;
         }
         
         const path = window.location.pathname;
         
-        // Handle property details route - stay on it if already there
+        // Handle property details route - stay on it if already there (modal over market or overlay)
         if (path.startsWith('/property/')) {
-          const propertyId = path.split('/property/')[1];
-          // If we have selectedProperty matching this ID, stay on property-details
+          const propertyId = path.split('/property/')[1]?.split('?')[0];
           if (selectedProperty && selectedProperty.id === propertyId) {
-            console.log('🔄 App: On property route with matching property, staying on PropertyDetails');
-            setCurrentView('property-details');
+            console.log('🔄 App: On property route with matching property, staying');
             return;
           }
         }
@@ -244,7 +251,7 @@ const AppContent: React.FC = () => {
           }
           return;
         } else if (path.startsWith('/property/')) {
-          // Property route - don't redirect, let property-details view handle it
+          // Property route - don't redirect (modal over market or overlay)
           return;
         } else {
           // Default: All users go to account (Properties category) after login
@@ -290,7 +297,7 @@ const AppContent: React.FC = () => {
         const found = properties.find(p => p.id === propertyId);
         if (found && (!selectedProperty || selectedProperty.id !== propertyId)) {
           setSelectedProperty(found);
-        } else if (!found && properties.length > 0) {
+        } else if (!found) {
           propertiesService.getById(propertyId).then(p => {
             if (p) setSelectedProperty(p);
           }).catch(() => {});
@@ -305,27 +312,18 @@ const AppContent: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [properties.length, selectedProperty?.id]);
 
-  // Handle post-login redirect to PropertyDetails (HIGHEST PRIORITY)
-  // This must run BEFORE the main auth redirect useEffect
-  // Using setTimeout to ensure this runs after state updates
+  // Handle post-login redirect to property modal (overlay)
   useEffect(() => {
     if (worker && pendingPropertyView) {
-      // After successful login, show PropertyDetails immediately
-      console.log('🔄 Post-login: Showing PropertyDetails for pending property:', pendingPropertyView.title);
       const property = pendingPropertyView;
-      
-      // Use setTimeout to ensure this runs after other state updates
-      setTimeout(() => {
-        // Clear pending property FIRST to prevent conflicts
-        setPendingPropertyView(null);
-        // Then set property and view
-        setSelectedProperty(property);
-        setCurrentView('property-details');
-        navigate(`/property/${property.id}`);
-        console.log('✅ Post-login: PropertyDetails view set, property:', property.id);
-      }, 0);
+      console.log('🔄 Post-login: Showing property modal for pending property:', property.title);
+      setPendingPropertyView(null);
+      setSelectedProperty(property);
+      setPropertyDetailsModalPropertyId(property.id);
+      navigate(`/property/${property.id}`, { replace: true });
+      console.log('✅ Post-login: property overlay set, property:', property.id);
     }
-  }, [worker, pendingPropertyView]);
+  }, [worker, pendingPropertyView, navigate]);
 
   // Handle redirect after login on account page (only if no pending property)
   // Note: Now all users stay on account page (Properties category by default)
@@ -342,26 +340,25 @@ const AppContent: React.FC = () => {
   const handleMarketListingClick = React.useCallback((listing: any) => {
     console.log('🔵 Marketplace click:', listing);
     
-    const handlePropertyClick = (prop: Property) => {
-      console.log('🔵 Showing property details (public access)');
-      // Always show PropertyDetails - no login required for viewing
+    const openPropertyAsModal = (prop: Property) => {
       setSelectedProperty(prop);
-      setCurrentView('property-details');
-      navigate(`/property/${prop.id}`);
+      setPropertyDetailsModalPropertyId(prop.id);
+      setCurrentView('market');
+      navigate(`/property/${prop.id}`, { state: { fromMarket: true } });
     };
     
     // First try to find in existing properties
     const property = properties.find(p => p.id === listing.id);
     
     if (property) {
-      handlePropertyClick(property);
+      openPropertyAsModal(property);
       return;
     }
     
     // Try to load from database
     propertiesService.getById(listing.id).then(loadedProperty => {
       if (loadedProperty) {
-        handlePropertyClick(loadedProperty);
+        openPropertyAsModal(loadedProperty);
         setProperties(prev => {
           if (prev.find(p => p.id === loadedProperty.id)) {
             return prev;
@@ -398,7 +395,7 @@ const AppContent: React.FC = () => {
           repairRequests: [],
           events: []
         };
-        handlePropertyClick(tempProperty);
+        openPropertyAsModal(tempProperty);
       }
     }).catch(err => {
       console.error('Error loading property:', err);
@@ -430,9 +427,9 @@ const AppContent: React.FC = () => {
         repairRequests: [],
         events: []
       };
-      handlePropertyClick(tempProperty);
+      openPropertyAsModal(tempProperty);
     });
-  }, [properties, worker]);
+  }, [properties, navigate]);
 
   // Filter properties
   const filteredProperties = useMemo(() => {
@@ -589,10 +586,11 @@ const AppContent: React.FC = () => {
       );
     }
 
-    // Market View (Public)
+    // Market View (Public) — optionally with property details modal overlay
     if (currentView === 'market') {
+      const showPropertyModal = propertyDetailsModalPropertyId != null && selectedProperty?.id === propertyDetailsModalPropertyId;
       return (
-        <div className="animate-fadeIn">
+        <div className="animate-fadeIn relative">
           <Marketplace 
             onListingClick={handleMarketListingClick} 
             properties={properties}
@@ -600,45 +598,47 @@ const AppContent: React.FC = () => {
             error={error}
             coverPhotoUrlByPropertyId={coverPhotoUrlByPropertyId}
           />
+          {showPropertyModal && selectedProperty && (
+            <PropertyDetailsModal
+              property={selectedProperty}
+              onClose={() => window.history.back()}
+              worker={worker}
+              coverPhotoUrl={selectedProperty.id ? (coverPhotoUrlByPropertyId[selectedProperty.id] ?? null) : null}
+              onBookViewing={() => setCurrentView('booking')}
+              onRequireLogin={() => {
+                setPendingPropertyView(selectedProperty);
+                setCurrentView('account');
+                navigate('/account');
+              }}
+            />
+          )}
         </div>
       );
     }
 
-    // PropertyDetails View (PUBLIC - доступна для перегляду без логіну)
-    if (currentView === 'property-details') {
-      if (selectedProperty) {
-        return (
-          <div className="min-h-screen bg-[#0D0F11]">
-            <div className="container mx-auto px-4 py-8">
-              <button 
-                onClick={() => {
-                  setSelectedProperty(null);
-                  setCurrentView('market');
-                }}
-                className="mb-6 text-emerald-500 hover:text-emerald-400 font-medium flex items-center gap-2 transition-colors"
-              >
-                ← Back to Marketplace
-              </button>
-              <PropertyDetails 
-                property={selectedProperty} 
-                worker={worker}
-                coverPhotoUrl={selectedProperty.id ? (coverPhotoUrlByPropertyId[selectedProperty.id] ?? null) : null}
-                onBookViewing={() => setCurrentView('booking')}
-                onRequireLogin={() => {
-                  // Save property and redirect to login
-                  setPendingPropertyView(selectedProperty);
-                  setCurrentView('account');
-                  navigate('/account');
-                }}
-              />
-            </div>
-          </div>
-        );
-      } else {
-        // If no property selected, redirect to Marketplace
-        setCurrentView('market');
-        return null;
-      }
+    // Property overlay view (direct /property/:id — modal over neutral background, close → /market replace)
+    if (currentView === 'property-overlay') {
+      const showPropertyModal = propertyDetailsModalPropertyId != null && selectedProperty?.id === propertyDetailsModalPropertyId;
+      return (
+        <div className="min-h-screen bg-[#0D0F11] bg-gradient-to-b from-[#0D0F11] to-[#15181d]">
+          {showPropertyModal && selectedProperty ? (
+            <PropertyDetailsModal
+              property={selectedProperty}
+              onClose={() => navigate('/market', { replace: true })}
+              worker={worker}
+              coverPhotoUrl={selectedProperty.id ? (coverPhotoUrlByPropertyId[selectedProperty.id] ?? null) : null}
+              onBookViewing={() => setCurrentView('booking')}
+              onRequireLogin={() => {
+                setPendingPropertyView(selectedProperty);
+                setCurrentView('account');
+                navigate('/account');
+              }}
+            />
+          ) : (
+            <div className="flex items-center justify-center min-h-screen text-gray-500">Loading property…</div>
+          )}
+        </div>
+      );
     }
 
     // Fallback: If no view matches, redirect to market (public landing page)
@@ -653,8 +653,8 @@ const AppContent: React.FC = () => {
       <Navbar 
         showBackButton={currentView !== 'dashboard' && currentView !== 'market'}
         onBack={() => {
-          if (currentView === 'property-details') {
-            setCurrentView('market');
+          if (currentView === 'property-overlay') {
+            navigate('/market', { replace: true });
           } else {
             setCurrentView('dashboard');
           }

@@ -48,6 +48,7 @@ import {
   requestsService,
   type RequestWithProperty,
 } from '../services/supabaseService';
+import { AMENITY_GROUPS } from '../utils/amenityGroups';
 import { propertyInventoryService, type PropertyInventoryItemRow, type PropertyInventoryItemWithDocument } from '../services/propertyInventoryService';
 import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '../services/propertyExpenseService';
 import { propertyExpenseCategoryService, type PropertyExpenseCategoryRow } from '../services/propertyExpenseCategoryService';
@@ -2359,18 +2360,6 @@ const AccountDashboard: React.FC = () => {
 
   const defaultDetails: PropertyDetails = { area: 0, rooms: 0, floor: 0, year: 0, beds: 0, baths: 0, balconies: 0, buildingFloors: 0 };
 
-  const AMENITY_GROUPS: { groupLabel: string; keys: string[] }[] = [
-    { groupLabel: 'Küche & Haushalt', keys: ['Kochmöglichkeit', 'Kühlschrank', 'Mikrowelle', 'Wasserkocher', 'Kochutensilien', 'Spülmaschine', 'Kaffeemaschine'] },
-    { groupLabel: 'Sanvuzol & Komfort', keys: ['Privates Bad', 'Dusche', 'WC', 'Handtücher inkl.', 'Hygiene Produkte', 'Waschmaschine', 'Trockner'] },
-    { groupLabel: 'Sleeping & Living', keys: ['Getrennte Betten', 'Bettwäsche inkl.', 'Zustellbett möglich', 'Arbeitsplatz', 'Spind / Safe'] },
-    { groupLabel: 'Technologie & Media', keys: ['TV', 'W-LAN', 'Radio', 'Streaming Dienste'] },
-    { groupLabel: 'Building & Access', keys: ['Aufzug', 'Barrierefrei', 'Ruhige Lage'] },
-    { groupLabel: 'Outdoor & Location', keys: ['Terrasse', 'Gute Verkehrsanbindung', 'Geschäfte in der Nähe'] },
-    { groupLabel: 'Parking', keys: ['PKW-Parkplatz', 'LKW-Parkplatz'] },
-    { groupLabel: 'Freizeit / Extras', keys: ['Sauna', 'Grillmöglichkeit', 'Tisch-Fußball', 'Billardtisch', 'Dart'] },
-    { groupLabel: 'Services', keys: ['24h-Rezeption', 'Frühstück', 'Lunchpaket (gg. Aufpreis)'] },
-    { groupLabel: 'Rules / Shared', keys: ['Raucher', 'Gemeinschaftsbad', 'Gemeinschaftsraum'] },
-  ];
   const ALL_AMENITY_KEYS = AMENITY_GROUPS.flatMap(g => g.keys);
   const defaultAmenities = Object.fromEntries(ALL_AMENITY_KEYS.map(k => [k, false]));
 
