@@ -53,7 +53,6 @@ export default function MarketList({
           property.images?.[0] ||
           '';
         const { rooms, beds, area } = getPropertyStats(property);
-        const price = property.price ?? 0;
         const location = formatPropertyAddress(property);
 
         return (
@@ -78,14 +77,9 @@ export default function MarketList({
                 Recently
               </div>
               <div className="absolute bottom-0 left-0 right-0 p-2 pt-6 pointer-events-none" aria-hidden>
-                <div className="flex justify-between items-start gap-2">
-                  <h3 className="font-semibold text-white text-sm truncate flex-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
-                    {property.title}
-                  </h3>
-                  <span className="text-emerald-400 font-bold text-sm shrink-0 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
-                    €{price}
-                  </span>
-                </div>
+                <h3 className="font-semibold text-white text-sm truncate drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                  {property.title}
+                </h3>
                 <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                   <span className="inline-flex items-center gap-0.5 text-[10px] text-white/90 bg-black/40 px-1.5 py-0.5 rounded">
                     <Home className="w-2.5 h-2.5" />
