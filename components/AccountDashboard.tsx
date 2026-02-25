@@ -80,6 +80,10 @@ function dateDiffInDaysAktOrendar(date1: Date, date2: Date): number {
   const MS_PER_DAY = 1000 * 60 * 60 * 24;
   return Math.round((date2.getTime() - date1.getTime()) / MS_PER_DAY);
 }
+function formatDateUAAktOrendar(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return d && m && y ? `${d}.${m}.${y}` : iso;
+}
 
 function PropertyMediaPhotoThumb({ asset, onDelete }: { asset: PropertyMediaAssetRow; onDelete: () => void }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
@@ -8161,9 +8165,9 @@ ${internalCompany} Team`;
                         <div className="text-xs font-bold text-gray-400 uppercase">Орендар</div>
                         <div className="text-xs font-bold text-gray-400 uppercase">Період</div>
                         <div className="text-xs font-bold text-gray-400 uppercase">Ночі</div>
-                        <div className="text-xs font-bold text-gray-400 uppercase">Осіб</div>
-                        <div className="text-xs font-bold text-gray-400 uppercase">Сплачено</div>
-                        <div className="text-xs font-bold text-gray-400 uppercase">Всього</div>
+                        <div className="text-xs font-bold text-gray-400 uppercase text-right tabular-nums">Осіб</div>
+                        <div className="text-xs font-bold text-gray-400 uppercase text-right tabular-nums">Сплачено</div>
+                        <div className="text-xs font-bold text-gray-400 uppercase text-right tabular-nums">Всього</div>
                         <div className="text-xs font-bold text-gray-400 uppercase">Дії</div>
                         {currentStay ? (() => {
                           const startD = parseDateAktOrendar(currentStay.start);
@@ -8191,11 +8195,11 @@ ${internalCompany} Team`;
                           return (
                             <>
                               <div className="text-white font-medium truncate">{currentStay.guest || '—'}</div>
-                              <div className="text-gray-300">{currentStay.start} → {currentStay.end}</div>
+                              <div className="text-gray-300">{formatDateUAAktOrendar(currentStay.start)} → {formatDateUAAktOrendar(currentStay.end)}</div>
                               <div className="text-gray-300">{totalNights} (прожито {nightsLived}, залишилось {nightsLeft})</div>
-                              <div className="text-gray-300">{guestsNum}</div>
-                              <div className="text-gray-300">{formatEurAktOrendar(paidAmountNum)}</div>
-                              <div className="text-gray-300">{formatEurAktOrendar(totalAmountNumSafe)}</div>
+                              <div className="text-gray-300 text-right tabular-nums">{guestsNum}</div>
+                              <div className="text-gray-300 text-right tabular-nums">{formatEurAktOrendar(paidAmountNum)}</div>
+                              <div className="text-gray-300 text-right tabular-nums">{formatEurAktOrendar(totalAmountNumSafe)}</div>
                               <div className="flex flex-row gap-2 items-center">
                                 <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed">Акт прийому-передачі</button>
                                 <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed">Прописка</button>
