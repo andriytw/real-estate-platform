@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin, Home } from 'lucide-react';
+import { MapPin, Home, Square, Bed } from 'lucide-react';
 import type { Property } from '../types';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
 import { getPropertyStats } from '../utils/propertyStats';
@@ -67,59 +67,61 @@ export default function MarketList({
               hover:-translate-y-0.5
             `}
           >
-            <div className="h-40 overflow-hidden relative">
+            <div className="h-44 overflow-hidden relative">
               <img
                 src={coverUrl}
                 alt={property.title}
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
               />
-              <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded text-xs font-bold text-white border border-white/10">
+              <div className="absolute top-0 left-0 right-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" aria-hidden />
+              <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-bold text-white border border-white/10">
                 Recently
               </div>
-            </div>
-            <div className="p-4">
-              <div className="flex justify-between items-start mb-2">
-                <h3 className="font-bold text-white truncate flex-1 mr-2">{property.title}</h3>
-                <span className="text-emerald-500 font-bold shrink-0">€{price}</span>
+              <div className="absolute bottom-0 left-0 right-0 p-2 pt-6 pointer-events-none" aria-hidden>
+                <div className="flex justify-between items-start gap-2">
+                  <h3 className="font-semibold text-white text-sm truncate flex-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                    {property.title}
+                  </h3>
+                  <span className="text-emerald-400 font-bold text-sm shrink-0 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                    €{price}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  <span className="inline-flex items-center gap-0.5 text-[10px] text-white/90 bg-black/40 px-1.5 py-0.5 rounded">
+                    <Home className="w-2.5 h-2.5" />
+                    {rooms} Rm
+                  </span>
+                  <span className="inline-flex items-center gap-0.5 text-[10px] text-white/90 bg-black/40 px-1.5 py-0.5 rounded">
+                    <Square className="w-2.5 h-2.5" />
+                    {area} m²
+                  </span>
+                  <span className="inline-flex items-center gap-0.5 text-[10px] text-white/90 bg-black/40 px-1.5 py-0.5 rounded">
+                    <Bed className="w-2.5 h-2.5" />
+                    {beds} Beds
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-1 text-gray-400 text-xs mb-2">
-                <MapPin className="w-3 h-3 shrink-0" />
-                <span className="truncate">{location}</span>
+            </div>
+            <div className="p-2 flex items-center justify-between gap-2 min-h-0 border-t border-gray-800/80">
+              <div className="min-w-0 flex-1 flex items-center gap-1">
+                <MapPin className="w-3 h-3 shrink-0 text-gray-500" />
+                <span className="text-xs text-gray-400 truncate">{location}</span>
               </div>
               {distancesById[property.id] != null && (
-                <p className="text-[11px] text-emerald-400/90 mb-2">
-                  {distancesById[property.id].toFixed(1)} km from searched address
-                </p>
-              )}
-              <div className="flex items-center gap-4 text-xs text-gray-300 mb-4 bg-[#111315] p-2 rounded border border-gray-800">
-                <div className="flex items-center gap-1">
-                  <Home className="w-3 h-3 text-gray-500" />
-                  {rooms} Rm
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-1 h-1 rounded-full bg-gray-600" />
-                  {area} m²
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-1 h-1 rounded-full bg-gray-600" />
-                  {beds} Beds
-                </div>
-              </div>
-              <div className="flex items-center justify-between pt-3 border-t border-gray-800">
-                <span className="text-xs text-gray-500">
-                  Posted by <span className="text-gray-300">Property Owner</span>
+                <span className="text-[10px] text-emerald-400/90 shrink-0">
+                  {distancesById[property.id].toFixed(1)} km
                 </span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onListingClick(property);
-                  }}
-                  className="text-xs font-bold text-emerald-500 hover:text-emerald-400"
-                >
-                  Details
-                </button>
-              </div>
+              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onListingClick(property);
+                }}
+                className="text-xs font-medium text-emerald-500 hover:text-emerald-400 shrink-0 py-1 px-2"
+              >
+                Details
+              </button>
             </div>
           </div>
         );
