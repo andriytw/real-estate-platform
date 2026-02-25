@@ -8180,29 +8180,34 @@ ${internalCompany} Team`;
                             const n = parseFloat(s);
                             return Number.isFinite(n) ? `${n.toFixed(2).replace('.', ',')} €` : '0,00 €';
                           };
-                          const totalAmount = currentStay.totalGross ?? currentStay.price ?? '0';
-                          const isPaidConfirmed = !!(currentStay.sourceInvoiceId ?? (currentStay as any).source_invoice_id || String(currentStay.status).toLowerCase() === 'paid' || String(currentStay.status).toLowerCase() === 'invoiced');
-                          const paidAmountRaw = isPaidConfirmed ? totalAmount : '0';
+                          const totalRaw = currentStay.totalGross ?? currentStay.price ?? 0;
+                          const totalNum = Number(totalRaw);
+                          const totalAmountNumSafe = Number.isFinite(totalNum) ? totalNum : 0;
+                          const hasSourceInvoice = currentStay.sourceInvoiceId ?? (currentStay as any).source_invoice_id ?? null;
+                          const statusLower = String(currentStay.status ?? '').toLowerCase();
+                          const isPaidByStatus = statusLower === 'paid' || statusLower === 'invoiced';
+                          const isPaidConfirmed = Boolean(hasSourceInvoice) || isPaidByStatus;
+                          const paidAmountNum = isPaidConfirmed ? totalAmountNumSafe : 0;
                           return (
                             <>
                               <div className="text-white font-medium truncate">{currentStay.guest || '—'}</div>
                               <div className="text-gray-300">{currentStay.start} → {currentStay.end}</div>
                               <div className="text-gray-300">{totalNights} (прожито {nightsLived}, залишилось {nightsLeft})</div>
                               <div className="text-gray-300">{guestsNum}</div>
-                              <div className="text-gray-300">{formatEurAktOrendar(paidAmountRaw)}</div>
-                              <div className="text-gray-300">{formatEurAktOrendar(totalAmount)}</div>
-                              <div className="flex flex-row gap-1.5 items-center">
-                                <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-[11px] font-medium cursor-not-allowed">Акт прийому-передачі</button>
-                                <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-[11px] font-medium cursor-not-allowed">Прописка</button>
+                              <div className="text-gray-300">{formatEurAktOrendar(paidAmountNum)}</div>
+                              <div className="text-gray-300">{formatEurAktOrendar(totalAmountNumSafe)}</div>
+                              <div className="flex flex-row gap-2 items-center">
+                                <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed">Акт прийому-передачі</button>
+                                <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed">Прописка</button>
                               </div>
                             </>
                           );
                         })() : (
                           <>
                             <div className="text-gray-500 italic col-span-6">Зараз ніхто не проживає</div>
-                            <div className="flex flex-row gap-1.5 items-center">
-                              <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-[11px] font-medium cursor-not-allowed">Акт прийому-передачі</button>
-                              <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-[11px] font-medium cursor-not-allowed">Прописка</button>
+                            <div className="flex flex-row gap-2 items-center">
+                              <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed">Акт прийому-передачі</button>
+                              <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed">Прописка</button>
                             </div>
                           </>
                         )}
