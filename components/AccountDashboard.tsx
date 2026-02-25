@@ -85,6 +85,24 @@ function formatDateUAAktOrendar(iso: string): string {
   return d && m && y ? `${d}.${m}.${y}` : iso;
 }
 
+function CollapsibleSection({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="bg-[#1C1F24] rounded-xl border border-gray-800 shadow-sm mb-6">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between p-4 text-left cursor-pointer hover:bg-white/[0.03] transition-colors rounded-t-xl"
+        aria-expanded={open}
+      >
+        <span className="text-xl font-bold text-white">{title}</span>
+        {open ? <ChevronUp className="w-5 h-5 text-gray-400 shrink-0" /> : <ChevronDown className="w-5 h-5 text-gray-400 shrink-0" />}
+      </button>
+      {open && <div className="p-6 pt-0">{children}</div>}
+    </div>
+  );
+}
+
 function PropertyMediaPhotoThumb({ asset, onDelete }: { asset: PropertyMediaAssetRow; onDelete: () => void }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -8284,8 +8302,7 @@ ${internalCompany} Team`;
             })()}
 
             {/* 5. Актуальний Орендар — current occupancy from Rent Calendar (confirmedBookings) */}
-            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                <h2 className="text-2xl font-bold text-white mb-4">5. Актуальний Орендар</h2>
+            <CollapsibleSection title="5. Актуальний Орендар" defaultOpen={true}>
                 <div className="border border-gray-700 rounded-lg overflow-hidden bg-[#16181D]">
                     <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,0.6fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)] gap-x-4 gap-y-2 p-3 items-center text-sm">
                         <div className="text-xs font-bold text-gray-400 uppercase">Орендар</div>
@@ -8343,8 +8360,10 @@ ${internalCompany} Team`;
                         )}
                     </div>
                 </div>
-            </section>
+            </CollapsibleSection>
 
+            {false && (
+            <>
             {/* 6. Rental Agreements (Scrollable List) */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <div className="flex justify-between items-center mb-4">
@@ -8389,10 +8408,11 @@ ${internalCompany} Team`;
                     </div>
                 </div>
             </section>
+            </>
+            )}
 
             {/* 7. Дохід — property-scoped, same data as Payments page */}
-            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                <h2 className="text-xl font-bold text-white mb-4">7. Дохід</h2>
+            <CollapsibleSection title="7. Дохід" defaultOpen={true}>
                 <div className="mb-4 p-4 border border-gray-700 rounded-lg bg-[#16181D] flex justify-between items-center">
                     <div>
                         <span className="text-xs text-gray-500 block">Отримано всього</span>
@@ -8462,11 +8482,107 @@ ${internalCompany} Team`;
                         </tbody>
                     </table>
                 </div>
-            </section>
+            </CollapsibleSection>
 
-            {/* 8. Офери — property-scoped, read-only */}
-            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                <h2 className="text-xl font-bold text-white mb-4">8. Офери</h2>
+            {/* 8. Запити — property-scoped, read-only */}
+            <CollapsibleSection title="8. Запити" defaultOpen={false}>
+                <div className="bg-[#16181D] border border-gray-800 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                            <tr>
+                                <th className="p-4">ID</th>
+                                <th className="p-4">Name</th>
+                                <th className="p-4">Email</th>
+                                <th className="p-4">Phone</th>
+                                <th className="p-4">Dates</th>
+                                <th className="p-4">People</th>
+                                <th className="p-4">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-800">
+                            {propertyRequests.length > 0 ? (
+                                propertyRequests.map((req) => (
+                                    <tr key={req.id} className="hover:bg-[#16181D]">
+                                        <td className="p-4 text-gray-400">#{req.id}</td>
+                                        <td className="p-4 font-bold">{req.firstName} {req.lastName}</td>
+                                        <td className="p-4">{req.email ?? '—'}</td>
+                                        <td className="p-4">{req.phone ?? '—'}</td>
+                                        <td className="p-4 tabular-nums">{formatDateEU(req.startDate)} – {formatDateEU(req.endDate)}</td>
+                                        <td className="p-4">{req.peopleCount ?? '—'}</td>
+                                        <td className="p-4">
+                                            <span className={`px-2 py-1 rounded text-xs font-bold ${req.status === 'pending' ? 'bg-yellow-500/20 text-yellow-500' : req.status === 'processed' ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-500/20 text-gray-500'}`}>
+                                                {req.status}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan={7} className="p-4 text-center text-gray-500">Немає записів</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </CollapsibleSection>
+
+            {/* 9. Резервації — property-scoped, read-only */}
+            <CollapsibleSection title="9. Резервації" defaultOpen={false}>
+                <div className="bg-[#16181D] border border-gray-800 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                            <tr>
+                                <th className="p-4">Reservation ID</th>
+                                <th className="p-4">Offer No.</th>
+                                <th className="p-4">Guest</th>
+                                <th className="p-4">Property</th>
+                                <th className="p-4">Dates</th>
+                                <th className="p-4">Status</th>
+                                <th className="p-4 text-right">Price</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-800">
+                            {propertyReservations.length > 0 ? (
+                                propertyReservations.map((res) => {
+                                    const linkedOffer = offers.find((o) => o.reservationId != null && String(o.reservationId) === String(res.id));
+                                    const offerNoDisplay = linkedOffer ? linkedOffer.offerNo ?? linkedOffer.id : '—';
+                                    const resStatusLower = String(res.status).toLowerCase();
+                                    const isLostOrCancelled = ['lost', 'cancelled'].includes(resStatusLower);
+                                    const getReservationStatusBadge = () => {
+                                        if (res.status === BookingStatus.RESERVED || resStatusLower === 'open') return 'bg-blue-500/20 text-blue-500';
+                                        if (res.status === BookingStatus.OFFER_SENT || resStatusLower === 'offered') return 'bg-blue-500/20 text-blue-500 border border-dashed';
+                                        if (res.status === BookingStatus.INVOICED || resStatusLower === 'invoiced') return 'bg-blue-500/20 text-blue-500';
+                                        if (resStatusLower === 'won') return 'bg-emerald-500/20 text-emerald-400';
+                                        if (resStatusLower === 'lost') return 'bg-red-500/20 text-red-400';
+                                        if (resStatusLower === 'cancelled') return 'bg-gray-500/20 text-gray-400';
+                                        return 'bg-gray-500/20 text-gray-400';
+                                    };
+                                    return (
+                                        <tr key={res.id} className={`hover:bg-[#16181D] ${isLostOrCancelled ? 'opacity-70' : ''}`}>
+                                            <td className={`p-4 font-mono text-sm truncate max-w-[140px] ${isLostOrCancelled ? 'text-gray-500' : 'text-gray-300'}`}>{res.reservationNo || String(res.id)}</td>
+                                            <td className={`p-4 font-mono text-sm ${isLostOrCancelled ? 'text-gray-500' : 'text-gray-300'}`}>{offerNoDisplay}</td>
+                                            <td className={`p-4 font-bold ${isLostOrCancelled ? 'text-gray-500 line-through' : ''}`}>{res.guest}</td>
+                                            <td className={`p-4 ${isLostOrCancelled ? 'text-gray-500' : ''}`}>{getPropertyNameById((res as { roomId?: string }).roomId)}</td>
+                                            <td className={`p-4 tabular-nums ${isLostOrCancelled ? 'text-gray-500' : ''}`}>{formatDateEU(res.start)} – {formatDateEU(res.end)}</td>
+                                            <td className="p-4">
+                                                <span className={`px-2 py-1 rounded text-xs font-bold ${getReservationStatusBadge()}`}>{res.status}</span>
+                                            </td>
+                                            <td className={`p-4 text-right font-mono ${isLostOrCancelled ? 'text-gray-500' : ''}`}>{res.price ?? '—'}</td>
+                                        </tr>
+                                    );
+                                })
+                            ) : (
+                                <tr>
+                                    <td colSpan={7} className="p-4 text-center text-gray-500">Немає записів</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </CollapsibleSection>
+
+            {/* 10. Офери — property-scoped, read-only */}
+            <CollapsibleSection title="10. Офери" defaultOpen={false}>
                 <div className="bg-[#16181D] border border-gray-800 rounded-lg overflow-hidden">
                     <table className="w-full text-sm text-left">
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
@@ -8520,111 +8636,11 @@ ${internalCompany} Team`;
                         </tbody>
                     </table>
                 </div>
-            </section>
-
-            {/* 9. Резервації — property-scoped, read-only */}
-            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                <h2 className="text-xl font-bold text-white mb-4">9. Резервації</h2>
-                <div className="bg-[#16181D] border border-gray-800 rounded-lg overflow-hidden">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
-                            <tr>
-                                <th className="p-4">Reservation ID</th>
-                                <th className="p-4">Offer No.</th>
-                                <th className="p-4">Guest</th>
-                                <th className="p-4">Property</th>
-                                <th className="p-4">Dates</th>
-                                <th className="p-4">Status</th>
-                                <th className="p-4 text-right">Price</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-800">
-                            {propertyReservations.length > 0 ? (
-                                propertyReservations.map((res) => {
-                                    const linkedOffer = offers.find((o) => o.reservationId != null && String(o.reservationId) === String(res.id));
-                                    const offerNoDisplay = linkedOffer ? linkedOffer.offerNo ?? linkedOffer.id : '—';
-                                    const resStatusLower = String(res.status).toLowerCase();
-                                    const isLostOrCancelled = ['lost', 'cancelled'].includes(resStatusLower);
-                                    const getReservationStatusBadge = () => {
-                                        if (res.status === BookingStatus.RESERVED || resStatusLower === 'open') return 'bg-blue-500/20 text-blue-500';
-                                        if (res.status === BookingStatus.OFFER_SENT || resStatusLower === 'offered') return 'bg-blue-500/20 text-blue-500 border border-dashed';
-                                        if (res.status === BookingStatus.INVOICED || resStatusLower === 'invoiced') return 'bg-blue-500/20 text-blue-500';
-                                        if (resStatusLower === 'won') return 'bg-emerald-500/20 text-emerald-400';
-                                        if (resStatusLower === 'lost') return 'bg-red-500/20 text-red-400';
-                                        if (resStatusLower === 'cancelled') return 'bg-gray-500/20 text-gray-400';
-                                        return 'bg-gray-500/20 text-gray-400';
-                                    };
-                                    return (
-                                        <tr key={res.id} className={`hover:bg-[#16181D] ${isLostOrCancelled ? 'opacity-70' : ''}`}>
-                                            <td className={`p-4 font-mono text-sm truncate max-w-[140px] ${isLostOrCancelled ? 'text-gray-500' : 'text-gray-300'}`}>{res.reservationNo || String(res.id)}</td>
-                                            <td className={`p-4 font-mono text-sm ${isLostOrCancelled ? 'text-gray-500' : 'text-gray-300'}`}>{offerNoDisplay}</td>
-                                            <td className={`p-4 font-bold ${isLostOrCancelled ? 'text-gray-500 line-through' : ''}`}>{res.guest}</td>
-                                            <td className={`p-4 ${isLostOrCancelled ? 'text-gray-500' : ''}`}>{getPropertyNameById((res as { roomId?: string }).roomId)}</td>
-                                            <td className={`p-4 tabular-nums ${isLostOrCancelled ? 'text-gray-500' : ''}`}>{formatDateEU(res.start)} – {formatDateEU(res.end)}</td>
-                                            <td className="p-4">
-                                                <span className={`px-2 py-1 rounded text-xs font-bold ${getReservationStatusBadge()}`}>{res.status}</span>
-                                            </td>
-                                            <td className={`p-4 text-right font-mono ${isLostOrCancelled ? 'text-gray-500' : ''}`}>{res.price ?? '—'}</td>
-                                        </tr>
-                                    );
-                                })
-                            ) : (
-                                <tr>
-                                    <td colSpan={7} className="p-4 text-center text-gray-500">Немає записів</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-
-            {/* 10. Запити — property-scoped, read-only */}
-            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                <h2 className="text-xl font-bold text-white mb-4">10. Запити</h2>
-                <div className="bg-[#16181D] border border-gray-800 rounded-lg overflow-hidden">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
-                            <tr>
-                                <th className="p-4">ID</th>
-                                <th className="p-4">Name</th>
-                                <th className="p-4">Email</th>
-                                <th className="p-4">Phone</th>
-                                <th className="p-4">Dates</th>
-                                <th className="p-4">People</th>
-                                <th className="p-4">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-800">
-                            {propertyRequests.length > 0 ? (
-                                propertyRequests.map((req) => (
-                                    <tr key={req.id} className="hover:bg-[#16181D]">
-                                        <td className="p-4 text-gray-400">#{req.id}</td>
-                                        <td className="p-4 font-bold">{req.firstName} {req.lastName}</td>
-                                        <td className="p-4">{req.email ?? '—'}</td>
-                                        <td className="p-4">{req.phone ?? '—'}</td>
-                                        <td className="p-4 tabular-nums">{formatDateEU(req.startDate)} – {formatDateEU(req.endDate)}</td>
-                                        <td className="p-4">{req.peopleCount ?? '—'}</td>
-                                        <td className="p-4">
-                                            <span className={`px-2 py-1 rounded text-xs font-bold ${req.status === 'pending' ? 'bg-yellow-500/20 text-yellow-500' : req.status === 'processed' ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-500/20 text-gray-500'}`}>
-                                                {req.status}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan={7} className="p-4 text-center text-gray-500">Немає записів</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+            </CollapsibleSection>
 
             {/* 11. Документи */}
-            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm">
+            <CollapsibleSection title="11. Документи" defaultOpen={false}>
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold text-white">11. Документи</h2>
                     <button className="text-gray-400 text-xs hover:text-white">Редагувати</button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-[400px]">
@@ -8804,7 +8820,7 @@ ${internalCompany} Team`;
                         </ul>
                     </div>
                 </div>
-            </section>
+            </CollapsibleSection>
 
          </div>
       </div>
