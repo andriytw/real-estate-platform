@@ -8371,7 +8371,7 @@ ${internalCompany} Team`;
                 <div className="mb-4 p-4 border border-gray-700 rounded-lg bg-[#16181D] flex justify-between items-center">
                     <div>
                         <span className="text-xs text-gray-500 block">Отримано всього</span>
-                        <span className="text-2xl font-bold text-emerald-500">
+                        <span className="inline-flex items-center px-3 py-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 font-medium tabular-nums text-lg text-emerald-400">
                             {formatCurrencyEUR(totalReceivedTile7)}
                         </span>
                     </div>
