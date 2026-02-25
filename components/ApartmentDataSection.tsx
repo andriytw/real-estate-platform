@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 import type { Property } from '../types';
 import { AMENITY_GROUPS } from '../utils/amenityGroups';
-import { toNum } from '../utils/propertyStats';
 
 interface ApartmentDataSectionProps {
   property: Property;
@@ -10,17 +9,8 @@ interface ApartmentDataSectionProps {
 
 export default function ApartmentDataSection({ property }: ApartmentDataSectionProps) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
-  const d = property.details ?? ({} as Property['details']);
   // property.amenities: normalized Record<string, boolean> from full fetch (loadPropertyFull)
   const amenities = property.amenities ?? {};
-
-  const area = toNum(d.area ?? property.area);
-  const rooms = toNum(d.rooms ?? property.rooms);
-  const beds = toNum(d.beds);
-  const baths = toNum(d.baths);
-  const balconies = toNum(d.balconies);
-  const floor = toNum(d.floor ?? property.floor);
-  const buildingFloors = toNum(d.buildingFloors ?? property.totalFloors);
 
   const toggleGroup = (groupKey: string) => {
     setOpenGroups((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }));
@@ -28,36 +18,6 @@ export default function ApartmentDataSection({ property }: ApartmentDataSectionP
 
   return (
     <div className="mb-8">
-      <h3 className="text-base font-bold text-white mb-3">Дані квартири</h3>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mb-6">
-        <div className="bg-[#1C1F24] border border-[#272A30] rounded-lg px-3 py-2">
-          <span className="text-[11px] text-gray-500 block">Площа</span>
-          <span className="text-sm font-bold text-white">{area} m²</span>
-        </div>
-        <div className="bg-[#1C1F24] border border-[#272A30] rounded-lg px-3 py-2">
-          <span className="text-[11px] text-gray-500 block">Кімнати</span>
-          <span className="text-sm font-bold text-white">{rooms}</span>
-        </div>
-        <div className="bg-[#1C1F24] border border-[#272A30] rounded-lg px-3 py-2">
-          <span className="text-[11px] text-gray-500 block">Ліжка</span>
-          <span className="text-sm font-bold text-white">{beds}</span>
-        </div>
-        <div className="bg-[#1C1F24] border border-[#272A30] rounded-lg px-3 py-2">
-          <span className="text-[11px] text-gray-500 block">Ванни</span>
-          <span className="text-sm font-bold text-white">{baths}</span>
-        </div>
-        <div className="bg-[#1C1F24] border border-[#272A30] rounded-lg px-3 py-2">
-          <span className="text-[11px] text-gray-500 block">Балкони</span>
-          <span className="text-sm font-bold text-white">{balconies}</span>
-        </div>
-        <div className="bg-[#1C1F24] border border-[#272A30] rounded-lg px-3 py-2">
-          <span className="text-[11px] text-gray-500 block">Поверх</span>
-          <span className="text-sm font-bold text-white">
-            {buildingFloors > 0 ? `${floor} / ${buildingFloors}` : floor > 0 ? String(floor) : '—'}
-          </span>
-        </div>
-      </div>
-
       <h3 className="text-base font-bold text-white mb-3">Ausstattung</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {AMENITY_GROUPS.map(({ groupLabel, keys }, groupIndex) => {

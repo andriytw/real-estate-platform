@@ -4,7 +4,7 @@ import {
   MapPin, Home, Ruler, Bath, ArrowUpFromLine, Coins, 
   Wind, Construction, Calendar, ShieldCheck, Info,
   Bell, Accessibility, Check, X, MoveVertical,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, BedDouble, TreePine
 } from 'lucide-react';
 import { Property, Worker } from '../types';
 import { propertyMediaService } from '../services/propertyMediaService';
@@ -277,24 +277,32 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
         </div>
       </div>
 
-      {/* Icons & Specs Row */}
+      {/* Icons & Specs Row: rooms, area, beds, baths, balconies, floor/total (single source — no tiles below) */}
       <div className="flex flex-wrap items-center gap-y-3 text-sm text-gray-400 mb-6">
         <div className="flex items-center gap-5 mr-5">
           <div className="flex items-center gap-1.5">
             <Home className="w-4 h-4 text-gray-500" />
-            <span>{rooms}rm</span>
+            <span>{rooms > 0 ? `${rooms}rm` : '—'}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Ruler className="w-4 h-4 text-gray-500" />
-            <span>{area}m²</span>
+            <span>{area > 0 ? `${area}m²` : '—'}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <MoveVertical className="w-4 h-4 text-gray-500" />
-            <span>{buildingFloors > 0 ? `${floor}/${buildingFloors}` : floor || '—'}</span>
+            <BedDouble className="w-4 h-4 text-gray-500" />
+            <span>{beds > 0 ? `${beds}bd` : '—'}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Bath className="w-4 h-4 text-gray-500" />
-            <span>{baths}ba</span>
+            <span>{baths > 0 ? `${baths}ba` : '—'}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <TreePine className="w-4 h-4 text-gray-500" />
+            <span>{balconies > 0 ? `${balconies}bal` : '—'}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <MoveVertical className="w-4 h-4 text-gray-500" />
+            <span>{buildingFloors > 0 ? `${floor}/${buildingFloors}` : floor > 0 ? String(floor) : '—'}</span>
           </div>
         </div>
 
