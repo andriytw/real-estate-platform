@@ -297,6 +297,56 @@ function formatDateEU(value: string | undefined): string {
   return `${day}.${month}.${year}`;
 }
 
+/** Section 7 (property payments): resolve property id for a proforma via bookingId / reservationId / offerId. */
+function getPropertyIdForProforma(
+  proforma: InvoiceData,
+  ctx: { offers: OfferData[]; reservations: Reservation[]; confirmedBookings: Booking[] }
+): string | undefined {
+  const bid = proforma.bookingId != null ? String(proforma.bookingId) : null;
+  if (bid) {
+    const b = ctx.confirmedBookings.find((x) => String(x.id) === bid);
+    if (b?.propertyId) return String(b.propertyId);
+  }
+  const rid = proforma.reservationId != null ? String(proforma.reservationId) : null;
+  if (rid) {
+    const r = ctx.reservations.find((x) => String(x.id) === rid);
+    if (r) return String((r as any).propertyId ?? (r as any).roomId ?? '');
+  }
+  const oid = proforma.offerId ?? (proforma as any).offerIdSource;
+  if (oid != null) {
+    const o = ctx.offers.find((x) => String(x.id) === String(oid));
+    if (o?.propertyId) return String(o.propertyId);
+  }
+  return undefined;
+}
+
+/** Section 7: amount from proforma (number). */
+function amountNumberTile7(p: { totalGross?: number | string }): number {
+  const n = Number(p.totalGross ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Section 7: format amount as EUR. */
+function formatCurrencyEUR(amount: number): string {
+  const n = Number.isFinite(amount) ? amount : 0;
+  return `${n.toFixed(2).replace('.', ',')} €`;
+}
+
+/** Section 7: date string YYYY-MM-DD for proforma (guard missing date). */
+function dateISOTile7(p: { date?: string | unknown }): string {
+  if (typeof p.date === 'string') return p.date.slice(0, 10);
+  if (p.date) {
+    const d = new Date(p.date as string | number | Date);
+    if (Number.isFinite(d.getTime())) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+  }
+  return '';
+}
+
 /** VIEW only: trim, filter empty, join array. */
 function normalizeArray(arr?: string[]): string {
   if (!arr?.length) return '';
@@ -1989,6 +2039,19 @@ const AccountDashboard: React.FC = () => {
     loadProformas();
   }, [activeDepartment, salesTab]);
 
+  // One-time load of proformas on mount for tile 7 (property payments); guarded so we do not double-load
+  useEffect(() => {
+    if (proformasLoadStartedRef.current) return;
+    proformasLoadStartedRef.current = true;
+    invoicesService
+      .getProformas()
+      .then((list) => setProformas(list))
+      .catch((err) => {
+        console.error('Error loading proformas on mount:', err);
+        proformasLoadStartedRef.current = false;
+      });
+  }, []);
+
   // Listen for task updates from Kanban board
   useEffect(() => {
     const handleTaskUpdated = async () => {
@@ -2145,6 +2208,7 @@ const AccountDashboard: React.FC = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceData | null>(null);
   const [selectedProformaForInvoice, setSelectedProformaForInvoice] = useState<InvoiceData | null>(null);
   const [proformas, setProformas] = useState<InvoiceData[]>([]);
+  const proformasLoadStartedRef = useRef(false);
   const [expandedProformaIds, setExpandedProformaIds] = useState<Set<string>>(new Set());
   const [proformaChildInvoices, setProformaChildInvoices] = useState<Record<string, InvoiceData[]>>({});
   const [isOfferEditModalOpen, setIsOfferEditModalOpen] = useState(false);
@@ -2194,6 +2258,43 @@ const AccountDashboard: React.FC = () => {
     if (activeDepartment !== 'sales' || salesTab !== 'proformas' || proformas.length === 0) return;
     loadPaymentProofsForInvoiceIds(proformas.map(p => p.id));
   }, [activeDepartment, salesTab, proformas.map(p => p.id).join(',')]);
+
+  // Tile 7: property-scoped payments (same data as Payments page, filtered by selectedPropertyId)
+  const propertyPayments = useMemo(() => {
+    const sid = selectedPropertyId != null ? String(selectedPropertyId) : null;
+    if (!sid) return [];
+    const ctx = { offers, reservations, confirmedBookings };
+    const filtered = proformas.filter((p) => getPropertyIdForProforma(p, ctx) === sid);
+    return [...filtered].sort((a, b) => {
+      const da = dateISOTile7(a);
+      const db = dateISOTile7(b);
+      return db.localeCompare(da);
+    });
+  }, [proformas, selectedPropertyId, offers, reservations, confirmedBookings]);
+
+  const confirmedPropertyPayments = useMemo(
+    () => propertyPayments.filter((p) => p.status === 'Paid'),
+    [propertyPayments]
+  );
+
+  const totalReceivedTile7 = useMemo(
+    () => confirmedPropertyPayments.reduce((sum, p) => sum + amountNumberTile7(p), 0),
+    [confirmedPropertyPayments]
+  );
+
+  const lastPaymentTile7 = confirmedPropertyPayments.length > 0 ? confirmedPropertyPayments[0] : null;
+
+  const propertyPaymentsInvoiceIdsKey = useMemo(
+    () => propertyPayments.map((p) => String(p.id)).join(','),
+    [propertyPayments]
+  );
+
+  // Load payment proofs for tile 7 when selected property and its payments change
+  useEffect(() => {
+    if (!selectedPropertyId || propertyPayments.length === 0) return;
+    const invoiceIds = propertyPayments.map((p) => String(p.id));
+    loadPaymentProofsForInvoiceIds(invoiceIds);
+  }, [selectedPropertyId, propertyPaymentsInvoiceIdsKey]);
 
   // --- Toast notifications ---
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -8264,19 +8365,19 @@ ${internalCompany} Team`;
                 </div>
             </section>
 
-            {/* 7. Payments History */}
+            {/* 7. Оплати (Історія Орендаря) — property-scoped, same data as Payments page */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <h2 className="text-xl font-bold text-white mb-4">7. Оплати (Історія Орендаря)</h2>
                 <div className="mb-4 p-4 border border-gray-700 rounded-lg bg-[#16181D] flex justify-between items-center">
                     <div>
-                        <span className="text-xs text-gray-500 block">Актуальний Баланс</span>
-                        <span className={`text-2xl font-bold ${(selectedProperty.tenant?.rent || selectedProperty.balance || 0) < 0 ? 'text-red-500' : 'text-emerald-500'}`}>
-                            {selectedProperty.tenant?.rent || selectedProperty.balance || 0} €
+                        <span className="text-xs text-gray-500 block">Отримано всього</span>
+                        <span className="text-2xl font-bold text-emerald-500">
+                            {formatCurrencyEUR(totalReceivedTile7)}
                         </span>
                     </div>
                     <span className="text-xs text-gray-400">
-                        Остання оплата: {selectedProperty.rentPayments && selectedProperty.rentPayments.length > 0 
-                            ? selectedProperty.rentPayments[0].date 
+                        Остання оплата: {lastPaymentTile7
+                            ? `${formatDateEU(lastPaymentTile7.date)} — ${formatCurrencyEUR(amountNumberTile7(lastPaymentTile7))} — ${lastPaymentTile7.invoiceNumber}`
                             : 'Немає оплат'}
                     </span>
                 </div>
@@ -8284,35 +8385,53 @@ ${internalCompany} Team`;
                     <table className="w-full text-sm text-left">
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
                             <tr>
-                                <th className="p-3 font-bold text-xs uppercase">Дата</th>
-                                <th className="p-3 font-bold text-xs uppercase">Місяць</th>
-                                <th className="p-3 font-bold text-xs uppercase">Сума</th>
-                                <th className="p-3 font-bold text-xs uppercase text-right">Статус</th>
+                                <th className="p-4 font-bold text-xs uppercase">Number</th>
+                                <th className="p-4 font-bold text-xs uppercase">Client</th>
+                                <th className="p-4 font-bold text-xs uppercase">Date</th>
+                                <th className="p-4 font-bold text-xs uppercase">Amount</th>
+                                <th className="p-4 font-bold text-xs uppercase">Document</th>
+                                <th className="p-4 font-bold text-xs uppercase">Status</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-700/50">
-                            {selectedProperty.rentPayments && selectedProperty.rentPayments.length > 0 ? (
-                                selectedProperty.rentPayments.map((payment, index) => (
-                                    <tr key={payment.id || index} className="hover:bg-[#1C1F24]">
-                                        <td className="p-3 text-gray-300">{payment.date}</td>
-                                        <td className="p-3 text-white">{payment.month}</td>
-                                        <td className="p-3 text-white font-mono">{payment.amount}</td>
-                                        <td className="p-3 text-right">
-                                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-                                                payment.status === 'PAID' 
-                                                    ? 'text-emerald-500 bg-emerald-500/10' 
-                                                    : payment.status === 'PARTIAL' 
-                                                        ? 'text-yellow-500 bg-yellow-500/10' 
-                                                        : 'text-red-500 bg-red-500/10'
-                                            }`}>
-                                                {payment.status}
-                                            </span>
+                            {propertyPayments.length > 0 ? (
+                                propertyPayments.map((proforma) => (
+                                    <tr key={proforma.id} className="hover:bg-[#1C1F24]">
+                                        <td className="p-4 font-mono text-gray-300">{proforma.invoiceNumber}</td>
+                                        <td className="p-4 text-white">{proforma.clientName}</td>
+                                        <td className="p-4 tabular-nums text-gray-300">{formatDateEU(dateISOTile7(proforma) || undefined)}</td>
+                                        <td className="p-4 tabular-nums text-white">{formatCurrencyEUR(amountNumberTile7(proforma))}</td>
+                                        <td className="p-4">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                              {proforma.fileUrl ? (
+                                                <a href={proforma.fileUrl} target="_blank" rel="noopener noreferrer" className={DOC_LINK_PILL}>
+                                                  <FileText className="w-3.5 h-3.5" />
+                                                  PDF
+                                                </a>
+                                              ) : null}
+                                              {(proofSignedUrlByInvoiceId[proforma.id] ?? proforma.paymentProofUrl) ? (
+                                                <a href={proofSignedUrlByInvoiceId[proforma.id] ?? proforma.paymentProofUrl ?? '#'} target="_blank" rel="noopener noreferrer" className={DOC_LINK_PILL}>
+                                                  <FileText className="w-3.5 h-3.5" />
+                                                  PDF
+                                                </a>
+                                              ) : null}
+                                              {!proforma.fileUrl && !(proofSignedUrlByInvoiceId[proforma.id] ?? proforma.paymentProofUrl) ? (
+                                                <span className="text-gray-500">—</span>
+                                              ) : null}
+                                            </div>
+                                        </td>
+                                        <td className="p-4">
+                                            {proforma.status === 'Paid' ? (
+                                                <span className="text-emerald-400 text-xs">Confirmed ✓</span>
+                                            ) : (
+                                                <span className="text-gray-400 text-xs">{proforma.status ?? '—'}</span>
+                                            )}
                                         </td>
                                     </tr>
                                 ))
                             ) : (
                                 <tr className="hover:bg-[#1C1F24]">
-                                    <td colSpan={4} className="p-3 text-center text-gray-500">Немає оплат</td>
+                                    <td colSpan={6} className="p-4 text-center text-gray-500">Немає оплат</td>
                                 </tr>
                             )}
                         </tbody>
