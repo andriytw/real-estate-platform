@@ -1,14 +1,53 @@
 /* Local styles for MarketMap only. Do not add to tailwind.config. */
 
-/* Frosted-glass plate behind overlay controls row */
+/* Outer overlay: positioning only; does not block map clicks */
+.market-controls-overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* Glass bar: only this element has blur; controls remain clickable */
 .market-glass-bar {
-  background: rgba(18, 20, 26, 0.55);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  position: relative;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+
+  padding: 10px;
+  border-radius: 14px;
+
+  /* Fallback when backdrop-filter not supported */
+  background: rgba(17, 19, 21, 0.62);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
-  border-radius: 12px;
-  padding: 10px 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .market-glass-bar {
+    background: linear-gradient(
+      to bottom,
+      rgba(25, 28, 33, 0.62),
+      rgba(15, 17, 20, 0.42)
+    );
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    backdrop-filter: blur(14px) saturate(160%);
+  }
+}
+
+/* Thin top highlight (Apple-like) */
+.market-glass-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.06), transparent 45%);
 }
 
 .marker-wrap {

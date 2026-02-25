@@ -264,9 +264,9 @@ export default function MarketMap({
 
   return (
     <div className="relative w-full h-full min-h-0 bg-[#0D1117]">
-      {/* Overlay: wrap-safe row — Search address + Max Price, Min Rooms, Beds */}
-      <div className="absolute top-3 left-3 z-10">
-        <div className="market-glass-bar flex flex-wrap items-center gap-2">
+      {/* Overlay: glass bar only under top controls row; no blur on map */}
+      <div className="market-controls-overlay">
+        <div className="market-glass-bar">
         <div className="relative w-[260px] md:w-[320px]">
           <input
             type="text"
