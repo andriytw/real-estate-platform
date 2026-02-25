@@ -3659,6 +3659,31 @@ const AccountDashboard: React.FC = () => {
     loadPaymentProofsForInvoiceIds(invoiceIds);
   }, [selectedPropertyId, propertyPaymentsInvoiceIdsKey]);
 
+  // Property-scoped lists for tiles 8–10 (read-only)
+  const propertyOffers = useMemo(() => {
+    const sid = selectedPropertyId != null ? String(selectedPropertyId) : null;
+    if (!sid) return [];
+    return offers
+      .filter((o) => String(o.propertyId) === sid)
+      .sort((a, b) => (b.dates?.split(' to ')[0] ?? '').localeCompare(a.dates?.split(' to ')[0] ?? ''));
+  }, [offers, selectedPropertyId]);
+
+  const propertyReservations = useMemo(() => {
+    const sid = selectedPropertyId != null ? String(selectedPropertyId) : null;
+    if (!sid) return [];
+    return reservations
+      .filter((r) => String((r as { roomId?: string; propertyId?: string }).roomId ?? (r as any).propertyId) === sid)
+      .sort((a, b) => (b.start ?? '').localeCompare(a.start ?? ''));
+  }, [reservations, selectedPropertyId]);
+
+  const propertyRequests = useMemo(() => {
+    const sid = selectedPropertyId != null ? String(selectedPropertyId) : null;
+    if (!sid) return [];
+    return requests
+      .filter((r) => r.status !== 'archived' && String(r.propertyId ?? r.property?.id) === sid)
+      .sort((a, b) => (b.startDate ?? b.createdAt ?? '').localeCompare(a.startDate ?? a.createdAt ?? ''));
+  }, [requests, selectedPropertyId]);
+
   // Load reservations function (extracted for reuse)
   const loadReservations = async () => {
     try {
@@ -8439,10 +8464,167 @@ ${internalCompany} Team`;
                 </div>
             </section>
 
-            {/* 8. Documents */}
+            {/* 8. Офери — property-scoped, read-only */}
+            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
+                <h2 className="text-xl font-bold text-white mb-4">8. Офери</h2>
+                <div className="bg-[#16181D] border border-gray-800 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                            <tr>
+                                <th className="p-4">Proforma No.</th>
+                                <th className="p-4">Offer No.</th>
+                                <th className="p-4">Reservation No.</th>
+                                <th className="p-4">Client</th>
+                                <th className="p-4">Property</th>
+                                <th className="p-4">Dates</th>
+                                <th className="p-4">Status</th>
+                                <th className="p-4 text-right">Price</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-800">
+                            {propertyOffers.length > 0 ? (
+                                propertyOffers.map((offer) => {
+                                    const isLost = offer.status === 'Lost';
+                                    const [offerStart, offerEnd] = (offer.dates ?? '').split(' to ');
+                                    const linkedReservation = offer.reservationId
+                                        ? reservations.find((r) => String(r.id) === String(offer.reservationId))
+                                        : null;
+                                    const linkedProforma = invoices.find((inv) => inv.documentType === 'proforma' && (String(inv.offerId ?? inv.offerIdSource) === String(offer.id)));
+                                    const getStatusStyle = () => {
+                                        if (offer.status === 'Draft') return 'bg-gray-500/20 text-gray-400 border-gray-500';
+                                        if (offer.status === 'Invoiced') return 'bg-purple-500/20 text-purple-400 border-purple-500';
+                                        if (offer.status === 'Accepted') return 'bg-emerald-500/20 text-emerald-400 border-emerald-500';
+                                        if (offer.status === 'Lost') return 'bg-red-500/20 text-red-400 border-red-500';
+                                        return 'bg-blue-500/20 text-blue-500 border-blue-500';
+                                    };
+                                    return (
+                                        <tr key={offer.id} className={`hover:bg-[#16181D] ${isLost ? 'opacity-70' : ''}`}>
+                                            <td className={`p-4 font-mono text-sm ${isLost ? 'text-gray-500' : 'text-gray-300'}`}>{linkedProforma?.invoiceNumber ?? '—'}</td>
+                                            <td className={`p-4 font-mono text-sm ${isLost ? 'text-gray-500' : 'text-gray-300'}`}>{offer.offerNo ?? '—'}</td>
+                                            <td className={`p-4 font-mono text-sm ${isLost ? 'text-gray-500' : 'text-gray-300'}`}>{linkedReservation?.reservationNo ?? '—'}</td>
+                                            <td className={`p-4 font-bold ${isLost ? 'text-gray-500 line-through' : ''}`}>{offer.clientName}</td>
+                                            <td className={`p-4 ${isLost ? 'text-gray-500' : ''}`}>{getPropertyNameById(offer.propertyId)}</td>
+                                            <td className={`p-4 tabular-nums ${isLost ? 'text-gray-500' : ''}`}>{offerStart && offerEnd ? [offerStart, offerEnd].map((d) => formatDateEU(d)).join(' – ') : '—'}</td>
+                                            <td className="p-4">
+                                                <span className={`px-2 py-1 rounded text-xs font-bold border border-dashed ${getStatusStyle()}`}>{offer.status}</span>
+                                            </td>
+                                            <td className={`p-4 text-right font-mono ${isLost ? 'text-gray-500' : ''}`}>{offer.price ?? '—'}</td>
+                                        </tr>
+                                    );
+                                })
+                            ) : (
+                                <tr>
+                                    <td colSpan={8} className="p-4 text-center text-gray-500">Немає записів</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            {/* 9. Резервації — property-scoped, read-only */}
+            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
+                <h2 className="text-xl font-bold text-white mb-4">9. Резервації</h2>
+                <div className="bg-[#16181D] border border-gray-800 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                            <tr>
+                                <th className="p-4">Reservation ID</th>
+                                <th className="p-4">Offer No.</th>
+                                <th className="p-4">Guest</th>
+                                <th className="p-4">Property</th>
+                                <th className="p-4">Dates</th>
+                                <th className="p-4">Status</th>
+                                <th className="p-4 text-right">Price</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-800">
+                            {propertyReservations.length > 0 ? (
+                                propertyReservations.map((res) => {
+                                    const linkedOffer = offers.find((o) => o.reservationId != null && String(o.reservationId) === String(res.id));
+                                    const offerNoDisplay = linkedOffer ? linkedOffer.offerNo ?? linkedOffer.id : '—';
+                                    const resStatusLower = String(res.status).toLowerCase();
+                                    const isLostOrCancelled = ['lost', 'cancelled'].includes(resStatusLower);
+                                    const getReservationStatusBadge = () => {
+                                        if (res.status === BookingStatus.RESERVED || resStatusLower === 'open') return 'bg-blue-500/20 text-blue-500';
+                                        if (res.status === BookingStatus.OFFER_SENT || resStatusLower === 'offered') return 'bg-blue-500/20 text-blue-500 border border-dashed';
+                                        if (res.status === BookingStatus.INVOICED || resStatusLower === 'invoiced') return 'bg-blue-500/20 text-blue-500';
+                                        if (resStatusLower === 'won') return 'bg-emerald-500/20 text-emerald-400';
+                                        if (resStatusLower === 'lost') return 'bg-red-500/20 text-red-400';
+                                        if (resStatusLower === 'cancelled') return 'bg-gray-500/20 text-gray-400';
+                                        return 'bg-gray-500/20 text-gray-400';
+                                    };
+                                    return (
+                                        <tr key={res.id} className={`hover:bg-[#16181D] ${isLostOrCancelled ? 'opacity-70' : ''}`}>
+                                            <td className={`p-4 font-mono text-sm truncate max-w-[140px] ${isLostOrCancelled ? 'text-gray-500' : 'text-gray-300'}`}>{res.reservationNo || String(res.id)}</td>
+                                            <td className={`p-4 font-mono text-sm ${isLostOrCancelled ? 'text-gray-500' : 'text-gray-300'}`}>{offerNoDisplay}</td>
+                                            <td className={`p-4 font-bold ${isLostOrCancelled ? 'text-gray-500 line-through' : ''}`}>{res.guest}</td>
+                                            <td className={`p-4 ${isLostOrCancelled ? 'text-gray-500' : ''}`}>{getPropertyNameById((res as { roomId?: string }).roomId)}</td>
+                                            <td className={`p-4 tabular-nums ${isLostOrCancelled ? 'text-gray-500' : ''}`}>{formatDateEU(res.start)} – {formatDateEU(res.end)}</td>
+                                            <td className="p-4">
+                                                <span className={`px-2 py-1 rounded text-xs font-bold ${getReservationStatusBadge()}`}>{res.status}</span>
+                                            </td>
+                                            <td className={`p-4 text-right font-mono ${isLostOrCancelled ? 'text-gray-500' : ''}`}>{res.price ?? '—'}</td>
+                                        </tr>
+                                    );
+                                })
+                            ) : (
+                                <tr>
+                                    <td colSpan={7} className="p-4 text-center text-gray-500">Немає записів</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            {/* 10. Запити — property-scoped, read-only */}
+            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
+                <h2 className="text-xl font-bold text-white mb-4">10. Запити</h2>
+                <div className="bg-[#16181D] border border-gray-800 rounded-lg overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                            <tr>
+                                <th className="p-4">ID</th>
+                                <th className="p-4">Name</th>
+                                <th className="p-4">Email</th>
+                                <th className="p-4">Phone</th>
+                                <th className="p-4">Dates</th>
+                                <th className="p-4">People</th>
+                                <th className="p-4">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-800">
+                            {propertyRequests.length > 0 ? (
+                                propertyRequests.map((req) => (
+                                    <tr key={req.id} className="hover:bg-[#16181D]">
+                                        <td className="p-4 text-gray-400">#{req.id}</td>
+                                        <td className="p-4 font-bold">{req.firstName} {req.lastName}</td>
+                                        <td className="p-4">{req.email ?? '—'}</td>
+                                        <td className="p-4">{req.phone ?? '—'}</td>
+                                        <td className="p-4 tabular-nums">{formatDateEU(req.startDate)} – {formatDateEU(req.endDate)}</td>
+                                        <td className="p-4">{req.peopleCount ?? '—'}</td>
+                                        <td className="p-4">
+                                            <span className={`px-2 py-1 rounded text-xs font-bold ${req.status === 'pending' ? 'bg-yellow-500/20 text-yellow-500' : req.status === 'processed' ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-500/20 text-gray-500'}`}>
+                                                {req.status}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan={7} className="p-4 text-center text-gray-500">Немає записів</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            {/* 11. Документи */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold text-white">8. Документи</h2>
+                    <h2 className="text-xl font-bold text-white">11. Документи</h2>
                     <button className="text-gray-400 text-xs hover:text-white">Редагувати</button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 h-[400px]">
