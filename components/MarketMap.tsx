@@ -96,7 +96,54 @@ export default function MarketMap({
   const [searchLoading, setSearchLoading] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const token = import.meta.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+
+  const forceRepaint = useCallback(() => {
+    const map = mapRef.current?.getMap?.() ?? mapRef.current;
+    if (map && typeof map.resize === 'function' && typeof map.triggerRepaint === 'function') {
+      try {
+        map.resize();
+        map.triggerRepaint();
+      } catch (_) {}
+    }
+  }, [mapRef]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (!document.hidden) {
+        requestAnimationFrame(forceRepaint);
+        setTimeout(forceRepaint, 50);
+      }
+    };
+    const onFocus = () => {
+      requestAnimationFrame(forceRepaint);
+      setTimeout(forceRepaint, 50);
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('pageshow', onFocus);
+    const el = containerRef.current;
+    if (el) {
+      const ro = new ResizeObserver(() => forceRepaint());
+      ro.observe(el);
+      return () => {
+        document.removeEventListener('visibilitychange', onVisibility);
+        window.removeEventListener('focus', onFocus);
+        window.removeEventListener('pageshow', onFocus);
+        ro.disconnect();
+      };
+    }
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('pageshow', onFocus);
+    };
+  }, [forceRepaint]);
+
+  useEffect(() => {
+    requestAnimationFrame(forceRepaint);
+  }, [searchPoint, withinRadiusIds?.size ?? 0, forceRepaint]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -133,7 +180,7 @@ export default function MarketMap({
   const { raysLineGeoJson, rayLabels } = useMemo(() => {
     const empty = {
       raysLineGeoJson: { type: 'FeatureCollection' as const, features: [] as GeoJSON.Feature<GeoJSON.LineString>[] },
-      rayLabels: [] as { midLng: number; midLat: number; km: number }[],
+      rayLabels: [] as { id: string; midLng: number; midLat: number; km: number }[],
     };
     const forRays = withinRadiusIds
       ? listings.filter((item) => withinRadiusIds.has(item.id))
@@ -153,7 +200,7 @@ export default function MarketMap({
     const sLng = searchPoint.lng;
     const sLat = searchPoint.lat;
     const lineFeatures: GeoJSON.Feature<GeoJSON.LineString>[] = [];
-    const rayLabelsResult: { midLng: number; midLat: number; km: number }[] = [];
+    const rayLabelsResult: { id: string; midLng: number; midLat: number; km: number }[] = [];
 
     for (const { item, km } of sorted) {
       let startLng = sLng;
@@ -198,9 +245,10 @@ export default function MarketMap({
           y: (shiftedOriginPx.y + targetPx.y) / 2,
         };
         const midLngLat = map.unproject(midPx);
-        rayLabelsResult.push({ midLng: midLngLat.lng, midLat: midLngLat.lat, km });
+        rayLabelsResult.push({ id: item.id, midLng: midLngLat.lng, midLat: midLngLat.lat, km });
       } else {
         rayLabelsResult.push({
+          id: item.id,
           midLng: (startLng + item.lng) / 2,
           midLat: (startLat + item.lat) / 2,
           km,
@@ -355,24 +403,26 @@ export default function MarketMap({
         </div>
       </div>
 
-      <Map
-        onLoad={({ target }) => {
-          if (mapRef && typeof mapRef === 'object') (mapRef as React.MutableRefObject<mapboxgl.Map | null>).current = target;
-          setMapReady(true);
-        }}
-        onUnload={() => {
-          if (mapRef && typeof mapRef === 'object') (mapRef as React.MutableRefObject<mapboxgl.Map | null>).current = null;
-          setMapReady(false);
-        }}
-        mapboxAccessToken={token || ''}
-        initialViewState={{
-          longitude: DEFAULT_CENTER[0],
-          latitude: DEFAULT_CENTER[1],
-          zoom: DEFAULT_ZOOM,
-        }}
-        style={{ width: '100%', height: '100%' }}
-        mapStyle="mapbox://styles/mapbox/dark-v11"
-      >
+      <div ref={containerRef} className="w-full h-full min-h-0">
+        <Map
+          onLoad={({ target }) => {
+            if (mapRef && typeof mapRef === 'object') (mapRef as React.MutableRefObject<mapboxgl.Map | null>).current = target;
+            setMapReady(true);
+            requestAnimationFrame(forceRepaint);
+          }}
+          onUnload={() => {
+            if (mapRef && typeof mapRef === 'object') (mapRef as React.MutableRefObject<mapboxgl.Map | null>).current = null;
+            setMapReady(false);
+          }}
+          mapboxAccessToken={token || ''}
+          initialViewState={{
+            longitude: DEFAULT_CENTER[0],
+            latitude: DEFAULT_CENTER[1],
+            zoom: DEFAULT_ZOOM,
+          }}
+          style={{ width: '100%', height: '100%' }}
+          mapStyle="mapbox://styles/mapbox/dark-v11"
+        >
         {listings.map((item) => {
           const inRadius = !withinRadiusIds || withinRadiusIds.has(item.id);
           return (
@@ -385,11 +435,11 @@ export default function MarketMap({
                 e.originalEvent.stopPropagation();
                 onSelectMarker(item.id);
               }}
-              style={{ cursor: 'pointer', transform: 'translate(0,0)' }}
+              style={{ cursor: 'pointer' }}
             >
-              <div
-                className={`marker-fade market-map-marker w-6 h-6 rounded-full bg-emerald-500 border-2 border-white ${!inRadius ? 'marker-hidden' : ''} ${selectedId === item.id ? 'marker-selected shadow-lg' : 'shadow'}`}
-              />
+              <div className={`marker-wrap ${!inRadius ? 'marker-hidden' : ''}`}>
+                <div className={`marker-dot ${selectedId === item.id ? 'marker-dot-selected' : ''}`} />
+              </div>
             </Marker>
           );
         })}
@@ -398,9 +448,11 @@ export default function MarketMap({
             longitude={searchPoint.lng}
             latitude={searchPoint.lat}
             anchor="center"
-            style={{ pointerEvents: 'none', transform: 'translate(0,0)' }}
+            style={{ pointerEvents: 'none' }}
           >
-            <div className="w-6 h-6 rounded-full bg-blue-500 border-2 border-white shadow-lg" />
+            <div className="marker-wrap">
+              <div className="marker-dot-blue" />
+            </div>
           </Marker>
         )}
         {searchPoint && raysLineGeoJson.features.length > 0 && (
@@ -418,9 +470,9 @@ export default function MarketMap({
           </Source>
         )}
         {searchPoint &&
-          rayLabels.map((label, idx) => (
+          rayLabels.map((label) => (
             <Marker
-              key={`ray-label-${idx}`}
+              key={`ray-label-${label.id}`}
               longitude={label.midLng}
               latitude={label.midLat}
               anchor="center"
@@ -428,7 +480,8 @@ export default function MarketMap({
               <div className="ray-km-label">{label.km.toFixed(1)} km</div>
             </Marker>
           ))}
-      </Map>
+        </Map>
+      </div>
     </div>
   );
 }

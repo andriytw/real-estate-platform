@@ -1,13 +1,30 @@
 /* Local styles for MarketMap only. Do not add to tailwind.config. */
-.marker-fade {
+.marker-wrap {
   transition: opacity 120ms ease;
 }
 .marker-hidden {
   opacity: 0;
   pointer-events: none;
 }
-.marker-selected {
+.marker-dot {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  background-color: rgb(16 185 129);
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.marker-dot-selected {
   animation: marker-pulse 0.8s ease-in-out infinite;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+}
+.marker-dot-blue {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  background-color: rgb(59 130 246);
+  border: 2px solid white;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
 }
 
 @keyframes marker-pulse {
