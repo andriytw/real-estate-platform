@@ -1,6 +1,6 @@
 import type { Property } from '../types';
 
-function toNum(v: unknown): number {
+export function toNum(v: unknown): number {
   const n = typeof v === 'string' ? parseFloat(v) : Number(v);
   return Number.isFinite(n) ? n : 0;
 }

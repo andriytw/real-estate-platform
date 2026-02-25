@@ -2,20 +2,16 @@ import React, { useState } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 import type { Property } from '../types';
 import { AMENITY_GROUPS } from '../utils/amenityGroups';
+import { toNum } from '../utils/propertyStats';
 
 interface ApartmentDataSectionProps {
   property: Property;
 }
 
-const toNum = (v: unknown): number => {
-  if (v == null) return 0;
-  const n = typeof v === 'string' ? parseFloat(v) : Number(v);
-  return Number.isFinite(n) ? n : 0;
-};
-
 export default function ApartmentDataSection({ property }: ApartmentDataSectionProps) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const d = property.details ?? ({} as Property['details']);
+  // property.amenities: normalized Record<string, boolean> from full fetch (loadPropertyFull)
   const amenities = property.amenities ?? {};
 
   const area = toNum(d.area ?? property.area);

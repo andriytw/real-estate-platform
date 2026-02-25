@@ -15,6 +15,7 @@ import ShareModal from './ShareModal';
 import ChatModal from './ChatModal';
 import SendRequestModal from './SendRequestModal';
 import ApartmentDataSection from './ApartmentDataSection';
+import { toNum } from '../utils/propertyStats';
 
 interface PropertyDetailsProps {
   property: Property;
@@ -53,6 +54,15 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
     window.location.pathname.startsWith('/property/');
   const isGuest = !worker;
   const isPublicMarketplaceProperty = isPropertyRoute && isGuest;
+
+  const d = property.details ?? ({} as Property['details']);
+  const rooms = toNum(d?.rooms ?? property.rooms);
+  const area = toNum(d?.area ?? property.area);
+  const beds = toNum(d?.beds ?? property.beds);
+  const baths = toNum(d?.baths ?? property.bathrooms);
+  const balconies = toNum(d?.balconies ?? property.balconies);
+  const floor = toNum(d?.floor ?? property.floor);
+  const buildingFloors = toNum(d?.buildingFloors ?? property.totalFloors);
 
   // Marketplace gallery: load all photo assets for this property (cover-first), avoid resign on every render
   useEffect(() => {
@@ -263,7 +273,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
 
         {/* Title Overlay */}
         <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none">
-           <h2 className="text-2xl font-bold text-white">{property.rooms}-Room Apartment – {property.address}</h2>
+           <h2 className="text-2xl font-bold text-white">{rooms}-Room Apartment – {property.address}</h2>
         </div>
       </div>
 
@@ -272,19 +282,19 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
         <div className="flex items-center gap-5 mr-5">
           <div className="flex items-center gap-1.5">
             <Home className="w-4 h-4 text-gray-500" />
-            <span>{property.rooms}rm</span>
+            <span>{rooms}rm</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Ruler className="w-4 h-4 text-gray-500" />
-            <span>{property.area}m²</span>
+            <span>{area}m²</span>
           </div>
           <div className="flex items-center gap-1.5">
             <MoveVertical className="w-4 h-4 text-gray-500" />
-            <span>{property.floor}/{property.totalFloors}</span>
+            <span>{buildingFloors > 0 ? `${floor}/${buildingFloors}` : floor || '—'}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Bath className="w-4 h-4 text-gray-500" />
-            <span>{property.bathrooms}ba</span>
+            <span>{baths}ba</span>
           </div>
         </div>
 
@@ -301,7 +311,7 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
             </div>
             <div className="flex items-center gap-1" title="Accessible">
               <Accessibility className="w-4 h-4 text-gray-500" />
-              {property.floor > 0 ? <Check className="w-3 h-3 text-emerald-500" /> : <X className="w-3 h-3 text-gray-600" />}
+              {floor > 0 ? <Check className="w-3 h-3 text-emerald-500" /> : <X className="w-3 h-3 text-gray-600" />}
             </div>
             <div className="flex items-center gap-1" title="Pets">
               <span className="text-lg leading-none pb-1">🐶</span>
@@ -311,29 +321,74 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
 
       </div>
 
-      {/* Media Tabs Buttons */}
-      <div className="flex gap-4 mb-6">
+      {/* Single CTA row: 3D Tour | Floor Plan | Gallery | Send Request | Download MagicPlan Report | Share Apartment | Chat */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
         <button 
           onClick={() => handleActionClick(() => {
             setIsTourOpen(true);
             setTour3dLoading(true);
           })}
-          className="flex-1 bg-emerald-500 text-white font-bold py-3 text-sm rounded-md hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-900/20"
+          className="bg-emerald-500 text-white font-bold py-3 px-4 text-sm rounded-md hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-900/20"
         >
           3D Tour
         </button>
         <button 
           onClick={() => handleActionClick(() => setIsFloorPlanOpen(true))}
-          className="flex-1 bg-transparent border border-[#2E323A] text-white font-medium py-3 text-sm rounded-md hover:bg-[#2A2E35] transition-colors"
+          className="bg-transparent border border-[#2E323A] text-white font-medium py-3 px-4 text-sm rounded-md hover:bg-[#2A2E35] transition-colors"
         >
           Floor Plan
         </button>
         <button 
           onClick={() => handleActionClick(() => setIsGalleryOpen(true))}
-          className="flex-1 bg-transparent border border-[#2E323A] text-white font-medium py-3 text-sm rounded-md hover:bg-[#2A2E35] transition-colors"
+          className="bg-transparent border border-[#2E323A] text-white font-medium py-3 px-4 text-sm rounded-md hover:bg-[#2A2E35] transition-colors"
         >
           Gallery
         </button>
+        {!hideActions && (
+          <>
+            <button 
+              onClick={() => handleActionClick(() => {
+                if (isPublicMarketplaceProperty) {
+                  setIsSendRequestModalOpen(true);
+                } else {
+                  onBookViewing?.();
+                }
+              })}
+              className="bg-[#1C1F24] hover:bg-[#2A2E35] text-white border border-[#2E323A] font-semibold text-sm py-3 px-4 rounded-md transition-colors"
+            >
+              Send Request
+            </button>
+            <button 
+              onClick={() => handleActionClick(async () => {
+                try {
+                  const url = await propertyMediaService.getMarketplaceMagicPlanReportUrl(property.id, 1800);
+                  if (url) {
+                    window.open(url, '_blank');
+                  } else {
+                    alert('Report unavailable');
+                  }
+                } catch {
+                  alert('Report unavailable');
+                }
+              })}
+              className="bg-[#1C1F24] hover:bg-[#2A2E35] text-white border border-[#2E323A] font-semibold text-sm py-3 px-4 rounded-md transition-colors"
+            >
+              Download MagicPlan Report
+            </button>
+            <button 
+              onClick={() => handleActionClick(() => setIsShareModalOpen(true))}
+              className="bg-[#1C1F24] hover:bg-[#2A2E35] text-white border border-[#2E323A] font-semibold text-sm py-3 px-4 rounded-md transition-colors"
+            >
+              Share Apartment
+            </button>
+            <button 
+              onClick={() => handleActionClick(() => setIsChatModalOpen(true))}
+              className="bg-[#1C1F24] hover:bg-[#2A2E35] text-white border border-[#2E323A] font-semibold text-sm py-3 px-4 rounded-md transition-colors"
+            >
+              Chat
+            </button>
+          </>
+        )}
       </div>
 
       {/* Description */}
@@ -344,53 +399,6 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
       </div>
 
       <ApartmentDataSection property={property} />
-
-      {/* Action Buttons - Conditionally Rendered */}
-      {!hideActions && (
-        <div className="mt-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pb-2">
-          <button 
-            onClick={() => handleActionClick(() => {
-              if (isPublicMarketplaceProperty) {
-                setIsSendRequestModalOpen(true);
-              } else {
-                onBookViewing?.();
-              }
-            })}
-            className="bg-[#1C1F24] hover:bg-[#2A2E35] text-white border border-[#2E323A] font-semibold text-sm py-3 rounded-md transition-colors"
-          >
-            {isPublicMarketplaceProperty ? 'Send Request' : 'Book Viewing'}
-          </button>
-          <button 
-            onClick={() => handleActionClick(async () => {
-              try {
-                const url = await propertyMediaService.getMarketplaceMagicPlanReportUrl(property.id, 1800);
-                if (url) {
-                  window.open(url, '_blank');
-                } else {
-                  alert('Report unavailable');
-                }
-              } catch {
-                alert('Report unavailable');
-              }
-            })}
-            className="bg-[#1C1F24] hover:bg-[#2A2E35] text-white border border-[#2E323A] font-semibold text-sm py-3 rounded-md transition-colors"
-          >
-            Download MagicPlan Report
-          </button>
-          <button 
-            onClick={() => handleActionClick(() => setIsShareModalOpen(true))}
-            className="bg-[#1C1F24] hover:bg-[#2A2E35] text-white border border-[#2E323A] font-semibold text-sm py-3 rounded-md transition-colors"
-          >
-            Share Apartment
-          </button>
-          <button 
-            onClick={() => handleActionClick(() => setIsChatModalOpen(true))}
-            className="bg-[#1C1F24] hover:bg-[#2A2E35] text-white border border-[#2E323A] font-semibold text-sm py-3 rounded-md transition-colors"
-          >
-            Chat
-          </button>
-        </div>
-      )}
     </div>
   );
 };

@@ -2238,6 +2238,24 @@ function normalizePaymentChainFromDB(raw: any): PaymentChain | undefined {
   return { owner, company1, company2 };
 }
 
+function mapAmenitiesToBoolRecord(raw: unknown): Record<string, boolean> {
+  if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
+    const out: Record<string, boolean> = {};
+    for (const k of Object.keys(raw)) {
+      out[k] = !!(raw as Record<string, unknown>)[k];
+    }
+    return out;
+  }
+  if (Array.isArray(raw)) {
+    const out: Record<string, boolean> = {};
+    for (const key of raw) {
+      if (typeof key === 'string') out[key] = true;
+    }
+    return out;
+  }
+  return {};
+}
+
 function transformPropertyFromDB(db: any): Property {
   return {
     id: db.id,
@@ -2263,7 +2281,7 @@ function transformPropertyFromDB(db: any): Property {
     // For lightweight queries, these may be undefined - provide defaults
     details: db.details || {},
     building: db.building || {},
-    amenities: typeof db.amenities === 'object' && db.amenities !== null ? db.amenities : {},
+    amenities: mapAmenitiesToBoolRecord(db.amenities),
     inventory: Array.isArray(db.inventory) ? db.inventory : (db.inventory ? JSON.parse(db.inventory) : []),
     meterReadings: db.meter_readings || db.meterReadings || [],
     meterLog: db.meter_log || db.meterLog || [],

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Navbar from './components/Navbar';
 import FilterBar from './components/FilterBar';
 import PropertyCard from './components/PropertyCard';
@@ -44,6 +44,17 @@ const AppContent: React.FC = () => {
     status: ''
   });
 
+  const propertyDetailsModalPropertyIdRef = useRef<string | null>(null);
+  propertyDetailsModalPropertyIdRef.current = propertyDetailsModalPropertyId;
+
+  const loadPropertyFull = useCallback((propertyId: string) => {
+    propertiesService.getById(propertyId).then((fullProperty) => {
+      if (!fullProperty) return;
+      if (propertyDetailsModalPropertyIdRef.current !== propertyId) return;
+      setSelectedProperty(fullProperty);
+    }).catch(() => {});
+  }, []);
+
   const syncViewWithPath = useCallback(() => {
     const path = window.location.pathname;
     if (path === '/') {
@@ -77,9 +88,11 @@ const AppContent: React.FC = () => {
         } else {
           setCurrentView('property-overlay');
         }
+        const alreadyFull = selectedProperty?.id === propertyId && selectedProperty.amenities && typeof selectedProperty.amenities === 'object' && Object.keys(selectedProperty.amenities).length > 0;
+        if (!alreadyFull) loadPropertyFull(propertyId);
       }
     }
-  }, [properties]);
+  }, [properties, selectedProperty?.id, selectedProperty?.amenities, loadPropertyFull]);
 
   const navigate = useCallback((path: string, opts?: { replace?: boolean; state?: Record<string, unknown> }) => {
     if (opts?.replace) {
@@ -288,23 +301,10 @@ const AppContent: React.FC = () => {
     };
   }, []);
 
-  // Update selected property when properties change (or resolve from path when on /property/:id)
+  // Default selected property when not on /property/:id (loadPropertyFull is the single source for property modal data)
   useEffect(() => {
     const path = window.location.pathname;
-    if (path.startsWith('/property/')) {
-      const propertyId = path.replace(/^\/property\//, '').split('?')[0];
-      if (propertyId) {
-        const found = properties.find(p => p.id === propertyId);
-        if (found && (!selectedProperty || selectedProperty.id !== propertyId)) {
-          setSelectedProperty(found);
-        } else if (!found) {
-          propertiesService.getById(propertyId).then(p => {
-            if (p) setSelectedProperty(p);
-          }).catch(() => {});
-        }
-        return;
-      }
-    }
+    if (path.startsWith('/property/')) return;
     if (properties.length > 0 && !selectedProperty) {
       setSelectedProperty(properties[0]);
     }
@@ -345,6 +345,7 @@ const AppContent: React.FC = () => {
       setPropertyDetailsModalPropertyId(prop.id);
       setCurrentView('market');
       navigate(`/property/${prop.id}`, { state: { fromMarket: true } });
+      loadPropertyFull(prop.id);
     };
     
     // First try to find in existing properties
@@ -429,7 +430,7 @@ const AppContent: React.FC = () => {
       };
       openPropertyAsModal(tempProperty);
     });
-  }, [properties, navigate]);
+  }, [properties, navigate, loadPropertyFull]);
 
   // Filter properties
   const filteredProperties = useMemo(() => {
