@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Send, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Square, Download, LayoutGrid, Bed } from 'lucide-react';
+import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Square, Download, LayoutGrid, Bed } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 import AdminCalendar from './AdminCalendar';
 import AdminMessages from './AdminMessages';
@@ -62,6 +62,24 @@ const METER_UNIT_OPTIONS: { value: string; label: string }[] = [
   { value: 'u.', label: 'u.' },
   { value: 'L', label: 'L' },
 ];
+
+// Date helpers for current-stay tile (same logic as SalesCalendar)
+function parseDateAktOrendar(dateString: string): Date {
+  const [year, month, day] = dateString.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+function formatDateISOAktOrendar(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+function dateDiffInDaysAktOrendar(date1: Date, date2: Date): number {
+  const MS_PER_DAY = 1000 * 60 * 60 * 24;
+  return Math.round((date2.getTime() - date1.getTime()) / MS_PER_DAY);
+}
 
 function PropertyMediaPhotoThumb({ asset, onDelete }: { asset: PropertyMediaAssetRow; onDelete: () => void }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
@@ -3622,6 +3640,16 @@ const AccountDashboard: React.FC = () => {
     loadConfirmedBookings();
     loadLeads();
   }, []);
+
+  const currentStay = useMemo((): Booking | null => {
+    const todayStr = formatDateISOAktOrendar(new Date());
+    const matches = confirmedBookings.filter(
+      (b) => b.propertyId === selectedPropertyId && b.start <= todayStr && b.end > todayStr
+    );
+    if (matches.length === 0) return null;
+    matches.sort((a, b) => (b.start > a.start ? 1 : b.start < a.start ? -1 : 0));
+    return matches[0];
+  }, [confirmedBookings, selectedPropertyId]);
 
   const handleSaveReservation = async (reservation: ReservationData) => {
       try {
@@ -8125,40 +8153,52 @@ ${internalCompany} Team`;
               );
             })()}
 
-            {/* Current Tenant - TODO: Rename "Актуальний Орендар" -> "Актуальний Клієнт" and decouple from Parties (future task) */}
+            {/* 5. Актуальний Орендар — current occupancy from Rent Calendar (confirmedBookings) */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <h2 className="text-2xl font-bold text-white mb-4">5. Актуальний Орендар</h2>
-                {selectedProperty.tenant ? (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <div className="space-y-4">
-                            <div className="bg-[#16181D] p-4 rounded-lg border border-gray-700">
-                                <h3 className="text-xl font-bold text-white mb-1">{selectedProperty.tenant.name}</h3>
-                                <p className="text-sm text-gray-400 mb-2">Телефон: {selectedProperty.tenant.phone} | E-mail: {selectedProperty.tenant.email}</p>
-                                <p className="text-sm font-medium text-emerald-500 mb-1">Термін: {selectedProperty.tenant.startDate} - Безстроково</p>
-                                <p className="text-sm text-gray-300">Місячна оплата: {selectedProperty.tenant.rent} €</p>
+                <div className="border border-gray-700 rounded-lg overflow-hidden bg-[#16181D]">
+                    <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,0.6fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)] gap-x-4 gap-y-2 p-3 items-center text-sm">
+                        <div className="text-xs font-bold text-gray-400 uppercase">Орендар</div>
+                        <div className="text-xs font-bold text-gray-400 uppercase">Період</div>
+                        <div className="text-xs font-bold text-gray-400 uppercase">Ночі</div>
+                        <div className="text-xs font-bold text-gray-400 uppercase">Осіб</div>
+                        <div className="text-xs font-bold text-gray-400 uppercase">Сплачено</div>
+                        <div className="text-xs font-bold text-gray-400 uppercase">Всього</div>
+                        <div className="text-xs font-bold text-gray-400 uppercase">Дії</div>
+                        {currentStay ? (() => {
+                          const startD = parseDateAktOrendar(currentStay.start);
+                          const endD = parseDateAktOrendar(currentStay.end);
+                          const todayD = new Date();
+                          todayD.setHours(0, 0, 0, 0);
+                          const totalNights = dateDiffInDaysAktOrendar(startD, endD);
+                          const nightsLived = Math.max(0, Math.min(dateDiffInDaysAktOrendar(startD, todayD), totalNights));
+                          const nightsLeft = totalNights - nightsLived;
+                          const guestsNum = (typeof currentStay.guests === 'string' && /(\d+)/.test(currentStay.guests)) ? (currentStay.guests.match(/(\d+)/)?.[1] ?? '—') : '—';
+                          return (
+                            <>
+                              <div className="text-white font-medium truncate">{currentStay.guest || '—'}</div>
+                              <div className="text-gray-300">{currentStay.start} → {currentStay.end}</div>
+                              <div className="text-gray-300">{totalNights} (прожито {nightsLived}, залишилось {nightsLeft})</div>
+                              <div className="text-gray-300">{guestsNum}</div>
+                              <div className="text-gray-300">{currentStay.balance || '—'}</div>
+                              <div className="text-gray-300">{currentStay.totalGross || currentStay.price || '—'}</div>
+                              <div className="flex gap-2 flex-wrap">
+                                <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-2 px-3 rounded-lg text-xs font-bold cursor-not-allowed">Акт прийому-передачі</button>
+                                <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-2 px-3 rounded-lg text-xs font-bold cursor-not-allowed">Прописка</button>
+                              </div>
+                            </>
+                          );
+                        })() : (
+                          <>
+                            <div className="text-gray-500 italic col-span-6">Зараз ніхто не проживає</div>
+                            <div className="flex gap-2 flex-wrap">
+                              <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-2 px-3 rounded-lg text-xs font-bold cursor-not-allowed">Акт прийому-передачі</button>
+                              <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-2 px-3 rounded-lg text-xs font-bold cursor-not-allowed">Прописка</button>
                             </div>
-                            <div className="grid grid-cols-3 gap-2">
-                                <button className="bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-lg text-xs font-bold transition-colors">Договір</button>
-                                <button className="bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-lg text-xs font-bold transition-colors">Акт Прийому</button>
-                                <button className="bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-lg text-xs font-bold transition-colors">Прописка</button>
-                            </div>
-                        </div>
-                        {/* Chat Preview */}
-                        <div className="bg-[#16181D] border border-gray-700 rounded-lg p-4 flex flex-col h-40 relative overflow-hidden">
-                            <h4 className="text-xs font-bold text-gray-400 mb-2 border-b border-gray-700 pb-1">Переписка з Орендарем</h4>
-                            <div className="flex-1 space-y-2 overflow-hidden">
-                                <div className="flex justify-end"><div className="bg-emerald-600 text-white text-xs px-2 py-1 rounded-t-lg rounded-bl-lg max-w-[80%]">Добрий день, де ключ від поштової скриньки?</div></div>
-                                <div className="flex justify-start"><div className="bg-gray-700 text-gray-200 text-xs px-2 py-1 rounded-t-lg rounded-br-lg max-w-[80%]">Ключ залишив консьєржу.</div></div>
-                            </div>
-                            <div className="mt-2 flex gap-2">
-                                <input placeholder="Написати повідомлення..." className="flex-1 bg-[#0D1117] border border-gray-700 rounded text-xs px-2 py-1 text-white outline-none" />
-                                <button className="bg-emerald-500 text-white p-1 rounded"><Send className="w-3 h-3"/></button>
-                            </div>
-                        </div>
+                          </>
+                        )}
                     </div>
-                ) : (
-                    <div className="text-gray-500 text-sm italic">Немає активного орендаря.</div>
-                )}
+                </div>
             </section>
 
             {/* 6. Rental Agreements (Scrollable List) */}
