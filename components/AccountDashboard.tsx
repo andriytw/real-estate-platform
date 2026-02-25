@@ -8365,9 +8365,9 @@ ${internalCompany} Team`;
                 </div>
             </section>
 
-            {/* 7. Оплати (Історія Орендаря) — property-scoped, same data as Payments page */}
+            {/* 7. Дохід — property-scoped, same data as Payments page */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                <h2 className="text-xl font-bold text-white mb-4">7. Оплати (Історія Орендаря)</h2>
+                <h2 className="text-xl font-bold text-white mb-4">7. Дохід</h2>
                 <div className="mb-4 p-4 border border-gray-700 rounded-lg bg-[#16181D] flex justify-between items-center">
                     <div>
                         <span className="text-xs text-gray-500 block">Отримано всього</span>
