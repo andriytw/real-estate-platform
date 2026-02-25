@@ -2259,43 +2259,6 @@ const AccountDashboard: React.FC = () => {
     loadPaymentProofsForInvoiceIds(proformas.map(p => p.id));
   }, [activeDepartment, salesTab, proformas.map(p => p.id).join(',')]);
 
-  // Tile 7: property-scoped payments (same data as Payments page, filtered by selectedPropertyId)
-  const propertyPayments = useMemo(() => {
-    const sid = selectedPropertyId != null ? String(selectedPropertyId) : null;
-    if (!sid) return [];
-    const ctx = { offers, reservations, confirmedBookings };
-    const filtered = proformas.filter((p) => getPropertyIdForProforma(p, ctx) === sid);
-    return [...filtered].sort((a, b) => {
-      const da = dateISOTile7(a);
-      const db = dateISOTile7(b);
-      return db.localeCompare(da);
-    });
-  }, [proformas, selectedPropertyId, offers, reservations, confirmedBookings]);
-
-  const confirmedPropertyPayments = useMemo(
-    () => propertyPayments.filter((p) => p.status === 'Paid'),
-    [propertyPayments]
-  );
-
-  const totalReceivedTile7 = useMemo(
-    () => confirmedPropertyPayments.reduce((sum, p) => sum + amountNumberTile7(p), 0),
-    [confirmedPropertyPayments]
-  );
-
-  const lastPaymentTile7 = confirmedPropertyPayments.length > 0 ? confirmedPropertyPayments[0] : null;
-
-  const propertyPaymentsInvoiceIdsKey = useMemo(
-    () => propertyPayments.map((p) => String(p.id)).join(','),
-    [propertyPayments]
-  );
-
-  // Load payment proofs for tile 7 when selected property and its payments change
-  useEffect(() => {
-    if (!selectedPropertyId || propertyPayments.length === 0) return;
-    const invoiceIds = propertyPayments.map((p) => String(p.id));
-    loadPaymentProofsForInvoiceIds(invoiceIds);
-  }, [selectedPropertyId, propertyPaymentsInvoiceIdsKey]);
-
   // --- Toast notifications ---
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [createdOfferId, setCreatedOfferId] = useState<string | null>(null);
@@ -3658,6 +3621,43 @@ const AccountDashboard: React.FC = () => {
   // Load reservations from database on mount
   // Separate state for confirmed bookings (from bookings table)
   const [confirmedBookings, setConfirmedBookings] = useState<Booking[]>([]);
+
+  // Tile 7: property-scoped payments (same data as Payments page, filtered by selectedPropertyId)
+  const propertyPayments = useMemo(() => {
+    const sid = selectedPropertyId != null ? String(selectedPropertyId) : null;
+    if (!sid) return [];
+    const ctx = { offers, reservations, confirmedBookings };
+    const filtered = proformas.filter((p) => getPropertyIdForProforma(p, ctx) === sid);
+    return [...filtered].sort((a, b) => {
+      const da = dateISOTile7(a);
+      const db = dateISOTile7(b);
+      return db.localeCompare(da);
+    });
+  }, [proformas, selectedPropertyId, offers, reservations, confirmedBookings]);
+
+  const confirmedPropertyPayments = useMemo(
+    () => propertyPayments.filter((p) => p.status === 'Paid'),
+    [propertyPayments]
+  );
+
+  const totalReceivedTile7 = useMemo(
+    () => confirmedPropertyPayments.reduce((sum, p) => sum + amountNumberTile7(p), 0),
+    [confirmedPropertyPayments]
+  );
+
+  const lastPaymentTile7 = confirmedPropertyPayments.length > 0 ? confirmedPropertyPayments[0] : null;
+
+  const propertyPaymentsInvoiceIdsKey = useMemo(
+    () => propertyPayments.map((p) => String(p.id)).join(','),
+    [propertyPayments]
+  );
+
+  // Load payment proofs for tile 7 when selected property and its payments change
+  useEffect(() => {
+    if (!selectedPropertyId || propertyPayments.length === 0) return;
+    const invoiceIds = propertyPayments.map((p) => String(p.id));
+    loadPaymentProofsForInvoiceIds(invoiceIds);
+  }, [selectedPropertyId, propertyPaymentsInvoiceIdsKey]);
 
   // Load reservations function (extracted for reuse)
   const loadReservations = async () => {
