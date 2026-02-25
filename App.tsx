@@ -82,13 +82,13 @@ const AppContent: React.FC = () => {
         const fromMarket = (window.history.state && typeof window.history.state === 'object' && (window.history.state as { fromMarket?: boolean }).fromMarket) === true;
         setPropertyDetailsModalPropertyId(propertyId);
         const found = properties.find(p => p.id === propertyId);
-        if (found) setSelectedProperty(found);
+        const alreadyFull = selectedProperty?.id === propertyId && selectedProperty?.amenities && typeof selectedProperty.amenities === 'object' && Object.keys(selectedProperty.amenities).length > 0;
+        if (found && !alreadyFull) setSelectedProperty(found);
         if (fromMarket) {
           setCurrentView('market');
         } else {
           setCurrentView('property-overlay');
         }
-        const alreadyFull = selectedProperty?.id === propertyId && selectedProperty.amenities && typeof selectedProperty.amenities === 'object' && Object.keys(selectedProperty.amenities).length > 0;
         if (!alreadyFull) loadPropertyFull(propertyId);
       }
     }
