@@ -2281,6 +2281,7 @@ const AccountDashboard: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [createdOfferId, setCreatedOfferId] = useState<string | null>(null);
   const [uebergabeprotokollLoading, setUebergabeprotokollLoading] = useState(false);
+  const [uebergabeprotokollPdfLoading, setUebergabeprotokollPdfLoading] = useState(false);
 
   // Stats
   const activePropertiesCount = properties.length;
@@ -3820,6 +3821,31 @@ const AccountDashboard: React.FC = () => {
       setToastMessage(e instanceof Error ? e.message : 'Помилка генерації акту');
     } finally {
       setUebergabeprotokollLoading(false);
+    }
+  };
+
+  const handleUebergabeprotokollPdfPreview = async () => {
+    if (!currentStay || !selectedPropertyId) return;
+    setUebergabeprotokollPdfLoading(true);
+    try {
+      const res = await fetch('/api/protocols/uebergabeprotokoll/generate-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: currentStay.id, propertyId: selectedPropertyId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToastMessage(json?.error || `Помилка ${res.status}`);
+        return;
+      }
+      if (json.pdfUrl) {
+        setDocPreview({ open: true, url: json.pdfUrl, title: 'Акт прийому-передачі (PDF)' });
+      }
+      if (json.warning) setToastMessage(json.warning);
+    } catch (e) {
+      setToastMessage(e instanceof Error ? e.message : 'Помилка генерації PDF');
+    } finally {
+      setUebergabeprotokollPdfLoading(false);
     }
   };
 
@@ -8372,10 +8398,19 @@ ${internalCompany} Team`;
                                   type="button"
                                   disabled={!currentStay || !selectedPropertyId || uebergabeprotokollLoading}
                                   onClick={handleUebergabeprotokollGenerate}
-                                  title={currentStay && selectedPropertyId ? 'Згенерувати акт прийому-передачі' : 'Оберіть об\'єкт і наявність орендаря'}
+                                  title={currentStay && selectedPropertyId ? 'Згенерувати акт прийому-передачі (DOCX)' : 'Оберіть об\'єкт і наявність орендаря'}
                                   className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed disabled:opacity-60 disabled:cursor-not-allowed enabled:bg-emerald-600 enabled:text-white enabled:hover:bg-emerald-500 enabled:cursor-pointer"
                                 >
                                   {uebergabeprotokollLoading ? '…' : 'Акт прийому-передачі'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!currentStay || !selectedPropertyId || uebergabeprotokollPdfLoading}
+                                  onClick={handleUebergabeprotokollPdfPreview}
+                                  title={currentStay && selectedPropertyId ? 'Перегляд PDF' : 'Оберіть об\'єкт і наявність орендаря'}
+                                  className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-600 disabled:opacity-60 disabled:cursor-not-allowed enabled:cursor-pointer border border-gray-600"
+                                >
+                                  {uebergabeprotokollPdfLoading ? <span className="text-xs">…</span> : <Eye className="w-4 h-4" />}
                                 </button>
                                 <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed">Прописка</button>
                               </div>
