@@ -10104,6 +10104,7 @@ ${internalCompany} Team`;
             message: selectedRequest.message,
             propertyId: selectedRequest.propertyId,
           } : undefined}
+          onShowToast={setToastMessage}
         />
       );
     }

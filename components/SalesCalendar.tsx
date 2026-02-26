@@ -71,6 +71,7 @@ interface SalesCalendarProps {
   adminEvents?: CalendarEvent[];
   prefilledRequestData?: Partial<RequestData>; // Для префілу форми з Request
   properties?: Property[]; // Реальні об'єкти з Properties List
+  onShowToast?: (message: string) => void;
 }
 
 const INITIAL_BOOKINGS: Booking[] = [
@@ -159,6 +160,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   adminEvents = [],
   prefilledRequestData,
   properties = [],
+  onShowToast,
 }) => {
   // State
   const [bookings, setBookings] = useState<Booking[]>([]); // Без демо-бронювань
@@ -182,6 +184,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const [minPeopleFilter, setMinPeopleFilter] = useState<number | null>(null);
   const [minRoomsFilter, setMinRoomsFilter] = useState<number | null>(null);
   const [hoveredBooking, setHoveredBooking] = useState<{booking: Booking, x: number, y: number} | null>(null);
+  const [ugpLoadingBookingId, setUgpLoadingBookingId] = useState<string | number | null>(null);
   const hoverLeaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Додати state для поточного видимого місяця
@@ -1577,6 +1580,43 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                   ))}
                 </span>
               </div>
+              {confirmedBookings?.some(b => String(b.id) === String(booking.id)) && (
+                <div className="flex justify-between items-center mt-1 gap-2">
+                  <span className="text-gray-500 shrink-0">ÜGP:</span>
+                  <button
+                    type="button"
+                    disabled={ugpLoadingBookingId === booking.id}
+                    className={linkClass + ' text-left'}
+                    onClick={async () => {
+                      const bookingId = booking.id;
+                      const propertyId = (booking as { propertyId?: string }).propertyId ?? booking.roomId;
+                      if (!propertyId) {
+                        onShowToast?.('Property not set');
+                        return;
+                      }
+                      setUgpLoadingBookingId(bookingId);
+                      try {
+                        const res = await fetch('/api/protocols/uebergabeprotokoll/get-url', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ bookingId, propertyId, format: 'docx' }),
+                        });
+                        const json = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                          const msg = (json?.error ?? 'Помилка') + (json?.stage ? ` (${json.stage})` : '');
+                          onShowToast ? onShowToast(msg) : console.error(msg);
+                          return;
+                        }
+                        if (json?.url) window.open(json.url, '_blank');
+                      } finally {
+                        setUgpLoadingBookingId(null);
+                      }
+                    }}
+                  >
+                    {ugpLoadingBookingId === booking.id ? '…' : 'DOCX'}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         );

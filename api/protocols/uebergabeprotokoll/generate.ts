@@ -22,6 +22,98 @@ function jsonResponse(body: object, status: number): Response {
   });
 }
 
+type SupabaseClient = ReturnType<typeof createClient>;
+
+/**
+ * Shared logic: fetch data, render DOCX, upload to property-documents, return signed URL.
+ * Throws on error (message and optional stage on error object).
+ */
+export async function generateDocxAndReturnUrl(
+  supabase: SupabaseClient,
+  bookingId: string,
+  propertyId: string
+): Promise<{ url: string; warning?: string }> {
+  const stageFetch = 'fetch_data';
+  let protocolData;
+  try {
+    protocolData = await getProtocolData(supabase, bookingId, propertyId);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    console.error('[uebergabe][' + stageFetch + ']', e);
+    throw Object.assign(new Error(msg), { stage: stageFetch });
+  }
+
+  const { placeholders, warning, checkInLabel } = protocolData;
+
+  const stageDownload = 'download_template';
+  let templateBlob: Blob;
+  try {
+    const { data, error: downloadErr } = await supabase.storage
+      .from(TEMPLATE_BUCKET)
+      .download(TEMPLATE_PATH);
+    if (downloadErr || !data) {
+      throw new Error(downloadErr?.message ?? 'Template not found');
+    }
+    templateBlob = data;
+  } catch (e) {
+    console.error('[uebergabe][' + stageDownload + ']', e);
+    throw Object.assign(new Error(e instanceof Error ? e.message : 'Template not found in storage.'), { stage: stageDownload });
+  }
+
+  const stageRender = 'render_docx';
+  let outBuffer: Buffer;
+  try {
+    const templateBuffer = Buffer.from(await templateBlob.arrayBuffer());
+    const zip = new PizZip(templateBuffer);
+    const doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true,
+      delimiters: { start: '{{', end: '}}' },
+    });
+    doc.render(placeholders);
+    outBuffer = doc.getZip().generate({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 9 },
+    }) as Buffer;
+  } catch (e) {
+    console.error('[uebergabe][' + stageRender + ']', e);
+    throw Object.assign(new Error(e instanceof Error ? e.message : 'Failed to render document'), { stage: stageRender });
+  }
+
+  const outputPath = `properties/${propertyId}/bookings/${bookingId}/uebergabeprotokoll_${checkInLabel}.docx`;
+
+  const stageUpload = 'upload_docx';
+  try {
+    const { error: uploadErr } = await supabase.storage
+      .from(OUTPUT_BUCKET)
+      .upload(outputPath, outBuffer, {
+        contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        upsert: true,
+      });
+    if (uploadErr) throw uploadErr;
+  } catch (e) {
+    console.error('[uebergabe][' + stageUpload + ']', e);
+    throw Object.assign(new Error(e instanceof Error ? e.message : 'Failed to save document'), { stage: stageUpload });
+  }
+
+  const stageSign = 'sign_url';
+  try {
+    const { data: signed, error: signErr } = await supabase.storage
+      .from(OUTPUT_BUCKET)
+      .createSignedUrl(outputPath, SIGNED_URL_EXPIRY_SEC);
+    if (signErr || !signed?.signedUrl) {
+      throw new Error(signErr?.message ?? 'No signed URL');
+    }
+    const result: { url: string; warning?: string } = { url: signed.signedUrl };
+    if (warning) result.warning = warning;
+    return result;
+  } catch (e) {
+    console.error('[uebergabe][' + stageSign + ']', e);
+    throw Object.assign(new Error(e instanceof Error ? e.message : 'Failed to create download link'), { stage: stageSign });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -46,97 +138,16 @@ export async function POST(request: Request) {
 
     const supabase = createClient(supabaseUrl, serviceKey);
 
-    let protocolData;
-    const stageFetch = 'fetch_data';
     try {
-      protocolData = await getProtocolData(supabase, String(bookingId), String(propertyId));
+      const result = await generateDocxAndReturnUrl(supabase, String(bookingId), String(propertyId));
+      return jsonResponse(result, 200);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Unknown error';
-      console.error('[uebergabe][' + stageFetch + ']', e);
-      const status = msg === 'Booking not found' || msg === 'Property not found' ? 404 : 500;
-      return jsonResponse({ error: msg, stage: stageFetch }, status);
-    }
-
-    const { placeholders, warning, checkInLabel } = protocolData;
-
-    const stageDownload = 'download_template';
-    let templateBlob: Blob;
-    try {
-      const { data, error: downloadErr } = await supabase.storage
-        .from(TEMPLATE_BUCKET)
-        .download(TEMPLATE_PATH);
-      if (downloadErr || !data) {
-        throw new Error(downloadErr?.message ?? 'Template not found');
-      }
-      templateBlob = data;
-    } catch (e) {
-      console.error('[uebergabe][' + stageDownload + ']', e);
+      const err = e as Error & { stage?: string };
+      const status = err.message === 'Booking not found' || err.message === 'Property not found' ? 404 : 500;
       return jsonResponse({
-        error: e instanceof Error ? e.message : 'Template not found in storage.',
-        stage: stageDownload,
-      }, 502);
-    }
-
-    const stageRender = 'render_docx';
-    let outBuffer: Buffer;
-    try {
-      const templateBuffer = Buffer.from(await templateBlob.arrayBuffer());
-      const zip = new PizZip(templateBuffer);
-      const doc = new Docxtemplater(zip, {
-        paragraphLoop: true,
-        linebreaks: true,
-        delimiters: { start: '{{', end: '}}' },
-      });
-      doc.render(placeholders);
-      outBuffer = doc.getZip().generate({
-        type: 'nodebuffer',
-        compression: 'DEFLATE',
-        compressionOptions: { level: 9 },
-      }) as Buffer;
-    } catch (e) {
-      console.error('[uebergabe][' + stageRender + ']', e);
-      return jsonResponse({
-        error: e instanceof Error ? e.message : 'Failed to render document',
-        stage: stageRender,
-      }, 500);
-    }
-
-    const outputPath = `properties/${propertyId}/bookings/${bookingId}/uebergabeprotokoll_${checkInLabel}.docx`;
-
-    const stageUpload = 'upload_docx';
-    try {
-      const { error: uploadErr } = await supabase.storage
-        .from(OUTPUT_BUCKET)
-        .upload(outputPath, outBuffer, {
-          contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          upsert: true,
-        });
-      if (uploadErr) throw uploadErr;
-    } catch (e) {
-      console.error('[uebergabe][' + stageUpload + ']', e);
-      return jsonResponse({
-        error: e instanceof Error ? e.message : 'Failed to save document',
-        stage: stageUpload,
-      }, 500);
-    }
-
-    const stageSign = 'sign_url';
-    try {
-      const { data: signed, error: signErr } = await supabase.storage
-        .from(OUTPUT_BUCKET)
-        .createSignedUrl(outputPath, SIGNED_URL_EXPIRY_SEC);
-      if (signErr || !signed?.signedUrl) {
-        throw new Error(signErr?.message ?? 'No signed URL');
-      }
-      const response: { url: string; warning?: string } = { url: signed.signedUrl };
-      if (warning) response.warning = warning;
-      return jsonResponse(response, 200);
-    } catch (e) {
-      console.error('[uebergabe][' + stageSign + ']', e);
-      return jsonResponse({
-        error: e instanceof Error ? e.message : 'Failed to create download link',
-        stage: stageSign,
-      }, 500);
+        error: err.message,
+        ...(err.stage && { stage: err.stage }),
+      }, status);
     }
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Internal error';
