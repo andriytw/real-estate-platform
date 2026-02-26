@@ -1,9 +1,9 @@
 /**
  * POST /api/protocols/uebergabeprotokoll/generate-pdf
  * Body: { bookingId: string, propertyId: string }
- * Returns: { pdfUrl: string, docxUrl?: string, warning?: string }
+ * Returns: { pdfUrl: string, warning?: string }
  * Generates Guest Übergabeprotokoll as PDF (DOCX → HTML → PDF), uploads to property-documents, returns signed URL.
- * Uses Node runtime (not Edge). Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
+ * Uses Node runtime. Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -39,25 +39,27 @@ ${innerHtml}
 </html>`;
 }
 
+function jsonResponse(body: object, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const bookingId = body?.bookingId ?? body?.booking_id;
     const propertyId = body?.propertyId ?? body?.property_id;
     if (!bookingId || !propertyId) {
-      return new Response(
-        JSON.stringify({ error: 'Missing bookingId or propertyId' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse({ error: 'Missing bookingId or propertyId' }, 400);
     }
 
     const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!supabaseUrl || !serviceKey) {
-      return new Response(
-        JSON.stringify({ error: 'Server configuration error' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
+      console.error('[generate-pdf] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+      return jsonResponse({ error: 'Server configuration error' }, 500);
     }
 
     const supabase = createClient(supabaseUrl, serviceKey);
@@ -67,11 +69,9 @@ export async function POST(request: Request) {
       protocolData = await getProtocolData(supabase, String(bookingId), String(propertyId));
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error';
+      console.error('[generate-pdf] getProtocolData failed:', e);
       const status = msg === 'Booking not found' || msg === 'Property not found' ? 404 : 500;
-      return new Response(JSON.stringify({ error: msg }), {
-        status,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: msg }, status);
     }
 
     const { placeholders, warning, checkInLabel } = protocolData;
@@ -81,47 +81,68 @@ export async function POST(request: Request) {
       .download(TEMPLATE_PATH);
 
     if (downloadErr || !templateBlob) {
-      return new Response(
-        JSON.stringify({ error: 'Template not found in storage.' }),
-        { status: 502, headers: { 'Content-Type': 'application/json' } }
-      );
+      console.error('[generate-pdf] Template download failed:', downloadErr);
+      return jsonResponse({ error: 'Template not found in storage.' }, 502);
     }
 
-    const templateBuffer = Buffer.from(await templateBlob.arrayBuffer());
-    const zip = new PizZip(templateBuffer);
-    const doc = new Docxtemplater(zip, {
-      paragraphLoop: true,
-      linebreaks: true,
-      delimiters: { start: '{{', end: '}}' },
-    });
-    doc.render(placeholders);
-    const outDocxBuffer = doc.getZip().generate({
-      type: 'nodebuffer',
-      compression: 'DEFLATE',
-      compressionOptions: { level: 9 },
-    }) as Buffer;
+    let outDocxBuffer: Buffer;
+    try {
+      const templateBuffer = Buffer.from(await templateBlob.arrayBuffer());
+      const zip = new PizZip(templateBuffer);
+      const doc = new Docxtemplater(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+        delimiters: { start: '{{', end: '}}' },
+      });
+      doc.render(placeholders);
+      outDocxBuffer = doc.getZip().generate({
+        type: 'nodebuffer',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 9 },
+      }) as Buffer;
+    } catch (e) {
+      console.error('[generate-pdf] Docx render failed:', e);
+      return jsonResponse({ error: e instanceof Error ? e.message : 'Failed to render document' }, 500);
+    }
 
-    const mammothResult = await mammoth.convertToHtml({ buffer: outDocxBuffer });
-    const fullHtml = wrapHtmlForPdf(mammothResult.value);
-
-    const executablePath = await chromium.executablePath();
-    const browser = await puppeteer.launch({
-      args: chromium.args,
-      executablePath,
-      headless: true,
-    });
+    let fullHtml: string;
+    try {
+      const { value: html } = await mammoth.convertToHtml({ buffer: outDocxBuffer });
+      fullHtml = wrapHtmlForPdf(html);
+    } catch (e) {
+      console.error('[generate-pdf] Mammoth convertToHtml failed:', e);
+      return jsonResponse({ error: e instanceof Error ? e.message : 'Failed to convert document to HTML' }, 500);
+    }
 
     let pdfBuffer: Buffer;
+    let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
     try {
+      const executablePath = await chromium.executablePath();
+      browser = await puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: null,
+        executablePath,
+        headless: true,
+      });
       const page = await browser.newPage();
       await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
       pdfBuffer = (await page.pdf({
         format: 'A4',
         printBackground: true,
-        margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' },
       })) as Buffer;
+    } catch (e) {
+      console.error('[generate-pdf] Puppeteer/Chromium failed:', e);
+      return jsonResponse({
+        error: e instanceof Error ? e.message : 'Failed to generate PDF',
+      }, 500);
     } finally {
-      await browser.close();
+      if (browser) {
+        try {
+          await browser.close();
+        } catch (closeErr) {
+          console.error('[generate-pdf] Browser close error:', closeErr);
+        }
+      }
     }
 
     const pdfPath = `properties/${propertyId}/bookings/${bookingId}/uebergabeprotokoll_${checkInLabel}.pdf`;
@@ -134,10 +155,8 @@ export async function POST(request: Request) {
       });
 
     if (uploadErr) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to save PDF: ' + uploadErr.message }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
+      console.error('[generate-pdf] Storage upload failed:', uploadErr);
+      return jsonResponse({ error: 'Failed to save PDF: ' + uploadErr.message }, 500);
     }
 
     const { data: signed, error: signErr } = await supabase.storage
@@ -145,25 +164,18 @@ export async function POST(request: Request) {
       .createSignedUrl(pdfPath, SIGNED_URL_EXPIRY_SEC);
 
     if (signErr || !signed?.signedUrl) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to create download link' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
+      console.error('[generate-pdf] Signed URL failed:', signErr);
+      return jsonResponse({ error: 'Failed to create download link' }, 500);
     }
 
-    const response: { pdfUrl: string; docxUrl?: string; warning?: string } = { pdfUrl: signed.signedUrl };
+    const response: { pdfUrl: string; warning?: string } = { pdfUrl: signed.signedUrl };
     if (warning) response.warning = warning;
 
-    return new Response(JSON.stringify(response), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse(response, 200);
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Internal error';
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    console.error('[generate-pdf] Unhandled error:', e);
+    return jsonResponse({ error: message }, 500);
   }
 }
 

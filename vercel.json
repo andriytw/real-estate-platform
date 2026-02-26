@@ -1,3 +1,9 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "functions": {
+    "api/protocols/uebergabeprotokoll/generate-pdf.ts": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  }
 }
