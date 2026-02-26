@@ -2280,6 +2280,7 @@ const AccountDashboard: React.FC = () => {
   // --- Toast notifications ---
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [createdOfferId, setCreatedOfferId] = useState<string | null>(null);
+  const [uebergabeprotokollLoading, setUebergabeprotokollLoading] = useState(false);
 
   // Stats
   const activePropertiesCount = properties.length;
@@ -3798,6 +3799,29 @@ const AccountDashboard: React.FC = () => {
     matches.sort((a, b) => (b.start > a.start ? 1 : b.start < a.start ? -1 : 0));
     return matches[0];
   }, [confirmedBookings, selectedPropertyId]);
+
+  const handleUebergabeprotokollGenerate = async () => {
+    if (!currentStay || !selectedPropertyId) return;
+    setUebergabeprotokollLoading(true);
+    try {
+      const res = await fetch('/api/protocols/uebergabeprotokoll/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: currentStay.id, propertyId: selectedPropertyId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToastMessage(json?.error || `Помилка ${res.status}`);
+        return;
+      }
+      if (json.url) window.open(json.url, '_blank');
+      if (json.warning) setToastMessage(json.warning);
+    } catch (e) {
+      setToastMessage(e instanceof Error ? e.message : 'Помилка генерації акту');
+    } finally {
+      setUebergabeprotokollLoading(false);
+    }
+  };
 
   const handleSaveReservation = async (reservation: ReservationData) => {
       try {
@@ -8344,7 +8368,15 @@ ${internalCompany} Team`;
                               <div className="text-gray-300 text-right tabular-nums">{formatEurAktOrendar(paidAmountNum)}</div>
                               <div className="text-gray-300 text-right tabular-nums">{formatEurAktOrendar(totalAmountNumSafe)}</div>
                               <div className="flex flex-row gap-2 items-center">
-                                <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed">Акт прийому-передачі</button>
+                                <button
+                                  type="button"
+                                  disabled={!currentStay || !selectedPropertyId || uebergabeprotokollLoading}
+                                  onClick={handleUebergabeprotokollGenerate}
+                                  title={currentStay && selectedPropertyId ? 'Згенерувати акт прийому-передачі' : 'Оберіть об\'єкт і наявність орендаря'}
+                                  className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed disabled:opacity-60 disabled:cursor-not-allowed enabled:bg-emerald-600 enabled:text-white enabled:hover:bg-emerald-500 enabled:cursor-pointer"
+                                >
+                                  {uebergabeprotokollLoading ? '…' : 'Акт прийому-передачі'}
+                                </button>
                                 <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed">Прописка</button>
                               </div>
                             </>
