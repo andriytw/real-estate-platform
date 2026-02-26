@@ -6966,11 +6966,24 @@ ${internalCompany} Team`;
                                 </div>
                                 <div className="min-h-0 flex-1 overflow-auto p-4">
                                     {(() => {
-                                        const path = docPreview.url.split('?')[0].toLowerCase();
-                                        if (path.endsWith('.pdf')) {
+                                        const isPdf = (() => {
+                                            try {
+                                                return new URL(docPreview.url).pathname.toLowerCase().endsWith('.pdf');
+                                            } catch {
+                                                return /\.pdf(\?|$)/i.test(docPreview.url);
+                                            }
+                                        })();
+                                        const pathForExt = (() => {
+                                            try {
+                                                return new URL(docPreview.url).pathname.toLowerCase();
+                                            } catch {
+                                                return docPreview.url.split('?')[0].toLowerCase();
+                                            }
+                                        })();
+                                        if (isPdf) {
                                             return <iframe src={docPreview.url} title={docPreview.title} className="w-full min-h-[75vh] rounded-b bg-white" />;
                                         }
-                                        if (['.png', '.jpg', '.jpeg', '.webp'].some(ext => path.endsWith(ext))) {
+                                        if (['.png', '.jpg', '.jpeg', '.webp'].some(ext => pathForExt.endsWith(ext))) {
                                             return <img src={docPreview.url} alt={docPreview.title} className="max-w-full max-h-[75vh] object-contain mx-auto" />;
                                         }
                                         return (
