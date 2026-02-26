@@ -1,6 +1,6 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Plus, ChevronDown, Calendar as CalendarIcon, X, Check, Building, Clock, CheckCircle2, MoreHorizontal, User, AlignLeft, Tag, LayoutGrid, List, Filter, Paperclip, Send, Image as ImageIcon, FileText, Mail, ClipboardList, Loader, CheckSquare, ArrowUpDown, Layers, Archive, History, ShieldCheck, Hammer, Video } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Plus, ChevronDown, Calendar as CalendarIcon, X, Check, Building, Clock, CheckCircle2, MoreHorizontal, User, AlignLeft, Tag, LayoutGrid, List, Filter, Paperclip, Send, Image as ImageIcon, FileText, Mail, ClipboardList, Loader, CheckSquare, ArrowUpDown, Layers, Archive, History, ShieldCheck, Hammer, Video, Download, XCircle } from 'lucide-react';
 import { MOCK_PROPERTIES } from '../constants';
 import { CalendarEvent, TaskType, TaskStatus, Property, BookingStatus, Worker } from '../types';
 import { updateBookingStatusFromTask } from '../bookingUtils';
@@ -30,6 +30,14 @@ interface AdminCalendarProps {
   properties?: Property[];
   categories?: TaskType[]; // Task categories for filtering
   onUpdateBookingStatus?: (bookingId: string | number, newStatus: BookingStatus) => void; // Callback for updating booking status
+}
+
+// Facility calendar only: single source-of-truth bucket for counters, styling, and filtering
+type TaskBucket = 'total' | 'in_progress' | 'completed_archived';
+function getTaskBucket(e: CalendarEvent): TaskBucket {
+  if (e.status === 'in_progress') return 'in_progress';
+  if (e.status === 'completed' || e.status === 'verified' || e.status === 'archived') return 'completed_archived';
+  return 'total';
 }
 
 const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpdateEvent, showLegend = true, properties, categories, onUpdateBookingStatus }) => {
@@ -114,10 +122,80 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   const dropdownRef = useRef<HTMLDivElement>(null);
   const filterDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Statistics Calculation
+  // Facility-only: clickable tiles filter state
+  const [activeBucket, setActiveBucket] = useState<TaskBucket | null>(null);
+
+  // Statistics: Facility uses getTaskBucket; Accounting keeps original counters
   const totalTasks = events.length;
-  const archivedTasks = events.filter(e => e.status === 'archived').length;
-  const pendingTasks = events.filter(e => e.status === 'pending' || e.status === 'review').length;
+  const inProgressTasks = isAccountingCalendar
+    ? events.filter(e => e.status === 'pending' || e.status === 'review').length
+    : events.filter(e => getTaskBucket(e) === 'in_progress').length;
+  const completedTasks = isAccountingCalendar
+    ? events.filter(e => e.status === 'archived').length
+    : events.filter(e => getTaskBucket(e) === 'completed_archived').length;
+  // Legacy names for Accounting tile display
+  const pendingTasks = inProgressTasks;
+  const archivedTasks = completedTasks;
+
+  // Unified "done" styling: Facility uses bucket; Accounting uses status
+  const isDoneTask = (event: CalendarEvent) =>
+    isAccountingCalendar
+      ? (event.status === 'completed' || event.status === 'verified' || event.status === 'archived')
+      : getTaskBucket(event) === 'completed_archived';
+
+  // Facility: filtered and grouped list for tile selection
+  const facilityFilteredGrouped = useMemo(() => {
+    if (isAccountingCalendar || activeBucket == null) return [];
+    const list = activeBucket === 'total' ? events : events.filter(e => getTaskBucket(e) === activeBucket);
+    const sorted = [...list].sort((a, b) => {
+      const dA = a.date || '';
+      const dB = b.date || '';
+      if (dA !== dB) return dA.localeCompare(dB);
+      return (a.time || '').localeCompare(b.time || '');
+    });
+    const byDate: { date: string; events: CalendarEvent[] }[] = [];
+    let last = '';
+    for (const e of sorted) {
+      const d = e.date || '';
+      if (d !== last) {
+        last = d;
+        byDate.push({ date: d, events: [e] });
+      } else {
+        byDate[byDate.length - 1].events.push(e);
+      }
+    }
+    return byDate;
+  }, [isAccountingCalendar, activeBucket, events]);
+
+  // CSV helpers (Facility only, use propertyList + workers from closure)
+  const toCsvRow = (values: string[]): string =>
+    values.map(v => {
+      const s = String(v ?? '').replace(/\r?\n/g, ' ').trim();
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    }).join(',');
+
+  const buildCsv = (taskList: CalendarEvent[]): string => {
+    const header = toCsvRow(['id', 'date', 'time', 'title', 'type', 'status', 'assignee_name', 'property_title', 'property_address', 'description_short']);
+    const rows = taskList.map(e => {
+      const prop = e.propertyId ? propertyList.find(p => p.id === e.propertyId) : null;
+      const assigneeName = e.assignee || (e.workerId ? workers.find(w => w.id === e.workerId)?.name : '') || '';
+      const desc = (e.description || '').replace(/\r?\n/g, ' ').trim().slice(0, 120);
+      return toCsvRow([
+        e.id,
+        e.date || '',
+        e.time || '',
+        e.title || '',
+        (e.type as string) || '',
+        e.status || '',
+        assigneeName,
+        prop?.title || '',
+        (prop as any)?.address || (prop as any)?.full_address || '',
+        desc
+      ]);
+    });
+    return [header, ...rows].join('\r\n');
+  };
 
   // Load workers from database
   useEffect(() => {
@@ -236,9 +314,8 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
   const sortEvents = (eventsList: CalendarEvent[], sortType: 'time' | 'type') => {
     return [...eventsList].sort((a, b) => {
-      // Спочатку сортуємо за статусом: невиконані зверху, виконані внизу
-      const aCompleted = a.status === 'completed' || a.status === 'verified' || a.status === 'archived';
-      const bCompleted = b.status === 'completed' || b.status === 'verified' || b.status === 'archived';
+      const aCompleted = isDoneTask(a);
+      const bCompleted = isDoneTask(b);
       
       if (aCompleted !== bCompleted) {
         return aCompleted ? 1 : -1; // Невиконані спочатку
@@ -462,37 +539,161 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
         {/* Statistics Tiles */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full mb-2">
-          <div className="bg-[#161B22] border border-gray-800 rounded-lg p-4 flex items-center justify-between shadow-sm">
-             <div>
-                <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Total Tasks</p>
-                <p className="text-2xl font-bold text-white">{totalTasks}</p>
-             </div>
-             <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                <ClipboardList className="w-5 h-5 text-blue-400" />
-             </div>
-          </div>
-          
-          <div className="bg-[#161B22] border border-gray-800 rounded-lg p-4 flex items-center justify-between shadow-sm">
-             <div>
-                <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">In Progress</p>
-                <p className="text-2xl font-bold text-white">{pendingTasks}</p>
-             </div>
-             <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center">
-                <Loader className="w-5 h-5 text-yellow-400" />
-             </div>
-          </div>
-          
-          <div className="bg-[#161B22] border border-gray-800 rounded-lg p-4 flex items-center justify-between shadow-sm">
-             <div>
-                <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Completed / Archived</p>
-                <p className="text-2xl font-bold text-white">{archivedTasks}</p>
-             </div>
-             <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                <Archive className="w-5 h-5 text-emerald-400" />
-             </div>
-          </div>
+          {isAccountingCalendar ? (
+            <>
+              <div className="bg-[#161B22] border border-gray-800 rounded-lg p-4 flex items-center justify-between shadow-sm">
+                <div>
+                  <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Total Tasks</p>
+                  <p className="text-2xl font-bold text-white">{totalTasks}</p>
+                </div>
+                <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                  <ClipboardList className="w-5 h-5 text-blue-400" />
+                </div>
+              </div>
+              <div className="bg-[#161B22] border border-gray-800 rounded-lg p-4 flex items-center justify-between shadow-sm">
+                <div>
+                  <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">In Progress</p>
+                  <p className="text-2xl font-bold text-white">{pendingTasks}</p>
+                </div>
+                <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center">
+                  <Loader className="w-5 h-5 text-yellow-400" />
+                </div>
+              </div>
+              <div className="bg-[#161B22] border border-gray-800 rounded-lg p-4 flex items-center justify-between shadow-sm">
+                <div>
+                  <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Completed / Archived</p>
+                  <p className="text-2xl font-bold text-white">{archivedTasks}</p>
+                </div>
+                <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                  <Archive className="w-5 h-5 text-emerald-400" />
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setActiveBucket(activeBucket === 'total' ? null : 'total')}
+                className={`bg-[#161B22] border rounded-lg p-4 flex items-center justify-between shadow-sm text-left transition-all ${
+                  activeBucket === 'total' ? 'border-blue-500 ring-2 ring-blue-500/50' : 'border-gray-800 hover:border-gray-600'
+                }`}
+              >
+                <div>
+                  <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Total Tasks</p>
+                  <p className="text-2xl font-bold text-white">{totalTasks}</p>
+                </div>
+                <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                  <ClipboardList className="w-5 h-5 text-blue-400" />
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveBucket(activeBucket === 'in_progress' ? null : 'in_progress')}
+                className={`bg-[#161B22] border rounded-lg p-4 flex items-center justify-between shadow-sm text-left transition-all ${
+                  activeBucket === 'in_progress' ? 'border-yellow-500 ring-2 ring-yellow-500/50' : 'border-gray-800 hover:border-gray-600'
+                }`}
+              >
+                <div>
+                  <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">In Progress</p>
+                  <p className="text-2xl font-bold text-white">{inProgressTasks}</p>
+                </div>
+                <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center">
+                  <Loader className="w-5 h-5 text-yellow-400" />
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveBucket(activeBucket === 'completed_archived' ? null : 'completed_archived')}
+                className={`bg-[#161B22] border rounded-lg p-4 flex items-center justify-between shadow-sm text-left transition-all ${
+                  activeBucket === 'completed_archived' ? 'border-emerald-500 ring-2 ring-emerald-500/50' : 'border-gray-800 hover:border-gray-600'
+                }`}
+              >
+                <div>
+                  <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Completed</p>
+                  <p className="text-2xl font-bold text-white">{completedTasks}</p>
+                </div>
+                <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                </div>
+              </button>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Facility only: filtered list panel when a tile is selected */}
+      {!isAccountingCalendar && activeBucket != null && (
+        <div className="mb-6 flex flex-col gap-3 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-gray-300">
+              {activeBucket === 'total' && 'All tasks'}
+              {activeBucket === 'in_progress' && 'In progress'}
+              {activeBucket === 'completed_archived' && 'Completed'}
+            </h3>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const filtered = activeBucket === 'total' ? events : events.filter(e => getTaskBucket(e) === activeBucket);
+                  const csv = buildCsv(filtered);
+                  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `facility_tasks_${activeBucket}_${new Date().toISOString().slice(0, 10)}.csv`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+              >
+                <Download className="w-4 h-4" /> Download CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveBucket(null)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-600 hover:border-gray-500 text-gray-300 hover:text-white transition-colors"
+              >
+                <XCircle className="w-4 h-4" /> Clear filter
+              </button>
+            </div>
+          </div>
+          <div className="bg-[#161B22] border border-gray-800 rounded-lg overflow-hidden max-h-[320px] overflow-y-auto">
+            {facilityFilteredGrouped.length === 0 ? (
+              <div className="p-6 text-center text-gray-500 text-sm">No tasks in this filter.</div>
+            ) : (
+              <ul className="divide-y divide-gray-800">
+                {facilityFilteredGrouped.map(({ date, events: dayEvents }) => (
+                  <li key={date}>
+                    <div className="px-4 py-2 bg-[#0D1117] text-xs font-bold text-gray-400 sticky top-0">
+                      {date || 'No date'}
+                    </div>
+                    {dayEvents.map(event => {
+                      const prop = event.propertyId ? propertyList.find(p => p.id === event.propertyId) : null;
+                      const assigneeName = event.assignee || (event.workerId ? workers.find(w => w.id === event.workerId)?.name : '') || '';
+                      return (
+                        <div
+                          key={event.id}
+                          className="px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm border-t border-gray-800/50 hover:bg-[#1C1F24]"
+                        >
+                          <span className="font-mono text-gray-500 w-14 shrink-0">{event.time || '—'}</span>
+                          <span className="font-medium text-white truncate min-w-0 flex-1">{event.title}</span>
+                          <span className="px-1.5 py-0.5 rounded text-xs font-bold uppercase bg-gray-700 text-gray-300 shrink-0">{event.status}</span>
+                          {assigneeName && <span className="text-gray-400 shrink-0">{assigneeName}</span>}
+                          {(prop?.title || (prop as any)?.address) && (
+                            <span className="text-gray-500 truncate max-w-[200px] shrink-0" title={prop?.title || (prop as any)?.address}>
+                              {prop?.title || (prop as any)?.address}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Navigation Controls */}
       <div className="space-y-6 mb-6 flex-shrink-0">
@@ -723,8 +924,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                 {/* Events List */}
                 <div className="flex flex-col gap-2 flex-1 overflow-y-auto min-h-0 pr-1 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
                   {sortedDayEvents.length > 0 ? sortedDayEvents.map((event) => {
-                    const isCompleted = event.status === 'completed' || event.status === 'verified' || event.status === 'archived';
-                    
+                    const isCompleted = isDoneTask(event);
                     return (
                     <div 
                       key={event.id}
@@ -745,7 +945,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                       )}
                       
                       <div className={`font-semibold leading-snug mb-0.5 truncate ${viewMode === 'day' ? 'text-lg' : 'text-xs'} ${
-                        isCompleted ? 'text-gray-500 line-through' : 'text-white'
+                        isDoneTask(event) ? 'text-gray-500 line-through' : 'text-white'
                       }`}>
                          {event.title}
                       </div>
@@ -940,12 +1140,10 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                     <div className={`w-3 h-3 rounded-full ${getDotColor(viewEvent.type as string)}`}></div>
                     <div>
                        <h3 className={`text-lg font-bold leading-none flex items-center gap-2 ${
-                         viewEvent.status === 'archived' || viewEvent.status === 'completed' || viewEvent.status === 'verified'
-                           ? 'text-gray-500 line-through'
-                           : 'text-white'
+                         isDoneTask(viewEvent) ? 'text-gray-500 line-through' : 'text-white'
                        }`}>
                          {viewEvent.title}
-                         {viewEvent.status === 'archived' && <Archive className="w-4 h-4 text-gray-500" />}
+                         {isAccountingCalendar ? (viewEvent.status === 'archived' && <Archive className="w-4 h-4 text-gray-500" />) : (isDoneTask(viewEvent) && <CheckCircle2 className="w-4 h-4 text-gray-500" />)}
                        </h3>
                        <span className={`text-xs font-bold ${getTaskTextColor(viewEvent.type as string)}`}>{viewEvent.type}</span>
                     </div>
@@ -1199,7 +1397,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                        </div>
                      )}
 
-                     <div className={`space-y-6 ${viewEvent.status === 'archived' ? 'opacity-60' : ''}`}>
+                     <div className={`space-y-6 ${isDoneTask(viewEvent) ? 'opacity-60' : ''}`}>
                         <div>
                            <label className="text-xs text-gray-500 font-medium block mb-1">Date & Time</label>
                            <div className="flex items-center gap-2 text-white">
@@ -1307,7 +1505,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                           alert(`Помилка оновлення завдання: ${error.message || 'Невідома помилка'}`);
                                       }
                                   }}
-                                  disabled={viewEvent.status === 'archived' || viewEvent.status === 'verified' || loadingWorkers}
+                                  disabled={isDoneTask(viewEvent) || loadingWorkers}
                                   className="w-full appearance-none bg-[#0D1117] border border-gray-700 hover:border-gray-500 rounded-lg py-2 pl-10 pr-8 text-sm text-white focus:border-emerald-500 focus:outline-none cursor-pointer transition-colors"
                               >
                                   <option value="">Unassigned</option>
@@ -1381,12 +1579,12 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                         <div ref={chatEndRef} />
                      </div>
 
-                     {/* Input Area - Disabled if Archived */}
+                     {/* Input Area - Disabled if completed (Facility) / archived (Accounting) */}
                      <div className="p-3 bg-[#161B22] border-t border-gray-700">
-                        {viewEvent.status === 'archived' ? (
+                        {isDoneTask(viewEvent) ? (
                            <div className="text-center text-gray-500 text-xs py-2 flex items-center justify-center gap-2">
-                              <Archive className="w-4 h-4" />
-                              This task is archived. Chat is read-only.
+                              {isAccountingCalendar ? <Archive className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                              {isAccountingCalendar ? 'This task is archived. Chat is read-only.' : 'This task is completed. Chat is read-only.'}
                            </div>
                         ) : (
                            <div className="flex items-center gap-2">
@@ -1477,7 +1675,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                         onClick={(e) => handleEventClick(e, event)}
                         className={`
                           border rounded-lg p-3 transition-colors group flex items-center justify-between gap-4 shadow-sm hover:shadow-md cursor-pointer relative
-                          ${event.status === 'archived' || event.status === 'verified' || event.status === 'completed'
+                          ${isDoneTask(event)
                              ? 'bg-[#161B22]/50 border-gray-800 opacity-50 grayscale' 
                              : event.status === 'done_by_worker'
                                 ? 'bg-[#161B22] border-yellow-500/50'
@@ -1502,7 +1700,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                 <span>{event.isAllDay ? 'All Day' : event.time}</span>
                             </div>
                         </div>
-                        <h3 className={`text-sm font-bold truncate ${event.status === 'archived' || event.status === 'completed' || event.status === 'verified' ? 'text-gray-500 line-through' : 'text-white'}`}>
+                        <h3 className={`text-sm font-bold truncate ${isDoneTask(event) ? 'text-gray-500 line-through' : 'text-white'}`}>
                           {event.title}
                         </h3>
                          {event.status === 'done_by_worker' && (
@@ -1525,8 +1723,8 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
                       {/* Actions Right */}
                       <div className="flex items-center gap-1">
-                         {(event.status === 'archived' || event.status === 'verified' || event.status === 'completed') && (
-                             <Archive className="w-5 h-5 text-gray-600" />
+                         {isDoneTask(event) && (
+                             isAccountingCalendar ? <Archive className="w-5 h-5 text-gray-600" /> : <CheckCircle2 className="w-5 h-5 text-gray-600" />
                          )}
                          
                          <button className="p-2 text-gray-500 hover:text-white hover:bg-gray-700 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
