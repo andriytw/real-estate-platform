@@ -1119,12 +1119,13 @@ const AccountDashboard: React.FC = () => {
     setShowSuggestions(list.length > 0);
   }, [searchQuery, warehouseStock]);
 
-  // Filtered stock based on search query
+  // Filtered stock: hide qty <= 0 (fallback if getStock returns them), then apply search
   const filteredWarehouseStock = useMemo(() => {
-    if (!searchQuery.trim()) return warehouseStock;
+    const withQty = warehouseStock.filter((item) => (Number(item.quantity) ?? 0) > 0);
+    if (!searchQuery.trim()) return withQty;
 
     const query = searchQuery.toLowerCase().trim();
-    return warehouseStock.filter((item) => {
+    return withQty.filter((item) => {
       const dateStr = item.purchaseDate
         ? new Date(item.purchaseDate).toLocaleDateString('uk-UA').toLowerCase()
         : '';
@@ -1965,7 +1966,7 @@ const AccountDashboard: React.FC = () => {
 
         // Process any verified/completed transfer tasks (e.g. confirmed in another tab) so inventory is applied
         for (const task of validTasks) {
-          if ((task.status === 'completed' || task.status === 'verified') && task.description) {
+          if (task.status === 'verified' && task.description) {
             try {
               const parsed = JSON.parse(task.description);
               if (parsed.action === 'transfer_inventory' && parsed.transferData && !parsed.transferExecuted) {
@@ -2131,9 +2132,9 @@ const AccountDashboard: React.FC = () => {
         (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1246',message:'Tasks loaded from DB',data:{totalTasks:tasks.length,tasksByBooking},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
         // #endregion
         
-        // Перевірити, чи є transfer tasks, які стали completed/verified і потребують виконання
+        // Finalize transfer only when status is verified (not on completed)
         for (const task of tasks) {
-          if ((task.status === 'completed' || task.status === 'verified') && task.description) {
+          if (task.status === 'verified' && task.description) {
             try {
               const desc = task.description;
               const parsed = JSON.parse(desc);
@@ -5260,7 +5261,35 @@ ${internalCompany} Team`;
       // #region agent log
       (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2655',message:'H1-H5: handleAdminEventUpdate ENTRY',data:{taskId:updatedEvent.id,taskType:updatedEvent.type,bookingId:updatedEvent.bookingId,workerId:updatedEvent.workerId,date:updatedEvent.date,day:updatedEvent.day,status:updatedEvent.status,adminEventsCount:adminEvents.length,existingTaskInState:adminEvents.find(e=>e.id===updatedEvent.id)?true:false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{}));
       // #endregion
-      
+
+      // Transfer verify: finalize BEFORE persisting verified; minimal PATCH on success; on failure toast + log, do not set verified
+      if (updatedEvent.status === 'verified' && updatedEvent.description) {
+        try {
+          const parsed = JSON.parse(updatedEvent.description);
+          if (parsed?.action === 'transfer_inventory' && parsed?.transferData && !parsed?.transferExecuted) {
+            try {
+              await executeInventoryTransfer(parsed);
+            } catch (finalizeErr: any) {
+              const errMsg = finalizeErr?.message ?? String(finalizeErr);
+              console.error('❌ Finalize inventory transfer failed', { task_id: updatedEvent.id, error: errMsg });
+              setToastMessage(errMsg || 'Transfer finalization failed. Please try again.');
+              return;
+            }
+            parsed.transferExecuted = true;
+            const patchPayload = {
+              status: 'verified' as const,
+              description: JSON.stringify(parsed),
+              date: updatedEvent.date,
+              day: updatedEvent.day,
+            };
+            const savedTask = await tasksService.update(updatedEvent.id, patchPayload);
+            setAdminEvents(prev => prev.map(ev => (ev.id === updatedEvent.id ? { ...ev, ...savedTask } : ev)));
+            window.dispatchEvent(new CustomEvent('taskUpdated'));
+            return;
+          }
+        } catch (_) { /* not JSON or not transfer */ }
+      }
+
       // #region agent log
       const taskBeforeUpdate = adminEvents.find(e => e.id === updatedEvent.id);
       (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2660',message:'H2: Task state BEFORE local update',data:{taskId:updatedEvent.id,dateBefore:taskBeforeUpdate?.date,dayBefore:taskBeforeUpdate?.day,workerIdBefore:taskBeforeUpdate?.workerId,dateAfter:updatedEvent.date,dayAfter:updatedEvent.day,workerIdAfter:updatedEvent.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{}));
@@ -5314,22 +5343,6 @@ ${internalCompany} Team`;
           // NOTE: We do NOT reload tasks here to prevent race condition
           // The local state is already updated above, and Kanban will reload on its own
           window.dispatchEvent(new CustomEvent('taskUpdated'));
-
-          // Finalize inventory transfer when manager confirms (verified); does not rely on taskUpdated listener
-          if (updatedEvent.status === 'verified' && updatedEvent.description) {
-            try {
-              const parsed = JSON.parse(updatedEvent.description);
-              if (parsed.action === 'transfer_inventory' && parsed.transferData && !parsed.transferExecuted) {
-                console.log('📦 Finalizing inventory transfer on manager confirm for task:', updatedEvent.id);
-                await executeInventoryTransfer(parsed);
-                parsed.transferExecuted = true;
-                await tasksService.update(updatedEvent.id, { description: JSON.stringify(parsed) });
-                console.log('✅ Inventory transfer finalized for task:', updatedEvent.id);
-              }
-            } catch (e) {
-              // Not a transfer task or parse error — ignore
-            }
-          }
       } catch (error: any) {
           // #region agent log
           (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2690',message:'H3: ERROR in DB update',data:{taskId:updatedEvent.id,error:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{}));

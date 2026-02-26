@@ -142,6 +142,9 @@ export const warehouseService = {
       query = query.eq('warehouse_id', warehouseId);
     }
 
+    // Hide rows with qty <= 0 (e.g. after full transfer to property)
+    query = query.gt('quantity', 0);
+
     const { data, error } = await query;
 
     if (error) {

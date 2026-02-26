@@ -754,7 +754,7 @@ export type TaskType =
 
 // Task Status State Machine for Facility Tasks
 // open → assigned → done_by_worker → verified
-export type TaskStatus = 'open' | 'assigned' | 'done_by_worker' | 'verified' | 'pending' | 'review' | 'archived' | 'completed';
+export type TaskStatus = 'open' | 'assigned' | 'in_progress' | 'done_by_worker' | 'verified' | 'pending' | 'review' | 'archived' | 'completed';
 
 
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';

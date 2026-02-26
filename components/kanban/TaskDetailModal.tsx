@@ -231,22 +231,18 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     }
   };
 
-  const getStatusButton = (status: TaskStatus, label: string, icon: React.ReactNode) => {
+  const getStatusButton = (status: TaskStatus, label: string, icon: React.ReactNode, readOnly = false) => {
     const isActive = task?.status === status;
-    const isCompleted = status === 'completed';
-    
+    const activeColorClass = getStatusColor(status);
     return (
       <button
-        onClick={() => handleStatusChange(status)}
-        disabled={isUpdating || isActive}
+        type="button"
+        onClick={readOnly ? undefined : () => handleStatusChange(status)}
+        disabled={isUpdating || isActive || readOnly}
         className={`
           flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-all
-          ${isActive 
-            ? 'bg-blue-500/20 border-blue-500 text-blue-400 cursor-not-allowed' 
-            : isCompleted
-            ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 hover:border-emerald-400 hover:bg-emerald-500/30'
-            : 'bg-[#1C1F24] border-gray-700 text-gray-300 hover:border-blue-500 hover:text-blue-400'
-          }
+          ${isActive ? `${activeColorClass} cursor-default` : 'bg-[#1C1F24] border-gray-700 text-gray-300 hover:border-blue-500 hover:text-blue-400'}
+          ${readOnly ? 'cursor-not-allowed opacity-80' : ''}
           ${isUpdating ? 'opacity-50 cursor-not-allowed' : ''}
         `}
       >
@@ -313,7 +309,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               <div className="flex flex-wrap gap-2">
                 {!isWorker && getStatusButton('in_progress', 'In Progress', <Circle className="w-3 h-3" />)}
                 {getStatusButton('completed', 'Mark as Done', <CheckCircle2 className="w-3 h-3" />)}
-                {getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />)}
+                {isWorker
+                  ? (task?.status === 'verified' && getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />, true))
+                  : getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />)}
               </div>
               {/* Media upload for worker */}
               <div className="mt-3 border-t border-blue-500/20 pt-3">
