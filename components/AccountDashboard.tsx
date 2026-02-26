@@ -174,6 +174,20 @@ type PaymentTileState = {
   attachments: (File | PaymentChainAttachment)[];
 };
 
+function normalizeSearch(s: string) {
+  return (s || "")
+    .toLowerCase()
+    .trim()
+    .replaceAll("ß", "ss")
+    .replaceAll("straße", "strasse");
+}
+
+function extractStreet(address?: string | null) {
+  if (!address) return "";
+  const firstPart = address.split(",")[0]?.trim() ?? "";
+  return firstPart.replace(/\s*\d.*$/, "").trim();
+}
+
 // --- TASK CATEGORIES ---
 const FACILITY_TASK_TYPES: TaskType[] = [
     'Einzug', 'Auszug', 'Putzen', 'Reklamation', 'Arbeit nach plan', 'Zeit Abgabe von wohnung', 'Zählerstand'
@@ -453,6 +467,7 @@ const AccountDashboard: React.FC = () => {
   const [salesTab, setSalesTab] = useState<SalesTab>('leads');
 
   const [properties, setProperties] = useState<Property[]>([]);
+  const [propertySearch, setPropertySearch] = useState('');
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
   const [isLoadingProperties, setIsLoadingProperties] = useState(true);
   const [selectedDocumentFolder, setSelectedDocumentFolder] = useState<string>('Договори');
@@ -707,6 +722,17 @@ const AccountDashboard: React.FC = () => {
   const [rentIncreaseFormError, setRentIncreaseFormError] = useState<string | null>(null);
   const [isAddingRentIncrease, setIsAddingRentIncrease] = useState(false);
   const selectedProperty = useMemo(() => properties.find(p => p.id === selectedPropertyId) || properties[0] || null, [properties, selectedPropertyId]);
+
+  const filteredProperties = useMemo(() => {
+    const q = normalizeSearch(propertySearch);
+    if (!q) return properties;
+    return properties.filter((p) => {
+      const addressStr = formatPropertyAddress(p);
+      const street = normalizeSearch(extractStreet(addressStr));
+      const title = normalizeSearch(p.title ?? "");
+      return street.includes(q) || title.includes(q);
+    });
+  }, [properties, propertySearch]);
 
   const [ownerRentTimelineDbRows, setOwnerRentTimelineDbRows] = useState<RentTimelineRowDB[]>([]);
   const [rentTimelineLoading, setRentTimelineLoading] = useState(false);
@@ -5732,9 +5758,9 @@ ${internalCompany} Team`;
             </div>
             <div className="relative mb-4">
                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-               <input type="text" placeholder="Search..." className="w-full bg-[#0D1117] border border-gray-700 rounded-lg py-2 pl-9 text-sm text-white focus:border-emerald-500 outline-none" />
+               <input type="text" value={propertySearch} onChange={(e) => setPropertySearch(e.target.value)} placeholder="Search by street..." className="w-full bg-[#0D1117] border border-gray-700 rounded-lg py-2 pl-9 text-sm text-white focus:border-emerald-500 outline-none" />
             </div>
-            {properties.map((prop) => (
+            {filteredProperties.map((prop) => (
                <div key={prop.id} onClick={() => setSelectedPropertyId(prop.id)} className={`cursor-pointer p-4 rounded-xl border transition-all duration-200 ${selectedPropertyId === prop.id ? 'bg-[#1C1F24] border-l-4 border-l-emerald-500 border-y-transparent border-r-transparent shadow-lg' : 'bg-[#1C1F24] border-gray-800 hover:bg-[#23262b] hover:border-gray-700'}`}>
                   <div className="flex justify-between items-start mb-1">
                      <h3 className="font-bold text-white text-sm">{prop.title}</h3>
