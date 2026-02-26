@@ -8413,10 +8413,10 @@ ${internalCompany} Team`;
                                   type="button"
                                   disabled={!currentStay || !selectedPropertyId || uebergabeprotokollLoading}
                                   onClick={handleUebergabeprotokollGenerate}
-                                  title={currentStay && selectedPropertyId ? 'Згенерувати акт прийому-передачі (DOCX)' : 'Оберіть об\'єкт і наявність орендаря'}
+                                  title={currentStay && selectedPropertyId ? 'Акт прийому-передачі (DOCX)' : 'Оберіть об\'єкт і наявність орендаря'}
                                   className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed disabled:opacity-60 disabled:cursor-not-allowed enabled:bg-emerald-600 enabled:text-white enabled:hover:bg-emerald-500 enabled:cursor-pointer"
                                 >
-                                  {uebergabeprotokollLoading ? '…' : 'Акт прийому-передачі'}
+                                  {uebergabeprotokollLoading ? '…' : 'ÜGP'}
                                 </button>
                                 <button
                                   type="button"
@@ -8427,7 +8427,6 @@ ${internalCompany} Team`;
                                 >
                                   {uebergabeprotokollPdfLoading ? <span className="text-xs">…</span> : <Eye className="w-4 h-4" />}
                                 </button>
-                                <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed">Прописка</button>
                               </div>
                             </>
                           );
@@ -8435,8 +8434,7 @@ ${internalCompany} Team`;
                           <>
                             <div className="text-gray-500 italic col-span-6">Зараз ніхто не проживає</div>
                             <div className="flex flex-row gap-2 items-center">
-                              <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed">Акт прийому-передачі</button>
-                              <button type="button" disabled title="Soon" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed">Прописка</button>
+                              <button type="button" disabled title="Акт прийому-передачі (DOCX)" className="bg-gray-600 text-gray-400 py-1 px-2 rounded text-xs font-medium cursor-not-allowed">ÜGP</button>
                             </div>
                           </>
                         )}
