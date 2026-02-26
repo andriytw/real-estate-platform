@@ -12,7 +12,7 @@ import PizZip from 'pizzip';
 import mammoth from 'mammoth';
 import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
-import { getProtocolData } from './shared';
+import { getProtocolData } from './shared.js';
 
 const TEMPLATE_BUCKET = 'templates';
 const TEMPLATE_PATH = 'guest/uebergabeprotokoll/v1/template.docx';
@@ -46,6 +46,8 @@ function jsonResponse(body: object, status: number): Response {
   });
 }
 
+const chrom = chromium as typeof chromium & { defaultViewport?: unknown; headless?: boolean };
+
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -57,34 +59,51 @@ export async function POST(request: Request) {
 
     const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!supabaseUrl || !serviceKey) {
-      console.error('[generate-pdf] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
-      return jsonResponse({ error: 'Server configuration error' }, 500);
+    const missing: string[] = [];
+    if (!supabaseUrl) missing.push('SUPABASE_URL');
+    if (!serviceKey) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+    if (missing.length > 0) {
+      console.error('[uebergabe][env] Missing:', missing);
+      return jsonResponse({
+        error: 'Missing env: ' + missing.join(', '),
+        missing,
+      }, 500);
     }
 
     const supabase = createClient(supabaseUrl, serviceKey);
 
     let protocolData;
+    const stageFetch = 'fetch_data';
     try {
       protocolData = await getProtocolData(supabase, String(bookingId), String(propertyId));
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error';
-      console.error('[generate-pdf] getProtocolData failed:', e);
+      console.error('[uebergabe][' + stageFetch + ']', e);
       const status = msg === 'Booking not found' || msg === 'Property not found' ? 404 : 500;
-      return jsonResponse({ error: msg }, status);
+      return jsonResponse({ error: msg, stage: stageFetch }, status);
     }
 
     const { placeholders, warning, checkInLabel } = protocolData;
 
-    const { data: templateBlob, error: downloadErr } = await supabase.storage
-      .from(TEMPLATE_BUCKET)
-      .download(TEMPLATE_PATH);
-
-    if (downloadErr || !templateBlob) {
-      console.error('[generate-pdf] Template download failed:', downloadErr);
-      return jsonResponse({ error: 'Template not found in storage.' }, 502);
+    const stageDownload = 'download_template';
+    let templateBlob: Blob;
+    try {
+      const { data, error: downloadErr } = await supabase.storage
+        .from(TEMPLATE_BUCKET)
+        .download(TEMPLATE_PATH);
+      if (downloadErr || !data) {
+        throw new Error(downloadErr?.message ?? 'Template not found');
+      }
+      templateBlob = data;
+    } catch (e) {
+      console.error('[uebergabe][' + stageDownload + ']', e);
+      return jsonResponse({
+        error: e instanceof Error ? e.message : 'Template not found in storage.',
+        stage: stageDownload,
+      }, 502);
     }
 
+    const stageRender = 'render_docx';
     let outDocxBuffer: Buffer;
     try {
       const templateBuffer = Buffer.from(await templateBlob.arrayBuffer());
@@ -101,81 +120,117 @@ export async function POST(request: Request) {
         compressionOptions: { level: 9 },
       }) as Buffer;
     } catch (e) {
-      console.error('[generate-pdf] Docx render failed:', e);
-      return jsonResponse({ error: e instanceof Error ? e.message : 'Failed to render document' }, 500);
+      console.error('[uebergabe][' + stageRender + ']', e);
+      return jsonResponse({
+        error: e instanceof Error ? e.message : 'Failed to render document',
+        stage: stageRender,
+      }, 500);
     }
 
+    const stageConvert = 'convert_html';
     let fullHtml: string;
     try {
       const { value: html } = await mammoth.convertToHtml({ buffer: outDocxBuffer });
       fullHtml = wrapHtmlForPdf(html);
     } catch (e) {
-      console.error('[generate-pdf] Mammoth convertToHtml failed:', e);
-      return jsonResponse({ error: e instanceof Error ? e.message : 'Failed to convert document to HTML' }, 500);
+      console.error('[uebergabe][' + stageConvert + ']', e);
+      return jsonResponse({
+        error: e instanceof Error ? e.message : 'Failed to convert document to HTML',
+        stage: stageConvert,
+      }, 500);
     }
 
-    let pdfBuffer: Buffer;
+    const stageLaunch = 'launch_chromium';
+    let pdfBuffer: Buffer | undefined;
     let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
     try {
       const executablePath = await chromium.executablePath();
+      if (!executablePath) {
+        throw new Error('Chromium executablePath is empty');
+      }
       browser = await puppeteer.launch({
         args: chromium.args,
-        defaultViewport: null,
+        defaultViewport: chrom.defaultViewport ?? null,
         executablePath,
-        headless: true,
+        headless: chrom.headless ?? true,
       });
       const page = await browser.newPage();
       await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
-      pdfBuffer = (await page.pdf({
-        format: 'A4',
-        printBackground: true,
-      })) as Buffer;
+      const stagePdf = 'render_pdf';
+      try {
+        pdfBuffer = (await page.pdf({
+          format: 'A4',
+          printBackground: true,
+        })) as Buffer;
+      } catch (e) {
+        console.error('[uebergabe][' + stagePdf + ']', e);
+        return jsonResponse({
+          error: e instanceof Error ? e.message : 'Failed to generate PDF',
+          stage: stagePdf,
+        }, 500);
+      }
     } catch (e) {
-      console.error('[generate-pdf] Puppeteer/Chromium failed:', e);
+      console.error('[uebergabe][' + stageLaunch + ']', e);
       return jsonResponse({
-        error: e instanceof Error ? e.message : 'Failed to generate PDF',
+        error: e instanceof Error ? e.message : 'Failed to launch Chromium',
+        stage: stageLaunch,
       }, 500);
     } finally {
       if (browser) {
         try {
           await browser.close();
         } catch (closeErr) {
-          console.error('[generate-pdf] Browser close error:', closeErr);
+          console.error('[uebergabe][launch_chromium] close error:', closeErr);
         }
       }
     }
 
+    if (pdfBuffer == null) {
+      console.error('[uebergabe][render_pdf] pdfBuffer missing');
+      return jsonResponse({ error: 'PDF buffer missing', stage: 'render_pdf' }, 500);
+    }
+
     const pdfPath = `properties/${propertyId}/bookings/${bookingId}/uebergabeprotokoll_${checkInLabel}.pdf`;
 
-    const { error: uploadErr } = await supabase.storage
-      .from(OUTPUT_BUCKET)
-      .upload(pdfPath, pdfBuffer, {
-        contentType: 'application/pdf',
-        upsert: true,
-      });
-
-    if (uploadErr) {
-      console.error('[generate-pdf] Storage upload failed:', uploadErr);
-      return jsonResponse({ error: 'Failed to save PDF: ' + uploadErr.message }, 500);
+    const stageUpload = 'upload_pdf';
+    try {
+      const { error: uploadErr } = await supabase.storage
+        .from(OUTPUT_BUCKET)
+        .upload(pdfPath, pdfBuffer, {
+          contentType: 'application/pdf',
+          upsert: true,
+        });
+      if (uploadErr) throw uploadErr;
+    } catch (e) {
+      console.error('[uebergabe][' + stageUpload + ']', e);
+      return jsonResponse({
+        error: e instanceof Error ? e.message : 'Failed to save PDF',
+        stage: stageUpload,
+      }, 500);
     }
 
-    const { data: signed, error: signErr } = await supabase.storage
-      .from(OUTPUT_BUCKET)
-      .createSignedUrl(pdfPath, SIGNED_URL_EXPIRY_SEC);
-
-    if (signErr || !signed?.signedUrl) {
-      console.error('[generate-pdf] Signed URL failed:', signErr);
-      return jsonResponse({ error: 'Failed to create download link' }, 500);
+    const stageSign = 'sign_url';
+    try {
+      const { data: signed, error: signErr } = await supabase.storage
+        .from(OUTPUT_BUCKET)
+        .createSignedUrl(pdfPath, SIGNED_URL_EXPIRY_SEC);
+      if (signErr || !signed?.signedUrl) {
+        throw new Error(signErr?.message ?? 'No signed URL');
+      }
+      const response: { pdfUrl: string; warning?: string } = { pdfUrl: signed.signedUrl };
+      if (warning) response.warning = warning;
+      return jsonResponse(response, 200);
+    } catch (e) {
+      console.error('[uebergabe][' + stageSign + ']', e);
+      return jsonResponse({
+        error: e instanceof Error ? e.message : 'Failed to create download link',
+        stage: stageSign,
+      }, 500);
     }
-
-    const response: { pdfUrl: string; warning?: string } = { pdfUrl: signed.signedUrl };
-    if (warning) response.warning = warning;
-
-    return jsonResponse(response, 200);
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Internal error';
-    console.error('[generate-pdf] Unhandled error:', e);
-    return jsonResponse({ error: message }, 500);
+    console.error('[uebergabe][unhandled]', e);
+    return jsonResponse({ error: message, stage: 'unhandled' }, 500);
   }
 }
 

@@ -3812,7 +3812,8 @@ const AccountDashboard: React.FC = () => {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setToastMessage(json?.error || `Помилка ${res.status}`);
+        const errMsg = json?.error != null ? (json?.stage ? `${json.error} (${json.stage})` : json.error) : `Помилка ${res.status}`;
+        setToastMessage(errMsg);
         return;
       }
       if (json.url) window.open(json.url, '_blank');
@@ -3835,7 +3836,8 @@ const AccountDashboard: React.FC = () => {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setToastMessage(json?.error || `Помилка ${res.status}`);
+        const errMsg = json?.error != null ? (json?.stage ? `${json.error} (${json.stage})` : json.error) : `Помилка ${res.status}`;
+        setToastMessage(errMsg);
         return;
       }
       if (json.pdfUrl) {
