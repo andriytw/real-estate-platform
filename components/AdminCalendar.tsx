@@ -33,11 +33,11 @@ interface AdminCalendarProps {
 }
 
 // Facility calendar only: single source-of-truth bucket for counters, styling, and filtering
-type TaskBucket = 'total' | 'in_progress' | 'completed_archived';
+type TaskBucket = 'open' | 'in_progress' | 'completed';
 function getTaskBucket(e: CalendarEvent): TaskBucket {
   if (e.status === 'in_progress') return 'in_progress';
-  if (e.status === 'completed' || e.status === 'verified' || e.status === 'archived') return 'completed_archived';
-  return 'total';
+  if (e.status === 'completed' || e.status === 'verified' || e.status === 'archived') return 'completed';
+  return 'open';
 }
 
 const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpdateEvent, showLegend = true, properties, categories, onUpdateBookingStatus }) => {
@@ -127,12 +127,13 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
   // Statistics: Facility uses getTaskBucket; Accounting keeps original counters
   const totalTasks = events.length;
+  const openCount = events.filter(e => getTaskBucket(e) === 'open').length;
   const inProgressTasks = isAccountingCalendar
     ? events.filter(e => e.status === 'pending' || e.status === 'review').length
     : events.filter(e => getTaskBucket(e) === 'in_progress').length;
   const completedTasks = isAccountingCalendar
     ? events.filter(e => e.status === 'archived').length
-    : events.filter(e => getTaskBucket(e) === 'completed_archived').length;
+    : events.filter(e => getTaskBucket(e) === 'completed').length;
   // Legacy names for Accounting tile display
   const pendingTasks = inProgressTasks;
   const archivedTasks = completedTasks;
@@ -141,12 +142,12 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   const isDoneTask = (event: CalendarEvent) =>
     isAccountingCalendar
       ? (event.status === 'completed' || event.status === 'verified' || event.status === 'archived')
-      : getTaskBucket(event) === 'completed_archived';
+      : getTaskBucket(event) === 'completed';
 
   // Facility: filtered and grouped list for tile selection
   const facilityFilteredGrouped = useMemo(() => {
     if (isAccountingCalendar || activeBucket == null) return [];
-    const list = activeBucket === 'total' ? events : events.filter(e => getTaskBucket(e) === activeBucket);
+    const list = events.filter(e => getTaskBucket(e) === activeBucket);
     const sorted = [...list].sort((a, b) => {
       const dA = a.date || '';
       const dB = b.date || '';
@@ -573,14 +574,14 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
             <>
               <button
                 type="button"
-                onClick={() => setActiveBucket(activeBucket === 'total' ? null : 'total')}
+                onClick={() => setActiveBucket(activeBucket === 'open' ? null : 'open')}
                 className={`bg-[#161B22] border rounded-lg p-4 flex items-center justify-between shadow-sm text-left transition-all ${
-                  activeBucket === 'total' ? 'border-blue-500 ring-2 ring-blue-500/50' : 'border-gray-800 hover:border-gray-600'
+                  activeBucket === 'open' ? 'border-blue-500 ring-2 ring-blue-500/50' : 'border-gray-800 hover:border-gray-600'
                 }`}
               >
                 <div>
-                  <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Total Tasks</p>
-                  <p className="text-2xl font-bold text-white">{totalTasks}</p>
+                  <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">OPEN TASKS</p>
+                  <p className="text-2xl font-bold text-white">{openCount}</p>
                 </div>
                 <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
                   <ClipboardList className="w-5 h-5 text-blue-400" />
@@ -603,9 +604,9 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
               </button>
               <button
                 type="button"
-                onClick={() => setActiveBucket(activeBucket === 'completed_archived' ? null : 'completed_archived')}
+                onClick={() => setActiveBucket(activeBucket === 'completed' ? null : 'completed')}
                 className={`bg-[#161B22] border rounded-lg p-4 flex items-center justify-between shadow-sm text-left transition-all ${
-                  activeBucket === 'completed_archived' ? 'border-emerald-500 ring-2 ring-emerald-500/50' : 'border-gray-800 hover:border-gray-600'
+                  activeBucket === 'completed' ? 'border-emerald-500 ring-2 ring-emerald-500/50' : 'border-gray-800 hover:border-gray-600'
                 }`}
               >
                 <div>
@@ -626,15 +627,15 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         <div className="mb-6 flex flex-col gap-3 flex-shrink-0">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-gray-300">
-              {activeBucket === 'total' && 'All tasks'}
+              {activeBucket === 'open' && 'Open tasks'}
               {activeBucket === 'in_progress' && 'In progress'}
-              {activeBucket === 'completed_archived' && 'Completed'}
+              {activeBucket === 'completed' && 'Completed'}
             </h3>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => {
-                  const filtered = activeBucket === 'total' ? events : events.filter(e => getTaskBucket(e) === activeBucket);
+                  const filtered = events.filter(e => getTaskBucket(e) === activeBucket);
                   const csv = buildCsv(filtered);
                   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
                   const url = URL.createObjectURL(blob);
