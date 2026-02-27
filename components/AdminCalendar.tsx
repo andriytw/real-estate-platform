@@ -1254,12 +1254,18 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                        <h3 className={`text-lg font-bold leading-none flex items-center gap-2 ${
                          isDoneTask(viewEvent) ? 'text-gray-500 line-through' : 'text-white'
                        }`}>
-                         {viewEvent.title}
+                         {!isAccountingCalendar && viewEvent.propertyId ? (() => {
+                           const prop = propertyList.find(p => p.id === viewEvent!.propertyId);
+                           const unitTitle = (prop?.title ?? '').trim().toLowerCase();
+                           const eventTitle = (viewEvent.title ?? '').trim().toLowerCase();
+                           const isDuplicate = unitTitle && eventTitle && eventTitle === unitTitle;
+                           return isDuplicate ? ((viewEvent.type as string) || viewEvent.title) : viewEvent.title;
+                         })() : viewEvent.title}
                          {isAccountingCalendar ? (viewEvent.status === 'archived' && <Archive className="w-4 h-4 text-gray-500" />) : (isDoneTask(viewEvent) && <CheckCircle2 className="w-4 h-4 text-gray-500" />)}
                        </h3>
                        {!isAccountingCalendar && viewEvent.propertyId && (() => {
                          const prop = propertyList.find(p => p.id === viewEvent!.propertyId);
-                         return prop ? <p className="text-xs text-gray-400 mt-0.5 truncate">{formatPropertyLabel(prop)}</p> : null;
+                         return prop ? <p className="text-xs text-gray-400 mt-0.5 truncate">{formatPropertyLabelAddressFirst(prop)}</p> : null;
                        })()}
                        <span className={`text-xs font-bold ${getTaskTextColor(viewEvent.type as string)}`}>{viewEvent.type}</span>
                     </div>
