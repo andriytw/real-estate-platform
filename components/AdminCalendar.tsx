@@ -1,6 +1,6 @@
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, ChevronDown, Calendar as CalendarIcon, X, Check, Building, Clock, CheckCircle2, MoreHorizontal, User, AlignLeft, Tag, LayoutGrid, List, Filter, Paperclip, Send, Image as ImageIcon, FileText, Mail, ClipboardList, Loader, CheckSquare, ArrowUpDown, Layers, Archive, History, ShieldCheck, Hammer, Video, Download, XCircle } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { Plus, ChevronDown, ChevronLeft, ChevronRight, Calendar as CalendarIcon, X, Check, Building, Clock, CheckCircle2, MoreHorizontal, User, AlignLeft, Tag, LayoutGrid, List, Filter, Paperclip, Send, Image as ImageIcon, FileText, Mail, ClipboardList, Loader, CheckSquare, ArrowUpDown, Layers, Archive, History, ShieldCheck, Hammer, Video, Download, XCircle } from 'lucide-react';
 import { MOCK_PROPERTIES } from '../constants';
 import { CalendarEvent, TaskType, TaskStatus, Property, BookingStatus, Worker } from '../types';
 import { updateBookingStatusFromTask } from '../bookingUtils';
@@ -61,6 +61,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   const [currentMonthIdx, setCurrentMonthIdx] = useState(now.getMonth());
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [viewMode, setViewMode] = useState<ViewMode>('month');
+  const [weekAnchorDate, setWeekAnchorDate] = useState<Date>(() => new Date());
   
   // Use passed properties or fallback to mock
   const propertyList = properties || MOCK_PROPERTIES;
@@ -114,6 +115,11 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   const [chatInputValue, setChatInputValue] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
+
+  const weekGridRef = useRef<HTMLDivElement>(null);
+  const wheelAccumRef = useRef(0);
+  const wheelDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStartXRef = useRef<number | null>(null);
 
   // Функція для отримання зрозумілого опису (прибирає JSON, показує тільки текст)
   const getReadableDescription = (description: string | undefined): string => {
@@ -295,6 +301,14 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   }, [isAccountingCalendar, activeBucket, facilityFilteredGrouped]);
 
   useEffect(() => {
+    if (isAccountingCalendar) return;
+    if (viewMode !== 'week') return;
+    const ws = startOfWeekFn(weekAnchorDate);
+    setCurrentMonthIdx(ws.getMonth());
+    setSelectedYear(ws.getFullYear());
+  }, [weekAnchorDate, viewMode, isAccountingCalendar]);
+
+  useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsTaskTypeDropdownOpen(false);
@@ -338,16 +352,82 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   // Generate days array
   const allDays = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-  // Calculate visible days based on view mode
+  const startOfWeekFn = (d: Date): Date => {
+    const date = new Date(d);
+    const dow = date.getDay();
+    const diff = (dow === 0 ? -6 : 1) - dow;
+    date.setDate(date.getDate() + diff);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  };
+
+  const addDaysFn = (d: Date, n: number): Date => {
+    const x = new Date(d);
+    x.setDate(x.getDate() + n);
+    return x;
+  };
+
+  const toIsoDate = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  };
+
+  const visibleWeekDates: Date[] = useMemo(() => {
+    const ws = startOfWeekFn(weekAnchorDate);
+    return Array.from({ length: 7 }, (_, i) => addDaysFn(ws, i));
+  }, [weekAnchorDate]);
+
+  const getEventsForIsoDate = (isoDate: string) => {
+    return events.filter(e => {
+      if (!e.date) return false;
+      const eventIso = e.date.slice(0, 10);
+      const filterMatch = filterTask === 'All' || e.type === filterTask;
+      return eventIso === isoDate && filterMatch;
+    });
+  };
+
+  const goPrevWeek = () => setWeekAnchorDate(d => addDaysFn(d, -7));
+  const goNextWeek = () => setWeekAnchorDate(d => addDaysFn(d, +7));
+
+  const handleWeekWheel = useCallback((e: React.WheelEvent) => {
+    if (isAccountingCalendar || viewMode !== 'week') return;
+    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+    e.preventDefault();
+    wheelAccumRef.current += e.deltaX;
+    if (wheelDebounceRef.current) clearTimeout(wheelDebounceRef.current);
+    wheelDebounceRef.current = setTimeout(() => {
+      if (Math.abs(wheelAccumRef.current) >= 60) {
+        if (wheelAccumRef.current > 0) goNextWeek();
+        else goPrevWeek();
+      }
+      wheelAccumRef.current = 0;
+    }, 250);
+  }, [isAccountingCalendar, viewMode]);
+
+  const handleWeekTouchStart = useCallback((e: React.TouchEvent) => {
+    if (isAccountingCalendar || viewMode !== 'week') return;
+    touchStartXRef.current = e.touches[0].clientX;
+  }, [isAccountingCalendar, viewMode]);
+
+  const handleWeekTouchMove = useCallback((e: React.TouchEvent) => {
+    if (isAccountingCalendar || viewMode !== 'week') return;
+    if (touchStartXRef.current === null) return;
+    const diff = e.touches[0].clientX - touchStartXRef.current;
+    if (Math.abs(diff) > 50) {
+      if (diff < 0) goNextWeek();
+      else goPrevWeek();
+      touchStartXRef.current = null;
+    }
+  }, [isAccountingCalendar, viewMode]);
+
   const getVisibleDays = () => {
     if (viewMode === 'month') {
       return allDays;
     } else if (viewMode === 'week') {
-      // Mock logic: Assume "current week" is around the 20th for demo
-      const weekStart = 17; // Monday 17th
-      return allDays.slice(weekStart - 1, weekStart + 6);
+      return visibleWeekDates.map(d => d.getDate());
     } else if (viewMode === 'day') {
-      // Show selected day or default to 20
       const targetDay = selectedDay || 20;
       return [targetDay];
     }
@@ -762,25 +842,32 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                     </div>
                     {dayEvents.map(event => {
                       const assigneeId = event.workerId ?? event.assignedWorkerId;
-                      const assigneeName = event.assignee || (assigneeId ? workers.find(w => w.id === assigneeId)?.name : '') || '';
+                      const assigneeName = event.assignee || (assigneeId ? workers.find(w => w.id === assigneeId)?.name : '') || '—';
                       const prop = event.propertyId ? propertyList.find(p => p.id === event.propertyId) : null;
-                      const propTitle = prop?.title ?? '';
-                      const propAddress = prop?.address ?? (prop as any)?.full_address ?? (prop as any)?.fullAddress ?? '';
-                      const propDisplay = propTitle || propAddress;
+                      const addr = prop?.address ?? (prop as any)?.full_address ?? (prop as any)?.fullAddress ?? '';
+                      const unit = prop?.title ?? '';
+                      const addressUnit = (addr && unit) ? `${addr} — ${unit}` : addr || unit || event.locationText || '—';
+                      const msgRaw = (event.description ?? '').trim() || (lastCommentByEventId as Record<string, string>)?.[event.id] || '';
+                      const msgPreview = msgRaw.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || '—';
                       return (
                         <div
                           key={event.id}
-                          className="px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm border-t border-gray-800/50 hover:bg-[#1C1F24]"
+                          className="px-4 py-2 flex flex-col gap-0.5 border-t border-gray-800/50 hover:bg-[#1C1F24]"
                         >
-                          <span className="font-mono text-gray-500 w-14 shrink-0">{event.time || '—'}</span>
-                          <span className="font-medium text-white truncate min-w-0 flex-1">{event.title}</span>
-                          <span className="px-1.5 py-0.5 rounded text-xs font-bold uppercase bg-gray-700 text-gray-300 shrink-0">{event.status}</span>
-                          {assigneeName && <span className="text-gray-400 shrink-0">{assigneeName}</span>}
-                          {propDisplay && (
-                            <span className="text-gray-500 truncate max-w-[200px] shrink-0" title={propDisplay}>
-                              {propDisplay}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-x-3 min-w-0 text-sm">
+                            <span className="font-mono text-gray-500 w-14 shrink-0">{event.time || '—'}</span>
+                            {event.type && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap shrink-0" style={{ background: 'rgba(0,153,255,0.15)', color: '#4db8ff' }}>
+                                {event.type}
+                              </span>
+                            )}
+                            <span className="text-gray-300 truncate min-w-0 flex-1" title={addressUnit}>{addressUnit}</span>
+                            <span className="text-gray-400 shrink-0 text-xs">{assigneeName}</span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-gray-700 text-gray-300 shrink-0 whitespace-nowrap">{event.status}</span>
+                          </div>
+                          <div className="pl-[68px] text-xs text-gray-500 truncate" title={msgPreview !== '—' ? msgPreview : undefined}>
+                            {msgPreview}
+                          </div>
                         </div>
                       );
                     })}
@@ -958,12 +1045,31 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
           <h2 className="text-xl font-bold">
              {viewMode === 'day' ? 'Daily View' : viewMode === 'week' ? 'Weekly Overview' : 'Monthly Overview'}: {months[currentMonthIdx]} {selectedYear}
           </h2>
+          {viewMode === 'week' && !isAccountingCalendar && (
+            <div className="flex items-center gap-1 ml-auto">
+              <button onClick={goPrevWeek} className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button onClick={() => setWeekAnchorDate(new Date())} className="px-2 py-0.5 rounded text-xs font-medium hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
+                Today
+              </button>
+              <button onClick={goNextWeek} className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Grid Header (Only for Month/Week) */}
         {viewMode !== 'day' && (
           <div className="grid grid-cols-7 gap-4 mb-2 px-1 flex-shrink-0">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+            {(viewMode === 'week' && !isAccountingCalendar
+              ? visibleWeekDates.map(d => {
+                  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                  return `${dayNames[d.getDay()]} ${d.getDate()}`;
+                })
+              : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+            ).map(day => (
               <div key={day} className="text-gray-500 text-xs font-bold uppercase tracking-wider text-center">
                 {day}
               </div>
@@ -972,7 +1078,12 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         )}
 
         {/* Grid Body */}
-        <div className={`
+        <div
+          ref={viewMode === 'week' ? weekGridRef : undefined}
+          onWheel={viewMode === 'week' && !isAccountingCalendar ? handleWeekWheel : undefined}
+          onTouchStart={viewMode === 'week' && !isAccountingCalendar ? handleWeekTouchStart : undefined}
+          onTouchMove={viewMode === 'week' && !isAccountingCalendar ? handleWeekTouchMove : undefined}
+          className={`
            gap-4 p-1 pb-10
            ${viewMode === 'day' ? 'flex flex-col' : 'grid grid-cols-7'}
         `}>
@@ -980,19 +1091,24 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
             <div key={`empty-${i}`} className="bg-transparent min-h-[300px]" />
           ))}
           
-          {visibleDays.map(day => {
-            const dayEvents = getEventsForDay(day);
+          {(viewMode === 'week' ? visibleWeekDates : visibleDays).map((dayOrDate) => {
+            const isWeekView = viewMode === 'week';
+            const weekDate = isWeekView ? (dayOrDate as Date) : null;
+            const day = isWeekView ? (dayOrDate as Date).getDate() : (dayOrDate as number);
+            const cellIso = weekDate ? toIsoDate(weekDate) : null;
+            const dayEvents = isWeekView && cellIso ? getEventsForIsoDate(cellIso) : getEventsForDay(day as number);
             const sortedDayEvents = sortEvents(dayEvents, calendarSort);
             
-            // Check if this is today's date
             const today = new Date();
-            const isToday = day === today.getDate() && 
-                          currentMonthIdx === today.getMonth() && 
-                          selectedYear === today.getFullYear();
+            const isToday = isWeekView && weekDate
+              ? toIsoDate(weekDate) === toIsoDate(today)
+              : day === today.getDate() && currentMonthIdx === today.getMonth() && selectedYear === today.getFullYear();
+            const cellKey = cellIso ?? day;
+            const isOtherMonth = weekDate ? weekDate.getMonth() !== currentMonthIdx : false;
 
             return (
               <div 
-                key={day} 
+                key={cellKey} 
                 onClick={() => setSelectedDay(day)}
                 className={`
                   bg-[#161B22] border rounded-xl p-3 flex flex-col relative group transition-all cursor-pointer
@@ -1002,13 +1118,14 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                     ? 'border-blue-500 border-2 shadow-[0_0_0_2px_rgba(59,130,246,0.3)]' 
                     : 'border-gray-800'
                   }
+                  ${isOtherMonth ? 'opacity-60' : ''}
                 `}
               >
                 {/* Day Header */}
                 <div className="flex justify-between items-start mb-4 border-b border-gray-800 pb-2 flex-shrink-0">
                   <div className="flex items-baseline gap-2">
-                     <span className="text-3xl font-bold text-white/80">{day}</span>
-                     {viewMode === 'day' && <span className="text-xl text-gray-500">{months[currentMonthIdx]}</span>}
+                     <span className={`text-3xl font-bold ${isOtherMonth ? 'text-white/40' : 'text-white/80'}`}>{day}</span>
+                     {(viewMode === 'day' || isOtherMonth) && <span className="text-xl text-gray-500">{weekDate ? months[weekDate.getMonth()] : months[currentMonthIdx]}</span>}
                   </div>
                   <button 
                     onClick={(e) => openAddModal(e, day)}
