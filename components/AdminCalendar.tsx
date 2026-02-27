@@ -47,6 +47,14 @@ function formatPropertyLabel(p: Property): string {
   return `${p.title} — ${addr}`;
 }
 
+// Facility day cell: address first, then unit title (no EG-1 duplication)
+function getPropertyAddress(prop: Property): string {
+  return prop.address ?? prop.fullAddress ?? (prop as any).full_address ?? '—';
+}
+function formatPropertyLabelAddressFirst(prop: Property): string {
+  return `${getPropertyAddress(prop)} — ${prop.title}`;
+}
+
 const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpdateEvent, showLegend = true, properties, categories, onUpdateBookingStatus }) => {
   // Initialize with current date
   const now = new Date();
@@ -1036,11 +1044,18 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                       <div className={`font-semibold leading-snug mb-0.5 truncate ${viewMode === 'day' ? 'text-lg' : 'text-xs'} ${
                         isDoneTask(event) ? 'text-gray-500 line-through' : 'text-white'
                       }`}>
-                         {event.title}
+                         {!isAccountingCalendar && event.propertyId ? (() => {
+                           const prop = propertyList.find(p => p.id === event.propertyId);
+                           const unitTitle = (prop?.title ?? '').trim();
+                           const eventTitle = (event.title ?? '').trim();
+                           const isDuplicateTitle = unitTitle && eventTitle && eventTitle.toLowerCase() === unitTitle.toLowerCase();
+                           const primaryLine = isDuplicateTitle ? ((event.type as string) || event.title) : event.title;
+                           return primaryLine;
+                         })() : event.title}
                       </div>
                       {!isAccountingCalendar && event.propertyId && (() => {
                         const prop = propertyList.find(p => p.id === event.propertyId);
-                        return prop ? <div className="text-[10px] opacity-70 truncate mb-0.5">{formatPropertyLabel(prop)}</div> : null;
+                        return prop ? <div className="text-[10px] opacity-70 truncate mb-0.5">{formatPropertyLabelAddressFirst(prop)}</div> : null;
                       })()}
                       <div className="flex justify-between items-center mt-1">
                          <div className="flex items-center gap-1 flex-wrap">
