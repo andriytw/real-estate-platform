@@ -1571,19 +1571,43 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                                   throw new Error('Task not found in database. Please refresh the page.');
                                               }
                                               
-                                              // Update found task - preserve date and day to prevent loss
+                                              if (import.meta.env.DEV) {
+                                                console.log('[AdminCalendar assignee] BEFORE update (search path)', {
+                                                  id: viewEvent.id,
+                                                  title: viewEvent.title,
+                                                  type: viewEvent.type,
+                                                  propertyId: viewEvent.propertyId,
+                                                  time: viewEvent.time,
+                                                  workerId: viewEvent.workerId,
+                                                });
+                                              }
+                                              // Update found task - preserve date and day to prevent loss (PATCH-only)
                                               const updated = await tasksService.update(foundTask.id, {
                                                   workerId: newWorkerId,
                                                   status: newStatus,
                                                   date: viewEvent.date,
                                                   day: viewEvent.day
                                               });
-                                              
-                                              // Preserve viewEvent display fields; use updated id and worker/date so card shows full info
+                                              if (import.meta.env.DEV) {
+                                                console.log('[AdminCalendar assignee] AFTER update (search path)', {
+                                                  id: updated.id,
+                                                  title: updated.title,
+                                                  type: updated.type,
+                                                  propertyId: updated.propertyId,
+                                                  time: updated.time,
+                                                  workerId: updated.workerId,
+                                                });
+                                              }
+                                              // Preserve viewEvent display fields; null-safe so API nulls never wipe card
                                               const updatedWithDate = {
                                                   ...viewEvent,
                                                   ...updated,
                                                   id: updated.id,
+                                                  title: updated.title ?? viewEvent.title,
+                                                  type: updated.type ?? viewEvent.type,
+                                                  description: updated.description ?? viewEvent.description,
+                                                  propertyId: updated.propertyId ?? viewEvent.propertyId,
+                                                  time: updated.time ?? viewEvent.time,
                                                   workerId: updated.workerId,
                                                   assignedWorkerId: updated.workerId ?? undefined,
                                                   assignee: workers.find(w => w.id === updated.workerId)?.name,
@@ -1591,7 +1615,16 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                                   date: updated.date ?? viewEvent.date,
                                                   day: updated.day !== undefined ? updated.day : viewEvent.day
                                               };
-                                              
+                                              if (import.meta.env.DEV) {
+                                                console.log('[AdminCalendar assignee] merged (search path)', {
+                                                  id: updatedWithDate.id,
+                                                  title: updatedWithDate.title,
+                                                  type: updatedWithDate.type,
+                                                  propertyId: updatedWithDate.propertyId,
+                                                  time: updatedWithDate.time,
+                                                  workerId: updatedWithDate.workerId,
+                                                });
+                                              }
                                               // Update local state with correct ID
                                               setViewEvent(updatedWithDate);
                                               onUpdateEvent(updatedWithDate);
@@ -1603,23 +1636,47 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                               return;
                                           }
                                           
-                                          // Update in database - preserve date and day to prevent loss
+                                          if (import.meta.env.DEV) {
+                                            console.log('[AdminCalendar assignee] BEFORE update (by-id)', {
+                                              id: viewEvent.id,
+                                              title: viewEvent.title,
+                                              type: viewEvent.type,
+                                              propertyId: viewEvent.propertyId,
+                                              time: viewEvent.time,
+                                              workerId: viewEvent.workerId,
+                                            });
+                                          }
+                                          // Update in database - preserve date and day to prevent loss (PATCH-only)
                                           const updated = await tasksService.update(viewEvent.id, {
                                               workerId: newWorkerId,
                                               status: newStatus,
                                               date: viewEvent.date,
                                               day: viewEvent.day
                                           });
-                                          
+                                          if (import.meta.env.DEV) {
+                                            console.log('[AdminCalendar assignee] AFTER update (by-id)', {
+                                              id: updated.id,
+                                              title: updated.title,
+                                              type: updated.type,
+                                              propertyId: updated.propertyId,
+                                              time: updated.time,
+                                              workerId: updated.workerId,
+                                            });
+                                          }
                                           // #region agent log
                                           fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:1092',message:'Task updated in DB',data:{taskId:updated.id,taskType:updated.type,bookingId:updated.bookingId,workerId:updated.workerId,date:updated.date,day:updated.day},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
                                           // #endregion
                                           
-                                          // Find worker name for display; preserve viewEvent fields so card keeps title, address, time, description
+                                          // Find worker name for display; null-safe coalescing so API nulls never wipe card
                                           const worker = workers.find(w => w.id === newWorkerId);
                                           const updatedWithName = {
                                               ...viewEvent,
                                               ...updated,
+                                              title: updated.title ?? viewEvent.title,
+                                              type: updated.type ?? viewEvent.type,
+                                              description: updated.description ?? viewEvent.description,
+                                              propertyId: updated.propertyId ?? viewEvent.propertyId,
+                                              time: updated.time ?? viewEvent.time,
                                               assignee: worker?.name,
                                               assignedWorkerId: newWorkerId,
                                               workerId: newWorkerId,
@@ -1627,7 +1684,16 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                               date: updated.date ?? viewEvent.date,
                                               day: updated.day !== undefined ? updated.day : viewEvent.day
                                           };
-                                          
+                                          if (import.meta.env.DEV) {
+                                            console.log('[AdminCalendar assignee] merged (by-id)', {
+                                              id: updatedWithName.id,
+                                              title: updatedWithName.title,
+                                              type: updatedWithName.type,
+                                              propertyId: updatedWithName.propertyId,
+                                              time: updatedWithName.time,
+                                              workerId: updatedWithName.workerId,
+                                            });
+                                          }
                                           // #region agent log
                                           fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:1105',message:'Calling onUpdateEvent',data:{taskId:updatedWithName.id,taskType:updatedWithName.type,bookingId:updatedWithName.bookingId,workerId:updatedWithName.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
                                           // #endregion

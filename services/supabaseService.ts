@@ -1106,13 +1106,24 @@ export const tasksService = {
       .from('calendar_events')
       .update(dbData)
       .eq('id', id)
-      .select()
+      .select('*')
       .single();
     
     if (error) throw error;
     
-    // #region agent log
     const result = transformCalendarEventFromDB(data);
+    if (import.meta.env.DEV) {
+      console.log('[tasksService.update] result key fields', {
+        id: result.id,
+        title: result.title,
+        type: result.type,
+        propertyId: result.propertyId,
+        time: result.time,
+        description: result.description != null ? (String(result.description).slice(0, 40) + '...') : result.description,
+        workerId: result.workerId,
+      });
+    }
+    // #region agent log
     fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1075',message:'tasksService.update completed',data:{taskId:result.id,taskType:result.type,bookingId:result.bookingId,workerId:result.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
     // #endregion
     

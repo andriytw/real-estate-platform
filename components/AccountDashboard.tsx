@@ -5323,9 +5323,9 @@ ${internalCompany} Team`;
         // #endregion
         
         const updated = prev.map(ev => {
-          // Only update the exact task that was changed
+          // Only update the exact task that was changed; MERGE so partial updatedEvent never wipes existing fields
           if (ev.id === updatedEvent.id) {
-            return updatedEvent;
+            return { ...ev, ...updatedEvent };
           }
           // Do NOT modify other tasks, even if they have the same bookingId
           return ev;
@@ -5345,8 +5345,20 @@ ${internalCompany} Team`;
           (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2676',message:'H3: BEFORE DB update',data:{taskId:updatedEvent.id,date:updatedEvent.date,day:updatedEvent.day,workerId:updatedEvent.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{}));
           // #endregion
           
-          // Update in database
-          const savedTask = await tasksService.update(updatedEvent.id, updatedEvent);
+          // Minimal PATCH: assignee always; status/date/day only when changed (bulletproof, no accidental overwrites)
+          const patchPayload: Partial<CalendarEvent> = {
+            workerId: updatedEvent.workerId,
+            assignedWorkerId: updatedEvent.assignedWorkerId ?? updatedEvent.workerId,
+            assignee: updatedEvent.assignee,
+          };
+          if (taskBeforeUpdate && updatedEvent.status !== taskBeforeUpdate.status) {
+            patchPayload.status = updatedEvent.status;
+          }
+          if (taskBeforeUpdate && (updatedEvent.date !== taskBeforeUpdate.date || updatedEvent.day !== taskBeforeUpdate.day)) {
+            patchPayload.date = updatedEvent.date;
+            patchPayload.day = updatedEvent.day;
+          }
+          const savedTask = await tasksService.update(updatedEvent.id, patchPayload);
           console.log('✅ Task updated in database:', updatedEvent.id);
           
           // #region agent log
