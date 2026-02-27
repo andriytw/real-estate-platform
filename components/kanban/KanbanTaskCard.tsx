@@ -4,9 +4,14 @@ import { getTaskColor, getTaskBadgeColor, getTaskTextColor } from '../../utils/t
 import { Clock, AlertTriangle, CheckCircle2, Circle, AlertCircle, Building2, Calendar } from 'lucide-react';
 import { propertiesService } from '../../services/supabaseService';
 
-function formatPropertyLabel(p: Property): string {
-  const addr = p.address ?? p.fullAddress ?? (p as any).full_address ?? '—';
-  return `${p.title} — ${addr}`;
+function formatPropertyLabelAddressFirst(p: Property): string {
+  const address = p.address ?? p.fullAddress ?? (p as any).full_address ?? '—';
+  const title = p.title ?? '—';
+  return `${address} — ${title}`;
+}
+
+function normalize(s: string): string {
+  return s.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 function getDescriptionPreview(description: string | undefined): string {
@@ -42,6 +47,11 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
     }
   }, [task.propertyId]);
 
+  const propLabel = property ? formatPropertyLabelAddressFirst(property) : null;
+  const titleNorm = normalize(task.title ?? '');
+  const unitNorm = property ? normalize(property.title ?? '') : null;
+  const titleEqualsUnit = Boolean(property && titleNorm && titleNorm === unitNorm);
+
   // Priority Icon
   const getPriorityIcon = () => {
     switch (task.priority) {
@@ -70,9 +80,9 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-center gap-2">
           {!isCompleted && getPriorityIcon()}
-          <span className={`text-xs font-medium px-2 py-0.5 rounded border ${
+          <span className={`text-xs font-medium px-2 py-0.5 rounded border whitespace-nowrap max-w-[100px] truncate ${
             isCompleted ? 'border-gray-600 text-gray-500 bg-gray-800/30' : colorClass
-          }`}>
+          }`} title={task.type}>
             {task.type}
           </span>
         </div>
@@ -99,25 +109,39 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
       </div>
 
       {/* Title */}
-      <h4 className={`text-sm font-medium mb-1 line-clamp-2 transition-colors ${
-        isCompleted 
-          ? 'text-gray-500 line-through' 
-          : `${textColor} group-hover:opacity-80`
-      }`}>
-        {task.title}
-      </h4>
+      {titleEqualsUnit ? (
+        <h4 className={`text-sm font-medium mb-1 min-w-0 truncate transition-colors ${
+          isCompleted ? 'text-gray-500 line-through' : `${textColor} group-hover:opacity-80`
+        }`}>
+          {propLabel}
+        </h4>
+      ) : (
+        <div className="mb-1 min-w-0">
+          <h4 className={`text-sm font-medium min-w-0 truncate transition-colors ${
+            isCompleted ? 'text-gray-500 line-through' : `${textColor} group-hover:opacity-80`
+          }`}>
+            {task.title}
+          </h4>
+          {propLabel && (
+            <p className="text-xs text-gray-400 truncate mt-0.5 min-w-0">
+              {propLabel}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Description preview */}
       <p className="text-[10px] text-gray-500 line-clamp-2 mb-1.5 min-h-[1.25rem]">
         {getDescriptionPreview(task.description)}
       </p>
 
-      {/* Property / Location */}
-      {(task.locationText || property || task.propertyId) && (
+      {/* Property / Location — only when no property (fallback) and not duplicating title */}
+      {!titleEqualsUnit && !property && (task.locationText || task.propertyId) &&
+        normalize(task.locationText ?? '') !== titleNorm && (
         <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-2">
           <Building2 className="w-3 h-3 shrink-0" />
-          <span className="truncate max-w-[180px]">
-            {task.locationText || (property ? formatPropertyLabel(property) : (task.propertyId ? 'Property #' + task.propertyId : ''))}
+          <span className="truncate max-w-[180px] min-w-0">
+            {task.locationText || (task.propertyId ? 'Property #' + task.propertyId : '')}
           </span>
         </div>
       )}
