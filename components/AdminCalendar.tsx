@@ -1065,9 +1065,9 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                const worker = assigneeId ? workers.find(w => w.id === assigneeId) : null;
                                const workerName = event.assignee || (worker?.name ?? (assigneeId ? '—' : null));
                                return workerName ? (
-                                  <div className="flex items-center gap-1 text-[10px] text-gray-400">
-                                     <User className="w-3 h-3 opacity-70" />
-                                     <span className="truncate max-w-[100px]">{workerName}</span>
+                                  <div className="flex items-center gap-1 text-[10px] text-gray-400 min-w-0">
+                                     <User className="w-3 h-3 opacity-70 shrink-0" />
+                                     <span className="truncate max-w-[180px]" title={workerName}>{workerName}</span>
                                   </div>
                                ) : null;
                             })()}
@@ -1081,7 +1081,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                           <div className="mt-1 bg-yellow-500/20 text-yellow-500 text-[10px] px-1 rounded inline-block">Awaiting Verification</div>
                       )}
                       {event.description && (
-                         <p className="mt-1.5 text-[10px] opacity-70 line-clamp-2">{getReadableDescription(event.description)}</p>
+                         <p className={`mt-1.5 text-[10px] opacity-70 ${viewMode === 'day' ? 'line-clamp-4' : 'line-clamp-3'}`}>{getReadableDescription(event.description)}</p>
                       )}
                     </div>
                     );
@@ -1267,7 +1267,14 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                          const prop = propertyList.find(p => p.id === viewEvent!.propertyId);
                          return prop ? <p className="text-xs text-gray-400 mt-0.5 truncate">{formatPropertyLabelAddressFirst(prop)}</p> : null;
                        })()}
-                       <span className={`text-xs font-bold ${getTaskTextColor(viewEvent.type as string)}`}>{viewEvent.type}</span>
+                       {(() => {
+                         const prop = propertyList.find(p => p.id === viewEvent.propertyId);
+                         const unitTitle = (prop?.title ?? '').trim().toLowerCase();
+                         const eventTitle = (viewEvent.title ?? '').trim().toLowerCase();
+                         const titleShowsType = !isAccountingCalendar && !!viewEvent.propertyId && !!unitTitle && !!eventTitle && eventTitle === unitTitle;
+                         if (titleShowsType) return null;
+                         return <span className={`text-xs font-bold ${getTaskTextColor(viewEvent.type as string)}`}>{viewEvent.type}</span>;
+                       })()}
                     </div>
                  </div>
                  <button onClick={() => setViewEvent(null)} className="p-2 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors">
