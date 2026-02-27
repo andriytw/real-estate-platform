@@ -1980,7 +1980,25 @@ const AccountDashboard: React.FC = () => {
           }
         }
         
-        setAdminEvents(validTasks);
+        // Merge with current state so display fields (title, propertyId, time, description) are preserved
+        // when API returns minimal data (e.g. after assignee change + taskUpdated reload)
+        setAdminEvents(prev => {
+          const merged = validTasks.map(apiTask => {
+            const prevEvent = prev.find(e => e.id === apiTask.id);
+            if (!prevEvent) return apiTask;
+            return {
+              ...prevEvent,
+              ...apiTask,
+              title: (apiTask.title?.trim()) ? apiTask.title : prevEvent.title,
+              propertyId: apiTask.propertyId ?? prevEvent.propertyId,
+              time: apiTask.time ?? prevEvent.time,
+              description: apiTask.description ?? prevEvent.description,
+              type: (apiTask.type?.trim()) ? apiTask.type : prevEvent.type,
+              assignee: apiTask.assignee ?? prevEvent.assignee,
+            };
+          });
+          return merged;
+        });
         
         // #region agent log
         (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1262',message:'H1: AFTER setAdminEvents (state replaced)',data:{validTasksCount:validTasks.length,validTaskIds:validTasks.map(t=>t.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{}));
