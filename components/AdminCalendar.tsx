@@ -55,6 +55,11 @@ function formatPropertyLabelAddressFirst(prop: Property): string {
   return `${getPropertyAddress(prop)} — ${prop.title}`;
 }
 
+// Normalize for title/type comparison (hide duplicate type badge)
+function normalizeTitleOrType(s: string): string {
+  return (s ?? '').toLowerCase().replace(/\s+/g, ' ').replace(/[-_]+/g, ' ').trim();
+}
+
 const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpdateEvent, showLegend = true, properties, categories, onUpdateBookingStatus }) => {
   // Initialize with current date
   const now = new Date();
@@ -1072,7 +1077,14 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                ) : null;
                             })()}
                          </div>
-                         <span className="text-[10px] opacity-80 font-bold uppercase tracking-tighter">{event.type}</span>
+                         {(() => {
+                           if (isAccountingCalendar) return <span className="text-[10px] opacity-80 font-bold uppercase tracking-tighter">{event.type}</span>;
+                           const typeText = (event.type ?? '').trim();
+                           if (!typeText) return null;
+                           const titleText = (event.title ?? '').trim();
+                           if (normalizeTitleOrType(typeText) === normalizeTitleOrType(titleText)) return null;
+                           return <span className="text-[10px] opacity-80 font-bold uppercase tracking-tighter">{event.type}</span>;
+                         })()}
                       </div>
                       {event.status === 'done_by_worker' && (
                           <div className="mt-1 bg-yellow-500/20 text-yellow-500 text-[10px] px-1 rounded inline-block">Awaiting Verification</div>
