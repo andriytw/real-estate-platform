@@ -55,11 +55,6 @@ function formatPropertyLabelAddressFirst(prop: Property): string {
   return `${getPropertyAddress(prop)} — ${prop.title}`;
 }
 
-// Normalize for title/type comparison (hide duplicate type badge on Facility day-cell)
-function normalize(s: string): string {
-  return (s ?? '').toLowerCase().replace(/\s+/g, ' ').replace(/[-_]+/g, ' ').trim();
-}
-
 const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpdateEvent, showLegend = true, properties, categories, onUpdateBookingStatus }) => {
   // Initialize with current date
   const now = new Date();
@@ -1079,11 +1074,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                          </div>
                          {(() => {
                            if (isAccountingCalendar) return <span className="text-[10px] opacity-80 font-bold uppercase tracking-tighter">{event.type}</span>;
-                           const titleText = (event.title ?? '').trim();
-                           const typeText = (event.type ?? '').trim();
-                           const showTypeBadge = !!typeText && normalize(typeText) !== normalize(titleText);
-                           if (!showTypeBadge) return null;
-                           return <span className="text-[10px] opacity-80 font-bold uppercase tracking-tighter">{event.type}</span>;
+                           return null; // Facility: type shown only in top line, no side badge
                          })()}
                       </div>
                       {event.status === 'done_by_worker' && (
