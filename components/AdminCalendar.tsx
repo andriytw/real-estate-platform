@@ -216,7 +216,15 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   // Empty property/assignee columns only if calendar_events.property_id or worker_id missing, or propertyList/workers not loaded
   const buildFacilityCsv = (taskList: CalendarEvent[], lastCommentMap: Record<string, string>): string => {
     const header = toCsvRow(['date', 'property_address', 'property_title', 'time', 'task_title', 'type', 'status', 'assignee_name', 'description', 'last_comment', 'id']);
-    const rows = taskList.map(e => {
+    const lines: string[] = [];
+    let prevDate = '';
+    for (const e of taskList) {
+      const eventDate = e.date ?? '';
+      if (eventDate !== prevDate) {
+        if (prevDate !== '') lines.push('');
+        lines.push(header);
+        prevDate = eventDate;
+      }
       const assigneeId = e.workerId ?? e.assignedWorkerId;
       const assigneeName = e.assignee || (assigneeId ? workers.find(w => w.id === assigneeId)?.name : '') || '';
       const prop = e.propertyId ? propertyList.find(p => p.id === e.propertyId) : null;
@@ -229,8 +237,8 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       const description = (e.description ?? '').replace(/\r?\n/g, ' ').trim();
       const lastCommentRaw = (lastCommentMap[e.id] ?? '').replace(/\r?\n/g, ' ').trim();
       const lastComment = lastCommentRaw.slice(0, 200);
-      return toCsvRow([
-        e.date ?? '',
+      lines.push(toCsvRow([
+        eventDate,
         propertyAddress,
         propertyTitle,
         e.time ?? '',
@@ -241,9 +249,9 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         description,
         lastComment,
         e.id
-      ]);
-    });
-    return [header, ...rows].join('\r\n');
+      ]));
+    }
+    return lines.join('\r\n');
   };
 
   // Load workers from database
@@ -852,22 +860,18 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                       return (
                         <div
                           key={event.id}
-                          className="px-4 py-2 flex flex-col gap-0.5 border-t border-gray-800/50 hover:bg-[#1C1F24]"
+                          className="px-4 py-1.5 flex items-center gap-x-3 min-w-0 text-sm border-t border-gray-800/50 hover:bg-[#1C1F24]"
                         >
-                          <div className="flex items-center gap-x-3 min-w-0 text-sm">
-                            <span className="font-mono text-gray-500 w-14 shrink-0">{event.time || '—'}</span>
-                            {event.type && (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap shrink-0" style={{ background: 'rgba(0,153,255,0.15)', color: '#4db8ff' }}>
-                                {event.type}
-                              </span>
-                            )}
-                            <span className="text-gray-300 truncate min-w-0 flex-1" title={addressUnit}>{addressUnit}</span>
-                            <span className="text-gray-400 shrink-0 text-xs">{assigneeName}</span>
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-gray-700 text-gray-300 shrink-0 whitespace-nowrap">{event.status}</span>
-                          </div>
-                          <div className="pl-[68px] text-xs text-gray-500 truncate" title={msgPreview !== '—' ? msgPreview : undefined}>
-                            {msgPreview}
-                          </div>
+                          <span className="font-mono text-gray-500 w-14 shrink-0">{event.time || '—'}</span>
+                          {event.type && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap shrink-0" style={{ background: 'rgba(0,153,255,0.15)', color: '#4db8ff' }}>
+                              {event.type}
+                            </span>
+                          )}
+                          <span className="text-gray-300 truncate min-w-0" style={{ flexBasis: '180px', flexShrink: 1 }} title={addressUnit}>{addressUnit}</span>
+                          <span className="text-gray-400 shrink-0 text-xs whitespace-nowrap">{assigneeName}</span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-gray-700 text-gray-300 shrink-0 whitespace-nowrap">{event.status}</span>
+                          <span className="text-gray-500 text-xs truncate min-w-0 flex-1 hidden lg:inline" title={msgPreview !== '—' ? msgPreview : undefined}>{msgPreview}</span>
                         </div>
                       );
                     })}
