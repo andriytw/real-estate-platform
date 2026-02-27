@@ -5,6 +5,7 @@ import { MOCK_PROPERTIES } from '../constants';
 import { CalendarEvent, TaskType, TaskStatus, Property, BookingStatus, Worker } from '../types';
 import { updateBookingStatusFromTask } from '../bookingUtils';
 import { workersService, tasksService } from '../services/supabaseService';
+import { supabase } from '../utils/supabase/client';
 import { ACCOUNTING_TASK_TYPES, getTaskColor } from '../utils/taskColors';
 
 type ViewMode = 'month' | 'week' | 'day';
@@ -83,6 +84,9 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   // Workers from database
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loadingWorkers, setLoadingWorkers] = useState(true);
+
+  // Facility only: latest chat message per task for CSV last_comment
+  const [lastCommentByEventId, setLastCommentByEventId] = useState<Record<string, string>>({});
 
   // Form Data
   const [newTaskProperty, setNewTaskProperty] = useState('');
@@ -168,7 +172,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     return byDate;
   }, [isAccountingCalendar, activeBucket, events]);
 
-  // CSV helpers (Facility only, use propertyList + workers from closure)
+  // CSV helpers (Facility only; Accounting unchanged)
   const toCsvRow = (values: string[]): string =>
     values.map(v => {
       const s = String(v ?? '').replace(/\r?\n/g, ' ').trim();
@@ -176,23 +180,41 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       return s;
     }).join(',');
 
-  const buildCsv = (taskList: CalendarEvent[]): string => {
-    const header = toCsvRow(['id', 'date', 'time', 'title', 'type', 'status', 'assignee_name', 'property_title', 'property_address', 'description_short']);
-    const rows = taskList.map(e => {
+  // Facility CSV: column order date, property_address, property_title, time, task_title, type, status, assignee_name, description, last_comment, id; sorted by date ASC, time ASC (empty time last)
+  const buildFacilityCsv = (taskList: CalendarEvent[], lastCommentMap: Record<string, string>): string => {
+    const sorted = [...taskList].sort((a, b) => {
+      const dA = a.date || '';
+      const dB = b.date || '';
+      if (dA !== dB) return dA.localeCompare(dB);
+      const tA = a.time || '';
+      const tB = b.time || '';
+      if (tA === '' && tB === '') return 0;
+      if (tA === '') return 1;
+      if (tB === '') return -1;
+      return tA.localeCompare(tB);
+    });
+    const header = toCsvRow(['date', 'property_address', 'property_title', 'time', 'task_title', 'type', 'status', 'assignee_name', 'description', 'last_comment', 'id']);
+    const rows = sorted.map(e => {
+      const assigneeId = e.workerId ?? e.assignedWorkerId;
+      const assigneeName = e.assignee || (assigneeId ? workers.find(w => w.id === assigneeId)?.name : '') || '';
       const prop = e.propertyId ? propertyList.find(p => p.id === e.propertyId) : null;
-      const assigneeName = e.assignee || (e.workerId ? workers.find(w => w.id === e.workerId)?.name : '') || '';
-      const desc = (e.description || '').replace(/\r?\n/g, ' ').trim().slice(0, 120);
+      const propertyTitle = prop?.title ?? '';
+      const propertyAddress = prop?.address ?? (prop as any)?.full_address ?? (prop as any)?.fullAddress ?? '';
+      const description = (e.description ?? '').replace(/\r?\n/g, ' ').trim();
+      const lastCommentRaw = (lastCommentMap[e.id] ?? '').replace(/\r?\n/g, ' ').trim();
+      const lastComment = lastCommentRaw.slice(0, 200);
       return toCsvRow([
-        e.id,
-        e.date || '',
-        e.time || '',
-        e.title || '',
-        (e.type as string) || '',
-        e.status || '',
+        e.date ?? '',
+        propertyAddress,
+        propertyTitle,
+        e.time ?? '',
+        e.title ?? '',
+        (e.type as string) ?? '',
+        e.status ?? '',
         assigneeName,
-        prop?.title || '',
-        (prop as any)?.address || (prop as any)?.full_address || '',
-        desc
+        description,
+        lastComment,
+        e.id
       ]);
     });
     return [header, ...rows].join('\r\n');
@@ -215,6 +237,42 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     };
     loadWorkers();
   }, []);
+
+  // Facility only: fetch latest chat message per task for CSV last_comment when panel is open
+  useEffect(() => {
+    if (isAccountingCalendar || activeBucket == null) {
+      setLastCommentByEventId({});
+      return;
+    }
+    const taskIds = facilityFilteredGrouped.flatMap(g => g.events.map(ev => ev.id));
+    if (taskIds.length === 0) {
+      setLastCommentByEventId({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('task_chat_messages')
+        .select('calendar_event_id, message_text, created_at')
+        .in('calendar_event_id', taskIds)
+        .order('created_at', { ascending: false });
+      if (cancelled || error) {
+        if (!cancelled && error) console.warn('task_chat_messages fetch:', error.message);
+        if (!cancelled) setLastCommentByEventId({});
+        return;
+      }
+      const map: Record<string, string> = {};
+      for (const row of data ?? []) {
+        const id = row.calendar_event_id;
+        if (id != null && map[id] === undefined) {
+          const text = (row as any).message_text ?? (row as any).message ?? '';
+          map[id] = String(text).replace(/\r?\n/g, ' ').trim().slice(0, 200);
+        }
+      }
+      if (!cancelled) setLastCommentByEventId(map);
+    })();
+    return () => { cancelled = true; };
+  }, [isAccountingCalendar, activeBucket, facilityFilteredGrouped]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -634,9 +692,10 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                disabled={loadingWorkers || properties == null}
                 onClick={() => {
                   const filtered = events.filter(e => getTaskBucket(e) === activeBucket);
-                  const csv = buildCsv(filtered);
+                  const csv = buildFacilityCsv(filtered, lastCommentByEventId);
                   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
@@ -645,9 +704,9 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Download className="w-4 h-4" /> Download CSV
+                <Download className="w-4 h-4" /> {loadingWorkers || properties == null ? 'Loading…' : 'Download CSV'}
               </button>
               <button
                 type="button"
@@ -669,8 +728,12 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                       {date || 'No date'}
                     </div>
                     {dayEvents.map(event => {
+                      const assigneeId = event.workerId ?? event.assignedWorkerId;
+                      const assigneeName = event.assignee || (assigneeId ? workers.find(w => w.id === assigneeId)?.name : '') || '';
                       const prop = event.propertyId ? propertyList.find(p => p.id === event.propertyId) : null;
-                      const assigneeName = event.assignee || (event.workerId ? workers.find(w => w.id === event.workerId)?.name : '') || '';
+                      const propTitle = prop?.title ?? '';
+                      const propAddress = prop?.address ?? (prop as any)?.full_address ?? (prop as any)?.fullAddress ?? '';
+                      const propDisplay = propTitle || propAddress;
                       return (
                         <div
                           key={event.id}
@@ -680,9 +743,9 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                           <span className="font-medium text-white truncate min-w-0 flex-1">{event.title}</span>
                           <span className="px-1.5 py-0.5 rounded text-xs font-bold uppercase bg-gray-700 text-gray-300 shrink-0">{event.status}</span>
                           {assigneeName && <span className="text-gray-400 shrink-0">{assigneeName}</span>}
-                          {(prop?.title || (prop as any)?.address) && (
-                            <span className="text-gray-500 truncate max-w-[200px] shrink-0" title={prop?.title || (prop as any)?.address}>
-                              {prop?.title || (prop as any)?.address}
+                          {propDisplay && (
+                            <span className="text-gray-500 truncate max-w-[200px] shrink-0" title={propDisplay}>
+                              {propDisplay}
                             </span>
                           )}
                         </div>

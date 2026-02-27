@@ -2751,7 +2751,7 @@ function transformCalendarEventFromDB(db: any): CalendarEvent {
     date: db.date,
     description: db.description,
     assignee: db.assignee,
-    assignedWorkerId: db.worker_id, // Use worker_id preferred
+    assignedWorkerId: db.assigned_worker_id ?? undefined,
     hasUnreadMessage: db.has_unread_message || false,
     status: db.status,
     meterReadings: db.meter_readings,
@@ -2760,7 +2760,7 @@ function transformCalendarEventFromDB(db: any): CalendarEvent {
     priority: db.priority || 'medium',
     isIssue: db.is_issue || false,
     managerId: db.manager_id,
-    workerId: db.worker_id,
+    workerId: db.worker_id ?? undefined,
     department: db.department,
     images: db.images || [],
     checklist: db.checklist || [],
