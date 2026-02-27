@@ -212,16 +212,19 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       return s;
     }).join(',');
 
-  // Facility CSV: column order date, property_address, property_title, time, task_title, type, status, assignee_name, description, last_comment, id; sorted by date ASC, time ASC (empty time last)
+  // Facility CSV: column order date, property_address, property_title, time, task_title, type, status, assignee_name, description, last_comment (no id); sorted by date ASC, time ASC (empty time last)
   // Empty property/assignee columns only if calendar_events.property_id or worker_id missing, or propertyList/workers not loaded
   const buildFacilityCsv = (taskList: CalendarEvent[], lastCommentMap: Record<string, string>): string => {
-    const header = toCsvRow(['date', 'property_address', 'property_title', 'time', 'task_title', 'type', 'status', 'assignee_name', 'description', 'last_comment', 'id']);
+    const header = toCsvRow(['date', 'property_address', 'property_title', 'time', 'task_title', 'type', 'status', 'assignee_name', 'description', 'last_comment']);
     const lines: string[] = [];
     let prevDate = '';
+    const oneEmptyRowBetweenBlocks = true; // one blank line between date blocks; no trailing blank
     for (const e of taskList) {
       const eventDate = e.date ?? '';
       if (eventDate !== prevDate) {
-        if (prevDate !== '') lines.push('');
+        if (prevDate !== '') {
+          if (oneEmptyRowBetweenBlocks) lines.push('');
+        }
         lines.push(header);
         prevDate = eventDate;
       }
@@ -247,8 +250,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         e.status ?? '',
         assigneeName,
         description,
-        lastComment,
-        e.id
+        lastComment
       ]));
     }
     return lines.join('\r\n');
