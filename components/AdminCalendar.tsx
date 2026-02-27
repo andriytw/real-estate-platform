@@ -463,12 +463,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         dayMatch = eventDay === day;
         monthMatch = eventMonth === currentMonthIdx;
         yearMatch = eventYear === selectedYear;
-        
-        // #region agent log
-        if (e.type === 'Einzug' || e.type === 'Auszug') {
-          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:216',message:'H4: getEventsForDay filtering',data:{day,eventId:e.id,eventTitle:e.title,eventDate:e.date,eventDay,eventMonth,eventYear,currentMonthIdx,selectedYear,dayMatch,monthMatch,yearMatch,filterTask,eventType:e.type,matches:dayMatch && monthMatch && yearMatch && (filterTask === 'All' || e.type === filterTask)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H4'})}).catch(()=>{});
-        }
-        // #endregion
       } else {
         // Legacy events without full date: fall back to day only, assume current month/year
         dayMatch = e.day === day;
@@ -1671,11 +1665,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                       const newWorkerId = val === '' ? undefined : val;
                                       // Оновити статус: якщо призначається працівник і статус open/pending → assigned
                                       const newStatus = (newWorkerId && (viewEvent.status === 'open' || viewEvent.status === 'pending')) ? 'assigned' : viewEvent.status;
-                                      
-                                      // #region agent log
-                                      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:1084',message:'Assigning worker to task',data:{taskId:viewEvent.id,taskType:viewEvent.type,bookingId:viewEvent.bookingId,newWorkerId,currentWorkerId:viewEvent.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-                                      // #endregion
-                                      
                                       try {
                                           // Validate UUID format
                                           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1751,11 +1740,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                               // Update local state with correct ID
                                               setViewEvent(updatedWithDate);
                                               onUpdateEvent(updatedWithDate);
-                                              
-                                              // #region agent log
-                                              fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:1092',message:'Task updated in DB (found by search)',data:{taskId:updated.id,taskType:updated.type,bookingId:updated.bookingId,workerId:updated.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                                              // #endregion
-                                              
                                               return;
                                           }
                                           
@@ -1786,10 +1770,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                               workerId: updated.workerId,
                                             });
                                           }
-                                          // #region agent log
-                                          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:1092',message:'Task updated in DB',data:{taskId:updated.id,taskType:updated.type,bookingId:updated.bookingId,workerId:updated.workerId,date:updated.date,day:updated.day},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-                                          // #endregion
-                                          
                                           // Find worker name for display; null-safe coalescing so API nulls never wipe card
                                           const worker = workers.find(w => w.id === newWorkerId);
                                           const updatedWithName = {
@@ -1817,10 +1797,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                               workerId: updatedWithName.workerId,
                                             });
                                           }
-                                          // #region agent log
-                                          fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:1105',message:'Calling onUpdateEvent',data:{taskId:updatedWithName.id,taskType:updatedWithName.type,bookingId:updatedWithName.bookingId,workerId:updatedWithName.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-                                          // #endregion
-                                          
                                           onUpdateEvent(updatedWithName);
                                           setViewEvent(updatedWithName);
                                           

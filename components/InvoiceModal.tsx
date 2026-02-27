@@ -124,10 +124,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
         if ('roomId' in offer && 'start' in offer) {
             // Це резервація - використати її id як bookingId
             bookingId = (offer as any).id;
-            // #region agent log
-            console.log('✅ InvoiceModal: Found reservation, using id as bookingId:', bookingId);
-            fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceModal.tsx:74',message:'Found reservation, using id as bookingId',data:{bookingId,offerId:offer.id,offerIdType:typeof offer.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'INVOICE_CREATE'})}).catch(()=>{});
-            // #endregion
         } else if ('id' in offer && offer.id) {
             // Це OfferData - використати id як offerIdSource (для RPC)
             offerIdSource = String(offer.id);
@@ -138,10 +134,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
                 const numId = Number(offer.id);
                 bookingId = !isNaN(numId) ? numId : offer.id;
             }
-            // #region agent log
-            console.log('✅ InvoiceModal: Using offer.id as offerIdSource:', offerIdSource);
-            fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceModal.tsx:78',message:'Using offer.id as offerIdSource',data:{bookingId,offerIdSource,offerId:offer.id,offerIdType:typeof offer.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'INVOICE_CREATE'})}).catch(()=>{});
-            // #endregion
         }
         
         // Якщо bookingId все ще undefined, спробувати знайти reservation за propertyId та dates
@@ -160,25 +152,13 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
                 
                 if (matchingReservation) {
                     bookingId = matchingReservation.id;
-                    // #region agent log
-                    console.log('✅ InvoiceModal: Found reservation by propertyId and dates, setting bookingId:', bookingId);
-                    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceModal.tsx:103',message:'Found reservation by propertyId and dates, setting bookingId',data:{bookingId,bookingIdType:typeof bookingId,offerId:offer.id,offerPropertyId:offer.propertyId,offerStart,reservationId:matchingReservation.id,reservationRoomId:matchingReservation.roomId,reservationStart:matchingReservation.start},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'INVOICE_CREATE'})}).catch(()=>{});
-                    // #endregion
                 } else {
-                    // #region agent log
-                    console.warn('⚠️ InvoiceModal: No matching reservation found by propertyId and dates', { offerPropertyId: offer.propertyId, offerStart, reservationsCount: reservations.length });
-                    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceModal.tsx:111',message:'No matching reservation found by propertyId and dates',data:{offerId:offer.id,offerPropertyId:offer.propertyId,offerStart,reservationsCount:reservations.length,reservationPropertyIds:reservations.map(r=>({id:r.id,roomId:r.roomId,start:r.start}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'INVOICE_CREATE'})}).catch(()=>{});
-                    // #endregion
                 }
             }
         }
         
         // Final check: if bookingId is still undefined, log error
         if (!bookingId) {
-            // #region agent log
-            console.error('❌ InvoiceModal: bookingId is undefined after all checks!', { offerId: offer.id, offerType: typeof offer, hasRoomId: 'roomId' in offer, hasStart: 'start' in offer, hasPropertyId: 'propertyId' in offer, hasDates: 'dates' in offer, reservationsAvailable: reservations?.length || 0 });
-            fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceModal.tsx:120',message:'❌ CRITICAL: bookingId is undefined after all checks',data:{offerId:offer.id,offerIdType:typeof offer.id,hasRoomId:'roomId' in offer,hasStart:'start' in offer,hasPropertyId:'propertyId' in offer,hasDates:'dates' in offer,offerKeys:Object.keys(offer),reservationsAvailable:reservations?.length || 0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'INVOICE_CREATE'})}).catch(()=>{});
-            // #endregion
         }
 
         // Визначити dates - для резервації використати start/end, для offer - dates
@@ -211,12 +191,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
           bookingId: undefined, // Do not set — booking is created only after manager confirms payment
           documentType: 'proforma',
         });
-        
-        // #region agent log
-        console.log('📋 InvoiceModal: Setting invoiceData with:', { reservationId: ('roomId' in offer && 'start' in offer) ? offer.id : (offer as any).reservationId, offerIdSource: 'id' in offer ? String(offer.id) : undefined, offerId: offer.id, offerIdType: typeof offer.id });
-        fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'InvoiceModal.tsx:115',message:'Setting invoiceData with bookingId and offerIdSource',data:{bookingId,bookingIdType:typeof bookingId,offerIdSource:'id' in offer ? String(offer.id) : undefined,offerId:offer.id,offerIdType:typeof offer.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'INVOICE_CREATE'})}).catch(()=>{});
-        // #endregion
-        
         setClientAddress(offer.address || '');
         setIsEditing(true); // Default to edit mode for new invoices
         setPdfFile(null);

@@ -1094,10 +1094,6 @@ export const tasksService = {
   },
 
   async update(id: string, updates: Partial<CalendarEvent>): Promise<CalendarEvent> {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1062',message:'tasksService.update called',data:{taskId:id,updates:{workerId:updates.workerId,status:updates.status,bookingId:updates.bookingId}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
-    
     const dbPatch = buildCalendarEventDbPatch(updates);
     if (import.meta.env.DEV) {
       console.log('[tasksService.update] dbPatch keys', Object.keys(dbPatch));
@@ -1124,10 +1120,6 @@ export const tasksService = {
         workerId: result.workerId,
       });
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1075',message:'tasksService.update completed',data:{taskId:result.id,taskType:result.type,bookingId:result.bookingId,workerId:result.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
-    
     return result;
   },
 
@@ -1245,16 +1237,7 @@ export const propertiesService = {
 
   // Update property
   async update(id: string, updates: Partial<Property>): Promise<Property> {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1182',message:'propertiesService.update entry',data:{propertyId:id,hasInventory:!!updates.inventory,inventoryCount:updates.inventory?.length||0,inventoryItems:updates.inventory?.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
-    
     const dbData = transformPropertyToDB(updates as Property);
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1186',message:'dbData before update',data:{hasInventory:!!dbData.inventory,inventoryCount:dbData.inventory?.length||0,inventoryItems:dbData.inventory?.slice(0,3)||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
-    
     const { data, error } = await supabase
       .from('properties')
       .update(dbData)
@@ -1263,18 +1246,10 @@ export const propertiesService = {
       .single();
     
     if (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1193',message:'propertiesService.update error',data:{error:error.message,code:error.code},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
       throw error;
     }
     
     const transformed = transformPropertyFromDB(data);
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1200',message:'propertiesService.update success',data:{propertyId:id,returnedInventoryCount:transformed.inventory?.length||0,returnedInventoryItems:transformed.inventory?.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
-    
     return transformed;
   },
 
@@ -1715,9 +1690,6 @@ export const invoicesService = {
 
   async create(invoice: Omit<InvoiceData, 'id'>): Promise<InvoiceData> {
     const dbData = transformInvoiceToDB(invoice);
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1368',message:'invoicesService.create called',data:{invoiceNumber:invoice.invoiceNumber,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource,dbData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     const { data, error } = await supabase
       .from('invoices')
       .insert([dbData])
@@ -1725,9 +1697,6 @@ export const invoicesService = {
       .single();
     
     if (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1376',message:'Error inserting invoice to Supabase',data:{error:error.message,errorCode:error.code,errorDetails:error.details,errorHint:error.hint,dbData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       throw error;
     }
     return transformInvoiceFromDB(data);

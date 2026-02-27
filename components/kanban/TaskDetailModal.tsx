@@ -85,11 +85,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         alert('Помилка: ID завдання невалідний. Будь ласка, оновіть сторінку.');
         return;
       }
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TaskDetailModal.tsx:86',message:'H1: BEFORE status update',data:{taskId:task.id,taskDate:task.date,taskDay:task.day,newStatus},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
-      
       // Preserve date and day to prevent loss when updating status
       const updatedTask = await tasksService.update(task.id, { 
         status: newStatus,
@@ -103,11 +98,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         date: updatedTask.date || task.date,
         day: updatedTask.day !== undefined ? updatedTask.day : task.day
       };
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TaskDetailModal.tsx:100',message:'H1: AFTER status update',data:{taskId:updatedWithDate.id,updatedDate:updatedWithDate.date,updatedDay:updatedWithDate.day,newStatus},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
-      
       onUpdateTask(updatedWithDate);
       window.dispatchEvent(new CustomEvent('taskUpdated'));
     } catch (error: any) {

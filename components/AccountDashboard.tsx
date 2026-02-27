@@ -503,18 +503,6 @@ const AccountDashboard: React.FC = () => {
       try {
         setIsLoadingProperties(true);
         const data = await propertiesService.getAll();
-        
-        // #region agent log
-        if (data.length > 0) {
-          const firstProperty = data[0];
-          (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:120',message:'Properties loaded',data:{totalProperties:data.length,firstProperty:{id:firstProperty.id,title:firstProperty.title}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
-        }
-        // #endregion
-        
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:129',message:'Setting properties from DB',data:{propertiesCount:data.length,isUsingMock:false,firstPropertyId:data[0]?.id,firstPropertyTitle:data[0]?.title},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
-        // #endregion
-        
         // Property inventory lives in property_inventory_items; do not write to properties.inventory
         const cleanedData = data;
         
@@ -528,9 +516,6 @@ const AccountDashboard: React.FC = () => {
         });
       } catch (error) {
         console.error('Error loading properties in Dashboard:', error);
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:137',message:'Error loading properties, using MOCK_PROPERTIES',data:{error:error instanceof Error ? error.message : String(error),mockPropertiesCount:MOCK_PROPERTIES.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
-        // #endregion
         // Fallback to mock data if error
         setProperties(MOCK_PROPERTIES);
         setSelectedPropertyId(prev => {
@@ -1570,17 +1555,8 @@ const AccountDashboard: React.FC = () => {
     if (!confirm('Are you sure you want to delete this item from warehouse stock? This will also remove it from all apartments where it was transferred.')) return;
 
     try {
-      // #region agent log
-      (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:607',message:'handleDeleteStockItem entry',data:{stockId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{}));
-      // #endregion
-      
       // Спочатку отримуємо інформацію про stock item, щоб знати itemId
       const stockItem = warehouseStock.find(item => item.stockId === stockId);
-      
-      // #region agent log
-      (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:612',message:'stockItem found',data:{stockItem:stockItem?{stockId:stockItem.stockId,itemId:stockItem.itemId,itemName:stockItem.itemName}:null,warehouseStockLength:warehouseStock.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{}));
-      // #endregion
-      
       if (!stockItem) {
         alert('Stock item not found');
         return;
@@ -1588,11 +1564,6 @@ const AccountDashboard: React.FC = () => {
 
       const itemId = stockItem.itemId;
       const invNumber = `WAREHOUSE-${itemId}`;
-      
-      // #region agent log
-      (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:619',message:'itemId and invNumber extracted',data:{itemId,invNumber,itemName:stockItem.itemName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{}));
-      // #endregion
-
       // Видаляємо зі складу
       await warehouseService.deleteStockItem(stockId);
 
@@ -1601,50 +1572,27 @@ const AccountDashboard: React.FC = () => {
         console.log(`🗑️ Removing inventory with itemId ${itemId} (${stockItem.itemName}) from all properties...`);
         const allProperties = await propertiesService.getAll();
         const itemName = stockItem.itemName;
-        
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:625',message:'Starting property search',data:{allPropertiesCount:allProperties.length,itemId,itemName,invNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{}));
-        // #endregion
-        
         for (const property of allProperties) {
           if (property.inventory && property.inventory.length > 0) {
-            // #region agent log
-            (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:630',message:'Checking property inventory',data:{propertyId:property.id,propertyTitle:property.title,inventoryCount:property.inventory.length,inventoryItems:property.inventory.map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{}));
-            // #endregion
-            
             // Шукаємо інвентар за itemId, invNumber або назвою товару
             const inventoryToRemove = property.inventory.filter((item: any) => {
               // Перевірка за itemId
               if (item.itemId === itemId) {
                 console.log(`  ✓ Found by itemId in ${property.title}: ${item.name || item.type}`);
-                // #region agent log
-                (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:635',message:'Match found by itemId',data:{propertyId:property.id,item:item},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{}));
-                // #endregion
                 return true;
               }
               // Перевірка за invNumber
               if (item.invNumber === invNumber) {
                 console.log(`  ✓ Found by invNumber in ${property.title}: ${item.name || item.type}`);
-                // #region agent log
-                (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:640',message:'Match found by invNumber',data:{propertyId:property.id,item:item,invNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{}));
-                // #endregion
                 return true;
               }
               // Перевірка за назвою товару (якщо немає itemId)
               if (!item.itemId && (item.name === itemName || item.type === itemName)) {
                 console.log(`  ✓ Found by name in ${property.title}: ${item.name || item.type}`);
-                // #region agent log
-                (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:645',message:'Match found by name',data:{propertyId:property.id,item:item,itemName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{}));
-                // #endregion
                 return true;
               }
               return false;
             });
-            
-            // #region agent log
-            (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:650',message:'inventoryToRemove result',data:{propertyId:property.id,foundCount:inventoryToRemove.length,itemsToRemove:inventoryToRemove.map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{}));
-            // #endregion
-            
             if (inventoryToRemove.length > 0) {
               console.log(`🗑️ Removing ${inventoryToRemove.length} inventory item(s) from property: ${property.title}`);
               const updatedInventory = property.inventory.filter((item: any) => {
@@ -1655,11 +1603,6 @@ const AccountDashboard: React.FC = () => {
                   (!item.itemId && (item.name === itemName || item.type === itemName))
                 );
               });
-              
-              // #region agent log
-              (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:660',message:'Before property update',data:{propertyId:property.id,oldInventoryCount:property.inventory.length,newInventoryCount:updatedInventory.length,oldInventory:property.inventory.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type})),newInventory:updatedInventory.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{}));
-              // #endregion
-              
               // Створюємо payload тільки з необхідними полями для оновлення
               // Важливо: передаємо inventory як масив, навіть якщо він порожній
               // Також передаємо id property, щоб Supabase знав, який запис оновлювати
@@ -1667,26 +1610,13 @@ const AccountDashboard: React.FC = () => {
                 id: property.id, // Додаємо id для явного вказання
                 inventory: Array.isArray(updatedInventory) ? updatedInventory : [], // Гарантуємо, що це масив
               };
-              
-              // #region agent log
-              (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:667',message:'Update payload prepared',data:{propertyId:property.id,payloadInventoryCount:updatePayload.inventory?.length||0,payloadInventory:updatePayload.inventory?.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{}));
-              // #endregion
-              
               const updatedProperty = await propertiesService.update(property.id, updatePayload);
-              
-              // #region agent log
-              (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:675',message:'After property update',data:{propertyId:property.id,returnedInventoryCount:updatedProperty.inventory?.length||0,returnedInventory:updatedProperty.inventory?.slice(0,3).map((i:any)=>({itemId:i.itemId,invNumber:i.invNumber,name:i.name,type:i.type}))||[]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{}));
-              // #endregion
             }
           }
         }
         
         // Оновити локальний стан properties
         setProperties((prev) => {
-          // #region agent log
-          (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:675',message:'Before local state update',data:{prevPropertiesCount:prev.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{}));
-          // #endregion
-          
           const updated = prev.map((p) => {
             if (p.inventory && p.inventory.length > 0) {
               const updatedInventory = p.inventory.filter((item: any) => {
@@ -1699,19 +1629,11 @@ const AccountDashboard: React.FC = () => {
               });
               if (updatedInventory.length !== p.inventory.length) {
                 console.log(`  ✓ Updated local state for property: ${p.title}`);
-                // #region agent log
-                (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:685',message:'Local state updated for property',data:{propertyId:p.id,propertyTitle:p.title,oldCount:p.inventory.length,newCount:updatedInventory.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{}));
-                // #endregion
                 return { ...p, inventory: updatedInventory };
               }
             }
             return p;
           });
-          
-          // #region agent log
-          (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:692',message:'After local state update',data:{updatedPropertiesCount:updated.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{}));
-          // #endregion
-          
           return updated;
         });
         
@@ -1802,62 +1724,25 @@ const AccountDashboard: React.FC = () => {
 
       console.log('✅ Warehouse stock decreased and movements created');
 
-      // 2) Оновити інвентар квартири (отримуємо property з бази для надійності)
-      const property = await propertiesService.getById(propertyId);
-      if (!property) {
-        console.error(`❌ Property ${propertyId} not found`);
-        return;
-      }
+      // 2) Insert into property_inventory_items (append-only, same table the "Möbel/Inventar" tile reads).
+      // Idempotency: callers check transferExecuted before calling this function.
+      // transferExecuted is set ONLY after this succeeds (see call sites).
+      const inventoryRows = items.map((item: any) => ({
+        property_id: propertyId,
+        document_id: null as string | null,
+        name: item.itemName ?? '',
+        quantity: item.quantity ?? 1,
+        article: item.sku ?? null,
+        unit_price: item.unitPrice ?? null,
+        invoice_number: item.invoiceNumber ?? null,
+        purchase_date: item.purchaseDate ?? null,
+        store: 'Warehouse transfer',
+      }));
+      await propertyInventoryService.appendItems(propertyId, null, inventoryRows);
+      console.log('✅ Property inventory items inserted (property_inventory_items)');
 
-      console.log(`📦 Property found: ${property.title}, current inventory items: ${(property.inventory || []).length}`);
-      const newInventory = [...(property.inventory || [])];
-
-      items.forEach((item: any) => {
-        const invId = `WAREHOUSE-${item.itemId}`;
-        const existingIndex = newInventory.findIndex((i: any) => i.invNumber === invId);
-
-        if (existingIndex >= 0) {
-          const existing = newInventory[existingIndex];
-          newInventory[existingIndex] = {
-            ...existing,
-            quantity: (existing.quantity || 0) + item.quantity,
-          };
-          console.log(`📦 Updated existing inventory item: ${item.itemName}, new quantity: ${newInventory[existingIndex].quantity}`);
-        } else {
-          const newItem = {
-            type: item.itemName,
-            invNumber: invId,
-            quantity: item.quantity,
-            cost: item.unitPrice || 0,
-            itemId: item.itemId,
-            name: item.itemName,
-            unitPrice: item.unitPrice || 0,
-            totalCost: (item.unitPrice || 0) * item.quantity,
-            sku: item.sku,
-            invoiceNumber: item.invoiceNumber,
-            purchaseDate: item.purchaseDate,
-            vendor: item.vendor,
-          };
-          newInventory.push(newItem);
-          console.log(`📦 Added new inventory item: ${item.itemName}, quantity: ${item.quantity}`);
-        }
-      });
-
-      console.log(`📦 Updating property with ${newInventory.length} inventory items`);
-      const updatedProperty = {
-        ...property,
-        inventory: newInventory,
-      };
-      await propertiesService.update(propertyId, updatedProperty);
-
-      console.log('✅ Property inventory updated successfully');
-
-      // Оновити локальний стан properties (selectedProperty оновиться автоматично через properties.find())
-      setProperties((prev) => {
-        const updated = prev.map((p) => (p.id === propertyId ? updatedProperty : p));
-        return updated;
-      });
-      console.log('✅ Local properties state updated');
+      // Refresh the inventory tile so transferred items appear immediately
+      refreshPropertyInventory();
 
       // 3) Оновити склад
       const refreshed = await warehouseService.getStock();
@@ -1965,11 +1850,6 @@ const AccountDashboard: React.FC = () => {
   useEffect(() => {
     const loadFacilityTasks = async () => {
       try {
-        // #region agent log
-        const adminEventsBeforeLoad = adminEvents.map(e => ({id: e.id, title: e.title, date: e.date, day: e.day, workerId: e.workerId}));
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1204',message:'H1: loadFacilityTasks ENTRY',data:{adminEventsCountBefore:adminEvents.length,adminEventIdsBefore:adminEvents.map(e=>e.id),adminEventsBefore:adminEventsBeforeLoad,workerRole:worker?.role,workerId:worker?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{}));
-        // #endregion
-        
         console.log('🔄 Loading Facility tasks from database...');
         console.log('👤 Current user:', worker?.id, worker?.role, worker?.department);
         
@@ -1984,17 +1864,7 @@ const AccountDashboard: React.FC = () => {
           filters.workerId = worker.id;
         }
         // Для manager та super_manager - не фільтруємо по workerId, показуємо всі завдання Facility
-        
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1221',message:'H1: BEFORE tasksService.getAll',data:{filters},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{}));
-        // #endregion
-        
         const tasks = await tasksService.getAll(filters);
-        
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1221',message:'H1-H5: AFTER tasksService.getAll',data:{tasksCount:tasks.length,tasks:tasks.map(t=>({id:t.id,title:t.title,date:t.date,day:t.day,workerId:t.workerId,status:t.status})),adminEventIdsBefore:adminEvents.map(e=>e.id),tasksIdsFromDB:tasks.map(t=>t.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{}));
-        // #endregion
-        
         console.log('✅ Loaded Facility tasks:', tasks.length);
         console.log('📋 All tasks:', tasks.map(t => ({ 
           id: t.id, 
@@ -2025,11 +1895,6 @@ const AccountDashboard: React.FC = () => {
         if (validTasks.length !== tasks.length) {
             console.warn(`⚠️ Filtered out ${tasks.length - validTasks.length} tasks with temporary auto-task-* IDs`);
         }
-        
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1257',message:'H1: BEFORE setAdminEvents (replacing state)',data:{validTasksCount:validTasks.length,validTaskIds:validTasks.map(t=>t.id),adminEventsCountBefore:adminEvents.length,adminEventIdsBefore:adminEvents.map(e=>e.id),tasksLost:adminEvents.filter(e=>!validTasks.find(t=>t.id===e.id)).map(e=>({id:e.id,title:e.title,date:e.date}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{}));
-        // #endregion
-        
         console.log('📋 Tasks after filtering:', validTasks.length);
         if (validTasks.length > 0) {
             console.log('📋 Task IDs:', validTasks.map(t => t.id));
@@ -2072,9 +1937,6 @@ const AccountDashboard: React.FC = () => {
         });
         
         facilityTasksLoadedRef.current = true;
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1262',message:'H1: AFTER setAdminEvents (state replaced)',data:{validTasksCount:validTasks.length,validTaskIds:validTasks.map(t=>t.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{}));
-        // #endregion
       } catch (error) {
         console.error('❌ Error loading Facility tasks:', error);
         facilityTasksLoadedRef.current = true;
@@ -2091,18 +1953,12 @@ const AccountDashboard: React.FC = () => {
     // NOTE: We use a debounce to prevent multiple rapid reloads
     let reloadTimeout: NodeJS.Timeout | null = null;
     const handleTaskUpdated = () => {
-      // #region agent log
-      (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1277',message:'H1: handleTaskUpdated called',data:{adminEventsCount:adminEvents.length,adminEventIds:adminEvents.map(e=>e.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{}));
-      // #endregion
       console.log('🔄 Task updated event received, will reload Facility tasks in 500ms...');
       // Debounce reload to prevent race conditions when multiple updates happen quickly
       if (reloadTimeout) {
         clearTimeout(reloadTimeout);
       }
       reloadTimeout = setTimeout(() => {
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1284',message:'H1: Executing debounced loadFacilityTasks',data:{adminEventsCountBeforeReload:adminEvents.length,adminEventIdsBeforeReload:adminEvents.map(e=>e.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{}));
-        // #endregion
         console.log('🔄 Reloading Facility tasks...');
         loadFacilityTasks();
       }, 500);
@@ -2143,18 +1999,9 @@ const AccountDashboard: React.FC = () => {
   useEffect(() => {
     const loadInvoices = async () => {
       try {
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1255',message:'Loading invoices from Supabase',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{}));
-        // #endregion
         const loadedInvoices = await invoicesService.getAll();
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1258',message:'Loaded invoices from Supabase',data:{count:loadedInvoices.length,invoiceIds:loadedInvoices.map(i=>i.id),invoiceNumbers:loadedInvoices.map(i=>i.invoiceNumber)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{}));
-        // #endregion
         setInvoices(loadedInvoices);
       } catch (error) {
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1263',message:'Error loading invoices from Supabase',data:{error:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{}));
-        // #endregion
         console.error('Error loading invoices:', error);
       }
     };
@@ -2165,18 +2012,9 @@ const AccountDashboard: React.FC = () => {
   useEffect(() => {
     const loadOffers = async () => {
       try {
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1297',message:'Loading offers from Supabase',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{}));
-        // #endregion
         const loadedOffers = await offersService.getAll();
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1301',message:'Loaded offers from Supabase',data:{count:loadedOffers.length,offerIds:loadedOffers.map(o=>({id:o.id,idType:typeof o.id,clientName:o.clientName,propertyId:o.propertyId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{}));
-        // #endregion
         setOffers(loadedOffers);
       } catch (error) {
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1305',message:'Error loading offers from Supabase',data:{error:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{}));
-        // #endregion
         console.error('Error loading offers:', error);
       }
     };
@@ -2215,11 +2053,6 @@ const AccountDashboard: React.FC = () => {
     const handleTaskUpdated = async () => {
       try {
         console.log('🔄 Task updated event received, reloading Facility tasks...');
-        
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1232',message:'handleTaskUpdated called',data:{workerRole:worker?.role,workerId:worker?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{}));
-        // #endregion
-        
         // Build filters based on user role
         const filters: any = {
           department: 'facility'
@@ -2232,19 +2065,6 @@ const AccountDashboard: React.FC = () => {
         
         const tasks = await tasksService.getAll(filters);
         console.log('✅ Reloaded Facility tasks:', tasks.length);
-        
-        // #region agent log
-        const tasksByBooking = tasks.reduce((acc: any, t) => {
-          if (t.bookingId) {
-            const key = String(t.bookingId);
-            if (!acc[key]) acc[key] = [];
-            acc[key].push({id:t.id,type:t.type,workerId:t.workerId});
-          }
-          return acc;
-        }, {});
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1246',message:'Tasks loaded from DB',data:{totalTasks:tasks.length,tasksByBooking},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
-        // #endregion
-        
         // Finalize transfer only when status is verified (not on completed)
         for (const task of tasks) {
           if (task.status === 'verified' && task.description) {
@@ -2271,11 +2091,6 @@ const AccountDashboard: React.FC = () => {
             }
           }
         }
-        
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1276',message:'Setting adminEvents state',data:{tasksCount:tasks.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{}));
-        // #endregion
-        
         setAdminEvents(tasks);
       } catch (error) {
         console.error('❌ Error reloading Facility tasks:', error);
@@ -4815,11 +4630,6 @@ ${internalCompany} Team`;
   };
   
   const handleSaveInvoice = async (invoice: InvoiceData) => {
-      // #region agent log
-      console.log('💾 handleSaveInvoice called with:', { invoiceId: invoice.id, invoiceNumber: invoice.invoiceNumber, bookingId: invoice.bookingId, bookingIdType: typeof invoice.bookingId, offerIdSource: invoice.offerIdSource, offerIdSourceType: typeof invoice.offerIdSource, status: invoice.status });
-      (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2142',message:'handleSaveInvoice called',data:{invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber,bookingId:invoice.bookingId,bookingIdType:typeof invoice.bookingId,offerIdSource:invoice.offerIdSource,offerIdSourceType:typeof invoice.offerIdSource,status:invoice.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{}));
-      // #endregion
-      
       // If reservationId not set but we can find reservation by offerIdSource, set reservationId (not bookingId; booking_id only after payment confirmed)
       if (!invoice.reservationId && !invoice.bookingId && invoice.offerIdSource) {
           const reservationByOfferId = reservations.find(r => {
@@ -4883,10 +4693,6 @@ ${internalCompany} Team`;
               
               // Update invoice.offerIdSource with the new UUID
               invoice.offerIdSource = String(savedOffer.id);
-              // #region agent log
-              (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2174',message:'Saved offer to Supabase and updated invoice.offerIdSource',data:{oldOfferId:localOffer.id,newOfferId:savedOffer.id,newOfferIdType:typeof savedOffer.id,invoiceOfferIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{}));
-              // #endregion
-              
               // Link invoice to reservation (not booking; booking_id only after payment confirmed)
               if (!invoice.reservationId && (!invoice.bookingId || invoice.bookingId === localOffer.id || String(invoice.bookingId) === String(localOffer.id))) {
                 const relatedReservation = reservations.find(r => {
@@ -4897,17 +4703,11 @@ ${internalCompany} Team`;
                 
                 if (relatedReservation) {
                   invoice.reservationId = String(relatedReservation.id);
-                  // #region agent log
-                  (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2187',message:'Found related reservation and updated invoice.reservationId',data:{reservationId:relatedReservation.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{}));
-                  // #endregion
                 }
               }
             } else {
               // Offer not found in local state, set to null to avoid foreign key error
               invoice.offerIdSource = undefined;
-              // #region agent log
-              (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2195',message:'Offer not found in local state, setting offerIdSource to undefined',data:{invoiceOfferIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{}));
-              // #endregion
             }
           } else {
             // Valid UUID, check if it exists in Supabase
@@ -4930,23 +4730,12 @@ ${internalCompany} Team`;
         let savedInvoice: InvoiceData;
         
         if (exists) {
-          // #region agent log
-          (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2160',message:'Updating existing invoice in Supabase',data:{invoiceId:invoice.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{}));
-          // #endregion
           savedInvoice = await invoicesService.update(String(invoice.id), invoice);
         } else {
-          // #region agent log
-          (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2166',message:'Creating new invoice in Supabase',data:{invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{}));
-          // #endregion
           // Remove id before creating (database will generate UUID)
           const { id, ...invoiceWithoutId } = invoice;
           savedInvoice = await invoicesService.create(invoiceWithoutId);
         }
-        
-        // #region agent log
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2069',message:'Invoice saved to Supabase successfully',data:{invoiceId:savedInvoice.id,invoiceNumber:savedInvoice.invoiceNumber,bookingId:savedInvoice.bookingId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{}));
-        // #endregion
-        
         // Update local state
         if (exists) {
            setInvoices(prev => prev.map(inv => inv.id === savedInvoice.id ? savedInvoice : inv));
@@ -4995,11 +4784,6 @@ ${internalCompany} Team`;
           setAccountingTab('invoices');
         }
       } catch (error: any) {
-        // #region agent log
-        const errorDetails = error?.message || error?.code || String(error);
-        const errorData = error?.details || error?.hint || error;
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2095',message:'Error saving invoice to Supabase',data:{error:errorDetails,errorCode:error?.code,errorMessage:error?.message,errorDetails:errorData,invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{}));
-        // #endregion
         console.error('Error saving invoice:', error);
         const errorMessage = error?.message || error?.code || 'Unknown error';
         alert(`Failed to save invoice: ${errorMessage}. Please try again.`);
@@ -5007,23 +4791,12 @@ ${internalCompany} Team`;
   };
 
   const toggleInvoiceStatus = async (invoiceId: string) => {
-    // #region agent log
-    (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2090',message:'toggleInvoiceStatus called',data:{invoiceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{}));
-    // #endregion
     const invoice = invoices.find(inv => inv.id === invoiceId);
     if (!invoice) {
-      // #region agent log
-      (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2093',message:'Invoice not found in local state',data:{invoiceId,invoiceCount:invoices.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{}));
-      // #endregion
       return;
     }
     
     const newStatus = invoice.status === 'Paid' ? 'Unpaid' : 'Paid';
-    // #region agent log
-    console.log('🔄 toggleInvoiceStatus called:', { invoiceId, oldStatus: invoice.status, newStatus, bookingId: invoice.bookingId, offerIdSource: invoice.offerIdSource });
-    (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2286',message:'Toggling invoice status',data:{invoiceId,oldStatus:invoice.status,newStatus,bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{}));
-    // #endregion
-    
     try {
       // If marking as Paid, call RPC to confirm booking and mark competing reservations as lost
       if (newStatus === 'Paid' && invoice.status !== 'Paid') {
@@ -5112,11 +4885,6 @@ ${internalCompany} Team`;
       if (shouldCreateTasks && newStatus === 'Paid') {
           // Знайти пов'язану резервацію через bookingId або offerIdSource
           let linkedBooking: ReservationData | undefined;
-          
-          // #region agent log
-          (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2110',message:'Looking for linked booking',data:{bookingId:invoice.bookingId,offerIdSource:invoice.offerIdSource,reservationsCount:reservations.length,offersCount:offers.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{}));
-          // #endregion
-          
           if (invoice.bookingId) {
               // Enhanced booking search - try multiple matching strategies
               linkedBooking = reservations.find(r => {
@@ -5129,10 +4897,6 @@ ${internalCompany} Team`;
                 const bookingIdStr = String(invoice.bookingId);
                 return rIdStr.toLowerCase() === bookingIdStr.toLowerCase();
               });
-              
-              // #region agent log
-              (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2284',message:'Searched for booking by bookingId',data:{bookingId:invoice.bookingId,bookingIdType:typeof invoice.bookingId,reservationsCount:reservations.length,reservationIds:reservations.map(r=>({id:r.id,idType:typeof r.id})),found:!!linkedBooking,linkedBookingId:linkedBooking?.id,linkedBookingIdType:typeof linkedBooking?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{}));
-              // #endregion
           }
           
           if (!linkedBooking) {
@@ -5147,11 +4911,6 @@ ${internalCompany} Team`;
                 const offerIdStr = String(invoice.offerIdSource);
                 return oIdStr.toLowerCase() === offerIdStr.toLowerCase();
               });
-              
-              // #region agent log
-              (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2292',message:'Searched for offer by offerIdSource',data:{offerIdSource:invoice.offerIdSource,offerIdSourceType:typeof invoice.offerIdSource,offersCount:offers.length,offerIds:offers.map(o=>({id:o.id,idType:typeof o.id})),found:!!linkedOffer,linkedOfferId:linkedOffer?.id,linkedOfferIdType:typeof linkedOffer?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{}));
-              // #endregion
-              
               if (linkedOffer) {
                   // Конвертувати offer в booking для створення тасок
                   const [start, end] = linkedOffer.dates.split(' to ');
@@ -5192,21 +4951,11 @@ ${internalCompany} Team`;
                       channel: 'Direct',
                       type: 'GUEST'
                   };
-                  
-                  // #region agent log
-                  (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2325',message:'Created linkedBooking from offer',data:{linkedBookingId:linkedBooking.id,linkedBookingIdType:typeof linkedBooking.id,roomId:linkedBooking.roomId,start:linkedBooking.start,end:linkedBooking.end,isUUID:isValidUUID(linkedBooking.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{}));
-                  // #endregion
               } else {
-                  // #region agent log
-                  (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2328',message:'Offer not found in local state',data:{offerIdSource:invoice.offerIdSource,offerIdSourceType:typeof invoice.offerIdSource,offersCount:offers.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{}));
-                  // #endregion
               }
           }
           
           if (linkedBooking) {
-              // #region agent log
-              (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2148',message:'Linked booking found, updating status and creating tasks',data:{linkedBookingId:linkedBooking.id,roomId:linkedBooking.roomId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
-              // #endregion
               // Оновити статус броні на paid та колір
               updateReservationInDB(linkedBooking.id, { 
                   status: BookingStatus.PAID, 
@@ -5229,37 +4978,17 @@ ${internalCompany} Team`;
               
               const hasEinzugTask = existingTasks.some(e => e.type === 'Einzug');
               const hasAuszugTask = existingTasks.some(e => e.type === 'Auszug');
-              
-              // #region agent log
-              (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2340',message:'Checking for existing tasks',data:{linkedBookingId:linkedBooking.id,linkedBookingIdType:typeof linkedBooking.id,adminEventsCount:adminEvents.length,existingTasksCount:existingTasks.length,existingTaskBookingIds:existingTasks.map(t=>({id:t.id,bookingId:t.bookingId,bookingIdType:typeof t.bookingId,type:t.type})),hasEinzugTask,hasAuszugTask},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
-              // #endregion
-              
               // Створити Facility tasks тільки якщо вони ще не існують
               if (!hasEinzugTask || !hasAuszugTask) {
                   // Отримати назву нерухомості
                   const property = properties.find(p => p.id === linkedBooking.roomId || String(p.id) === String(linkedBooking.roomId));
                   const propertyName = property?.title || property?.address || linkedBooking.address || linkedBooking.roomId;
-                  
-                  // #region agent log
-                  (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2169',message:'Creating facility tasks',data:{linkedBookingId:linkedBooking.id,propertyName,roomId:linkedBooking.roomId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
-                  // #endregion
-                  
                   const tasks = createFacilityTasksForBooking(linkedBooking, propertyName);
-                  
-                  // #region agent log
-                  (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2357',message:'Created tasks from createFacilityTasksForBooking',data:{totalTasks:tasks.length,tasks:tasks.map(t=>({type:t.type,bookingId:t.bookingId,bookingIdType:typeof t.bookingId,propertyId:t.propertyId,title:t.title})),linkedBookingId:linkedBooking.id,linkedBookingIdType:typeof linkedBooking.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H5'})}).catch(()=>{}));
-                  // #endregion
-                  
                   // Фільтрувати таски які вже існують
                   const newTasks = tasks.filter(task => 
                       (task.type === 'Einzug' && !hasEinzugTask) ||
                       (task.type === 'Auszug' && !hasAuszugTask)
                   );
-                  
-                  // #region agent log
-                  (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2365',message:'Filtered new tasks to create',data:{totalTasks:tasks.length,newTasksCount:newTasks.length,newTaskTypes:newTasks.map(t=>t.type),newTaskBookingIds:newTasks.map(t=>({type:t.type,bookingId:t.bookingId,bookingIdType:typeof t.bookingId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
-                  // #endregion
-                  
                   // Зберегти завдання в базу даних
                   const savedTasks: CalendarEvent[] = [];
                   for (const task of newTasks) {
@@ -5275,29 +5004,8 @@ ${internalCompany} Team`;
                           };
                           const savedTask = await tasksService.create(taskToSave);
                           savedTasks.push(savedTask);
-                          // #region agent log
-                          (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2375',message:'Created Facility task in database',data:{taskId:savedTask.id,taskTitle:savedTask.title,taskType:savedTask.type,bookingId:savedTask.bookingId,bookingIdType:typeof savedTask.bookingId,propertyId:savedTask.propertyId,department:savedTask.department,status:savedTask.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
-                          // #endregion
                           console.log('✅ Created Facility task in database:', savedTask.id, savedTask.title, 'bookingId:', savedTask.bookingId);
                       } catch (error: any) {
-                          // #region agent log
-                          console.error('❌ Full error details:', error);
-                          console.error('❌ Error message:', error?.message);
-                          console.error('❌ Error code:', error?.code);
-                          console.error('❌ Error details:', error?.details);
-                          console.error('❌ Error hint:', error?.hint);
-                          console.error('❌ Task data that failed:', {
-                              type: task.type,
-                              title: task.title,
-                              bookingId: task.bookingId,
-                              propertyId: task.propertyId,
-                              department: task.department,
-                              workerId: task.workerId,
-                              date: task.date,
-                              status: task.status
-                          });
-                          (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2540',message:'Error creating Facility task in database',data:{error:String(error),errorMessage:error?.message,errorCode:error?.code,errorDetails:error?.details,errorHint:error?.hint,taskType:task.type,taskTitle:task.title,bookingId:task.bookingId,bookingIdType:typeof task.bookingId,propertyId:task.propertyId,propertyIdType:typeof task.propertyId,workerId:task.workerId,date:task.date,status:task.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
-                          // #endregion
                           console.error('❌ Error creating Facility task in database:', error);
                       }
                   }
@@ -5306,22 +5014,13 @@ ${internalCompany} Team`;
                       setAdminEvents(prevEvents => [...prevEvents, ...savedTasks]);
                       // Notify other components and reload tasks from database
                       window.dispatchEvent(new CustomEvent('taskUpdated'));
-                      // #region agent log
-                      (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2458',message:'✅ SUCCESS: Tasks created and taskUpdated event dispatched',data:{savedTasksCount:savedTasks.length,taskIds:savedTasks.map(t=>t.id),taskDetails:savedTasks.map(t=>({id:t.id,type:t.type,bookingId:t.bookingId,bookingIdType:typeof t.bookingId,title:t.title,propertyId:t.propertyId,department:t.department})),linkedBookingId:linkedBooking.id,linkedBookingIdType:typeof linkedBooking.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'SUCCESS'})}).catch(()=>{}));
-                      // #endregion
                       console.log('✅ Created and added', savedTasks.length, 'Facility tasks to calendar');
                       console.log('✅ Task details:', savedTasks.map(t => ({ id: t.id, type: t.type, bookingId: t.bookingId, title: t.title })));
                   } else {
-                      // #region agent log
-                      (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2465',message:'⚠️ WARNING: No tasks were created',data:{hasEinzugTask,hasAuszugTask,newTasksCount:newTasks.length,linkedBookingId:linkedBooking.id,linkedBookingIdType:typeof linkedBooking.id,totalTasksFromFunction:tasks.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
-                      // #endregion
                       console.warn('⚠️ No tasks were created. Check if tasks already exist or if there was an error.');
                       console.warn('hasEinzugTask:', hasEinzugTask, 'hasAuszugTask:', hasAuszugTask, 'newTasksCount:', newTasks.length);
                   }
               } else {
-                  // #region agent log
-                  (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2211',message:'Tasks already exist, skipping creation',data:{hasEinzugTask,hasAuszugTask},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
-                  // #endregion
               }
               
               // Оновити meter log в property
@@ -5337,9 +5036,6 @@ ${internalCompany} Team`;
                   return prop;
               }));
           } else {
-              // #region agent log
-              (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2430',message:'❌ CRITICAL: No linked booking found - tasks will NOT be created',data:{bookingId:invoice.bookingId,bookingIdType:typeof invoice.bookingId,offerIdSource:invoice.offerIdSource,offerIdSourceType:typeof invoice.offerIdSource,reservationsCount:reservations.length,offersCount:offers.length,reservationIds:reservations.map(r=>({id:r.id,idType:typeof r.id})),offerIds:offers.map(o=>({id:o.id,idType:typeof o.id})),invoiceId:invoice.id,invoiceNumber:invoice.invoiceNumber},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'CRITICAL'})}).catch(()=>{}));
-              // #endregion
               console.error('❌ CRITICAL: No linked booking found for invoice:', invoice.invoiceNumber, 'bookingId:', invoice.bookingId, 'offerIdSource:', invoice.offerIdSource);
               console.error('Available reservations:', reservations.map(r => ({ id: r.id, idType: typeof r.id })));
               console.error('Available offers:', offers.map(o => ({ id: o.id, idType: typeof o.id })));
@@ -5358,9 +5054,6 @@ ${internalCompany} Team`;
           }
       }
     } catch (error) {
-      // #region agent log
-      (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2238',message:'Error updating invoice status in Supabase',data:{error:String(error),invoiceId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{}));
-      // #endregion
       console.error('Error updating invoice status:', error);
       alert('Failed to update invoice status. Please try again.');
     }
@@ -5371,10 +5064,6 @@ ${internalCompany} Team`;
   };
 
   const handleAdminEventUpdate = async (updatedEvent: CalendarEvent) => {
-      // #region agent log
-      (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2655',message:'H1-H5: handleAdminEventUpdate ENTRY',data:{taskId:updatedEvent.id,taskType:updatedEvent.type,bookingId:updatedEvent.bookingId,workerId:updatedEvent.workerId,date:updatedEvent.date,day:updatedEvent.day,status:updatedEvent.status,adminEventsCount:adminEvents.length,existingTaskInState:adminEvents.find(e=>e.id===updatedEvent.id)?true:false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{}));
-      // #endregion
-
       // Transfer verify: finalize BEFORE persisting verified; minimal PATCH on success; on failure toast + log, do not set verified
       if (updatedEvent.status === 'verified' && updatedEvent.description) {
         try {
@@ -5402,21 +5091,9 @@ ${internalCompany} Team`;
           }
         } catch (_) { /* not JSON or not transfer */ }
       }
-
-      // #region agent log
-      const taskBeforeUpdate = adminEvents.find(e => e.id === updatedEvent.id);
-      (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2660',message:'H2: Task state BEFORE local update',data:{taskId:updatedEvent.id,dateBefore:taskBeforeUpdate?.date,dayBefore:taskBeforeUpdate?.day,workerIdBefore:taskBeforeUpdate?.workerId,dateAfter:updatedEvent.date,dayAfter:updatedEvent.day,workerIdAfter:updatedEvent.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{}));
-      // #endregion
-      
       // CRITICAL: Update local state FIRST to prevent task disappearing from calendar
       // This ensures the task remains visible immediately, even before DB update completes
       setAdminEvents(prev => {
-        // #region agent log
-        const prevCount = prev.length;
-        const taskExists = prev.find(e => e.id === updatedEvent.id);
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2667',message:'H1: BEFORE setAdminEvents local update',data:{prevCount,taskExists:!!taskExists,taskId:updatedEvent.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{}));
-        // #endregion
-        
         const updated = prev.map(ev => {
           // Only update the exact task that was changed; MERGE so partial updatedEvent never wipes existing fields
           if (ev.id === updatedEvent.id) {
@@ -5425,21 +5102,10 @@ ${internalCompany} Team`;
           // Do NOT modify other tasks, even if they have the same bookingId
           return ev;
         });
-        
-        // #region agent log
-        const afterCount = updated.length;
-        const taskAfterUpdate = updated.find(e => e.id === updatedEvent.id);
-        (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2674',message:'H1: AFTER setAdminEvents local update',data:{afterCount,taskAfterUpdate:!!taskAfterUpdate,taskId:updatedEvent.id,date:taskAfterUpdate?.date,day:taskAfterUpdate?.day},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{}));
-        // #endregion
-        
         return updated;
       });
       
       try {
-          // #region agent log
-          (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2676',message:'H3: BEFORE DB update',data:{taskId:updatedEvent.id,date:updatedEvent.date,day:updatedEvent.day,workerId:updatedEvent.workerId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{}));
-          // #endregion
-          
           // Minimal PATCH: assignee always; status/date/day only when changed (bulletproof, no accidental overwrites)
           const patchPayload: Partial<CalendarEvent> = {
             workerId: updatedEvent.workerId,
@@ -5455,23 +5121,11 @@ ${internalCompany} Team`;
           }
           const savedTask = await tasksService.update(updatedEvent.id, patchPayload);
           console.log('✅ Task updated in database:', updatedEvent.id);
-          
-          // #region agent log
-          (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2678',message:'H3: AFTER DB update',data:{taskId:savedTask.id,dateFromDB:savedTask.date,dayFromDB:savedTask.day,workerIdFromDB:savedTask.workerId,dateBeforeUpdate:updatedEvent.date,dayBeforeUpdate:updatedEvent.day},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{}));
-          // #endregion
-          
-          // #region agent log
-          (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2681',message:'H1: Dispatching taskUpdated event',data:{taskId:updatedEvent.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{}));
-          // #endregion
-          
           // Notify other components (Kanban) about task update
           // NOTE: We do NOT reload tasks here to prevent race condition
           // The local state is already updated above, and Kanban will reload on its own
           window.dispatchEvent(new CustomEvent('taskUpdated'));
       } catch (error: any) {
-          // #region agent log
-          (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:2690',message:'H3: ERROR in DB update',data:{taskId:updatedEvent.id,error:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{}));
-          // #endregion
           console.error('❌ Error updating task in database:', error);
           // Revert local state if DB update fails (optional - you may want to keep optimistic update)
           // For now, we keep the optimistic update for better UX
@@ -5867,12 +5521,6 @@ ${internalCompany} Team`;
   };
 
   const renderPropertiesContent = () => {
-    // #region agent log
-    if (selectedProperty) {
-      (import.meta.env.DEV && fetch('http://127.0.0.1:7242/ingest/f1e0709a-55bc-4f79-9118-1c26783278f9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1931',message:'selectedProperty used for rendering',data:{propertyId:selectedProperty.id,propertyTitle:selectedProperty.title,inventoryCount:propertyInventoryItems.length,inventoryItems:propertyInventoryItems.slice(0,5).map(i=>({id:i.id,name:i.name,article:i.article,quantity:i.quantity}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{}));
-    }
-    // #endregion
-    
     if (!selectedProperty) return <div>Loading...</div>;
     const expense = selectedProperty.ownerExpense || { mortgage: 0, management: 0, taxIns: 0, reserve: 0 };
     const totalExpense = expense.mortgage + expense.management + expense.taxIns + expense.reserve;
