@@ -1579,10 +1579,16 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                                   day: viewEvent.day
                                               });
                                               
-                                              // Ensure date and day are preserved in the returned object
+                                              // Preserve viewEvent display fields; use updated id and worker/date so card shows full info
                                               const updatedWithDate = {
+                                                  ...viewEvent,
                                                   ...updated,
-                                                  date: updated.date || viewEvent.date,
+                                                  id: updated.id,
+                                                  workerId: updated.workerId,
+                                                  assignedWorkerId: updated.workerId ?? undefined,
+                                                  assignee: workers.find(w => w.id === updated.workerId)?.name,
+                                                  status: updated.status,
+                                                  date: updated.date ?? viewEvent.date,
                                                   day: updated.day !== undefined ? updated.day : viewEvent.day
                                               };
                                               
@@ -1609,14 +1615,16 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                           fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AdminCalendar.tsx:1092',message:'Task updated in DB',data:{taskId:updated.id,taskType:updated.type,bookingId:updated.bookingId,workerId:updated.workerId,date:updated.date,day:updated.day},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
                                           // #endregion
                                           
-                                          // Find worker name for display
+                                          // Find worker name for display; preserve viewEvent fields so card keeps title, address, time, description
                                           const worker = workers.find(w => w.id === newWorkerId);
-                                          // Ensure date and day are preserved (fallback to viewEvent if missing from DB response)
                                           const updatedWithName = {
+                                              ...viewEvent,
                                               ...updated,
                                               assignee: worker?.name,
                                               assignedWorkerId: newWorkerId,
-                                              date: updated.date || viewEvent.date,
+                                              workerId: newWorkerId,
+                                              status: newStatus,
+                                              date: updated.date ?? viewEvent.date,
                                               day: updated.day !== undefined ? updated.day : viewEvent.day
                                           };
                                           
