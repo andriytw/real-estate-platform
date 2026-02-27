@@ -8555,14 +8555,29 @@ ${internalCompany} Team`;
                 <div className="border border-gray-700 rounded-lg overflow-hidden bg-[#16181D] divide-y divide-gray-700/50">
                   {sortedPropertyTasks.map(e => {
                     const assigneeId = e.workerId ?? e.assignedWorkerId;
-                    const assigneeName = e.assignee || (assigneeId ? workers.find(w => w.id === assigneeId)?.name : undefined) || '—';
+                    const resolvedName = e.assignee || (assigneeId ? workers.find(w => w.id === assigneeId)?.name : undefined) || '';
+                    const assigneeLabel = !assigneeId ? 'Unassigned' : (resolvedName || '—');
+                    const assigneeMuted = !assigneeId || !resolvedName;
+
                     const addr = selectedProperty?.address || selectedProperty?.fullAddress || (selectedProperty as any)?.full_address || '—';
                     const addressUnit = `${addr} — ${selectedProperty?.title ?? '—'}`;
-                    const rawDesc = (e.description ?? '').replace(/\r?\n/g, ' ').trim();
-                    const msgPreview = rawDesc.slice(0, 120) || propertyTaskComments[e.id] || '—';
-                    const statusColor = e.status === 'completed' || e.status === 'verified' ? 'bg-green-500/20 text-green-400'
-                      : e.status === 'in_progress' ? 'bg-yellow-500/20 text-yellow-400'
-                      : 'bg-blue-500/20 text-blue-400';
+
+                    let rawPreview = ((e.description ?? '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120))
+                      || (propertyTaskComments[e.id] ?? '');
+                    if (/^auto-generated:/i.test(rawPreview)) rawPreview = rawPreview.replace(/^auto-generated:\s*/i, '').trim();
+                    const msgPreview = rawPreview || '—';
+
+                    const st = e.status;
+                    const statusMap: Record<string, { color: string; label: string }> = {
+                      open: { color: 'bg-gray-500/20 text-gray-400', label: 'OPEN' },
+                      assigned: { color: 'bg-blue-500/20 text-blue-400', label: 'ASSIGNED' },
+                      in_progress: { color: 'bg-yellow-500/20 text-yellow-400', label: 'IN PROGRESS' },
+                      completed: { color: 'bg-green-500/20 text-green-400', label: 'COMPLETED' },
+                      verified: { color: 'bg-green-500/20 text-green-400', label: 'VERIFIED' },
+                      archived: { color: 'bg-green-500/20 text-green-400', label: 'COMPLETED' },
+                    };
+                    const { color: statusColor, label: statusLabel } = statusMap[st] ?? { color: 'bg-gray-500/20 text-gray-400', label: st.toUpperCase() };
+
                     return (
                       <div key={e.id} className="flex items-center gap-x-3 px-3 py-2 text-sm min-w-0">
                         <span className="text-gray-400 w-12 shrink-0 text-xs tabular-nums">{e.time || '—'}</span>
@@ -8572,9 +8587,9 @@ ${internalCompany} Team`;
                           </span>
                         )}
                         <span className="truncate min-w-0 text-gray-300" title={addressUnit}>{addressUnit}</span>
-                        <span className="shrink-0 text-gray-400 text-xs truncate max-w-[110px]" title={assigneeName}>{assigneeName}</span>
+                        <span className={`shrink-0 text-xs truncate max-w-[110px] ${assigneeMuted ? 'text-gray-500 italic' : 'text-gray-400'}`} title={assigneeLabel}>{assigneeLabel}</span>
                         <span className={`shrink-0 px-2 py-0.5 text-[10px] font-semibold uppercase rounded whitespace-nowrap ${statusColor}`}>
-                          {e.status}
+                          {statusLabel}
                         </span>
                         <span className="hidden lg:block truncate min-w-0 text-gray-500 text-xs italic" title={msgPreview}>{msgPreview}</span>
                       </div>
