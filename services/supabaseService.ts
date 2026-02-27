@@ -1098,13 +1098,14 @@ export const tasksService = {
     fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'supabaseService.ts:1062',message:'tasksService.update called',data:{taskId:id,updates:{workerId:updates.workerId,status:updates.status,bookingId:updates.bookingId}},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
     // #endregion
     
-    const dbData = transformCalendarEventToDB(updates as CalendarEvent);
-    // Remove undefined fields to avoid overwriting with null if not intended
-    Object.keys(dbData).forEach(key => dbData[key] === undefined && delete dbData[key]);
+    const dbPatch = buildCalendarEventDbPatch(updates);
+    if (import.meta.env.DEV) {
+      console.log('[tasksService.update] dbPatch keys', Object.keys(dbPatch));
+    }
 
     const { data, error } = await supabase
       .from('calendar_events')
-      .update(dbData)
+      .update(dbPatch)
       .eq('id', id)
       .select('*')
       .single();
@@ -2778,6 +2779,38 @@ function transformCalendarEventFromDB(db: any): CalendarEvent {
     locationText: db.location_text,
     createdAt: db.created_at || db.date || new Date().toISOString(), // Use created_at from DB, fallback to date or current time
   };
+}
+
+/** Builds a DB update payload with only keys present in patch. Prevents minimal patches (e.g. assignee only) from writing NULL to other columns. */
+function buildCalendarEventDbPatch(patch: Partial<CalendarEvent>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const has = (k: keyof CalendarEvent) => Object.prototype.hasOwnProperty.call(patch, k);
+
+  if (has('workerId')) out.worker_id = patch.workerId ?? null;
+  if (has('assignedWorkerId')) out.assigned_worker_id = patch.assignedWorkerId ?? null;
+  if (has('assignee')) out.assignee = patch.assignee ?? null;
+  if (has('status')) out.status = patch.status ?? null;
+  if (has('date')) out.date = patch.date ?? null;
+  if (has('day')) out.day = patch.day ?? null;
+  if (has('time')) out.time = patch.time ?? null;
+  if (has('propertyId')) out.property_id = patch.propertyId ?? null;
+  if (has('description')) out.description = patch.description ?? null;
+  if (has('locationText')) out.location_text = patch.locationText ?? null;
+  if (has('priority')) out.priority = patch.priority ?? null;
+  if (has('title')) out.title = patch.title ?? null;
+  if (has('bookingId')) out.booking_id = patch.bookingId ?? null;
+  if (has('unitId')) out.unit_id = patch.unitId ?? null;
+  if (has('type')) out.type = patch.type ?? null;
+  if (has('isAllDay')) out.is_all_day = patch.isAllDay ?? false;
+  if (has('hasUnreadMessage')) out.has_unread_message = patch.hasUnreadMessage ?? false;
+  if (has('meterReadings')) out.meter_readings = patch.meterReadings ?? null;
+  if (has('isIssue')) out.is_issue = patch.isIssue ?? false;
+  if (has('managerId')) out.manager_id = patch.managerId ?? null;
+  if (has('department')) out.department = patch.department ?? null;
+  if (has('images')) out.images = patch.images ?? null;
+  if (has('checklist')) out.checklist = patch.checklist ?? null;
+  if (has('workflowSteps')) out.workflow_steps = patch.workflowSteps ?? null;
+  return out;
 }
 
 function transformCalendarEventToDB(event: CalendarEvent): any {
