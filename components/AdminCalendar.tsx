@@ -41,6 +41,12 @@ function getTaskBucket(e: CalendarEvent): TaskBucket {
   return 'open';
 }
 
+// Facility only: property label with address for dropdowns and headers
+function formatPropertyLabel(p: Property): string {
+  const addr = p.address ?? p.fullAddress ?? (p as any).full_address ?? '—';
+  return `${p.title} — ${addr}`;
+}
+
 const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpdateEvent, showLegend = true, properties, categories, onUpdateBookingStatus }) => {
   // Initialize with current date
   const now = new Date();
@@ -148,19 +154,31 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       ? (event.status === 'completed' || event.status === 'verified' || event.status === 'archived')
       : getTaskBucket(event) === 'completed';
 
-  // Facility: filtered and grouped list for tile selection
+  // Single source of truth for Facility list panel and CSV export (Open and Completed use same logic)
+  const getVisibleFacilityTasks = useMemo(() => {
+    return (bucket: TaskBucket | null): CalendarEvent[] => {
+      if (isAccountingCalendar || bucket == null) return [];
+      const list = events.filter(e => getTaskBucket(e) === bucket);
+      return [...list].sort((a, b) => {
+        const dA = a.date || '';
+        const dB = b.date || '';
+        if (dA !== dB) return dA.localeCompare(dB);
+        const tA = a.time || '';
+        const tB = b.time || '';
+        if (tA === '' && tB === '') return 0;
+        if (tA === '') return 1;
+        if (tB === '') return -1;
+        return tA.localeCompare(tB);
+      });
+    };
+  }, [isAccountingCalendar, events]);
+
   const facilityFilteredGrouped = useMemo(() => {
-    if (isAccountingCalendar || activeBucket == null) return [];
-    const list = events.filter(e => getTaskBucket(e) === activeBucket);
-    const sorted = [...list].sort((a, b) => {
-      const dA = a.date || '';
-      const dB = b.date || '';
-      if (dA !== dB) return dA.localeCompare(dB);
-      return (a.time || '').localeCompare(b.time || '');
-    });
+    const visible = getVisibleFacilityTasks(activeBucket);
+    if (visible.length === 0) return [];
     const byDate: { date: string; events: CalendarEvent[] }[] = [];
     let last = '';
-    for (const e of sorted) {
+    for (const e of visible) {
       const d = e.date || '';
       if (d !== last) {
         last = d;
@@ -170,7 +188,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       }
     }
     return byDate;
-  }, [isAccountingCalendar, activeBucket, events]);
+  }, [getVisibleFacilityTasks, activeBucket]);
 
   // CSV helpers (Facility only; Accounting unchanged)
   const toCsvRow = (values: string[]): string =>
@@ -181,23 +199,17 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     }).join(',');
 
   // Facility CSV: column order date, property_address, property_title, time, task_title, type, status, assignee_name, description, last_comment, id; sorted by date ASC, time ASC (empty time last)
+  // Empty property/assignee columns only if calendar_events.property_id or worker_id missing, or propertyList/workers not loaded
   const buildFacilityCsv = (taskList: CalendarEvent[], lastCommentMap: Record<string, string>): string => {
-    const sorted = [...taskList].sort((a, b) => {
-      const dA = a.date || '';
-      const dB = b.date || '';
-      if (dA !== dB) return dA.localeCompare(dB);
-      const tA = a.time || '';
-      const tB = b.time || '';
-      if (tA === '' && tB === '') return 0;
-      if (tA === '') return 1;
-      if (tB === '') return -1;
-      return tA.localeCompare(tB);
-    });
     const header = toCsvRow(['date', 'property_address', 'property_title', 'time', 'task_title', 'type', 'status', 'assignee_name', 'description', 'last_comment', 'id']);
-    const rows = sorted.map(e => {
+    const rows = taskList.map(e => {
       const assigneeId = e.workerId ?? e.assignedWorkerId;
       const assigneeName = e.assignee || (assigneeId ? workers.find(w => w.id === assigneeId)?.name : '') || '';
       const prop = e.propertyId ? propertyList.find(p => p.id === e.propertyId) : null;
+      if (import.meta.env.DEV) {
+        if (e.propertyId && !prop) console.warn('[CSV] property not found for task', e.id, 'propertyId', e.propertyId);
+        if (assigneeId && !workers.find(w => w.id === assigneeId) && !e.assignee) console.warn('[CSV] worker not found for task', e.id, 'assigneeId', assigneeId);
+      }
       const propertyTitle = prop?.title ?? '';
       const propertyAddress = prop?.address ?? (prop as any)?.full_address ?? (prop as any)?.fullAddress ?? '';
       const description = (e.description ?? '').replace(/\r?\n/g, ' ').trim();
@@ -689,25 +701,38 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
               {activeBucket === 'in_progress' && 'In progress'}
               {activeBucket === 'completed' && 'Completed'}
             </h3>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={loadingWorkers || properties == null}
-                onClick={() => {
-                  const filtered = events.filter(e => getTaskBucket(e) === activeBucket);
-                  const csv = buildFacilityCsv(filtered, lastCommentByEventId);
-                  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `facility_tasks_${activeBucket}_${new Date().toISOString().slice(0, 10)}.csv`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Download className="w-4 h-4" /> {loadingWorkers || properties == null ? 'Loading…' : 'Download CSV'}
-              </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              {(() => {
+                const visible = getVisibleFacilityTasks(activeBucket);
+                const completedNoProperties = activeBucket === 'completed' && visible.length > 0 &&
+                  !visible.some(e => e.propertyId && propertyList.find(p => p.id === e.propertyId));
+                const exportDisabled = loadingWorkers || properties == null || completedNoProperties;
+                return (
+                  <>
+                    <button
+                      type="button"
+                      disabled={exportDisabled}
+                      onClick={() => {
+                        const list = getVisibleFacilityTasks(activeBucket);
+                        const csv = buildFacilityCsv(list, lastCommentByEventId);
+                        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `facility_tasks_${activeBucket}_${new Date().toISOString().slice(0, 10)}.csv`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Download className="w-4 h-4" /> {exportDisabled ? (completedNoProperties ? 'Properties not loaded' : 'Loading…') : 'Download CSV'}
+                    </button>
+                    {completedNoProperties && (
+                      <span className="text-xs text-amber-400">Properties not loaded for these tasks yet.</span>
+                    )}
+                  </>
+                );
+              })()}
               <button
                 type="button"
                 onClick={() => setActiveBucket(null)}
@@ -1013,12 +1038,17 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                       }`}>
                          {event.title}
                       </div>
+                      {!isAccountingCalendar && event.propertyId && (() => {
+                        const prop = propertyList.find(p => p.id === event.propertyId);
+                        return prop ? <div className="text-[10px] opacity-70 truncate mb-0.5">{formatPropertyLabel(prop)}</div> : null;
+                      })()}
                       <div className="flex justify-between items-center mt-1">
                          <div className="flex items-center gap-1 flex-wrap">
                             <span className="font-mono opacity-70 bg-black/20 px-1 rounded text-[10px]">{event.time}</span>
                             {(() => {
-                               const worker = event.workerId ? workers.find(w => w.id === event.workerId) : null;
-                               const workerName = event.assignee || worker?.name;
+                               const assigneeId = event.workerId ?? event.assignedWorkerId;
+                               const worker = assigneeId ? workers.find(w => w.id === assigneeId) : null;
+                               const workerName = event.assignee || (worker?.name ?? (assigneeId ? '—' : null));
                                return workerName ? (
                                   <div className="flex items-center gap-1 text-[10px] text-gray-400">
                                      <User className="w-3 h-3 opacity-70" />
@@ -1076,7 +1106,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                            className="w-full appearance-none bg-[#111315] border border-gray-700 rounded-lg p-3 pl-3 pr-8 text-sm text-white focus:border-emerald-500 focus:outline-none"
                          >
                            {propertyList.map(p => (
-                              <option key={p.id} value={p.id}>{p.title}</option>
+                              <option key={p.id} value={p.id}>{formatPropertyLabel(p)}</option>
                            ))}
                          </select>
                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
@@ -1209,6 +1239,10 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                          {viewEvent.title}
                          {isAccountingCalendar ? (viewEvent.status === 'archived' && <Archive className="w-4 h-4 text-gray-500" />) : (isDoneTask(viewEvent) && <CheckCircle2 className="w-4 h-4 text-gray-500" />)}
                        </h3>
+                       {!isAccountingCalendar && viewEvent.propertyId && (() => {
+                         const prop = propertyList.find(p => p.id === viewEvent!.propertyId);
+                         return prop ? <p className="text-xs text-gray-400 mt-0.5 truncate">{formatPropertyLabel(prop)}</p> : null;
+                       })()}
                        <span className={`text-xs font-bold ${getTaskTextColor(viewEvent.type as string)}`}>{viewEvent.type}</span>
                     </div>
                  </div>

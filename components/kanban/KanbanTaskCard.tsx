@@ -1,8 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { CalendarEvent } from '../../types';
+import { CalendarEvent, Property } from '../../types';
 import { getTaskColor, getTaskBadgeColor, getTaskTextColor } from '../../utils/taskColors';
 import { Clock, AlertTriangle, CheckCircle2, Circle, AlertCircle, Building2, Calendar } from 'lucide-react';
 import { propertiesService } from '../../services/supabaseService';
+
+function formatPropertyLabel(p: Property): string {
+  const addr = p.address ?? p.fullAddress ?? (p as any).full_address ?? '—';
+  return `${p.title} — ${addr}`;
+}
+
+function getDescriptionPreview(description: string | undefined): string {
+  if (!description || !description.trim()) return '—';
+  try {
+    const parsed = JSON.parse(description);
+    const text = parsed?.originalDescription ?? parsed?.description ?? description;
+    return String(text).replace(/\r?\n/g, ' ').trim().slice(0, 120) || '—';
+  } catch {
+    return description.replace(/\r?\n/g, ' ').trim().slice(0, 120) || '—';
+  }
+}
 
 interface KanbanTaskCardProps {
   task: CalendarEvent;
@@ -13,22 +29,18 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
   const colorClass = getTaskColor(task.type);
   const badgeColor = getTaskBadgeColor(task.type);
   const textColor = getTaskTextColor(task.type);
-  const [propertyName, setPropertyName] = useState<string | null>(null);
+  const [property, setProperty] = useState<Property | null>(null);
 
-  // Load property name if locationText is missing but propertyId exists
+  // Load property (title + address) if propertyId exists
   useEffect(() => {
-    if (!task.locationText && task.propertyId) {
+    if (task.propertyId) {
       propertiesService.getById(task.propertyId)
-        .then(property => {
-          if (property) {
-            setPropertyName(property.title);
-          }
-        })
-        .catch(err => {
-          console.error('Error loading property:', err);
-        });
+        .then(p => p && setProperty(p))
+        .catch(err => console.error('Error loading property:', err));
+    } else {
+      setProperty(null);
     }
-  }, [task.propertyId, task.locationText]);
+  }, [task.propertyId]);
 
   // Priority Icon
   const getPriorityIcon = () => {
@@ -95,19 +107,23 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
         {task.title}
       </h4>
 
+      {/* Description preview */}
+      <p className="text-[10px] text-gray-500 line-clamp-2 mb-1.5 min-h-[1.25rem]">
+        {getDescriptionPreview(task.description)}
+      </p>
+
       {/* Property / Location */}
-      {(task.propertyId || task.locationText) && (
+      {(task.locationText || property || task.propertyId) && (
         <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-2">
-          <Building2 className="w-3 h-3" />
+          <Building2 className="w-3 h-3 shrink-0" />
           <span className="truncate max-w-[180px]">
-            {task.locationText || propertyName || 'Property #' + task.propertyId}
+            {task.locationText || (property ? formatPropertyLabel(property) : (task.propertyId ? 'Property #' + task.propertyId : ''))}
           </span>
         </div>
       )}
 
-      {/* Footer: Status & Assignee Avatar (if in backlog) */}
+      {/* Footer: Status & Assigned badge */}
       <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-800/50">
-        {/* Status */}
         <div className="flex items-center gap-1.5">
           {task.status === 'completed' || task.status === 'verified' ? (
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
@@ -119,6 +135,12 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
             }`} />
           )}
           <span className="text-[10px] text-gray-500 capitalize">{task.status.replace('_', ' ')}</span>
+          {/* Assigned: green when worker assigned, gray when not */}
+          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+            (task.workerId ?? task.assignedWorkerId) ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-700/50 text-gray-500'
+          }`}>
+            {(task.workerId ?? task.assignedWorkerId) ? 'Assigned' : 'Unassigned'}
+          </span>
         </div>
         
         {/* Issue Indicator */}

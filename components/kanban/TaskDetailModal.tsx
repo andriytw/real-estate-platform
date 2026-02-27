@@ -61,9 +61,12 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         const prop = await propertiesService.getById(task.propertyId);
         setProperty(prop);
       }
-      if (task.workerId) {
-        const worker = await workersService.getById(task.workerId);
+      const assigneeId = task.workerId ?? task.assignedWorkerId;
+      if (assigneeId) {
+        const worker = await workersService.getById(assigneeId);
         setAssignee(worker);
+      } else {
+        setAssignee(null);
       }
     } catch (error) {
       console.error('Error loading task details:', error);
@@ -107,9 +110,11 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       
       onUpdateTask(updatedWithDate);
       window.dispatchEvent(new CustomEvent('taskUpdated'));
-    } catch (error) {
-      console.error('Error updating task status:', error);
-      alert('Помилка оновлення статусу завдання. Спробуйте ще раз.');
+    } catch (error: any) {
+      const msg = error?.message ?? String(error);
+      const details = error?.details ?? error?.code;
+      console.error('Task status update failed:', { taskId: task.id, attemptedStatus: newStatus, supabaseError: msg, details });
+      alert(`Помилка оновлення статусу завдання: ${msg}`);
     } finally {
       setIsUpdating(false);
     }
@@ -231,19 +236,20 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     }
   };
 
-  const getStatusButton = (status: TaskStatus, label: string, icon: React.ReactNode, readOnly = false) => {
+  const getStatusButton = (status: TaskStatus, label: string, icon: React.ReactNode, readOnly = false, extraDisabled = false) => {
     const isActive = task?.status === status;
     const activeColorClass = getStatusColor(status);
+    const disabled = isUpdating || isActive || readOnly || extraDisabled;
     return (
       <button
         type="button"
         onClick={readOnly ? undefined : () => handleStatusChange(status)}
-        disabled={isUpdating || isActive || readOnly}
+        disabled={disabled}
         className={`
           flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-all
           ${isActive ? `${activeColorClass} cursor-default` : 'bg-[#1C1F24] border-gray-700 text-gray-300 hover:border-blue-500 hover:text-blue-400'}
-          ${readOnly ? 'cursor-not-allowed opacity-80' : ''}
-          ${isUpdating ? 'opacity-50 cursor-not-allowed' : ''}
+          ${readOnly ? 'cursor-default opacity-90' : ''}
+          ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
         `}
       >
         {icon}
@@ -280,15 +286,20 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       <div className="bg-[#16181D] rounded-xl border border-gray-800 w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-800">
-          <div className="flex items-center gap-3">
-            <span className={`text-xs font-medium px-2 py-1 rounded border ${colorClass}`}>
-              {task.type}
-            </span>
-            <h2 className="text-lg font-bold text-white">{task.title}</h2>
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-3">
+              <span className={`text-xs font-medium px-2 py-1 rounded border ${colorClass}`}>
+                {task.type}
+              </span>
+              <h2 className="text-lg font-bold text-white">{task.title}</h2>
+            </div>
+            {property && (
+              <p className="text-xs text-gray-400 truncate mt-0.5">{property.title} — {property.address ?? property.fullAddress ?? (property as any).full_address ?? '—'}</p>
+            )}
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
+            className="text-gray-400 hover:text-white transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
@@ -307,10 +318,10 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 Change task status to mark progress
               </p>
               <div className="flex flex-wrap gap-2">
-                {!isWorker && getStatusButton('in_progress', 'In Progress', <Circle className="w-3 h-3" />)}
-                {getStatusButton('completed', 'Mark as Done', <CheckCircle2 className="w-3 h-3" />)}
+                {!isWorker && getStatusButton('in_progress', 'In Progress', <Circle className="w-3 h-3" />, false, task?.status === 'in_progress' || task?.status === 'completed' || task?.status === 'verified')}
+                {getStatusButton('completed', 'Mark as Done', <CheckCircle2 className="w-3 h-3" />, false, task?.status === 'completed' || task?.status === 'verified')}
                 {isWorker
-                  ? (task?.status === 'verified' && getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />, true))
+                  ? (task?.status === 'verified' ? getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />, true) : <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-gray-700 bg-gray-800/50 text-gray-500 cursor-default">Verified (manager)</span>)
                   : getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />)}
               </div>
               {/* Media upload for worker */}
@@ -348,7 +359,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             {/* Assignee */}
             <div className="flex items-center gap-2 text-sm text-gray-400">
               <User className="w-4 h-4" />
-              <span>{assignee?.name || task.assignee || 'Unassigned'}</span>
+              <span>{assignee?.name || task.assignee || ((task.workerId ?? task.assignedWorkerId) ? '—' : 'Unassigned')}</span>
               {assignee?.role && (
                 <span className="text-xs text-gray-500">({assignee.role})</span>
               )}
@@ -357,8 +368,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             {/* Property */}
             {property && (
               <div className="flex items-center gap-2 text-sm text-gray-400">
-                <Building2 className="w-4 h-4" />
-                <span>{property.title}</span>
+                <Building2 className="w-4 h-4 shrink-0" />
+                <span className="truncate">{property.title} — {property.address ?? property.fullAddress ?? (property as any).full_address ?? '—'}</span>
               </div>
             )}
 
