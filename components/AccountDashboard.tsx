@@ -972,6 +972,77 @@ const AccountDashboard: React.FC = () => {
   const [adminEvents, setAdminEvents] = useState<CalendarEvent[]>([]);
   const [accountingEvents, setAccountingEvents] = useState<CalendarEvent[]>(INITIAL_ACCOUNTING_EVENTS);
 
+  // --- Property Card: Tasks tile state ---
+  const [propertyTaskBucket, setPropertyTaskBucket] = useState<'open' | 'in_progress' | 'completed' | 'all'>('open');
+  const [propertyTaskComments, setPropertyTaskComments] = useState<Record<string, string>>({});
+  const facilityTasksLoadedRef = useRef(false);
+
+  const propertyTasks = useMemo(() => {
+    if (!selectedProperty?.id) return [];
+    return adminEvents.filter(e =>
+      e.propertyId === selectedProperty.id && e.department === 'facility'
+    );
+  }, [adminEvents, selectedProperty?.id]);
+
+  const filteredPropertyTasks = useMemo(() => {
+    if (propertyTaskBucket === 'all') return propertyTasks;
+    return propertyTasks.filter(e => {
+      const s = e.status;
+      if (propertyTaskBucket === 'open')
+        return s !== 'in_progress' && !['completed', 'verified', 'archived'].includes(s);
+      if (propertyTaskBucket === 'in_progress') return s === 'in_progress';
+      return ['completed', 'verified', 'archived'].includes(s);
+    });
+  }, [propertyTasks, propertyTaskBucket]);
+
+  const sortedPropertyTasks = useMemo(() =>
+    [...filteredPropertyTasks].sort((a, b) => {
+      const da = a.date ?? '\uffff';
+      const db = b.date ?? '\uffff';
+      if (da !== db) return da.localeCompare(db);
+      const ta = a.time ?? '\uffff';
+      const tb = b.time ?? '\uffff';
+      return ta.localeCompare(tb);
+    }),
+  [filteredPropertyTasks]);
+
+  const propertyTaskCounts = useMemo(() => {
+    let open = 0, inProgress = 0, completed = 0;
+    for (const e of propertyTasks) {
+      const s = e.status;
+      if (s === 'in_progress') inProgress++;
+      else if (['completed', 'verified', 'archived'].includes(s)) completed++;
+      else open++;
+    }
+    return { open, inProgress, completed, all: propertyTasks.length };
+  }, [propertyTasks]);
+
+  useEffect(() => {
+    const taskIds = propertyTasks.map(t => t.id);
+    if (taskIds.length === 0) { setPropertyTaskComments({}); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('task_chat_messages')
+          .select('calendar_event_id, message_text, created_at')
+          .in('calendar_event_id', taskIds)
+          .order('created_at', { ascending: false });
+        if (cancelled || !data) return;
+        const map: Record<string, string> = {};
+        for (const row of data) {
+          const id = (row as any).calendar_event_id;
+          if (id && !map[id]) {
+            const text = (row as any).message_text ?? (row as any).message ?? '';
+            map[id] = String(text).replace(/\r?\n/g, ' ').trim().slice(0, 200);
+          }
+        }
+        if (!cancelled) setPropertyTaskComments(map);
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [propertyTasks]);
+
   // Cleanup object URL for uploaded inventory preview
   useEffect(() => {
     return () => {
@@ -2000,11 +2071,13 @@ const AccountDashboard: React.FC = () => {
           return merged;
         });
         
+        facilityTasksLoadedRef.current = true;
         // #region agent log
         (import.meta.env.DEV && fetch('http://127.0.0.1:7243/ingest/3536f1c8-286e-409c-836c-4604f4d74f53',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountDashboard.tsx:1262',message:'H1: AFTER setAdminEvents (state replaced)',data:{validTasksCount:validTasks.length,validTaskIds:validTasks.map(t=>t.id)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{}));
         // #endregion
       } catch (error) {
         console.error('❌ Error loading Facility tasks:', error);
+        facilityTasksLoadedRef.current = true;
         // Don't use INITIAL_ADMIN_EVENTS as fallback - they have invalid IDs too
         setAdminEvents([]);
       }
@@ -2043,6 +2116,28 @@ const AccountDashboard: React.FC = () => {
       }
     };
   }, [worker]);
+
+  // Fallback: ensure facility tasks are loaded when Property Card renders
+  useEffect(() => {
+    if (!selectedProperty?.id || facilityTasksLoadedRef.current || adminEvents.length > 0) return;
+    let cancelled = false;
+    const loadFallback = async () => {
+      try {
+        const filters: Record<string, string> = { department: 'facility' };
+        if (worker?.role === 'worker' && worker.id) filters.workerId = worker.id;
+        const tasks = await tasksService.getAll(filters);
+        if (!cancelled) {
+          facilityTasksLoadedRef.current = true;
+          setAdminEvents(tasks);
+        }
+      } catch (err) {
+        console.error('Failed to load facility tasks (fallback):', err);
+        if (!cancelled) facilityTasksLoadedRef.current = true;
+      }
+    };
+    loadFallback();
+    return () => { cancelled = true; };
+  }, [selectedProperty?.id, adminEvents.length, worker]);
 
   // Load invoices from database
   useEffect(() => {
@@ -8434,6 +8529,60 @@ ${internalCompany} Team`;
                 </div>
               );
             })()}
+
+            {/* Tasks tile — Facility tasks for this property */}
+            <CollapsibleSection title="Tasks" defaultOpen={true}>
+              <div className="mb-3 flex flex-wrap gap-2">
+                {(['open', 'in_progress', 'completed', 'all'] as const).map(bucket => {
+                  const label = bucket === 'open' ? 'Open' : bucket === 'in_progress' ? 'In Progress' : bucket === 'completed' ? 'Completed' : 'All';
+                  const count = bucket === 'open' ? propertyTaskCounts.open : bucket === 'in_progress' ? propertyTaskCounts.inProgress : bucket === 'completed' ? propertyTaskCounts.completed : propertyTaskCounts.all;
+                  const active = propertyTaskBucket === bucket;
+                  return (
+                    <button
+                      key={bucket}
+                      type="button"
+                      onClick={() => setPropertyTaskBucket(bucket)}
+                      className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${active ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                    >
+                      {label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+              {sortedPropertyTasks.length === 0 ? (
+                <p className="text-sm text-gray-500 py-4 text-center">No tasks for this apartment.</p>
+              ) : (
+                <div className="border border-gray-700 rounded-lg overflow-hidden bg-[#16181D] divide-y divide-gray-700/50">
+                  {sortedPropertyTasks.map(e => {
+                    const assigneeId = e.workerId ?? e.assignedWorkerId;
+                    const assigneeName = e.assignee || (assigneeId ? workers.find(w => w.id === assigneeId)?.name : undefined) || '—';
+                    const addr = selectedProperty?.address || selectedProperty?.fullAddress || (selectedProperty as any)?.full_address || '—';
+                    const addressUnit = `${addr} — ${selectedProperty?.title ?? '—'}`;
+                    const rawDesc = (e.description ?? '').replace(/\r?\n/g, ' ').trim();
+                    const msgPreview = rawDesc.slice(0, 120) || propertyTaskComments[e.id] || '—';
+                    const statusColor = e.status === 'completed' || e.status === 'verified' ? 'bg-green-500/20 text-green-400'
+                      : e.status === 'in_progress' ? 'bg-yellow-500/20 text-yellow-400'
+                      : 'bg-blue-500/20 text-blue-400';
+                    return (
+                      <div key={e.id} className="flex items-center gap-x-3 px-3 py-2 text-sm min-w-0">
+                        <span className="text-gray-400 w-12 shrink-0 text-xs tabular-nums">{e.time || '—'}</span>
+                        {e.type && (
+                          <span className="shrink-0 px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-purple-500/20 text-purple-300 whitespace-nowrap max-w-[100px] truncate">
+                            {e.type}
+                          </span>
+                        )}
+                        <span className="truncate min-w-0 text-gray-300" title={addressUnit}>{addressUnit}</span>
+                        <span className="shrink-0 text-gray-400 text-xs truncate max-w-[110px]" title={assigneeName}>{assigneeName}</span>
+                        <span className={`shrink-0 px-2 py-0.5 text-[10px] font-semibold uppercase rounded whitespace-nowrap ${statusColor}`}>
+                          {e.status}
+                        </span>
+                        <span className="hidden lg:block truncate min-w-0 text-gray-500 text-xs italic" title={msgPreview}>{msgPreview}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CollapsibleSection>
 
             {/* 5. Актуальний Орендар — current occupancy from Rent Calendar (confirmedBookings) */}
             <CollapsibleSection title="5. Актуальний Орендар" defaultOpen={true}>
