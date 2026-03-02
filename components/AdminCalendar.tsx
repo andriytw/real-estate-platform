@@ -957,7 +957,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         {/* View Mode, Filter & Legend */}
         <div className="flex flex-col gap-4">
           {/* Row 1: Grid — controls (left) | legend (right) */}
-          <div className={`grid gap-4 items-center ${showLegend ? 'grid-cols-1 md:grid-cols-[1fr_auto]' : 'grid-cols-1'}`}>
+          <div className={`grid gap-4 items-start ${showLegend ? 'grid-cols-1 md:grid-cols-[1fr_auto]' : 'grid-cols-1'}`}>
             {/* Left column: View Switcher + Filter + Date Picker */}
             <div className="flex flex-wrap items-center gap-3 min-h-10">
               {/* View Switcher */}
