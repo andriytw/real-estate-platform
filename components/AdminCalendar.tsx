@@ -955,7 +955,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         </div>
 
         {/* View Mode, Filter & Legend */}
-        <div className="flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center">
+        <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
           
           {/* Left Group: View Switcher + Filter + Date Picker */}
           <div className="flex items-center gap-4 flex-wrap">
@@ -1072,7 +1072,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
           {/* Right Group: Legend Tile */}
           {showLegend && (
-            <div className="bg-[#1C2128] border border-gray-700 rounded-lg px-4 py-3 overflow-x-auto scrollbar-hide">
+            <div className="bg-[#1C2128] border border-gray-700 rounded-lg px-4 py-3 overflow-x-auto scrollbar-hide self-center mt-0 pt-0">
                <div className="flex items-center gap-4 whitespace-nowrap text-xs font-medium">
                   {availableTaskTypes.map(type => (
                      <div key={type} className="flex items-center gap-1.5">
