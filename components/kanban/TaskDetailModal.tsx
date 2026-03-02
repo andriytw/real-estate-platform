@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { X, Calendar, Clock, User, CheckCircle2, Circle, Building2, Wrench, Check, Image as ImageIcon, FileVideo, Zap, Droplets, Flame, ClipboardList } from 'lucide-react';
-import { tasksService, workersService, propertiesService } from '../../services/supabaseService';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Calendar, Clock, User, CheckCircle2, Circle, Building2, Wrench, Check, Image as ImageIcon, FileVideo, Zap, Droplets, Flame, ClipboardList, Send } from 'lucide-react';
+import { tasksService, workersService, propertiesService, getTaskChatMessages, insertTaskChatMessage, type TaskChatMessageRow } from '../../services/supabaseService';
 import { CalendarEvent, TaskStatus, Property, Worker } from '../../types';
 import { getTaskColor } from '../../utils/taskColors';
 import { supabase } from '../../utils/supabase/client';
@@ -34,6 +34,14 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [media, setMedia] = useState<string[]>(task?.images || []);
 
+  const isFacilityTask = task?.department === 'facility';
+  const [chatMessages, setChatMessages] = useState<TaskChatMessageRow[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [chatSending, setChatSending] = useState(false);
+  const [chatMyUserId, setChatMyUserId] = useState<string | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (isOpen && task) {
       loadTaskDetails();
@@ -52,6 +60,52 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       setMedia([]);
     }
   }, [task]);
+
+  useEffect(() => {
+    if (!isOpen || !task?.id || !isFacilityTask) {
+      setChatMessages([]);
+      setChatMyUserId(null);
+      return;
+    }
+    let cancelled = false;
+    setChatLoading(true);
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (cancelled) return;
+        if (user?.id) setChatMyUserId(user.id);
+        const rows = await getTaskChatMessages(task.id);
+        if (cancelled) return;
+        setChatMessages(rows);
+      } catch (e) {
+        if (!cancelled) console.warn('Task chat fetch failed', e);
+      } finally {
+        if (!cancelled) setChatLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, task?.id, isFacilityTask]);
+
+  useEffect(() => {
+    if (chatMessages.length) chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages.length]);
+
+  const handleChatSend = async () => {
+    const text = chatInput.trim();
+    if (!text || !task?.id || !isFacilityTask) return;
+    setChatSending(true);
+    try {
+      const row = await insertTaskChatMessage(task.id, text);
+      setChatMessages((prev) => [...prev, row]);
+      setChatInput('');
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    } catch (err: any) {
+      console.error('Task chat send failed', { taskId: task.id, error: err?.message ?? err });
+      alert(`Помилка відправки повідомлення: ${err?.message ?? String(err)}`);
+    } finally {
+      setChatSending(false);
+    }
+  };
 
   const loadTaskDetails = async () => {
     if (!task) return;
@@ -273,9 +327,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-[#16181D] rounded-xl border border-gray-800 w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+      <div className={`bg-[#16181D] rounded-xl border border-gray-800 w-full max-h-[85vh] overflow-hidden flex flex-col ${isFacilityTask ? 'max-w-4xl' : 'max-w-2xl'}`}>
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-800">
+        <div className="flex items-center justify-between p-4 border-b border-gray-800 shrink-0">
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-3">
               <span className={`text-xs font-medium px-2 py-1 rounded border ${colorClass}`}>
@@ -295,8 +349,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
           </button>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
+        {/* Content: two columns when Facility (details + chat), single column otherwise */}
+        <div className={`flex flex-1 min-h-0 ${isFacilityTask ? 'flex-row' : 'flex flex-col'}`}>
+          <div className="flex-1 min-w-0 overflow-y-auto p-4">
           <div className="space-y-4">
             {/* Worker Action Card */}
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
@@ -543,6 +598,65 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               </div>
             </div>
           </div>
+          </div>
+
+          {isFacilityTask && (
+            <div className="w-full sm:w-[400px] flex-shrink-0 flex flex-col bg-[#0D1117] border-l border-gray-800">
+              <div className="p-4 border-b border-gray-700 bg-[#161B22] shrink-0">
+                <h4 className="text-sm font-bold text-white">Task Chat</h4>
+                <p className="text-xs text-gray-500">Communication history</p>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+                {chatLoading && (
+                  <div className="text-center text-gray-500 text-sm py-2">Loading messages…</div>
+                )}
+                {chatMessages.map((msg) => {
+                  const isMe = chatMyUserId != null && msg.senderId === chatMyUserId;
+                  return (
+                    <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                      <div
+                        className={`max-w-[75%] p-3 rounded-lg text-sm ${
+                          isMe ? 'bg-[#005c4b] text-white rounded-tr-none' : 'bg-[#202c33] text-gray-200 rounded-tl-none'
+                        }`}
+                      >
+                        {msg.messageText}
+                        <div className="text-[10px] text-white/50 text-right mt-1">
+                          {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={chatEndRef} />
+              </div>
+              <div className="p-3 bg-[#161B22] border-t border-gray-700 shrink-0">
+                {(task.status === 'completed' || task.status === 'verified') ? (
+                  <div className="text-center text-gray-500 text-xs py-2 flex items-center justify-center gap-2">
+                    <CheckCircle2 className="w-4 h-4" />
+                    This task is completed. Chat is read-only.
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleChatSend()}
+                      placeholder="Type a message..."
+                      className="flex-1 bg-[#0D1117] border border-gray-700 rounded-lg px-4 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                    />
+                    <button
+                      onClick={handleChatSend}
+                      disabled={!chatInput.trim() || chatSending}
+                      className="p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Send className="w-5 h-5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

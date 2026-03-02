@@ -4,7 +4,7 @@ import { Plus, ChevronDown, ChevronLeft, ChevronRight, Calendar as CalendarIcon,
 import { MOCK_PROPERTIES } from '../constants';
 import { CalendarEvent, TaskType, TaskStatus, Property, BookingStatus, Worker } from '../types';
 import { updateBookingStatusFromTask } from '../bookingUtils';
-import { workersService, tasksService } from '../services/supabaseService';
+import { workersService, tasksService, getTaskChatMessages, insertTaskChatMessage } from '../services/supabaseService';
 import { supabase } from '../utils/supabase/client';
 import { ACCOUNTING_TASK_TYPES, getTaskColor } from '../utils/taskColors';
 
@@ -113,6 +113,8 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   // Chat State for Task Detail Modal
   const [taskMessages, setTaskMessages] = useState<TaskMessage[]>([]);
   const [chatInputValue, setChatInputValue] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatMyUserId, setChatMyUserId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -340,15 +342,46 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     }
   }, [taskMessages, viewEvent]);
 
-  // Initialize mock chat when opening a task
+  // Load chat messages when opening a task (Facility: real from DB; Accounting: mock unchanged)
   useEffect(() => {
-    if (viewEvent) {
+    if (!viewEvent) {
+      setTaskMessages([]);
+      setChatMyUserId(null);
+      return;
+    }
+    if (isAccountingCalendar) {
       setTaskMessages([
         { id: '1', sender: 'worker', text: 'Task received. I will be there on time.', timestamp: '08:30' },
         ...(viewEvent.hasUnreadMessage ? [{ id: '2', sender: 'worker', text: 'Urgent update: I need access to the basement key.', timestamp: '09:15' } as TaskMessage] : [])
       ]);
+      return;
     }
-  }, [viewEvent]);
+    if (!viewEvent.id) return;
+    let cancelled = false;
+    setChatLoading(true);
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (cancelled) return;
+        if (user?.id) setChatMyUserId(user.id);
+        const rows = await getTaskChatMessages(viewEvent!.id);
+        if (cancelled) return;
+        const myUid = user?.id ?? null;
+        const mapped: TaskMessage[] = rows.map((r) => ({
+          id: r.id,
+          sender: (myUid && r.senderId === myUid) ? 'admin' : 'worker',
+          text: r.messageText,
+          timestamp: r.createdAt ? new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—',
+        }));
+        setTaskMessages(mapped);
+      } catch (e) {
+        if (!cancelled) console.warn('Task chat fetch failed', e);
+      } finally {
+        if (!cancelled) setChatLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [viewEvent?.id, viewEvent?.hasUnreadMessage, isAccountingCalendar]);
 
   const months = [
     'January', 'February', 'March', 'April', 'May', 'June', 
@@ -653,18 +686,34 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     }
   };
 
-  const handleChatSend = () => {
-    if (!chatInputValue.trim()) return;
-    
-    const newMsg: TaskMessage = {
-      id: Date.now().toString(),
-      sender: 'admin',
-      text: chatInputValue,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-
-    setTaskMessages([...taskMessages, newMsg]);
-    setChatInputValue('');
+  const handleChatSend = async () => {
+    const text = chatInputValue.trim();
+    if (!text || !viewEvent?.id) return;
+    if (isAccountingCalendar) {
+      const newMsg: TaskMessage = {
+        id: Date.now().toString(),
+        sender: 'admin',
+        text,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setTaskMessages([...taskMessages, newMsg]);
+      setChatInputValue('');
+      return;
+    }
+    try {
+      const row = await insertTaskChatMessage(viewEvent.id, text);
+      const newMsg: TaskMessage = {
+        id: row.id,
+        sender: 'admin',
+        text: row.messageText,
+        timestamp: row.createdAt ? new Date(row.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setTaskMessages((prev) => [...prev, newMsg]);
+      setChatInputValue('');
+    } catch (err: any) {
+      console.error('Task chat send failed', { taskId: viewEvent.id, error: err?.message ?? err });
+      alert(`Помилка відправки повідомлення: ${err?.message ?? String(err)}`);
+    }
   };
 
   const handleChatFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1854,6 +1903,9 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
                      {/* Messages Area */}
                      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        {!isAccountingCalendar && chatLoading && (
+                           <div className="flex justify-center py-4 text-gray-500 text-sm">Loading messages…</div>
+                        )}
                         {taskMessages.map((msg) => (
                            <div key={msg.id} className={`flex ${msg.sender === 'admin' ? 'justify-end' : 'justify-start'}`}>
                               <div 

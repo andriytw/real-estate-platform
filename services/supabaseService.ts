@@ -2171,6 +2171,53 @@ export const messagesService = {
 // Keep for backward compatibility or direct calendar usage
 export const calendarEventsService = tasksService;
 
+// ==================== TASK CHAT MESSAGES ====================
+export interface TaskChatMessageRow {
+  id: string;
+  messageText: string;
+  createdAt: string;
+  senderId: string;
+}
+
+export async function getTaskChatMessages(calendarEventId: string): Promise<TaskChatMessageRow[]> {
+  const { data, error } = await supabase
+    .from('task_chat_messages')
+    .select('id, message_text, created_at, sender_id')
+    .eq('calendar_event_id', calendarEventId)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    messageText: String(row.message_text ?? row.message ?? '').trim(),
+    createdAt: row.created_at ?? '',
+    senderId: row.sender_id ?? '',
+  }));
+}
+
+export async function insertTaskChatMessage(calendarEventId: string, messageText: string): Promise<TaskChatMessageRow> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.id) throw new Error('Not authenticated');
+  const { data, error } = await supabase
+    .from('task_chat_messages')
+    .insert({
+      calendar_event_id: calendarEventId,
+      sender_id: user.id,
+      message_text: messageText.trim(),
+    })
+    .select('id, message_text, created_at, sender_id')
+    .single();
+
+  if (error) throw error;
+  const row = data as any;
+  return {
+    id: row.id,
+    messageText: String(row.message_text ?? row.message ?? '').trim(),
+    createdAt: row.created_at ?? '',
+    senderId: row.sender_id ?? '',
+  };
+}
+
 // ==================== TRANSFORMERS ====================
 
 function transformWorkerFromDB(db: any): Worker {
