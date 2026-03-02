@@ -54,6 +54,7 @@ import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '..
 import { propertyExpenseCategoryService, type PropertyExpenseCategoryRow } from '../services/propertyExpenseCategoryService';
 import { propertyMeterService, type PropertyMeterReadingRow, type PropertyMeterRow, type MeterType, METER_TYPES } from '../services/propertyMeterService';
 import { propertyMediaService, type PropertyMediaAssetRow, type PropertyMediaAssetType } from '../services/propertyMediaService';
+import { ApartmentStatisticsSection } from './ApartmentStatisticsSection';
 
 const METER_UNIT_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: 'Одиниця' },
@@ -959,6 +960,11 @@ const AccountDashboard: React.FC = () => {
 
   // --- Property Card: Tasks tile state ---
   const [propertyTaskBucket, setPropertyTaskBucket] = useState<'open' | 'in_progress' | 'completed' | 'all'>('open');
+  const [statsSelectedMonth, setStatsSelectedMonth] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [statsPricePerRoomNight, setStatsPricePerRoomNight] = useState<number>(0);
   const [propertyTaskComments, setPropertyTaskComments] = useState<Record<string, string>>({});
   const facilityTasksLoadedRef = useRef(false);
 
@@ -3658,6 +3664,37 @@ const AccountDashboard: React.FC = () => {
       .filter((r) => r.status !== 'archived' && String(r.propertyId ?? r.property?.id) === sid)
       .sort((a, b) => (b.startDate ?? b.createdAt ?? '').localeCompare(a.startDate ?? a.createdAt ?? ''));
   }, [requests, selectedPropertyId]);
+
+  // Utilities cost from meter block "Сума" (consumption × price per type) for Apartment Statistics
+  const utilitiesCostFromMeters = useMemo(() => {
+    const consumptionByType: Record<MeterType, number> = { strom: 0, gas: 0, wasser: 0, heizung: 0 };
+    const sortedReadings = [...meterReadingsManual].sort((a, b) => {
+      const d = a.reading_date.localeCompare(b.reading_date);
+      if (d !== 0) return d;
+      const c = (a.created_at || '').localeCompare(b.created_at || '');
+      if (c !== 0) return c;
+      return (a.id || '').localeCompare(b.id || '');
+    });
+    METER_TYPES.forEach((type) => {
+      const key = type as MeterType;
+      const withVal = sortedReadings.filter((r) => (r[key] as number | null) != null).map((r) => r[key] as number);
+      for (let i = 1; i < withVal.length; i++) {
+        const delta = withVal[i] - withVal[i - 1];
+        if (delta > 0) consumptionByType[key] += delta;
+      }
+    });
+    const metersByType: Record<MeterType, PropertyMeterRow | undefined> = { strom: undefined, gas: undefined, wasser: undefined, heizung: undefined };
+    meterMetersList.forEach((m) => { metersByType[m.type] = m; });
+    let total = 0;
+    METER_TYPES.forEach((t) => {
+      const m = metersByType[t as MeterType];
+      const consumption = consumptionByType[t as MeterType];
+      const price = m?.price_per_unit;
+      if (consumption != null && price != null && Number.isFinite(consumption) && Number.isFinite(price))
+        total += consumption * price;
+    });
+    return total;
+  }, [meterReadingsManual, meterMetersList]);
 
   // Load reservations function (extracted for reuse)
   const loadReservations = async () => {
@@ -8781,6 +8818,25 @@ ${internalCompany} Team`;
                         </ul>
                     </div>
                 </div>
+            </CollapsibleSection>
+
+            {/* 12. Apartment Statistics */}
+            <CollapsibleSection title="12. Apartment Statistics" defaultOpen={false}>
+              <ApartmentStatisticsSection
+                roomsCount={(selectedProperty as { rooms?: number; room_count?: number; bedrooms?: number })?.rooms ?? (selectedProperty as { room_count?: number })?.room_count ?? (selectedProperty as { bedrooms?: number })?.bedrooms ?? 1}
+                propertyPayments={propertyPayments}
+                propertyReservations={propertyReservations}
+                rentTimelineRows={rentTimelineRows}
+                expenseItems={expenseItems}
+                totalInventoryCost={totalInventoryCost}
+                utilitiesCost={utilitiesCostFromMeters}
+                selectedMonth={statsSelectedMonth}
+                onSelectedMonthChange={setStatsSelectedMonth}
+                pricePerRoomNight={statsPricePerRoomNight}
+                onPricePerRoomNightChange={setStatsPricePerRoomNight}
+                formatCurrency={formatCurrencyEUR}
+                showDebug={import.meta.env.DEV}
+              />
             </CollapsibleSection>
 
          </div>
