@@ -955,135 +955,137 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         </div>
 
         {/* View Mode, Filter & Legend */}
-        <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
-          
-          {/* Left Group: View Switcher + Filter + Date Picker */}
-          <div className="flex items-center gap-4 flex-wrap">
-            {/* View Switcher */}
-            <div className="flex items-center bg-[#161B22] p-2 rounded-lg border border-gray-800 self-start">
-              <div className="flex bg-[#0D1117] p-1 rounded-md border border-gray-700">
-                <button 
-                  onClick={() => setViewMode('day')}
-                  className={`px-4 py-1.5 text-sm font-bold rounded transition-all ${viewMode === 'day' ? 'bg-[#0099FF] text-white shadow' : 'text-gray-400 hover:text-white'}`}
-                >
-                  Day
-                </button>
-                <button 
-                  onClick={() => setViewMode('week')}
-                  className={`px-4 py-1.5 text-sm font-bold rounded transition-all ${viewMode === 'week' ? 'bg-[#0099FF] text-white shadow' : 'text-gray-400 hover:text-white'}`}
-                >
-                  Week
-                </button>
-                <button 
-                  onClick={() => setViewMode('month')}
-                  className={`px-4 py-1.5 text-sm font-bold rounded transition-all ${viewMode === 'month' ? 'bg-[#0099FF] text-white shadow' : 'text-gray-400 hover:text-white'}`}
-                >
-                  Month
-                </button>
-              </div>
-              
-              <button 
-                onClick={() => {
-                  setSelectedYear(new Date().getFullYear());
-                  setCurrentMonthIdx(new Date().getMonth());
-                  setSelectedDay(new Date().getDate());
-                }}
-                className="ml-3 hidden md:block px-4 py-1.5 bg-[#D946EF] hover:bg-[#C026D3] text-white rounded text-sm font-bold transition-colors shadow-lg shadow-fuchsia-900/20"
-              >
-                Today
-              </button>
-            </div>
-
-            {/* Task Filter */}
-            <div className="relative" ref={filterDropdownRef}>
-              <button 
-                onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
-                className="flex items-center gap-2 bg-[#1C1F24] border border-gray-700 hover:border-gray-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors shadow-sm"
-              >
-                <Filter className="w-4 h-4 text-gray-400" />
-                <span>{filterTask === 'All' ? 'All Tasks' : filterTask}</span>
-                <ChevronDown className="w-4 h-4 text-gray-500" />
-              </button>
-              
-              {isFilterDropdownOpen && (
-                <div className="absolute left-0 top-full mt-2 w-48 bg-[#161B22] border border-gray-700 rounded-lg shadow-xl z-50 overflow-hidden">
-                  <div 
-                    onClick={() => { setFilterTask('All'); setIsFilterDropdownOpen(false); }}
-                    className={`px-4 py-2.5 text-sm font-medium cursor-pointer hover:bg-[#1C1F24] transition-colors ${filterTask === 'All' ? 'text-white bg-gray-800' : 'text-gray-300'}`}
+        <div className="flex flex-col gap-4">
+          {/* Row 1: Grid — controls (left) | legend (right) */}
+          <div className={`grid gap-4 items-center ${showLegend ? 'grid-cols-1 md:grid-cols-[1fr_auto]' : 'grid-cols-1'}`}>
+            {/* Left column: View Switcher + Filter + Date Picker */}
+            <div className="flex flex-wrap items-center gap-3 min-h-10">
+              {/* View Switcher */}
+              <div className="flex items-center bg-[#161B22] p-2 rounded-lg border border-gray-800">
+                <div className="flex bg-[#0D1117] p-1 rounded-md border border-gray-700">
+                  <button 
+                    onClick={() => setViewMode('day')}
+                    className={`px-4 py-1.5 text-sm font-bold rounded transition-all ${viewMode === 'day' ? 'bg-[#0099FF] text-white shadow' : 'text-gray-400 hover:text-white'}`}
                   >
-                    All Tasks
-                  </div>
-                  {availableTaskTypes.map(type => (
-                    <div 
-                      key={type}
-                      onClick={() => { setFilterTask(type); setIsFilterDropdownOpen(false); }}
-                      className={`px-4 py-2.5 text-sm font-medium cursor-pointer hover:bg-[#1C1F24] transition-colors flex items-center gap-2`}
-                    >
-                      <div className={`w-2 h-2 rounded-full ${getDotColor(type)}`}></div>
-                      <span className={getTaskTextColor(type)}>{type}</span>
-                    </div>
-                  ))}
+                    Day
+                  </button>
+                  <button 
+                    onClick={() => setViewMode('week')}
+                    className={`px-4 py-1.5 text-sm font-bold rounded transition-all ${viewMode === 'week' ? 'bg-[#0099FF] text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    Week
+                  </button>
+                  <button 
+                    onClick={() => setViewMode('month')}
+                    className={`px-4 py-1.5 text-sm font-bold rounded transition-all ${viewMode === 'month' ? 'bg-[#0099FF] text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    Month
+                  </button>
                 </div>
-              )}
-            </div>
-
-            {/* Manual Date Range Picker */}
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2">
-                 <span className="text-xs text-gray-400">From:</span>
-                 <input 
-                   type="date" 
-                   value={dateFilterStart}
-                   onChange={(e) => setDateFilterStart(e.target.value)}
-                   className="bg-[#1C1F24] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
-                 />
-              </div>
-              <div className="flex items-center gap-2">
-                 <span className="text-xs text-gray-400">To:</span>
-                 <input 
-                   type="date" 
-                   value={dateFilterEnd}
-                   onChange={(e) => setDateFilterEnd(e.target.value)}
-                   className="bg-[#1C1F24] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
-                 />
-              </div>
-              <button className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition-colors">
-                Show
-              </button>
-            </div>
-
-            {/* Sort Toggle Buttons */}
-            <div className="flex gap-2 ml-2">
+                
                 <button 
-                  onClick={() => setCalendarSort('time')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors border ${calendarSort === 'time' ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-transparent border-gray-700 text-gray-400 hover:text-white'}`}
+                  onClick={() => {
+                    setSelectedYear(new Date().getFullYear());
+                    setCurrentMonthIdx(new Date().getMonth());
+                    setSelectedDay(new Date().getDate());
+                  }}
+                  className="ml-3 hidden md:block px-4 py-1.5 bg-[#D946EF] hover:bg-[#C026D3] text-white rounded text-sm font-bold transition-colors shadow-lg shadow-fuchsia-900/20"
                 >
-                  <Clock className="w-3 h-3" /> Time
+                  Today
                 </button>
+              </div>
+
+              {/* Task Filter */}
+              <div className="relative" ref={filterDropdownRef}>
                 <button 
-                  onClick={() => setCalendarSort('type')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors border ${calendarSort === 'type' ? 'bg-purple-500/20 border-purple-500 text-purple-400' : 'bg-transparent border-gray-700 text-gray-400 hover:text-white'}`}
+                  onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
+                  className="flex items-center gap-2 bg-[#1C1F24] border border-gray-700 hover:border-gray-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors shadow-sm"
                 >
-                  <Layers className="w-3 h-3" /> Group
+                  <Filter className="w-4 h-4 text-gray-400" />
+                  <span>{filterTask === 'All' ? 'All Tasks' : filterTask}</span>
+                  <ChevronDown className="w-4 h-4 text-gray-500" />
                 </button>
+                
+                {isFilterDropdownOpen && (
+                  <div className="absolute left-0 top-full mt-2 w-48 bg-[#161B22] border border-gray-700 rounded-lg shadow-xl z-50 overflow-hidden">
+                    <div 
+                      onClick={() => { setFilterTask('All'); setIsFilterDropdownOpen(false); }}
+                      className={`px-4 py-2.5 text-sm font-medium cursor-pointer hover:bg-[#1C1F24] transition-colors ${filterTask === 'All' ? 'text-white bg-gray-800' : 'text-gray-300'}`}
+                    >
+                      All Tasks
+                    </div>
+                    {availableTaskTypes.map(type => (
+                      <div 
+                        key={type}
+                        onClick={() => { setFilterTask(type); setIsFilterDropdownOpen(false); }}
+                        className={`px-4 py-2.5 text-sm font-medium cursor-pointer hover:bg-[#1C1F24] transition-colors flex items-center gap-2`}
+                      >
+                        <div className={`w-2 h-2 rounded-full ${getDotColor(type)}`}></div>
+                        <span className={getTaskTextColor(type)}>{type}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Manual Date Range Picker */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
+                   <span className="text-xs text-gray-400">From:</span>
+                   <input 
+                     type="date" 
+                     value={dateFilterStart}
+                     onChange={(e) => setDateFilterStart(e.target.value)}
+                     className="bg-[#1C1F24] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                   />
+                </div>
+                <div className="flex items-center gap-2">
+                   <span className="text-xs text-gray-400">To:</span>
+                   <input 
+                     type="date" 
+                     value={dateFilterEnd}
+                     onChange={(e) => setDateFilterEnd(e.target.value)}
+                     className="bg-[#1C1F24] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                   />
+                </div>
+                <button className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition-colors">
+                  Show
+                </button>
+              </div>
             </div>
 
+            {/* Right column: Legend (only when showLegend) */}
+            {showLegend && (
+              <div className="flex items-center gap-3 min-h-10">
+                <div className="bg-[#1C2128] border border-gray-700 rounded-lg px-4 py-2 overflow-x-auto scrollbar-hide">
+                  <div className="flex items-center gap-4 whitespace-nowrap text-xs font-medium">
+                    {availableTaskTypes.map(type => (
+                      <div key={type} className="flex items-center gap-1.5">
+                        <span className={`w-2.5 h-2.5 rounded-full ${getDotColor(type)}`}></span>
+                        <span className="text-gray-300 leading-none">{type}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Right Group: Legend Tile */}
-          {showLegend && (
-            <div className="bg-[#1C2128] border border-gray-700 rounded-lg px-4 py-3 overflow-x-auto scrollbar-hide self-center mt-0 pt-0">
-               <div className="flex items-center gap-4 whitespace-nowrap text-xs font-medium">
-                  {availableTaskTypes.map(type => (
-                     <div key={type} className="flex items-center gap-1.5">
-                        <span className={`w-2.5 h-2.5 rounded-full ${getDotColor(type)}`}></span>
-                        <span className="text-gray-300">{type}</span>
-                     </div>
-                  ))}
-               </div>
-            </div>
-          )}
-
+          {/* Row 2: Time / Group */}
+          <div className="flex gap-2 ml-2">
+            <button 
+              onClick={() => setCalendarSort('time')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors border ${calendarSort === 'time' ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-transparent border-gray-700 text-gray-400 hover:text-white'}`}
+            >
+              <Clock className="w-3 h-3" /> Time
+            </button>
+            <button 
+              onClick={() => setCalendarSort('type')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors border ${calendarSort === 'type' ? 'bg-purple-500/20 border-purple-500 text-purple-400' : 'bg-transparent border-gray-700 text-gray-400 hover:text-white'}`}
+            >
+              <Layers className="w-3 h-3" /> Group
+            </button>
+          </div>
         </div>
       </div>
 
