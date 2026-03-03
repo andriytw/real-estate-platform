@@ -68,6 +68,7 @@ interface SalesCalendarProps {
   invoices?: InvoiceData[];
   paymentProofsByInvoiceId?: Record<string, PaymentProof[]>;
   getPaymentProofSignedUrl?: (filePath: string) => Promise<string | null>;
+  proofSignedUrlByInvoiceId?: Record<string, string>;
   adminEvents?: CalendarEvent[];
   prefilledRequestData?: Partial<RequestData>; // Для префілу форми з Request
   properties?: Property[]; // Реальні об'єкти з Properties List
@@ -157,6 +158,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   invoices = [],
   paymentProofsByInvoiceId,
   getPaymentProofSignedUrl,
+  proofSignedUrlByInvoiceId,
   adminEvents = [],
   prefilledRequestData,
   properties = [],
@@ -186,6 +188,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const [hoveredBooking, setHoveredBooking] = useState<{booking: Booking, x: number, y: number} | null>(null);
   const [ugpLoadingBookingId, setUgpLoadingBookingId] = useState<string | number | null>(null);
   const hoverLeaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const proofUrlCacheRef = useRef<Record<string, string>>({});
+  const [prefetchedProofUrl, setPrefetchedProofUrl] = useState<string | null>(null);
   
   // Додати state для поточного видимого місяця
   const [currentVisibleMonth, setCurrentVisibleMonth] = useState(() => {
@@ -242,7 +246,40 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       setIsAddModalOpen(true);
     }
   }, [prefilledRequestData]);
-  
+
+  // Prefetch confirmation signed URL when popover opens
+  useEffect(() => {
+    if (!hoveredBooking || !getPaymentProofSignedUrl) {
+      setPrefetchedProofUrl(null);
+      return;
+    }
+    const booking = hoveredBooking.booking;
+    const invList = invoices ?? [];
+    const sourceInv = invList.find(i => i.id === booking.sourceInvoiceId);
+    const proformaInv = sourceInv?.documentType === 'proforma' ? sourceInv : sourceInv?.proformaId ? invList.find(p => p.id === sourceInv.proformaId) : undefined;
+    const proofs = (paymentProofsByInvoiceId?.[proformaInv?.id ?? ''] ?? []).filter(p => p.filePath);
+    const currentProof = proofs.find(p => p.isCurrent) ?? proofs[0];
+    const filePath = currentProof?.filePath;
+    if (!filePath) { setPrefetchedProofUrl(null); return; }
+
+    // Check pre-fetched map from AccountDashboard
+    const cachedFromParent = proofSignedUrlByInvoiceId?.[proformaInv?.id ?? ''];
+    if (cachedFromParent) { setPrefetchedProofUrl(cachedFromParent); return; }
+
+    // Check local cache
+    if (proofUrlCacheRef.current[filePath]) { setPrefetchedProofUrl(proofUrlCacheRef.current[filePath]); return; }
+
+    let cancelled = false;
+    setPrefetchedProofUrl(null);
+    getPaymentProofSignedUrl(filePath).then(url => {
+      if (!cancelled && url) {
+        proofUrlCacheRef.current[filePath] = url;
+        setPrefetchedProofUrl(url);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [hoveredBooking, invoices, paymentProofsByInvoiceId, proofSignedUrlByInvoiceId, getPaymentProofSignedUrl]);
+
   const [guests, setGuests] = useState<{firstName: string, lastName: string}[]>([{ firstName: '', lastName: '' }]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -1577,17 +1614,14 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
               <div className="flex justify-between items-center mt-1">
                 <span className="text-gray-500">Confirmation:</span>
                 {currentProof ? (
-                  getPaymentProofSignedUrl && currentProof.filePath ? (
-                    <button
-                      type="button"
-                      className={linkClass}
-                      onClick={async () => {
-                        const url = await getPaymentProofSignedUrl(currentProof.filePath!);
-                        if (url) window.open(url, '_blank');
-                      }}
-                    >
-                      {currentProof.documentNumber ?? 'PDF'}
-                    </button>
+                  currentProof.filePath ? (
+                    prefetchedProofUrl ? (
+                      <a href={prefetchedProofUrl} target="_blank" rel="noopener noreferrer" className={linkClass}>
+                        {currentProof.documentNumber ?? 'PDF'}
+                      </a>
+                    ) : (
+                      <span className="font-mono font-semibold text-white text-[10px] animate-pulse">loading…</span>
+                    )
                   ) : (
                     <span className="font-mono font-semibold text-white">{currentProof.documentNumber ?? '—'}</span>
                   )

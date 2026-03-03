@@ -10027,6 +10027,7 @@ ${internalCompany} Team`;
           invoices={invoices}
           paymentProofsByInvoiceId={paymentProofsByInvoiceId}
           getPaymentProofSignedUrl={async (filePath) => { try { return await paymentProofsService.getPaymentProofSignedUrl(filePath); } catch { return null; } }}
+          proofSignedUrlByInvoiceId={proofSignedUrlByInvoiceId}
           adminEvents={adminEvents}
           properties={properties}
           prefilledRequestData={selectedRequest ? {
