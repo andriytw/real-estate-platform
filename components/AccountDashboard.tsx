@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Square, Download, LayoutGrid, Bed } from 'lucide-react';
+import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Square, Download, LayoutGrid, Bed, MoreVertical, Archive, RotateCcw } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 import AdminCalendar from './AdminCalendar';
 import AdminMessages from './AdminMessages';
@@ -469,6 +469,11 @@ const AccountDashboard: React.FC = () => {
 
   const [properties, setProperties] = useState<Property[]>([]);
   const [propertySearch, setPropertySearch] = useState('');
+  const [archiveFilter, setArchiveFilter] = useState<'active' | 'archived'>('active');
+  const [propertyMenuOpenId, setPropertyMenuOpenId] = useState<string | null>(null);
+  const [archiveModalPropertyId, setArchiveModalPropertyId] = useState<string | null>(null);
+  const [deleteModalPropertyId, setDeleteModalPropertyId] = useState<string | null>(null);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
   const [isLoadingProperties, setIsLoadingProperties] = useState(true);
   const [selectedDocumentFolder, setSelectedDocumentFolder] = useState<string>('Договори');
@@ -719,6 +724,47 @@ const AccountDashboard: React.FC = () => {
       return street.includes(q) || title.includes(q);
     });
   }, [properties, propertySearch]);
+
+  const displayedProperties = useMemo(() => {
+    return filteredProperties.filter((p) =>
+      archiveFilter === 'active' ? p.archivedAt == null : p.archivedAt != null
+    );
+  }, [filteredProperties, archiveFilter]);
+
+  const handleArchiveConfirm = useCallback(async (propertyId: string) => {
+    try {
+      await propertiesService.archiveProperty(propertyId);
+      const data = await propertiesService.getAll();
+      setProperties(data);
+      if (selectedPropertyId === propertyId) {
+        if (archiveFilter === 'active') {
+          const activeList = data.filter((p) => p.archivedAt == null && p.id !== propertyId);
+          setSelectedPropertyId(activeList[0]?.id ?? '');
+        }
+      }
+      setArchiveModalPropertyId(null);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Помилка архівації');
+    }
+  }, [selectedPropertyId, archiveFilter]);
+
+  const handleDeletePermanentConfirm = useCallback(async (propertyId: string) => {
+    try {
+      await propertiesService.deletePropertyPermanently(propertyId);
+      const data = await propertiesService.getAll();
+      setProperties(data);
+      if (selectedPropertyId === propertyId) {
+        const list = archiveFilter === 'active'
+          ? data.filter((p) => p.archivedAt == null)
+          : data.filter((p) => p.archivedAt != null);
+        setSelectedPropertyId(list[0]?.id ?? '');
+      }
+      setDeleteModalPropertyId(null);
+      setDeleteConfirmInput('');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Помилка видалення');
+    }
+  }, [selectedPropertyId, archiveFilter]);
 
   const [ownerRentTimelineDbRows, setOwnerRentTimelineDbRows] = useState<RentTimelineRowDB[]>([]);
   const [rentTimelineLoading, setRentTimelineLoading] = useState(false);
@@ -5583,38 +5629,47 @@ ${internalCompany} Team`;
                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                <input type="text" value={propertySearch} onChange={(e) => setPropertySearch(e.target.value)} placeholder="Search by street..." className="w-full bg-[#0D1117] border border-gray-700 rounded-lg py-2 pl-9 text-sm text-white focus:border-emerald-500 outline-none" />
             </div>
-            {filteredProperties.map((prop) => (
-               <div key={prop.id} onClick={() => setSelectedPropertyId(prop.id)} className={`cursor-pointer p-4 rounded-xl border transition-all duration-200 ${selectedPropertyId === prop.id ? 'bg-[#1C1F24] border-l-4 border-l-emerald-500 border-y-transparent border-r-transparent shadow-lg' : 'bg-[#1C1F24] border-gray-800 hover:bg-[#23262b] hover:border-gray-700'}`}>
-                  <div className="flex justify-between items-start mb-1">
-                     <h3 className="font-bold text-white text-sm">{prop.title}</h3>
-                     <div className="flex items-center gap-1 shrink-0">
-                        {prop.zweckentfremdungFlag && <span className="text-amber-500" title="Zweckentfremdung Hinweis"><AlertTriangle className="w-4 h-4" /></span>}
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${prop.termStatus === 'green' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>{prop.termStatus === 'green' ? 'Active' : 'Expiring'}</span>
+            <div className="flex rounded-lg border border-gray-700 p-0.5 mb-4 bg-[#0D1117]">
+               <button type="button" onClick={() => setArchiveFilter('active')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${archiveFilter === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'text-gray-500 hover:text-gray-300'}`}>Active</button>
+               <button type="button" onClick={() => setArchiveFilter('archived')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${archiveFilter === 'archived' ? 'bg-emerald-500/20 text-emerald-400' : 'text-gray-500 hover:text-gray-300'}`}>Archived</button>
+            </div>
+            {displayedProperties.map((prop) => (
+               <div key={prop.id} className={`cursor-pointer p-4 rounded-xl border transition-all duration-200 ${selectedPropertyId === prop.id ? 'bg-[#1C1F24] border-l-4 border-l-emerald-500 border-y-transparent border-r-transparent shadow-lg' : 'bg-[#1C1F24] border-gray-800 hover:bg-[#23262b] hover:border-gray-700'}`}>
+                  <div onClick={() => { setSelectedPropertyId(prop.id); setPropertyMenuOpenId(null); }} className="block">
+                     <div className="flex justify-between items-start mb-1">
+                        <h3 className="font-bold text-white text-sm">{prop.title}</h3>
+                        <div className="flex items-center gap-1 shrink-0">
+                           {archiveFilter === 'archived' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-600/50 text-gray-400">Archived</span>}
+                           {prop.zweckentfremdungFlag && <span className="text-amber-500" title="Zweckentfremdung Hinweis"><AlertTriangle className="w-4 h-4" /></span>}
+                           <span className={`text-[10px] px-1.5 py-0.5 rounded ${prop.termStatus === 'green' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>{prop.termStatus === 'green' ? 'Active' : 'Expiring'}</span>
+                           <button type="button" onClick={(e) => { e.stopPropagation(); setPropertyMenuOpenId(prev => prev === prop.id ? null : prop.id); }} className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" aria-label="Actions"><MoreVertical className="w-4 h-4" /></button>
+                        </div>
+                     </div>
+                     <p className="text-xs text-gray-500 truncate mb-2">{formatPropertyAddress(prop)}</p>
+                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-gray-400">
+                        {(prop.details?.area != null && prop.details.area !== 0) && (
+                           <span className="flex items-center gap-1" title="Площа"><Square className="w-3 h-3 text-gray-500 shrink-0" /><span className="text-gray-300 font-medium">{prop.details.area} м²</span></span>
+                        )}
+                        {(prop.details?.rooms != null || prop.details?.beds != null) && (
+                           <span className="flex items-center gap-3">
+                              <span className="flex items-center gap-0.5" title="Кімнати"><LayoutGrid className="w-3 h-3 text-gray-500 shrink-0" /><span className="text-gray-300 font-medium">{prop.details.rooms ?? 0}</span></span>
+                              <span className="flex items-center gap-0.5" title="Ліжка"><Bed className="w-3 h-3 text-gray-500 shrink-0" /><span className="text-gray-300 font-medium">{prop.details.beds ?? 0}</span></span>
+                           </span>
+                        )}
                      </div>
                   </div>
-                  <p className="text-xs text-gray-500 truncate mb-2">{formatPropertyAddress(prop)}</p>
-                  
-                  {/* Characteristics */}
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-gray-400">
-                     {(prop.details?.area != null && prop.details.area !== 0) && (
-                        <span className="flex items-center gap-1" title="Площа">
-                           <Square className="w-3 h-3 text-gray-500 shrink-0" />
-                           <span className="text-gray-300 font-medium">{prop.details.area} м²</span>
-                        </span>
-                     )}
-                     {(prop.details?.rooms != null || prop.details?.beds != null) && (
-                        <span className="flex items-center gap-3">
-                           <span className="flex items-center gap-0.5" title="Кімнати">
-                              <LayoutGrid className="w-3 h-3 text-gray-500 shrink-0" />
-                              <span className="text-gray-300 font-medium">{prop.details.rooms ?? 0}</span>
-                           </span>
-                           <span className="flex items-center gap-0.5" title="Ліжка">
-                              <Bed className="w-3 h-3 text-gray-500 shrink-0" />
-                              <span className="text-gray-300 font-medium">{prop.details.beds ?? 0}</span>
-                           </span>
-                        </span>
-                     )}
-                  </div>
+                  {propertyMenuOpenId === prop.id && (
+                     <div className="mt-2 pt-2 border-t border-gray-700 flex flex-col gap-0.5" onClick={(e) => e.stopPropagation()}>
+                        {prop.archivedAt == null ? (
+                           <button type="button" onClick={() => { setArchiveModalPropertyId(prop.id); setPropertyMenuOpenId(null); }} className="text-left px-3 py-1.5 text-xs text-amber-400 hover:bg-amber-500/10 rounded flex items-center gap-2"><Archive className="w-3.5 h-3.5" /> Archive…</button>
+                        ) : (
+                           <>
+                              <button type="button" onClick={async () => { try { await propertiesService.restoreProperty(prop.id); const data = await propertiesService.getAll(); setProperties(data); setPropertyMenuOpenId(null); } catch (e) { alert(e instanceof Error ? e.message : 'Помилка'); } }} className="text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 rounded flex items-center gap-2"><RotateCcw className="w-3.5 h-3.5" /> Restore</button>
+                              <button type="button" onClick={() => { setDeleteModalPropertyId(prop.id); setDeleteConfirmInput(''); setPropertyMenuOpenId(null); }} className="text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 rounded flex items-center gap-2"><Trash2 className="w-3.5 h-3.5" /> Delete permanently…</button>
+                           </>
+                        )}
+                     </div>
+                  )}
                </div>
             ))}
          </div>
@@ -8839,6 +8894,27 @@ ${internalCompany} Team`;
               />
             </CollapsibleSection>
 
+            {/* Danger Zone: Archive / Restore / Delete permanently */}
+            <section className="bg-[#1C1F24] p-6 rounded-xl border border-red-900/40 shadow-sm mb-6">
+              <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">Danger Zone</h2>
+              <div className="flex flex-wrap gap-3">
+                {selectedProperty.archivedAt == null ? (
+                  <button type="button" onClick={() => setArchiveModalPropertyId(selectedProperty.id)} className="px-4 py-2 rounded-lg text-sm font-medium bg-amber-600 hover:bg-amber-500 text-white transition-colors flex items-center gap-2">
+                    <Archive className="w-4 h-4" /> Archive property
+                  </button>
+                ) : (
+                  <>
+                    <button type="button" onClick={async () => { try { await propertiesService.restoreProperty(selectedProperty.id); const data = await propertiesService.getAll(); setProperties(data); } catch (e) { alert(e instanceof Error ? e.message : 'Помилка'); } }} className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-600 hover:bg-gray-500 text-white transition-colors flex items-center gap-2">
+                      <RotateCcw className="w-4 h-4" /> Restore
+                    </button>
+                    <button type="button" onClick={() => { setDeleteModalPropertyId(selectedProperty.id); setDeleteConfirmInput(''); }} className="px-4 py-2 rounded-lg text-sm font-medium bg-red-600 hover:bg-red-500 text-white transition-colors flex items-center gap-2">
+                      <Trash2 className="w-4 h-4" /> Delete permanently
+                    </button>
+                  </>
+                )}
+              </div>
+            </section>
+
          </div>
       </div>
     );
@@ -11338,6 +11414,39 @@ ${internalCompany} Team`;
         }} 
         onSave={handleSaveProperty}
       />
+      {/* Archive property confirmation */}
+      {archiveModalPropertyId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="w-full max-w-md bg-[#1C1F24] border border-gray-800 rounded-xl shadow-xl p-6">
+            <h2 className="text-lg font-bold text-white mb-2">Archive property?</h2>
+            <p className="text-sm text-gray-400 mb-6">This will hide it from active lists. You can restore later.</p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setArchiveModalPropertyId(null)} className="px-4 py-2 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-800 transition-colors">Cancel</button>
+              <button type="button" onClick={() => archiveModalPropertyId && handleArchiveConfirm(archiveModalPropertyId)} className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium transition-colors">Archive</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Permanent delete confirmation */}
+      {deleteModalPropertyId && (() => {
+        const prop = properties.find(p => p.id === deleteModalPropertyId);
+        const confirmLabel = prop?.title ?? 'DELETE';
+        const match = deleteConfirmInput.trim() === confirmLabel || deleteConfirmInput.trim() === 'DELETE';
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+            <div className="w-full max-w-md bg-[#1C1F24] border border-gray-800 rounded-xl shadow-xl p-6">
+              <h2 className="text-lg font-bold text-white mb-2">Permanently delete property?</h2>
+              <p className="text-sm text-gray-400 mb-4">This cannot be undone. All dependent data must be removed first.</p>
+              <p className="text-xs text-gray-500 mb-2">Type the property title or &quot;DELETE&quot; to confirm:</p>
+              <input type="text" value={deleteConfirmInput} onChange={(e) => setDeleteConfirmInput(e.target.value)} placeholder={confirmLabel} className="w-full bg-[#111315] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 mb-6 focus:outline-none focus:ring-1 focus:ring-red-500" />
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => { setDeleteModalPropertyId(null); setDeleteConfirmInput(''); }} className="px-4 py-2 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-800 transition-colors">Cancel</button>
+                <button type="button" disabled={!match} onClick={() => deleteModalPropertyId && handleDeletePermanentConfirm(deleteModalPropertyId)} className={`px-4 py-2 rounded-lg font-medium transition-colors ${match ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-red-900/30 text-red-200/60 cursor-not-allowed'}`}>Delete permanently</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       <RequestModal 
         isOpen={isRequestModalOpen} 
         onClose={() => { setIsRequestModalOpen(false); setSelectedRequest(null); }} 

@@ -1177,7 +1177,7 @@ export const propertiesService = {
       console.log('📡 propertiesService.getAll called, lightweight:', lightweight);
       // For Marketplace/public views, only load essential fields for faster loading
       const selectFields = lightweight 
-        ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip, zweckentfremdung_flag, zweckentfremdung_updated_at, cover_photo_asset_id, lat, lng, details'
+        ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip, zweckentfremdung_flag, zweckentfremdung_updated_at, cover_photo_asset_id, lat, lng, details, archived_at, archived_by'
         : '*';
       
       console.log('📡 Querying properties table with fields:', selectFields);
@@ -1253,15 +1253,70 @@ export const propertiesService = {
     return transformed;
   },
 
-  // Delete property
+  /** @deprecated Use deletePropertyPermanently(propertyId) for safe deletion with dependency checks. */
   async delete(id: string): Promise<void> {
-    const { error } = await supabase
+    throw new Error('Use deletePropertyPermanently() for property deletion. Hard delete is only allowed after dependency checks.');
+  },
+
+  async archiveProperty(propertyId: string): Promise<Property> {
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id ?? null;
+    const { data, error } = await supabase
       .from('properties')
-      .delete()
-      .eq('id', id);
-    
+      .update({
+        archived_at: new Date().toISOString(),
+        archived_by: userId,
+      })
+      .eq('id', propertyId)
+      .select()
+      .single();
     if (error) throw error;
-  }
+    return transformPropertyFromDB(data);
+  },
+
+  async restoreProperty(propertyId: string): Promise<Property> {
+    const { data, error } = await supabase
+      .from('properties')
+      .update({ archived_at: null, archived_by: null })
+      .eq('id', propertyId)
+      .select()
+      .single();
+    if (error) throw error;
+    return transformPropertyFromDB(data);
+  },
+
+  async deletePropertyPermanently(propertyId: string): Promise<void> {
+    const depChecks: { table: string; column: string; label: string }[] = [
+      { table: 'reservations', column: 'property_id', label: 'reservations' },
+      { table: 'bookings', column: 'property_id', label: 'bookings' },
+      { table: 'offers', column: 'property_id', label: 'offers' },
+      { table: 'calendar_events', column: 'property_id', label: 'calendar_events' },
+      { table: 'rooms', column: 'property_id', label: 'rooms' },
+      { table: 'rent_timeline_rows', column: 'property_id', label: 'rent_timeline_rows' },
+      { table: 'property_documents', column: 'property_id', label: 'property_documents' },
+      { table: 'property_expense_documents', column: 'property_id', label: 'property_expense_documents' },
+      { table: 'property_expense_items', column: 'property_id', label: 'property_expense_items' },
+      { table: 'property_inventory_documents', column: 'property_id', label: 'property_inventory_documents' },
+      { table: 'property_inventory_items', column: 'property_id', label: 'property_inventory_items' },
+      { table: 'property_meters', column: 'property_id', label: 'property_meters' },
+      { table: 'property_meter_readings', column: 'property_id', label: 'property_meter_readings' },
+      { table: 'property_media_assets', column: 'property_id', label: 'property_media_assets' },
+    ];
+    for (const { table, column, label } of depChecks) {
+      const { count, error } = await supabase
+        .from(table)
+        .select('id', { count: 'exact', head: true })
+        .eq(column, propertyId);
+      if (error) {
+        throw new Error(`Cannot verify dependencies for ${table}. Deletion blocked.`);
+      }
+      if ((count ?? 0) > 0) {
+        throw new Error(`Property has dependent records (${label}) and cannot be permanently deleted. Archive it instead.`);
+      }
+    }
+    const { error } = await supabase.from('properties').delete().eq('id', propertyId);
+    if (error) throw error;
+  },
 };
 
 // ==================== ADDRESS BOOK (parties auto-capture) ====================
@@ -2373,6 +2428,8 @@ function transformPropertyFromDB(db: any): Property {
     geocode_provider: db.geocode_provider ?? undefined,
     geocode_confidence: db.geocode_confidence ?? undefined,
     geocode_failed_reason: db.geocode_failed_reason ?? undefined,
+    archivedAt: db.archived_at ?? undefined,
+    archivedBy: db.archived_by ?? undefined,
   };
 }
 
@@ -2447,6 +2504,8 @@ function transformPropertyToDB(property: Property): any {
   if (property.geocode_provider !== undefined) result.geocode_provider = property.geocode_provider;
   if (property.geocode_confidence !== undefined) result.geocode_confidence = property.geocode_confidence;
   if (property.geocode_failed_reason !== undefined) result.geocode_failed_reason = property.geocode_failed_reason;
+  if (property.archivedAt !== undefined) result.archived_at = property.archivedAt;
+  if (property.archivedBy !== undefined) result.archived_by = property.archivedBy;
 
   return result;
 }

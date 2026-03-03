@@ -523,6 +523,10 @@ export interface Property {
   geocode_provider?: string | null;
   geocode_confidence?: string | null;
   geocode_failed_reason?: string | null;
+  /** Archive (soft delete): set when archived; null = active. */
+  archivedAt?: string | null;
+  /** User who archived the property; null if not archived or auditor unknown. */
+  archivedBy?: string | null;
 }
 
 export interface FilterState {
