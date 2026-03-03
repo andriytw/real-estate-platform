@@ -1485,7 +1485,32 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         const proformaNumber = proformaInv?.invoiceNumber ?? '—';
         const proofs = (paymentProofsByInvoiceId?.[proformaInv?.id ?? ''] ?? []).filter(p => p.filePath);
         const currentProof = proofs.find(p => p.isCurrent) ?? proofs[0];
-        const childInvoices = invList.filter(inv => inv.proformaId === proformaInv?.id);
+        let popoverInvoices: InvoiceData[];
+        let invoicesGuardTriggered = false;
+        if (proformaInv) {
+          popoverInvoices = invList.filter(inv => inv.proformaId === proformaInv.id);
+        } else {
+          const resId = booking.sourceReservationId;
+          const byRes = resId
+            ? invList.filter(inv => String(inv.reservationId) === String(resId))
+            : [];
+          const bId = booking.id;
+          const byBook = bId
+            ? invList.filter(inv => String(inv.bookingId) === String(bId))
+            : [];
+          const seen = new Set<string>();
+          const merged: InvoiceData[] = [];
+          for (const inv of [...byRes, ...byBook]) {
+            const key = String(inv.id ?? '');
+            if (!key) continue;
+            if (!seen.has(key)) { seen.add(key); merged.push(inv); }
+          }
+          popoverInvoices = merged;
+        }
+        if (popoverInvoices.length > 50) {
+          popoverInvoices = [];
+          invoicesGuardTriggered = true;
+        }
         const linkClass = 'font-mono font-semibold text-white cursor-pointer hover:underline';
         return (
           <div 
@@ -1573,7 +1598,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
               <div className="flex justify-between items-start mt-1 gap-2">
                 <span className="text-gray-500 shrink-0">Invoices:</span>
                 <span className="font-mono font-semibold text-white text-right">
-                  {childInvoices.length === 0 ? '—' : childInvoices.map(inv => inv.fileUrl ? (
+                  {invoicesGuardTriggered ? (
+                    <span className="text-yellow-500 text-[10px] font-normal">Too many invoices matched (possible filter issue). Showing none.</span>
+                  ) : popoverInvoices.length === 0 ? '—' : popoverInvoices.map(inv => inv.fileUrl ? (
                     <a key={inv.id} href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className={linkClass + ' block'}>{inv.invoiceNumber}</a>
                   ) : (
                     <span key={inv.id} className="block">{inv.invoiceNumber}</span>
