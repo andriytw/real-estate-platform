@@ -114,21 +114,21 @@ export function DonutCompositionCard({
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="max-w-[96px] w-full text-center truncate text-base font-medium text-white tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
+          <span className="max-w-[96px] w-full text-center truncate text-[9.6px] font-medium text-white tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
             {centerLabel}
           </span>
         </div>
       </div>
-      {/* C) Legend zone — only for 3+ segments */}
+      {/* C) Legend zone — only for 3+ segments; single row (e.g. Rented · Empty · OOO or Owner Due · Invoices · Utilities) */}
       {showLegend && legendItems.length > 0 && (
-        <div className="mt-0.5 w-full flex flex-col items-center gap-0.5">
+        <div className="mt-0.5 w-full flex flex-row flex-nowrap items-center justify-center gap-x-1.5 min-w-0 overflow-x-auto">
           {legendItems.map((item) => (
             <div
               key={item.key}
-              className="flex items-center gap-1.5 text-[10px] text-gray-400 w-full max-w-[120px] min-w-0 whitespace-nowrap overflow-hidden"
+              className="flex items-center gap-0.5 text-[10px] text-gray-400 min-w-0 flex-1 whitespace-nowrap overflow-hidden"
             >
               <span
-                className="flex-shrink-0 w-2 h-2 rounded-full"
+                className="flex-shrink-0 w-1.5 h-1.5 rounded-full"
                 style={{ backgroundColor: item.color }}
               />
               <span className="truncate text-gray-400">{item.label}</span>
@@ -209,7 +209,7 @@ export function DonutGaugeCard({
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="max-w-[96px] w-full text-center truncate text-base font-medium text-white tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
+          <span className="max-w-[96px] w-full text-center truncate text-[9.6px] font-medium text-white tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
             {centerLabel}
           </span>
         </div>
