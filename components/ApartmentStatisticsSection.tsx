@@ -301,7 +301,7 @@ export function ApartmentStatisticsSection({
       </div>
 
       {/* B) 12 Donuts grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* 1. Occupancy % */}
         <DonutCompositionCard
           title="Occupancy % (Operational Days)"
@@ -410,6 +410,7 @@ export function ApartmentStatisticsSection({
           ]}
           centerLabel={formatCurrency(totalCosts)}
           subtext="Owner + Invoices + Utilities"
+          formatValue={formatCurrency}
         />
         {/* 12. Net Profit */}
         <DonutCompositionCard

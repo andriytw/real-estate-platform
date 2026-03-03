@@ -2,10 +2,11 @@
  * Reusable donut chart cards for Apartment Statistics.
  * DonutCompositionCard: multi-segment donut (e.g. Rented vs Empty).
  * DonutGaugeCard: value vs remainder (radial gauge).
+ * 4-zone layout: Title → Chart zone → Legend zone (optional) → Subtext.
  */
 
 import React from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 const DEFAULT_COLORS = [
   '#10b981', // emerald (Income/Collected)
@@ -18,6 +19,10 @@ const DEFAULT_COLORS = [
   '#6b7280', // gray (Empty)
   '#374151', // dark gray (OOO)
 ];
+
+const CHART_SIZE = 132;
+const OUTER_RADIUS = 58;
+const INNER_RADIUS = 44;
 
 export interface DonutSegment {
   name: string;
@@ -33,6 +38,8 @@ interface DonutCompositionCardProps {
   /** Optional: force 2 segments for single-value (Value + Remainder) so it looks like donut */
   forceTwoSegments?: boolean;
   neutralRemainderColor?: string;
+  /** Format segment value for custom legend (e.g. formatCurrency). Only used when showLegend. */
+  formatValue?: (value: number) => string;
 }
 
 export function DonutCompositionCard({
@@ -42,6 +49,7 @@ export function DonutCompositionCard({
   subtext,
   forceTwoSegments = false,
   neutralRemainderColor = '#374151',
+  formatValue = (n) => String(n),
 }: DonutCompositionCardProps) {
   let segments = rawSegments.filter((s) => Number.isFinite(s.value) && s.value >= 0);
   const total = segments.reduce((sum, s) => sum + s.value, 0);
@@ -62,39 +70,79 @@ export function DonutCompositionCard({
     color: s.color ?? DEFAULT_COLORS[i % DEFAULT_COLORS.length],
   }));
 
+  const showLegend = segments.length >= 3;
+  const legendItems = showLegend
+    ? segments
+        .slice(0, 3)
+        .map((s, i) => ({
+          key: s.name,
+          label: s.name,
+          value: s.value,
+          color: data[i]?.color ?? neutralRemainderColor,
+        }))
+    : [];
+
   return (
-    <div className="rounded-xl border border-gray-700 bg-[#1C1F24] p-3 flex flex-col items-center min-w-0">
-      <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1 truncate w-full text-center">
+    <div className="rounded-xl border border-gray-700 bg-[#1C1F24] p-2.5 flex flex-col items-center min-w-0 min-h-[220px]">
+      {/* A) Title */}
+      <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2 truncate w-full text-center">
         {title}
       </div>
-      <div className="relative flex items-center justify-center" style={{ width: 150, height: 150 }}>
+      {/* B) Chart zone — fixed size, normal flow; ResponsiveContainer directly inside */}
+      <div className="w-[132px] h-[132px] flex items-center justify-center relative">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={data}
               cx="50%"
               cy="50%"
-              innerRadius={54}
-              outerRadius={72}
+              innerRadius={INNER_RADIUS}
+              outerRadius={OUTER_RADIUS}
               paddingAngle={0}
               dataKey="value"
               stroke="none"
             >
               {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} />
+                <Cell
+                  key={`cell-${index}`}
+                  fill={entry.color}
+                  fillOpacity={entry.name === '—' || entry.color === neutralRemainderColor ? 0.85 : 1}
+                />
               ))}
             </Pie>
             <Tooltip formatter={(value: number) => [Number(value).toFixed(2), '']} />
-            <Legend layout="horizontal" align="center" wrapperStyle={{ fontSize: 10 }} />
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-lg font-bold text-white tabular-nums leading-tight text-center">
+          <span className="max-w-[110px] text-center truncate text-lg font-semibold text-white tabular-nums leading-tight">
             {centerLabel}
           </span>
         </div>
       </div>
-      <div className="text-xs text-gray-500 mt-1 text-center truncate w-full">{subtext}</div>
+      {/* C) Legend zone — only for 3+ segments */}
+      {showLegend && legendItems.length > 0 && (
+        <div className="mt-1 w-full flex flex-col items-center gap-0.5">
+          {legendItems.map((item) => (
+            <div
+              key={item.key}
+              className="flex items-center gap-1.5 text-[11px] text-gray-400 w-full max-w-[120px] min-w-0"
+            >
+              <span
+                className="flex-shrink-0 w-2 h-2 rounded-full"
+                style={{ backgroundColor: item.color }}
+              />
+              <span className="truncate text-gray-400">{item.label}</span>
+              <span className="flex-shrink-0 tabular-nums text-gray-300">
+                {formatValue(item.value)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* D) Subtext — single line, truncate if needed */}
+      <div className="mt-1 text-xs text-gray-500 text-center truncate w-full whitespace-nowrap">
+        {subtext}
+      </div>
     </div>
   );
 }
@@ -129,19 +177,21 @@ export function DonutGaugeCard({
   const displayData = data.length === 0 ? [{ name: '—', value: 1, color: remainderColor }] : data;
 
   return (
-    <div className="rounded-xl border border-gray-700 bg-[#1C1F24] p-3 flex flex-col items-center min-w-0">
-      <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1 truncate w-full text-center">
+    <div className="rounded-xl border border-gray-700 bg-[#1C1F24] p-2.5 flex flex-col items-center min-w-0 min-h-[220px]">
+      {/* A) Title */}
+      <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2 truncate w-full text-center">
         {title}
       </div>
-      <div className="relative flex items-center justify-center" style={{ width: 150, height: 150 }}>
+      {/* B) Chart zone */}
+      <div className="w-[132px] h-[132px] flex items-center justify-center relative">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={displayData}
               cx="50%"
               cy="50%"
-              innerRadius={54}
-              outerRadius={72}
+              innerRadius={INNER_RADIUS}
+              outerRadius={OUTER_RADIUS}
               paddingAngle={0}
               dataKey="value"
               stroke="none"
@@ -149,18 +199,26 @@ export function DonutGaugeCard({
               endAngle={-270}
             >
               {displayData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} />
+                <Cell
+                  key={`cell-${index}`}
+                  fill={entry.color}
+                  fillOpacity={entry.name === 'Remainder' ? 0.85 : 1}
+                />
               ))}
             </Pie>
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-lg font-bold text-white tabular-nums leading-tight text-center">
+          <span className="max-w-[110px] text-center truncate text-lg font-semibold text-white tabular-nums leading-tight">
             {centerLabel}
           </span>
         </div>
       </div>
-      <div className="text-xs text-gray-500 mt-1 text-center truncate w-full">{subtext}</div>
+      {/* C) No legend for gauges */}
+      {/* D) Subtext — single line, truncate if needed */}
+      <div className="mt-1 text-xs text-gray-500 text-center truncate w-full whitespace-nowrap">
+        {subtext}
+      </div>
     </div>
   );
 }
