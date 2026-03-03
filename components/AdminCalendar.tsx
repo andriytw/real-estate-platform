@@ -939,7 +939,12 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
               {months.map((month, idx) => (
                 <button
                   key={month}
-                  onClick={() => setCurrentMonthIdx(idx)}
+                  onClick={() => {
+                    setCurrentMonthIdx(idx);
+                    if (viewMode === 'week') {
+                      setWeekAnchorDate(startOfWeekFn(new Date(selectedYear, idx, 1)));
+                    }
+                  }}
                   className={`
                     px-4 py-2 rounded-t-lg text-sm font-medium transition-all whitespace-nowrap relative top-[1px]
                     ${idx === currentMonthIdx 
