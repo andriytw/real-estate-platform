@@ -122,6 +122,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   const wheelAccumRef = useRef(0);
   const wheelDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchStartXRef = useRef<number | null>(null);
+  const pendingMonthJumpRef = useRef(false);
 
   // Функція для отримання зрозумілого опису (прибирає JSON, показує тільки текст)
   const getReadableDescription = (description: string | undefined): string => {
@@ -316,9 +317,17 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     if (isAccountingCalendar) return;
     if (viewMode !== 'week') return;
     const ws = startOfWeekFn(weekAnchorDate);
-    setCurrentMonthIdx(ws.getMonth());
-    setSelectedYear(ws.getFullYear());
+    const mid = new Date(ws);
+    mid.setDate(ws.getDate() + 3);
+    setCurrentMonthIdx(mid.getMonth());
+    setSelectedYear(mid.getFullYear());
   }, [weekAnchorDate, viewMode, isAccountingCalendar]);
+
+  useEffect(() => {
+    if (viewMode !== 'week') return;
+    pendingMonthJumpRef.current = false;
+    setWeekAnchorDate(startOfWeekFn(new Date(selectedYear, currentMonthIdx, 1)));
+  }, [viewMode]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -431,8 +440,14 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     });
   };
 
-  const goPrevWeek = () => setWeekAnchorDate(d => addDaysFn(d, -7));
-  const goNextWeek = () => setWeekAnchorDate(d => addDaysFn(d, +7));
+  const goPrevWeek = () => {
+    pendingMonthJumpRef.current = false;
+    setWeekAnchorDate(d => addDaysFn(d, -7));
+  };
+  const goNextWeek = () => {
+    pendingMonthJumpRef.current = false;
+    setWeekAnchorDate(d => addDaysFn(d, +7));
+  };
 
   const handleWeekWheel = useCallback((e: React.WheelEvent) => {
     if (isAccountingCalendar || viewMode !== 'week') return;
@@ -942,6 +957,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                   onClick={() => {
                     setCurrentMonthIdx(idx);
                     if (viewMode === 'week') {
+                      pendingMonthJumpRef.current = true;
                       setWeekAnchorDate(startOfWeekFn(new Date(selectedYear, idx, 1)));
                     }
                   }}
@@ -1106,7 +1122,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
               <button onClick={goPrevWeek} className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
                 <ChevronLeft className="w-5 h-5" />
               </button>
-              <button onClick={() => setWeekAnchorDate(new Date())} className="px-2 py-0.5 rounded text-xs font-medium hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
+              <button onClick={() => { pendingMonthJumpRef.current = false; setWeekAnchorDate(new Date()); }} className="px-2 py-0.5 rounded text-xs font-medium hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
                 Today
               </button>
               <button onClick={goNextWeek} className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
