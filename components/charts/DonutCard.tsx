@@ -83,9 +83,9 @@ export function DonutCompositionCard({
     : [];
 
   return (
-    <div className="rounded-xl border border-gray-700 bg-[#1C1F24] p-2.5 flex flex-col items-center min-w-0 min-h-[220px]">
+    <div className="rounded-xl border border-gray-700 bg-[#1C1F24] p-2.5 flex flex-col items-center min-w-0 min-h-[180px] transition-transform transition-shadow duration-150 ease-out hover:-translate-y-[2px] hover:shadow-lg motion-reduce:transform-none motion-reduce:transition-none cursor-default focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20">
       {/* A) Title */}
-      <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2 truncate w-full text-center">
+      <div className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1.5 truncate w-full text-center whitespace-nowrap overflow-hidden">
         {title}
       </div>
       {/* B) Chart zone — fixed size, normal flow; ResponsiveContainer directly inside */}
@@ -113,19 +113,19 @@ export function DonutCompositionCard({
             <Tooltip formatter={(value: number) => [Number(value).toFixed(2), '']} />
           </PieChart>
         </ResponsiveContainer>
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="max-w-[110px] text-center truncate text-lg font-semibold text-white tabular-nums leading-tight">
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className="max-w-[96px] w-full text-center truncate text-base font-medium text-white tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
             {centerLabel}
           </span>
         </div>
       </div>
       {/* C) Legend zone — only for 3+ segments */}
       {showLegend && legendItems.length > 0 && (
-        <div className="mt-1 w-full flex flex-col items-center gap-0.5">
+        <div className="mt-0.5 w-full flex flex-col items-center gap-0.5">
           {legendItems.map((item) => (
             <div
               key={item.key}
-              className="flex items-center gap-1.5 text-[11px] text-gray-400 w-full max-w-[120px] min-w-0"
+              className="flex items-center gap-1.5 text-[10px] text-gray-400 w-full max-w-[120px] min-w-0 whitespace-nowrap overflow-hidden"
             >
               <span
                 className="flex-shrink-0 w-2 h-2 rounded-full"
@@ -140,7 +140,7 @@ export function DonutCompositionCard({
         </div>
       )}
       {/* D) Subtext — single line, truncate if needed */}
-      <div className="mt-1 text-xs text-gray-500 text-center truncate w-full whitespace-nowrap">
+      <div className="mt-0.5 text-xs text-gray-500 text-center truncate w-full whitespace-nowrap overflow-hidden text-ellipsis">
         {subtext}
       </div>
     </div>
@@ -177,9 +177,9 @@ export function DonutGaugeCard({
   const displayData = data.length === 0 ? [{ name: '—', value: 1, color: remainderColor }] : data;
 
   return (
-    <div className="rounded-xl border border-gray-700 bg-[#1C1F24] p-2.5 flex flex-col items-center min-w-0 min-h-[220px]">
+    <div className="rounded-xl border border-gray-700 bg-[#1C1F24] p-2.5 flex flex-col items-center min-w-0 min-h-[180px] transition-transform transition-shadow duration-150 ease-out hover:-translate-y-[2px] hover:shadow-lg motion-reduce:transform-none motion-reduce:transition-none cursor-default focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20">
       {/* A) Title */}
-      <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2 truncate w-full text-center">
+      <div className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1.5 truncate w-full text-center whitespace-nowrap overflow-hidden">
         {title}
       </div>
       {/* B) Chart zone */}
@@ -208,15 +208,15 @@ export function DonutGaugeCard({
             </Pie>
           </PieChart>
         </ResponsiveContainer>
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="max-w-[110px] text-center truncate text-lg font-semibold text-white tabular-nums leading-tight">
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className="max-w-[96px] w-full text-center truncate text-base font-medium text-white tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
             {centerLabel}
           </span>
         </div>
       </div>
       {/* C) No legend for gauges */}
       {/* D) Subtext — single line, truncate if needed */}
-      <div className="mt-1 text-xs text-gray-500 text-center truncate w-full whitespace-nowrap">
+      <div className="mt-0.5 text-xs text-gray-500 text-center truncate w-full whitespace-nowrap overflow-hidden text-ellipsis">
         {subtext}
       </div>
     </div>
