@@ -460,19 +460,9 @@ export function ApartmentStatisticsSection({
         </div>
       </div>
 
-      {/* B) 12 Donuts grid */}
+      {/* B) Donuts grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* 1. Occupancy % */}
-        <DonutCompositionCard
-          title="Occupancy % (Operational Days)"
-          segments={[
-            { name: 'Rented', value: daysRented, color: '#10b981' },
-            { name: 'Empty', value: daysEmpty, color: '#6b7280' },
-          ]}
-          centerLabel={formatPct(occupancyPct)}
-          subtext={`${daysRented} / ${operationalDays} days`}
-        />
-        {/* 2. Operational Days (Rented / Empty / OOO) */}
+        {/* 1. Operational Days (Rented / Empty / OOO) */}
         <DonutCompositionCard
           title="Operational Days (Rented / Empty / OOO)"
           segments={[
@@ -480,10 +470,10 @@ export function ApartmentStatisticsSection({
             { name: 'Empty', value: daysEmpty, color: '#6b7280' },
             { name: 'OOO', value: daysOutOfOrder, color: '#374151' },
           ]}
-          centerLabel={String(operationalDays)}
-          subtext={`OOO: ${daysOutOfOrder}`}
+          centerLabel={`Occupancy ${formatPct(occupancyPct)}`}
+          subtext={`Rented ${daysRented} / ${operationalDays} days • OOO ${daysOutOfOrder}`}
         />
-        {/* 3. Collected — 2 segments so donut visible */}
+        {/* 2. Collected — 2 segments so donut visible */}
         <DonutCompositionCard
           title="Collected (Income)"
           segments={[{ name: 'Collected', value: collected, color: '#10b981' }]}
@@ -491,7 +481,7 @@ export function ApartmentStatisticsSection({
           subtext="confirmed payments in month"
           forceTwoSegments
         />
-        {/* 4. Full Capacity Income (Plan) */}
+        {/* 3. Full Capacity Income (Plan) */}
         <DonutCompositionCard
           title="Full Capacity Income (Plan)"
           segments={[{ name: 'Plan', value: plan, color: '#3b82f6' }]}
@@ -499,7 +489,7 @@ export function ApartmentStatisticsSection({
           subtext={`${pricePerRoomNight} × ${roomsCount} × ${operationalDays}`}
           forceTwoSegments
         />
-        {/* 5. % Plan Fulfillment */}
+        {/* 4. % Plan Fulfillment */}
         <DonutCompositionCard
           title="% of Plan Fulfillment"
           segments={[
@@ -509,7 +499,7 @@ export function ApartmentStatisticsSection({
           centerLabel={formatPct(planFulfillmentPct)}
           subtext={`${formatCurrency(collected)} / ${formatCurrency(plan)}`}
         />
-        {/* 6. Difference (signed) */}
+        {/* 5. Difference (signed) */}
         <DonutCompositionCard
           title="Difference (Collected − Plan)"
           segments={
@@ -526,7 +516,7 @@ export function ApartmentStatisticsSection({
           centerLabel={formatCurrency(difference)}
           subtext={difference < 0 ? `Missing ${formatCurrency(missingToPlan)}` : `Over ${formatCurrency(overPlan)}`}
         />
-        {/* 7. Non Collected Profit */}
+        {/* 6. Non Collected Profit */}
         <DonutCompositionCard
           title="Non Collected Profit"
           segments={[
@@ -536,7 +526,7 @@ export function ApartmentStatisticsSection({
           centerLabel={formatCurrency(missingToPlan)}
           subtext="not collected to reach plan"
         />
-        {/* 8. ADR (gauge) */}
+        {/* 7. ADR (gauge) */}
         <DonutGaugeCard
           title="Average Price per Rented Day (ADR)"
           value={adr}
@@ -544,7 +534,7 @@ export function ApartmentStatisticsSection({
           centerLabel={`${formatCurrency(adr)}/day`}
           subtext="Collected / Days Rented"
         />
-        {/* 9. Room ADR (gauge) */}
+        {/* 8. Room ADR (gauge) */}
         <DonutGaugeCard
           title="Avg Price per Room per Rented Day"
           value={roomAdr}
@@ -552,7 +542,7 @@ export function ApartmentStatisticsSection({
           centerLabel={formatCurrency(roomAdr)}
           subtext="per room-night"
         />
-        {/* 10. Avg Rentable (gauge) */}
+        {/* 9. Avg Rentable (gauge) */}
         <DonutGaugeCard
           title="Average Price of Rentable Days"
           value={avgRentable}
@@ -560,7 +550,7 @@ export function ApartmentStatisticsSection({
           centerLabel={`${formatCurrency(avgRentable)}/op.day`}
           subtext="Collected / Operational Days"
         />
-        {/* 11. Total Costs — segment details card (position: fixed, no scroll) */}
+        {/* 10. Total Costs — segment details card (position: fixed, no scroll) */}
         <div className="relative">
           <DonutCompositionCard
             title="Total Costs (All Expenses)"
@@ -586,7 +576,7 @@ export function ApartmentStatisticsSection({
             }}
           />
         </div>
-        {/* 12. Net Profit */}
+        {/* 11. Net Profit */}
         <DonutCompositionCard
           title="Net Profit (Чистий прибуток)"
           segments={
