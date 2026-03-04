@@ -1,4 +1,4 @@
-/* Custom styles - Tailwind is loaded via CDN in index.html */
+@import "tailwindcss";
 
 /* Base styles */
 * {
