@@ -3317,8 +3317,14 @@ function paymentChainFileFromRow(r: any): PaymentChainFile {
   };
 }
 
+const EMPTY_PAYMENT_CHAIN: PaymentChainState = {
+  edges: { C1_TO_OWNER: null, C2_TO_C1: null },
+  filesByTile: { C1_TO_OWNER: [], C2_TO_C1: [], OWNER_RECEIPT: [] },
+};
+
 export const paymentChainService = {
   async getPaymentChain(propertyId: string): Promise<PaymentChainState> {
+    if (!propertyId || String(propertyId).trim() === '') return EMPTY_PAYMENT_CHAIN;
     const [edgesRes, filesRes] = await Promise.all([
       supabase.from('payment_chain_edges').select('*').eq('property_id', propertyId),
       supabase.from('payment_chain_files').select('*').eq('property_id', propertyId).order('created_at', { ascending: false }),

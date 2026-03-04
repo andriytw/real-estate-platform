@@ -628,6 +628,17 @@ const AccountDashboard: React.FC = () => {
   const tileKeyToDb = (k: PaymentTileKey): 'OWNER_RECEIPT' | 'C1_TO_OWNER' | 'C2_TO_C1' => (k === 'owner_control' ? 'OWNER_RECEIPT' : k === 'from_company1_to_owner' ? 'C1_TO_OWNER' : 'C2_TO_C1');
   const dbTileToKey = (t: 'OWNER_RECEIPT' | 'C1_TO_OWNER' | 'C2_TO_C1'): PaymentTileKey => (t === 'OWNER_RECEIPT' ? 'owner_control' : t === 'C1_TO_OWNER' ? 'from_company1_to_owner' : 'from_company2_to_company1');
   const loadPaymentChain = useCallback(async (propertyId: string) => {
+    if (!propertyId || String(propertyId).trim() === '') {
+      setPaymentChainLoading(false);
+      setPaymentChainError(null);
+      setPaymentChainFiles({ owner_control: [], from_company1_to_owner: [], from_company2_to_company1: [] });
+      setPaymentTiles({
+        owner_control: { payByDayOfMonth: undefined, total: '', description: '', breakdown: {}, attachments: [] },
+        from_company1_to_owner: { payByDayOfMonth: undefined, total: '', description: '', breakdown: {}, attachments: [] },
+        from_company2_to_company1: { payByDayOfMonth: undefined, total: '', description: '', breakdown: {}, attachments: [] },
+      });
+      return;
+    }
     setPaymentChainLoading(true);
     setPaymentChainError(null);
     try {
@@ -822,7 +833,18 @@ const AccountDashboard: React.FC = () => {
   )) : 0;
 
   useEffect(() => {
-    if (selectedPropertyId == null) return;
+    if (!selectedPropertyId || String(selectedPropertyId).trim() === '') {
+      setPaymentChainLoading(false);
+      setPaymentChainError(null);
+      setPaymentChainFiles({ owner_control: [], from_company1_to_owner: [], from_company2_to_company1: [] });
+      setPaymentTiles({
+        owner_control: { payByDayOfMonth: undefined, total: '', description: '', breakdown: {}, attachments: [] },
+        from_company1_to_owner: { payByDayOfMonth: undefined, total: '', description: '', breakdown: {}, attachments: [] },
+        from_company2_to_company1: { payByDayOfMonth: undefined, total: '', description: '', breakdown: {}, attachments: [] },
+      });
+      if (import.meta.env.DEV) console.warn('[payment-chain] skip fetch: missing propertyId', { propertyId: selectedPropertyId });
+      return;
+    }
     loadPaymentChain(selectedPropertyId);
   }, [selectedPropertyId, loadPaymentChain]);
 
