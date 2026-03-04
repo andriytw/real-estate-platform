@@ -40,6 +40,10 @@ interface DonutCompositionCardProps {
   neutralRemainderColor?: string;
   /** Format segment value for custom legend (e.g. formatCurrency). Only used when showLegend. */
   formatValue?: (value: number) => string;
+  /** Optional: called when pointer enters a segment (segment name as key). */
+  onSegmentEnter?: (segmentKey: string) => void;
+  /** Optional: called when pointer leaves a segment. */
+  onSegmentLeave?: () => void;
 }
 
 export function DonutCompositionCard({
@@ -50,6 +54,8 @@ export function DonutCompositionCard({
   forceTwoSegments = false,
   neutralRemainderColor = '#374151',
   formatValue = (n) => String(n),
+  onSegmentEnter,
+  onSegmentLeave,
 }: DonutCompositionCardProps) {
   let segments = rawSegments.filter((s) => Number.isFinite(s.value) && s.value >= 0);
   const total = segments.reduce((sum, s) => sum + s.value, 0);
@@ -107,6 +113,8 @@ export function DonutCompositionCard({
                   key={`cell-${index}`}
                   fill={entry.color}
                   fillOpacity={entry.name === '—' || entry.color === neutralRemainderColor ? 0.85 : 1}
+                  onMouseEnter={() => onSegmentEnter?.(entry.name)}
+                  onMouseLeave={onSegmentLeave}
                 />
               ))}
             </Pie>
