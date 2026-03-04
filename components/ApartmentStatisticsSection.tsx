@@ -473,33 +473,17 @@ export function ApartmentStatisticsSection({
           centerLabel={`Occupancy ${formatPct(occupancyPct)}`}
           subtext={`Rented ${daysRented} / ${operationalDays} days • OOO ${daysOutOfOrder}`}
         />
-        {/* 2. Collected — 2 segments so donut visible */}
+        {/* 2. Income vs Plan (Month) */}
         <DonutCompositionCard
-          title="Collected (Income)"
-          segments={[{ name: 'Collected', value: collected, color: '#10b981' }]}
-          centerLabel={formatCurrency(collected)}
-          subtext="confirmed payments in month"
-          forceTwoSegments
-        />
-        {/* 3. Full Capacity Income (Plan) */}
-        <DonutCompositionCard
-          title="Full Capacity Income (Plan)"
-          segments={[{ name: 'Plan', value: plan, color: '#3b82f6' }]}
-          centerLabel={formatCurrency(plan)}
-          subtext={`${pricePerRoomNight} × ${roomsCount} × ${operationalDays}`}
-          forceTwoSegments
-        />
-        {/* 4. % Plan Fulfillment */}
-        <DonutCompositionCard
-          title="% of Plan Fulfillment"
+          title="Income vs Plan (Month)"
           segments={[
             { name: 'Collected', value: collected, color: '#10b981' },
             { name: 'Missing', value: missingToPlan, color: '#f59e0b' },
           ]}
-          centerLabel={formatPct(planFulfillmentPct)}
-          subtext={`${formatCurrency(collected)} / ${formatCurrency(plan)}`}
+          centerLabel={plan > 0 ? formatPct(planFulfillmentPct) : '—'}
+          subtext={`Collected: ${formatCurrency(collected)} • Plan: ${formatCurrency(plan)} • Missing: ${formatCurrency(missingToPlan)}`}
         />
-        {/* 5. Difference (signed) */}
+        {/* 3. Difference (Collected − Plan) */}
         <DonutCompositionCard
           title="Difference (Collected − Plan)"
           segments={
@@ -516,17 +500,7 @@ export function ApartmentStatisticsSection({
           centerLabel={formatCurrency(difference)}
           subtext={difference < 0 ? `Missing ${formatCurrency(missingToPlan)}` : `Over ${formatCurrency(overPlan)}`}
         />
-        {/* 6. Non Collected Profit */}
-        <DonutCompositionCard
-          title="Non Collected Profit"
-          segments={[
-            { name: 'MissingToPlan', value: missingToPlan, color: '#f59e0b' },
-            { name: 'Collected', value: collected, color: '#10b981' },
-          ]}
-          centerLabel={formatCurrency(missingToPlan)}
-          subtext="not collected to reach plan"
-        />
-        {/* 7. ADR (gauge) */}
+        {/* 4. ADR (gauge) */}
         <DonutGaugeCard
           title="Average Price per Rented Day (ADR)"
           value={adr}
@@ -534,7 +508,7 @@ export function ApartmentStatisticsSection({
           centerLabel={`${formatCurrency(adr)}/day`}
           subtext="Collected / Days Rented"
         />
-        {/* 8. Room ADR (gauge) */}
+        {/* 5. Room ADR (gauge) */}
         <DonutGaugeCard
           title="Avg Price per Room per Rented Day"
           value={roomAdr}
@@ -542,7 +516,7 @@ export function ApartmentStatisticsSection({
           centerLabel={formatCurrency(roomAdr)}
           subtext="per room-night"
         />
-        {/* 9. Avg Rentable (gauge) */}
+        {/* 6. Avg Rentable (gauge) */}
         <DonutGaugeCard
           title="Average Price of Rentable Days"
           value={avgRentable}
@@ -550,7 +524,7 @@ export function ApartmentStatisticsSection({
           centerLabel={`${formatCurrency(avgRentable)}/op.day`}
           subtext="Collected / Operational Days"
         />
-        {/* 10. Total Costs — segment details card (position: fixed, no scroll) */}
+        {/* 7. Total Costs — segment details card (position: fixed, no scroll) */}
         <div className="relative">
           <DonutCompositionCard
             title="Total Costs (All Expenses)"
@@ -576,7 +550,7 @@ export function ApartmentStatisticsSection({
             }}
           />
         </div>
-        {/* 11. Net Profit */}
+        {/* 8. Net Profit */}
         <DonutCompositionCard
           title="Net Profit (Чистий прибуток)"
           segments={
@@ -609,7 +583,6 @@ export function ApartmentStatisticsSection({
           ['ADR/day', formatCurrency(adr)],
           ['ADR/room-night', formatCurrency(roomAdr)],
           ['Avg/op.day', formatCurrency(avgRentable)],
-          ['Non Collected', formatCurrency(missingToPlan)],
           ['Owner Due', formatCurrency(ownerDue)],
           ['Invoices', formatCurrency(invoiceExpenses)],
           ['Total Costs', formatCurrency(totalCosts)],
