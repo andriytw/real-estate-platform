@@ -155,6 +155,7 @@ import {
 import { euToIso, validateEuDate } from '../utils/leaseTermDates';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
 import { ensurePropertyHasCoords } from '../utils/ensurePropertyHasCoords';
+import { getRoomsCount } from '../utils/propertyStats';
 import { MOCK_PROPERTIES } from '../constants';
 import { createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 import { supabase } from '../utils/supabase/client';
@@ -8877,8 +8878,21 @@ ${internalCompany} Team`;
 
             {/* 12. Apartment Statistics */}
             <CollapsibleSection title="12. Apartment Statistics" defaultOpen={false}>
+              {import.meta.env.DEV &&
+                selectedProperty &&
+                (() => {
+                  // eslint-disable-next-line no-console
+                  console.log('rooms debug', {
+                    id: selectedProperty.id,
+                    title: selectedProperty.title,
+                    detailsRooms: selectedProperty?.details?.rooms,
+                    topRooms: selectedProperty?.rooms,
+                    resolved: getRoomsCount(selectedProperty),
+                  });
+                  return null;
+                })()}
               <ApartmentStatisticsSection
-                roomsCount={(selectedProperty as { rooms?: number; room_count?: number; bedrooms?: number })?.rooms ?? (selectedProperty as { room_count?: number })?.room_count ?? (selectedProperty as { bedrooms?: number })?.bedrooms ?? 1}
+                roomsCount={getRoomsCount(selectedProperty)}
                 propertyPayments={propertyPayments}
                 propertyReservations={propertyReservations}
                 rentTimelineRows={rentTimelineRows}
