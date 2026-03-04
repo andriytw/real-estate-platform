@@ -3392,6 +3392,10 @@ const AccountDashboard: React.FC = () => {
     return groups;
   }, [expenseItems]);
 
+  const calcGroupSum = (items: PropertyExpenseItemWithDocument[]) =>
+    items.reduce((s, i) => s + ((i.quantity ?? 0) * (i.unit_price ?? 0)), 0);
+  const totalInvoicesAmount = expenseGroups.reduce((a, g) => a + calcGroupSum(g.items), 0);
+
   const handleExpenseOcrRecognize = async () => {
     if (!expenseOcrFile || !selectedPropertyId) return;
     setIsExpenseOcrProcessing(true);
@@ -7131,6 +7135,7 @@ ${internalCompany} Team`;
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold text-white">Інвойси (Витрати)</h2>
                     <div className="flex items-center gap-2">
+                        <span className="text-gray-400 text-sm">Всього: <span className="text-white font-semibold">{formatCurrencyEUR(totalInvoicesAmount)}</span></span>
                         <button
                             type="button"
                             onClick={() => setIsExpenseCategoriesModalOpen(true)}
@@ -7213,7 +7218,7 @@ ${internalCompany} Team`;
                                             : '—');
                                     const invoiceNumber = doc?.invoice_number ?? '—';
                                     const vendor = group.key === 'manual' ? 'Без документа (Manual)' : (doc?.vendor ?? '—');
-                                    const groupSum = group.items.reduce((s, i) => s + ((i.quantity ?? 0) * (i.unit_price ?? 0)), 0);
+                                    const groupSum = calcGroupSum(group.items);
                                     return (
                                         <React.Fragment key={group.key}>
                                             <tr className="hover:bg-[#1C1F24]">
