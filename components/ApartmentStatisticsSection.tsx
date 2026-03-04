@@ -7,13 +7,19 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { DonutCompositionCard, DonutGaugeCard, type DonutSegment } from './charts/DonutCard';
 import { CostSliceDetailsCard } from './charts/CostSliceDetailsCard';
-import { UserRound, Receipt } from 'lucide-react';
+import { UserRound, Receipt, Wallet } from 'lucide-react';
 
 // --- Data types (minimal for aggregation) ---
 interface PaymentLike {
   date?: string | unknown;
   totalGross?: number | string;
   status?: string;
+  /** Optional: for Collected hover card booking-style row (caller may pass enriched data). */
+  bookingCheckIn?: string | null;
+  bookingCheckOut?: string | null;
+  tenantDisplayName?: string | null;
+  /** Optional: for payment-style row label (e.g. payer or invoice label). */
+  payerLabel?: string | null;
 }
 interface ReservationLike {
   start?: string;
@@ -110,6 +116,7 @@ function overlapDays(
 
 const COST_HOVER_HIDE_DELAY_MS = 140;
 const MAX_INVOICE_ROWS = 12;
+const COLLECTED_BREAKDOWN_MAX_ROWS = 12;
 
 const OWNER_COLOR = '#8b5cf6';
 const INVOICES_COLOR = '#eab308';
@@ -294,6 +301,20 @@ export function ApartmentStatisticsSection({
     hideTimerRef.current = setTimeout(() => setCostHover(null), COST_HOVER_HIDE_DELAY_MS);
   }, [clearHideTimer]);
 
+  // --- Collected (Income) hover card: same array/filter as collected ---
+  const [collectedHover, setCollectedHover] = useState<{ x: number; y: number } | null>(null);
+  const collectedHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearCollectedHideTimer = useCallback(() => {
+    if (collectedHideTimerRef.current) {
+      clearTimeout(collectedHideTimerRef.current);
+      collectedHideTimerRef.current = null;
+    }
+  }, []);
+  const scheduleCollectedHide = useCallback(() => {
+    clearCollectedHideTimer();
+    collectedHideTimerRef.current = setTimeout(() => setCollectedHover(null), COST_HOVER_HIDE_DELAY_MS);
+  }, [clearCollectedHideTimer]);
+
   const { invoiceRowsForPopover, totalInvoiceRowsForPopover } = useMemo(() => {
     const mm = selectedMonth;
     const byKey = new Map<
@@ -406,6 +427,46 @@ export function ApartmentStatisticsSection({
       ? `+ ${totalInvoiceRowsForPopover - MAX_INVOICE_ROWS} more (open Invoices tile)`
       : undefined;
 
+  // Collected breakdown: SAME array and SAME filter as collected (so sum === collected within rounding)
+  const { collectedBreakdownRows, collectedBreakdownWarning } = useMemo(() => {
+    const hasStatus = propertyPayments.some((p) => p.status != null);
+    const paidOnly = hasStatus
+      ? propertyPayments.filter((p) => (p.status ?? '').toString().toLowerCase() === 'paid')
+      : propertyPayments;
+    const rows: { label: string; value: string; amount: number }[] = [];
+    let sum = 0;
+    for (const p of paidOnly) {
+      const dateStr = typeof p.date === 'string' ? p.date.slice(0, 10) : p.date ? String(p.date).slice(0, 10) : '';
+      if (!dateStr) continue;
+      const [y, m] = dateStr.split('-');
+      if (!y || !m || `${y}-${m}` !== selectedMonth) continue;
+      const amount = Number(p.totalGross ?? 0);
+      if (!Number.isFinite(amount)) continue;
+      sum += amount;
+      const checkIn = (p as PaymentLike).bookingCheckIn ?? '';
+      const checkOut = (p as PaymentLike).bookingCheckOut ?? '';
+      const tenant = (p as PaymentLike).tenantDisplayName ?? '';
+      const hasBookingMeta = checkIn !== '' && checkOut !== '';
+      const label = hasBookingMeta
+        ? `${checkIn} → ${checkOut} • ${tenant || '—'}`
+        : `${dateStr} • ${(p as PaymentLike).payerLabel ?? 'Payment'}`;
+      rows.push({ label, value: formatCurrency(amount), amount });
+    }
+    if (import.meta.env.DEV && rows.length > 0) {
+      const diff = Math.abs(sum - collected);
+      if (diff > 0.02) {
+        console.warn('Collected breakdown sum mismatch', { selectedMonth, collected, breakdownSum: sum, countRows: rows.length });
+      }
+    }
+    const capped = rows.slice(0, COLLECTED_BREAKDOWN_MAX_ROWS);
+    const warning =
+      rows.length > COLLECTED_BREAKDOWN_MAX_ROWS ? `+ ${rows.length - COLLECTED_BREAKDOWN_MAX_ROWS} more` : undefined;
+    return {
+      collectedBreakdownRows: capped.map((r) => ({ label: r.label, value: r.value })),
+      collectedBreakdownWarning: warning,
+    };
+  }, [propertyPayments, selectedMonth, collected, formatCurrency]);
+
   // --- Last 6 months for table ---
   const last6Months = useMemo(() => {
     const [y, m] = selectedMonth.split('-').map(Number);
@@ -482,6 +543,17 @@ export function ApartmentStatisticsSection({
           ]}
           centerLabel={plan > 0 ? formatPct(planFulfillmentPct) : '—'}
           subtext={`Collected: ${formatCurrency(collected)} • Plan: ${formatCurrency(plan)} • Missing: ${formatCurrency(missingToPlan)}`}
+          hideDefaultTooltip
+          onSliceHoverKeyChange={(key, clientXY) => {
+            if (key === null) {
+              scheduleCollectedHide();
+              return;
+            }
+            clearCollectedHideTimer();
+            if (key === 'Collected' && clientXY) {
+              setCollectedHover({ x: clientXY.x, y: clientXY.y });
+            }
+          }}
         />
         {/* 3. Difference (Collected − Plan) */}
         <DonutCompositionCard
@@ -553,17 +625,10 @@ export function ApartmentStatisticsSection({
         {/* 8. Net Profit */}
         <DonutCompositionCard
           title="Net Profit (Чистий прибуток)"
-          segments={
-            net >= 0
-              ? [
-                  { name: 'Net', value: net, color: '#10b981' },
-                  { name: 'Costs', value: totalCosts, color: '#ef4444' },
-                ]
-              : [
-                  { name: 'Costs', value: totalCosts, color: '#ef4444' },
-                  { name: 'Loss', value: Math.abs(net), color: '#f59e0b' },
-                ]
-          }
+          segments={[
+            { name: 'Income', value: collected, color: '#10b981' },
+            { name: 'Expense', value: totalCosts, color: '#ef4444' },
+          ]}
           centerLabel={net < 0 ? `-${formatCurrency(Math.abs(net))} Loss` : formatCurrency(net)}
           subtext={`Collected − Total Costs`}
         />
@@ -730,6 +795,25 @@ export function ApartmentStatisticsSection({
           }}
           onMouseEnter={clearHideTimer}
           onMouseLeave={scheduleHide}
+        />
+      )}
+
+      {/* Collected (Income) hover card — same style, from Income vs Plan segment */}
+      {collectedHover && (
+        <CostSliceDetailsCard
+          title="Collected (Income)"
+          icon={Wallet}
+          color="#10b981"
+          total={formatCurrency(collected)}
+          rows={collectedBreakdownRows}
+          warning={collectedBreakdownWarning}
+          style={{
+            position: 'fixed',
+            left: Math.max(8, Math.min(collectedHover.x + 16, window.innerWidth - 540)),
+            top: Math.max(8, Math.min(collectedHover.y - 40, window.innerHeight - 260)),
+          }}
+          onMouseEnter={clearCollectedHideTimer}
+          onMouseLeave={scheduleCollectedHide}
         />
       )}
 
