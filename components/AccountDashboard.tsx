@@ -715,6 +715,25 @@ const AccountDashboard: React.FC = () => {
   const [isAddingRentIncrease, setIsAddingRentIncrease] = useState(false);
   const selectedProperty = useMemo(() => properties.find(p => p.id === selectedPropertyId) || properties[0] || null, [properties, selectedPropertyId]);
 
+  const paymentChainParties = useMemo(() => {
+    const p = selectedProperty;
+    return {
+      ownerParty: { name: (p?.landlord?.name ?? '').trim() || '—', iban: (p?.landlord?.iban ?? '').trim() || '—' },
+      company1Party: { name: (p?.tenant?.name ?? '').trim() || '—', iban: (p?.tenant?.iban ?? '').trim() || '—' },
+      company2Party: { name: (p?.secondCompany?.name ?? '').trim() || '—', iban: (p?.secondCompany?.iban ?? '').trim() || '—' },
+    };
+  }, [selectedProperty]);
+
+  useEffect(() => {
+    if (import.meta.env.DEV && selectedPropertyId) {
+      const { ownerParty, company1Party, company2Party } = paymentChainParties;
+      console.log('[Payment Chain] resolved parties', { ownerParty, company1Party, company2Party });
+      console.log('[Payment Chain] Card A: receiver = ownerParty', { receiver: ownerParty });
+      console.log('[Payment Chain] Card B: payer = company1Party, receiver = ownerParty', { payer: company1Party, receiver: ownerParty });
+      console.log('[Payment Chain] Card C: payer = company2Party, receiver = company1Party', { payer: company2Party, receiver: company1Party });
+    }
+  }, [selectedPropertyId, paymentChainParties]);
+
   const filteredProperties = useMemo(() => {
     const q = normalizeSearch(propertySearch);
     if (!q) return properties;
@@ -6488,8 +6507,8 @@ ${internalCompany} Team`;
                                         <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-3">
                                             <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">ВЛАСНИК (отримує)</div>
                                             <div className="text-xs text-gray-500 mb-2">Очікуване отримання щомісяця</div>
-                                            <div className="text-sm font-semibold text-white">Отримувач: {(selectedProperty.landlord?.name ?? '').trim() || '—'}</div>
-                                            <div className="text-sm text-gray-400 font-mono mt-0.5">IBAN: {(selectedProperty.landlord?.iban ?? '').trim() || '—'}</div>
+                                            <div className="text-sm font-semibold text-white">Отримувач: {paymentChainParties.ownerParty.name}</div>
+                                            <div className="text-sm text-gray-400 font-mono mt-0.5">IBAN: {paymentChainParties.ownerParty.iban}</div>
                                             <div className="mt-1 text-sm text-gray-400">Отримати до (1–31): {paymentTiles.from_company1_to_owner.payByDayOfMonth != null && paymentTiles.from_company1_to_owner.payByDayOfMonth >= 1 && paymentTiles.from_company1_to_owner.payByDayOfMonth <= 31 ? `до ${paymentTiles.from_company1_to_owner.payByDayOfMonth} числа` : '—'}</div>
                                             <div className="mt-1 text-sm font-semibold text-white">Сума (разом): {ownerTotalAuto != null && typeof ownerTotalAuto === 'number' ? `€${Number(ownerTotalAuto).toFixed(2)}` : '—'}</div>
                                             {showPaymentDetails && activeRentRow && (
@@ -6520,7 +6539,7 @@ ${internalCompany} Team`;
                                     <div className="hidden md:flex md:col-span-1 items-center justify-center text-gray-500 pt-8"><ArrowRight className="w-5 h-5 rotate-180" /></div>
                                     <div className="md:col-span-3">
                                         <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-3">
-                                            {!(selectedProperty.landlord?.name ?? '').trim() ? (
+                                            {paymentChainParties.ownerParty.name === '—' ? (
                                                 <>
                                                     <div className="text-sm text-gray-500 py-2">Додай власника в Контрагенти</div>
                                                     <button type="button" onClick={startCard1Edit} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
@@ -6529,8 +6548,9 @@ ${internalCompany} Team`;
                                                 <>
                                                     <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">1-ША ФІРМА → ВЛАСНИК</div>
                                                     <div className="text-xs text-gray-500 mb-2">Платіж щомісяця</div>
-                                                    <div className="text-sm font-semibold text-white">Кому платити: {(selectedProperty.landlord?.name ?? '').trim() || 'Додай власника в Контрагенти'}</div>
-                                                    <div className="text-sm text-gray-400 font-mono mt-0.5">IBAN: {(selectedProperty.landlord?.iban ?? '').trim() || '—'}</div>
+                                                    <div className="text-sm text-gray-400">Платник: {paymentChainParties.company1Party.name}</div>
+                                                    <div className="text-sm font-semibold text-white">Кому платити: {paymentChainParties.ownerParty.name}</div>
+                                                    <div className="text-sm text-gray-400 font-mono mt-0.5">IBAN: {paymentChainParties.ownerParty.iban}</div>
                                                     {editingPaymentTile === 'from_company1_to_owner' ? (
                                                         <>
                                                             <div className="mt-2"><span className="text-xs text-gray-500 block">Оплатити до (1–31)</span><div className="relative"><select value={paymentTiles.from_company1_to_owner.payByDayOfMonth ?? ''} onChange={e => { const v = e.target.value; setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, payByDayOfMonth: v === '' ? undefined : Math.min(31, Math.max(1, parseInt(v, 10) || 1)) } })); }} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white"><option value="">—</option>{Array.from({ length: 31 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select>{paymentTiles.from_company1_to_owner.payByDayOfMonth != null && <button type="button" onClick={() => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, payByDayOfMonth: undefined } }))} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>}</div><span className="text-xs text-gray-500 block mt-0.5">кожного місяця</span></div>
@@ -6581,12 +6601,12 @@ ${internalCompany} Team`;
                                     <div className="hidden md:flex md:col-span-1 items-center justify-center text-gray-500 pt-8"><ArrowRight className="w-5 h-5 rotate-180" /></div>
                                     <div className="md:col-span-3">
                                         <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-3">
-                                            {!(selectedProperty.tenant?.name ?? '').trim() ? (
+                                            {paymentChainParties.company1Party.name === '—' ? (
                                                 <>
                                                     <div className="text-sm text-gray-500 py-2">Додай 1-шу фірму в Контрагенти</div>
                                                     <button type="button" onClick={startCard1Edit} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
                                                 </>
-                                            ) : !(selectedProperty.secondCompany?.name ?? '').trim() ? (
+                                            ) : paymentChainParties.company2Party.name === '—' ? (
                                                 <>
                                                     <div className="text-sm text-gray-500 py-2">Додай 2-гу фірму в Контрагенти</div>
                                                     <button type="button" onClick={startCard1Edit} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
@@ -6595,8 +6615,9 @@ ${internalCompany} Team`;
                                                 <>
                                                     <div className="text-xs text-gray-400 uppercase tracking-wider mb-1">2-ГА ФІРМА → 1-ША ФІРМА</div>
                                                     <div className="text-xs text-gray-500 mb-2">Платіж щомісяця</div>
-                                                    <div className="text-sm font-semibold text-white">Кому платити: {(selectedProperty.tenant?.name ?? '').trim() || 'Додай 1-шу фірму в Контрагенти'}</div>
-                                                    <div className="text-sm text-gray-400 font-mono mt-0.5">IBAN: {(selectedProperty.tenant?.iban ?? '').trim() || '—'}</div>
+                                                    <div className="text-sm text-gray-400">Платник: {paymentChainParties.company2Party.name}</div>
+                                                    <div className="text-sm font-semibold text-white">Кому платити: {paymentChainParties.company1Party.name}</div>
+                                                    <div className="text-sm text-gray-400 font-mono mt-0.5">IBAN: {paymentChainParties.company1Party.iban}</div>
                                                     {editingPaymentTile === 'from_company2_to_company1' ? (
                                                         <>
                                                             <div className="mt-2"><span className="text-xs text-gray-500 block">Оплатити до (1–31)</span><div className="relative"><select value={paymentTiles.from_company2_to_company1.payByDayOfMonth ?? ''} onChange={e => { const v = e.target.value; setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, payByDayOfMonth: v === '' ? undefined : Math.min(31, Math.max(1, parseInt(v, 10) || 1)) } })); }} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white"><option value="">—</option>{Array.from({ length: 31 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select>{paymentTiles.from_company2_to_company1.payByDayOfMonth != null && <button type="button" onClick={() => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, payByDayOfMonth: undefined } }))} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>}</div><span className="text-xs text-gray-500 block mt-0.5">кожного місяця</span></div>
