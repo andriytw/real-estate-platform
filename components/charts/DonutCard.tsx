@@ -44,6 +44,10 @@ interface DonutCompositionCardProps {
   onSegmentEnter?: (segmentKey: string) => void;
   /** Optional: called when pointer leaves a segment. */
   onSegmentLeave?: () => void;
+  /** When true, do not render Recharts Tooltip (e.g. for Total Costs with custom card). */
+  hideDefaultTooltip?: boolean;
+  /** Optional: segment hover with key + client coords for custom card placement. */
+  onSliceHoverKeyChange?: (key: string | null, clientXY?: { x: number; y: number }) => void;
 }
 
 export function DonutCompositionCard({
@@ -56,6 +60,8 @@ export function DonutCompositionCard({
   formatValue = (n) => String(n),
   onSegmentEnter,
   onSegmentLeave,
+  hideDefaultTooltip = false,
+  onSliceHoverKeyChange,
 }: DonutCompositionCardProps) {
   let segments = rawSegments.filter((s) => Number.isFinite(s.value) && s.value >= 0);
   const total = segments.reduce((sum, s) => sum + s.value, 0);
@@ -113,12 +119,20 @@ export function DonutCompositionCard({
                   key={`cell-${index}`}
                   fill={entry.color}
                   fillOpacity={entry.name === '—' || entry.color === neutralRemainderColor ? 0.85 : 1}
-                  onMouseEnter={() => onSegmentEnter?.(entry.name)}
-                  onMouseLeave={onSegmentLeave}
+                  onMouseEnter={(e: React.MouseEvent) => {
+                    onSegmentEnter?.(entry.name);
+                    onSliceHoverKeyChange?.(entry.name, { x: e.clientX, y: e.clientY });
+                  }}
+                  onMouseLeave={() => {
+                    onSegmentLeave?.();
+                    onSliceHoverKeyChange?.(null);
+                  }}
                 />
               ))}
             </Pie>
-            <Tooltip formatter={(value: number) => [Number(value).toFixed(2), '']} />
+            {!hideDefaultTooltip && (
+              <Tooltip formatter={(value: number) => [Number(value).toFixed(2), '']} />
+            )}
           </PieChart>
         </ResponsiveContainer>
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

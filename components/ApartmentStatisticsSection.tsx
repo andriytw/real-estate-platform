@@ -6,7 +6,8 @@
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { DonutCompositionCard, DonutGaugeCard, type DonutSegment } from './charts/DonutCard';
-import { User, FileText, Zap } from 'lucide-react';
+import { CostSliceDetailsCard } from './charts/CostSliceDetailsCard';
+import { UserRound, Receipt, Zap } from 'lucide-react';
 
 // --- Data types (minimal for aggregation) ---
 interface PaymentLike {
@@ -97,129 +98,20 @@ function overlapDays(
   return Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
 }
 
-const TOTAL_COSTS_POPOVER_DELAY_MS = 150;
+const COST_HOVER_HIDE_DELAY_MS = 140;
 const MAX_INVOICE_ROWS = 12;
 
-type TotalCostsSegment = 'Owner Due' | 'Invoices' | 'Utilities';
+const OWNER_COLOR = '#8b5cf6';
+const INVOICES_COLOR = '#eab308';
+const UTILITIES_COLOR = '#06b6d4';
+
+type CostHoverSlice = 'owner' | 'invoices' | 'utilities';
 
 interface InvoiceRowForPopover {
   invoiceNumber: string;
   date: string;
   vendor: string;
   sum: number;
-}
-
-function TotalCostsPopover({
-  activeSegment,
-  ownerDue,
-  invoiceExpenses,
-  utilitiesCost,
-  formatCurrency,
-  invoiceRows,
-  totalInvoiceRows,
-  onMouseEnter,
-  onMouseLeave,
-}: {
-  activeSegment: TotalCostsSegment | null;
-  ownerDue: number;
-  invoiceExpenses: number;
-  utilitiesCost: number;
-  formatCurrency: (n: number) => string;
-  invoiceRows: InvoiceRowForPopover[];
-  totalInvoiceRows: number;
-  onMouseEnter: () => void;
-  onMouseLeave: () => void;
-}) {
-  if (!activeSegment) return null;
-
-  const accentColor =
-    activeSegment === 'Owner Due'
-      ? '#8b5cf6'
-      : activeSegment === 'Invoices'
-        ? '#eab308'
-        : '#06b6d4';
-  const total =
-    activeSegment === 'Owner Due'
-      ? ownerDue
-      : activeSegment === 'Invoices'
-        ? invoiceExpenses
-        : utilitiesCost;
-  const title = activeSegment;
-  const Icon = activeSegment === 'Owner Due' ? User : activeSegment === 'Invoices' ? FileText : Zap;
-
-  return (
-    <div
-      className="absolute left-full top-0 ml-2 z-10 w-[min(400px,calc(100vw-2rem))] rounded-xl border border-gray-600 bg-[#1C1F24] shadow-lg overflow-hidden"
-      style={{ borderTopWidth: 3, borderTopColor: accentColor }}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2 p-3 border-b border-gray-700">
-        <div className="flex items-center gap-2 min-w-0">
-          <Icon className="flex-shrink-0 w-4 h-4 text-gray-400" style={{ color: accentColor }} />
-          <span className="text-sm font-medium text-white truncate">{title}</span>
-        </div>
-        <span className="flex-shrink-0 text-sm font-medium tabular-nums text-white">
-          {formatCurrency(total)}
-        </span>
-      </div>
-      {/* Body — no scroll */}
-      <div className="p-3 max-h-[70vh] overflow-hidden">
-        {activeSegment === 'Owner Due' && (
-          <div className="text-xs text-gray-400 space-y-1">
-            <div className="flex justify-between gap-2">
-              <span className="text-gray-500">Owner Total</span>
-              <span className="tabular-nums text-white">{formatCurrency(ownerDue)}</span>
-            </div>
-            {/* TODO: wire detailed owner components when available */}
-          </div>
-        )}
-        {activeSegment === 'Invoices' && (
-          <div className="space-y-2 overflow-hidden">
-            {invoiceRows.length === 0 ? (
-              <p className="text-xs text-gray-500">No invoices for selected month.</p>
-            ) : (
-              <>
-                {invoiceRows.map((row, i) => (
-                  <div key={i} className="border-b border-gray-700/50 pb-2 last:border-0 last:pb-0">
-                    <div className="font-medium text-xs text-white truncate">
-                      {row.invoiceNumber || '—'}
-                    </div>
-                    <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-[11px] mt-0.5">
-                      <span className="text-gray-500 truncate" title={row.date}>
-                        {row.date || '—'}
-                      </span>
-                      <span className="text-gray-400 truncate" title={row.vendor}>
-                        {row.vendor || '—'}
-                      </span>
-                      <span className="tabular-nums text-white text-right">
-                        {formatCurrency(row.sum)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-                {totalInvoiceRows > MAX_INVOICE_ROWS && (
-                  <p className="text-[11px] text-gray-500 pt-1">
-                    +{totalInvoiceRows - MAX_INVOICE_ROWS} more…
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        )}
-        {activeSegment === 'Utilities' && (
-          <div className="text-xs text-gray-400 space-y-1">
-            <div className="flex justify-between gap-2">
-              <span className="text-gray-500">Utilities Total</span>
-              <span className="tabular-nums text-white">{formatCurrency(utilitiesCost)}</span>
-            </div>
-            {/* TODO: wire meter breakdown (Strom/Wasser/Heizung/Gas) when available */}
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 export function ApartmentStatisticsSection({
@@ -375,20 +267,24 @@ export function ApartmentStatisticsSection({
 
   const formatPct = (n: number) => (Number.isFinite(n) ? n.toFixed(1) : '0') + '%';
 
-  // --- Total Costs popover: segment hover ---
-  const [activeSegment, setActiveSegment] = useState<TotalCostsSegment | null>(null);
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // --- Total Costs hover card: segment hover (position: fixed to avoid clipping) ---
+  const [costHover, setCostHover] = useState<{
+    slice: CostHoverSlice;
+    x: number;
+    y: number;
+  } | null>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const scheduleClose = useCallback(() => {
-    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = setTimeout(() => setActiveSegment(null), TOTAL_COSTS_POPOVER_DELAY_MS);
-  }, []);
-  const cancelClose = useCallback(() => {
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
+  const clearHideTimer = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
     }
   }, []);
+  const scheduleHide = useCallback(() => {
+    clearHideTimer();
+    hideTimerRef.current = setTimeout(() => setCostHover(null), COST_HOVER_HIDE_DELAY_MS);
+  }, [clearHideTimer]);
 
   const { invoiceRowsForPopover, totalInvoiceRowsForPopover } = useMemo(() => {
     const mm = selectedMonth;
@@ -420,6 +316,26 @@ export function ApartmentStatisticsSection({
       totalInvoiceRowsForPopover: rows.length,
     };
   }, [selectedMonth, expenseItems]);
+
+  // Rows for CostSliceDetailsCard (MVP: Owner/Utilities single row; Invoices from grouped list)
+  const ownerRows = useMemo(
+    () => [{ label: 'Owner Total', value: formatCurrency(ownerDue) }],
+    [ownerDue, formatCurrency]
+  );
+  const utilitiesRows = useMemo(
+    () => [{ label: 'Utilities Total', value: formatCurrency(utilitiesCost) }],
+    [utilitiesCost, formatCurrency]
+  );
+  const invoiceRowsForCard = useMemo(() => {
+    return invoiceRowsForPopover.map((r) => ({
+      label: [r.invoiceNumber || 'Invoice', r.date, r.vendor].filter(Boolean).join(' · '),
+      value: formatCurrency(r.sum),
+    }));
+  }, [invoiceRowsForPopover, formatCurrency]);
+  const invoicesWarning =
+    totalInvoiceRowsForPopover > MAX_INVOICE_ROWS
+      ? `Showing ${MAX_INVOICE_ROWS} of ${totalInvoiceRowsForPopover} invoices.`
+      : undefined;
 
   // --- Last 6 months for table ---
   const last6Months = useMemo(() => {
@@ -575,40 +491,37 @@ export function ApartmentStatisticsSection({
           centerLabel={`${formatCurrency(avgRentable)}/op.day`}
           subtext="Collected / Operational Days"
         />
-        {/* 11. Total Costs — with segment details popover (no scroll) */}
+        {/* 11. Total Costs — segment details card (position: fixed, no scroll) */}
         <div className="relative">
           <DonutCompositionCard
             title="Total Costs (All Expenses)"
             segments={[
-              { name: 'Owner Due', value: ownerDue, color: '#8b5cf6' },
-              { name: 'Invoices', value: invoiceExpenses, color: '#eab308' },
-              { name: 'Utilities', value: utilitiesCost, color: '#06b6d4' },
+              { name: 'Owner Due', value: ownerDue, color: OWNER_COLOR },
+              { name: 'Invoices', value: invoiceExpenses, color: INVOICES_COLOR },
+              { name: 'Utilities', value: utilitiesCost, color: UTILITIES_COLOR },
             ]}
             centerLabel={formatCurrency(totalCosts)}
             subtext="Owner + Invoices + Utilities"
             formatValue={formatCurrency}
-            onSegmentEnter={(segmentKey) => {
-              cancelClose();
-              if (
-                segmentKey === 'Owner Due' ||
-                segmentKey === 'Invoices' ||
-                segmentKey === 'Utilities'
-              ) {
-                setActiveSegment(segmentKey);
+            hideDefaultTooltip
+            onSliceHoverKeyChange={(key, clientXY) => {
+              if (key === null) {
+                scheduleHide();
+                return;
+              }
+              clearHideTimer();
+              const slice: CostHoverSlice | null =
+                key === 'Owner Due'
+                  ? 'owner'
+                  : key === 'Invoices'
+                    ? 'invoices'
+                    : key === 'Utilities'
+                      ? 'utilities'
+                      : null;
+              if (slice && clientXY) {
+                setCostHover({ slice, x: clientXY.x, y: clientXY.y });
               }
             }}
-            onSegmentLeave={scheduleClose}
-          />
-          <TotalCostsPopover
-            activeSegment={activeSegment}
-            ownerDue={ownerDue}
-            invoiceExpenses={invoiceExpenses}
-            utilitiesCost={utilitiesCost}
-            formatCurrency={formatCurrency}
-            invoiceRows={invoiceRowsForPopover}
-            totalInvoiceRows={totalInvoiceRowsForPopover}
-            onMouseEnter={cancelClose}
-            onMouseLeave={scheduleClose}
           />
         </div>
         {/* 12. Net Profit */}
@@ -770,6 +683,51 @@ export function ApartmentStatisticsSection({
           </tbody>
         </table>
       </div>
+
+      {/* Total Costs hover card (position: fixed to avoid clipping by grid/cards) */}
+      {costHover && (
+        <CostSliceDetailsCard
+          title={
+            costHover.slice === 'owner'
+              ? 'Owner Due'
+              : costHover.slice === 'invoices'
+                ? 'Invoices'
+                : 'Utilities'
+          }
+          icon={
+            costHover.slice === 'owner' ? UserRound : costHover.slice === 'invoices' ? Receipt : Zap
+          }
+          color={
+            costHover.slice === 'owner'
+              ? OWNER_COLOR
+              : costHover.slice === 'invoices'
+                ? INVOICES_COLOR
+                : UTILITIES_COLOR
+          }
+          total={
+            costHover.slice === 'owner'
+              ? formatCurrency(ownerDue)
+              : costHover.slice === 'invoices'
+                ? formatCurrency(invoiceExpenses)
+                : formatCurrency(utilitiesCost)
+          }
+          rows={
+            costHover.slice === 'owner'
+              ? ownerRows
+              : costHover.slice === 'invoices'
+                ? invoiceRowsForCard
+                : utilitiesRows
+          }
+          warning={costHover.slice === 'invoices' ? invoicesWarning : undefined}
+          style={{
+            position: 'fixed',
+            left: Math.max(8, Math.min(costHover.x + 16, window.innerWidth - 540)),
+            top: Math.max(8, Math.min(costHover.y - 40, window.innerHeight - 260)),
+          }}
+          onMouseEnter={clearHideTimer}
+          onMouseLeave={scheduleHide}
+        />
+      )}
 
       {/* Debug (dev-only) */}
       {showDebug && import.meta.env.DEV && (
