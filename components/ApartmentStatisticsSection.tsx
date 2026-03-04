@@ -7,7 +7,7 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { DonutCompositionCard, DonutGaugeCard, type DonutSegment } from './charts/DonutCard';
 import { CostSliceDetailsCard } from './charts/CostSliceDetailsCard';
-import { UserRound, Receipt, Zap } from 'lucide-react';
+import { UserRound, Receipt } from 'lucide-react';
 
 // --- Data types (minimal for aggregation) ---
 interface PaymentLike {
@@ -41,6 +41,16 @@ interface ExpenseItemLike {
   /** Optional for popover display when provided by caller (e.g. PropertyExpenseItemWithDocument). */
   invoice_number?: string | null;
   vendor?: string | null;
+  /** For document-level grouping when parent passes PropertyExpenseItemWithDocument. */
+  document_id?: string | null;
+  property_expense_documents?: {
+    id?: string;
+    file_name?: string;
+    storage_path?: string;
+    invoice_number?: string;
+    invoice_date?: string;
+    vendor?: string;
+  } | null;
 }
 
 export interface ApartmentStatisticsSectionProps {
@@ -103,9 +113,8 @@ const MAX_INVOICE_ROWS = 12;
 
 const OWNER_COLOR = '#8b5cf6';
 const INVOICES_COLOR = '#eab308';
-const UTILITIES_COLOR = '#06b6d4';
 
-type CostHoverSlice = 'owner' | 'invoices' | 'utilities';
+type CostHoverSlice = 'owner' | 'invoices';
 
 interface InvoiceRowForPopover {
   invoiceNumber: string;
@@ -203,7 +212,7 @@ export function ApartmentStatisticsSection({
       }
     }
 
-    const totalCosts = ownerDue + invoiceExpenses + utilitiesCost;
+    const totalCosts = ownerDue + invoiceExpenses;
     const missingToPlan = Math.max(0, plan - collected);
     const planFulfillmentPct = plan > 0 ? (collected / plan) * 100 : 0;
     const difference = collected - plan;
@@ -240,7 +249,6 @@ export function ApartmentStatisticsSection({
     propertyPayments,
     rentTimelineRows,
     expenseItems,
-    utilitiesCost,
     plan,
     roomsCount,
     pricePerRoomNight,
@@ -293,21 +301,32 @@ export function ApartmentStatisticsSection({
       { invoiceNumber: string; date: string; vendor: string; sum: number }
     >();
     for (const item of expenseItems) {
-      const dateStr = (item.invoice_date ?? '').toString().slice(0, 10);
+      const dateStr = (item.invoice_date ?? item.property_expense_documents?.invoice_date ?? '').toString().slice(0, 10);
       if (!dateStr || dateStr.slice(0, 7) !== mm) continue;
       const line =
         item.line_total != null
           ? Number(item.line_total)
           : (Number(item.unit_price) || 0) * (Number(item.quantity) || 0);
       if (!Number.isFinite(line)) continue;
-      const key = `${dateStr}|${item.invoice_number ?? ''}|${item.vendor ?? ''}`;
+      const doc = item.property_expense_documents;
+      const invNum = doc?.invoice_number ?? item.invoice_number ?? '';
+      const vendor = doc?.vendor ?? item.vendor ?? '';
+      const key =
+        item.document_id != null && item.document_id !== ''
+          ? `doc:${item.document_id}`
+          : doc?.id != null && doc.id !== ''
+            ? `doc:${doc.id}`
+            : `${invNum}|${dateStr}|${vendor}|${doc?.storage_path ?? doc?.file_name ?? ''}`;
       const existing = byKey.get(key);
-      const invNum = item.invoice_number ?? '';
-      const vendor = item.vendor ?? '';
       if (existing) {
         existing.sum += line;
       } else {
-        byKey.set(key, { invoiceNumber: invNum, date: dateStr, vendor, sum: line });
+        byKey.set(key, {
+          invoiceNumber: invNum || (doc?.file_name ?? 'Invoice'),
+          date: dateStr,
+          vendor,
+          sum: line,
+        });
       }
     }
     const rows = [...byKey.values()].sort((a, b) => b.date.localeCompare(a.date));
@@ -317,15 +336,65 @@ export function ApartmentStatisticsSection({
     };
   }, [selectedMonth, expenseItems]);
 
-  // Rows for CostSliceDetailsCard (MVP: Owner/Utilities single row; Invoices from grouped list)
-  const ownerRows = useMemo(
-    () => [{ label: 'Owner Total', value: formatCurrency(ownerDue) }],
-    [ownerDue, formatCurrency]
-  );
-  const utilitiesRows = useMemo(
-    () => [{ label: 'Utilities Total', value: formatCurrency(utilitiesCost) }],
-    [utilitiesCost, formatCurrency]
-  );
+  const ownerBreakdownRows = useMemo(() => {
+    const mStart = monthStart(selectedMonth);
+    const mEnd = monthEnd(selectedMonth);
+    const mEndInclusive = new Date(mEnd);
+    mEndInclusive.setDate(mEndInclusive.getDate() + 1);
+    const buckets: Record<string, number> = {
+      Kaltmiete: 0,
+      Betriebskosten: 0,
+      Heizkosten: 0,
+      Müll: 0,
+      Strom: 0,
+      Gas: 0,
+      Wasser: 0,
+      Mietsteuer: 0,
+      Unternehmenssteuer: 0,
+    };
+    for (const r of rentTimelineRows) {
+      const von = r.validFrom ? parseISODate(r.validFrom) : mStart;
+      const bisStr = r.validTo && r.validTo !== '∞' ? r.validTo : '9999-12-31';
+      const bis = parseISODate(bisStr);
+      const rowDays = Math.max(1, Math.floor((bis.getTime() - von.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+      const overlap = overlapDays(von, bis, mStart, mEndInclusive);
+      const ratio = rowDays >= 28 && overlap >= 28 ? 1 : overlap / rowDays;
+      buckets.Kaltmiete += (Number(r.km) || 0) * ratio;
+      buckets.Betriebskosten += (Number(r.bk) || 0) * ratio;
+      buckets.Heizkosten += (Number(r.hk) || 0) * ratio;
+      buckets.Müll += (Number(r.muell) || 0) * ratio;
+      buckets.Strom += (Number(r.strom) || 0) * ratio;
+      buckets.Gas += (Number(r.gas) || 0) * ratio;
+      buckets.Wasser += (Number(r.wasser) || 0) * ratio;
+      buckets.Mietsteuer += (Number(r.mietsteuer) || 0) * ratio;
+      buckets.Unternehmenssteuer += (Number(r.unternehmenssteuer) || 0) * ratio;
+    }
+    const order = [
+      'Kaltmiete',
+      'Betriebskosten',
+      'Heizkosten',
+      'Müll',
+      'Strom',
+      'Gas',
+      'Wasser',
+      'Mietsteuer',
+      'Unternehmenssteuer',
+    ];
+    return order
+      .filter((label) => (buckets[label] ?? 0) > 0)
+      .map((label) => ({ label, amount: buckets[label] ?? 0 }));
+  }, [selectedMonth, rentTimelineRows]);
+
+  const ownerRows = useMemo(() => {
+    if (ownerBreakdownRows.length > 0) {
+      return ownerBreakdownRows.map((r) => ({
+        label: r.label,
+        value: formatCurrency(r.amount),
+      }));
+    }
+    return [{ label: 'Owner total', value: formatCurrency(ownerDue) }];
+  }, [ownerBreakdownRows, ownerDue, formatCurrency]);
+
   const invoiceRowsForCard = useMemo(() => {
     return invoiceRowsForPopover.map((r) => ({
       label: [r.invoiceNumber || 'Invoice', r.date, r.vendor].filter(Boolean).join(' · '),
@@ -334,7 +403,7 @@ export function ApartmentStatisticsSection({
   }, [invoiceRowsForPopover, formatCurrency]);
   const invoicesWarning =
     totalInvoiceRowsForPopover > MAX_INVOICE_ROWS
-      ? `Showing ${MAX_INVOICE_ROWS} of ${totalInvoiceRowsForPopover} invoices.`
+      ? `+ ${totalInvoiceRowsForPopover - MAX_INVOICE_ROWS} more (open Invoices tile)`
       : undefined;
 
   // --- Last 6 months for table ---
@@ -498,10 +567,9 @@ export function ApartmentStatisticsSection({
             segments={[
               { name: 'Owner Due', value: ownerDue, color: OWNER_COLOR },
               { name: 'Invoices', value: invoiceExpenses, color: INVOICES_COLOR },
-              { name: 'Utilities', value: utilitiesCost, color: UTILITIES_COLOR },
             ]}
             centerLabel={formatCurrency(totalCosts)}
-            subtext="Owner + Invoices + Utilities"
+            subtext="Owner + Invoices"
             formatValue={formatCurrency}
             hideDefaultTooltip
             onSliceHoverKeyChange={(key, clientXY) => {
@@ -511,13 +579,7 @@ export function ApartmentStatisticsSection({
               }
               clearHideTimer();
               const slice: CostHoverSlice | null =
-                key === 'Owner Due'
-                  ? 'owner'
-                  : key === 'Invoices'
-                    ? 'invoices'
-                    : key === 'Utilities'
-                      ? 'utilities'
-                      : null;
+                key === 'Owner Due' ? 'owner' : key === 'Invoices' ? 'invoices' : null;
               if (slice && clientXY) {
                 setCostHover({ slice, x: clientXY.x, y: clientXY.y });
               }
@@ -560,7 +622,6 @@ export function ApartmentStatisticsSection({
           ['Non Collected', formatCurrency(missingToPlan)],
           ['Owner Due', formatCurrency(ownerDue)],
           ['Invoices', formatCurrency(invoiceExpenses)],
-          ['Utilities', formatCurrency(utilitiesCost)],
           ['Total Costs', formatCurrency(totalCosts)],
           ['Net Profit', formatCurrency(net)],
           ['Inventory Total', formatCurrency(totalInventoryCost)],
@@ -646,7 +707,7 @@ export function ApartmentStatisticsSection({
                 }
               }
               const util = mm === selectedMonth ? utilitiesCost : 0;
-              const tot = own + inv + util;
+              const tot = own + inv;
               const diff = coll - planVal;
               const pct = planVal > 0 ? (coll / planVal) * 100 : 0;
               const adrVal = rent >= 1 ? coll / rent : 0;
@@ -687,36 +748,16 @@ export function ApartmentStatisticsSection({
       {/* Total Costs hover card (position: fixed to avoid clipping by grid/cards) */}
       {costHover && (
         <CostSliceDetailsCard
-          title={
-            costHover.slice === 'owner'
-              ? 'Owner Due'
-              : costHover.slice === 'invoices'
-                ? 'Invoices'
-                : 'Utilities'
-          }
-          icon={
-            costHover.slice === 'owner' ? UserRound : costHover.slice === 'invoices' ? Receipt : Zap
-          }
-          color={
-            costHover.slice === 'owner'
-              ? OWNER_COLOR
-              : costHover.slice === 'invoices'
-                ? INVOICES_COLOR
-                : UTILITIES_COLOR
-          }
+          title={costHover.slice === 'owner' ? 'Owner Due' : 'Invoices'}
+          icon={costHover.slice === 'owner' ? UserRound : Receipt}
+          color={costHover.slice === 'owner' ? OWNER_COLOR : INVOICES_COLOR}
           total={
             costHover.slice === 'owner'
               ? formatCurrency(ownerDue)
-              : costHover.slice === 'invoices'
-                ? formatCurrency(invoiceExpenses)
-                : formatCurrency(utilitiesCost)
+              : formatCurrency(invoiceExpenses)
           }
           rows={
-            costHover.slice === 'owner'
-              ? ownerRows
-              : costHover.slice === 'invoices'
-                ? invoiceRowsForCard
-                : utilitiesRows
+            costHover.slice === 'owner' ? ownerRows : invoiceRowsForCard
           }
           warning={costHover.slice === 'invoices' ? invoicesWarning : undefined}
           style={{
