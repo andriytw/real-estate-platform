@@ -3395,6 +3395,13 @@ const AccountDashboard: React.FC = () => {
   const calcGroupSum = (items: PropertyExpenseItemWithDocument[]) =>
     items.reduce((s, i) => s + ((i.quantity ?? 0) * (i.unit_price ?? 0)), 0);
   const totalInvoicesAmount = expenseGroups.reduce((a, g) => a + calcGroupSum(g.items), 0);
+  const monthlyInvoicesAmount = calcGroupSum(
+    expenseItems.filter(
+      (i) =>
+        (i.property_expense_documents?.invoice_date ?? i.invoice_date ?? '').toString().slice(0, 7) ===
+        statsSelectedMonth
+    )
+  );
 
   const handleExpenseOcrRecognize = async () => {
     if (!expenseOcrFile || !selectedPropertyId) return;
@@ -7134,8 +7141,9 @@ ${internalCompany} Team`;
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold text-white">Інвойси (Витрати)</h2>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-gray-400 text-sm">Всього: <span className="text-white font-semibold">{formatCurrencyEUR(totalInvoicesAmount)}</span></span>
+                        <span className="text-emerald-400 text-sm">За місяць: <span className="text-emerald-300 font-semibold">{formatCurrencyEUR(monthlyInvoicesAmount)}</span></span>
                         <button
                             type="button"
                             onClick={() => setIsExpenseCategoriesModalOpen(true)}
