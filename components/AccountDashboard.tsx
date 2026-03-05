@@ -907,6 +907,7 @@ const AccountDashboard: React.FC = () => {
   const [meterEditDraft, setMeterEditDraft] = useState<{ reading_date: string; strom: string; gas: string; wasser: string; heizung: string } | null>(null);
   const [meterDeleteConfirmId, setMeterDeleteConfirmId] = useState<string | null>(null);
   const [isMeterReadingsCollapsed, setIsMeterReadingsCollapsed] = useState(true);
+  const [isInvoicesCollapsed, setIsInvoicesCollapsed] = useState(false);
   const [propertyMediaAssets, setPropertyMediaAssets] = useState<PropertyMediaAssetRow[]>([]);
   const [propertyMediaLoading, setPropertyMediaLoading] = useState(false);
   const [openMediaModalType, setOpenMediaModalType] = useState<PropertyMediaAssetType | null>(null);
@@ -7189,51 +7190,64 @@ ${internalCompany} Team`;
 
             {/* Інвойси (Витрати) — property expense invoices, per-row category */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold text-white">Інвойси (Витрати)</h2>
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-gray-400 text-sm">Всього: <span className="text-white font-semibold">{formatCurrencyEUR(totalInvoicesAmount)}</span></span>
-                        <span className="text-emerald-400 text-sm">За місяць: <span className="text-emerald-300 font-semibold">{formatCurrencyEUR(monthlyInvoicesAmount)}</span></span>
+                <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
                         <button
                             type="button"
-                            onClick={() => setIsExpenseCategoriesModalOpen(true)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
+                            aria-expanded={!isInvoicesCollapsed}
+                            aria-label="Згорнути/розгорнути інвойси"
+                            onClick={() => setIsInvoicesCollapsed((prev) => !prev)}
+                            className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
                         >
-                            Категорії
+                            {isInvoicesCollapsed ? <ChevronDown className="w-5 h-5" /> : <ChevronUp className="w-5 h-5" />}
                         </button>
-                        <button
-                            onClick={() => {
-                                if (isExpenseEditing) handleSaveExpense();
-                                else setIsExpenseEditing(true);
-                            }}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${isExpenseEditing ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}
-                        >
-                            {isExpenseEditing ? <><Check className="w-3 h-3 mr-1 inline"/> Зберегти</> : <><Edit className="w-3 h-3 mr-1 inline"/> Редагувати</>}
-                        </button>
-                        {isExpenseEditing && (
-                            <button
-                                onClick={() => { setIsExpenseEditing(false); refreshExpenseItems(); }}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-600 text-gray-300 hover:bg-gray-700/50"
-                            >
-                                Скасувати
-                            </button>
-                        )}
-                        {isExpenseEditing && (
-                            <button
-                                onClick={handleAddExpenseRow}
-                                disabled={expenseCategories.length === 0}
-                                className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
-                            >
-                                <Plus className="w-3 h-3 mr-1 inline" /> Додати
-                            </button>
-                        )}
-                        <button
-                            onClick={() => setIsExpenseAddFromDocumentOpen(true)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
-                        >
-                            <Upload className="w-3 h-3 mr-1 inline" /> Додати з документа
-                        </button>
+                        <h2 className="text-xl font-bold text-white">Інвойси (Витрати)</h2>
                     </div>
+                </div>
+                {!isInvoicesCollapsed && (
+                <>
+                <div className="flex justify-end items-center gap-2 flex-wrap mb-4">
+                    <span className="text-gray-400 text-sm">Всього: <span className="text-white font-semibold">{formatCurrencyEUR(totalInvoicesAmount)}</span></span>
+                    <span className="text-emerald-400 text-sm">За місяць: <span className="text-emerald-300 font-semibold">{formatCurrencyEUR(monthlyInvoicesAmount)}</span></span>
+                    <button
+                        type="button"
+                        onClick={() => setIsExpenseCategoriesModalOpen(true)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
+                    >
+                        Категорії
+                    </button>
+                    <button
+                        onClick={() => {
+                            if (isExpenseEditing) handleSaveExpense();
+                            else setIsExpenseEditing(true);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${isExpenseEditing ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}
+                    >
+                        {isExpenseEditing ? <><Check className="w-3 h-3 mr-1 inline"/> Зберегти</> : <><Edit className="w-3 h-3 mr-1 inline"/> Редагувати</>}
+                    </button>
+                    {isExpenseEditing && (
+                        <button
+                            onClick={() => { setIsExpenseEditing(false); refreshExpenseItems(); }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-600 text-gray-300 hover:bg-gray-700/50"
+                        >
+                            Скасувати
+                        </button>
+                    )}
+                    {isExpenseEditing && (
+                        <button
+                            onClick={handleAddExpenseRow}
+                            disabled={expenseCategories.length === 0}
+                            className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                        >
+                            <Plus className="w-3 h-3 mr-1 inline" /> Додати
+                        </button>
+                    )}
+                    <button
+                        onClick={() => setIsExpenseAddFromDocumentOpen(true)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
+                    >
+                        <Upload className="w-3 h-3 mr-1 inline" /> Додати з документа
+                    </button>
                 </div>
                 <div className="rounded-lg border border-gray-700 overflow-hidden">
                     <div className="overflow-x-auto">
@@ -7458,6 +7472,8 @@ ${internalCompany} Team`;
                     </table>
                     </div>
                 </div>
+                </>
+                )}
             </section>
 
             {/* Inventory */}
