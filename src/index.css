@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @config "../tailwind.config.js";
 
+/* Ensure all Tailwind classes are scanned (same coverage as main branch CDN) */
+@source "../App.tsx";
+@source "../components";
+@source "../contexts";
+@source "../index.html";
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* Aurora / Aether–style design tokens (original reference) */
