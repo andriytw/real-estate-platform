@@ -7203,52 +7203,55 @@ ${internalCompany} Team`;
                         </button>
                         <h2 className="text-xl font-bold text-white">Інвойси (Витрати)</h2>
                     </div>
+                    <div className="flex items-center gap-3">
+                        <span className="text-gray-400 text-sm">Всього: <span className="text-white font-semibold">{formatCurrencyEUR(totalInvoicesAmount)}</span></span>
+                        <span className="text-emerald-400 text-sm">За місяць: <span className="text-emerald-300 font-semibold">{formatCurrencyEUR(monthlyInvoicesAmount)}</span></span>
+                        {!isInvoicesCollapsed && (
+                        <>
+                        <button
+                            type="button"
+                            onClick={() => setIsExpenseCategoriesModalOpen(true)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
+                        >
+                            Категорії
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (isExpenseEditing) handleSaveExpense();
+                                else setIsExpenseEditing(true);
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${isExpenseEditing ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}
+                        >
+                            {isExpenseEditing ? <><Check className="w-3 h-3 mr-1 inline"/> Зберегти</> : <><Edit className="w-3 h-3 mr-1 inline"/> Редагувати</>}
+                        </button>
+                        {isExpenseEditing && (
+                            <button
+                                onClick={() => { setIsExpenseEditing(false); refreshExpenseItems(); }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-600 text-gray-300 hover:bg-gray-700/50"
+                            >
+                                Скасувати
+                            </button>
+                        )}
+                        {isExpenseEditing && (
+                            <button
+                                onClick={handleAddExpenseRow}
+                                disabled={expenseCategories.length === 0}
+                                className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
+                            >
+                                <Plus className="w-3 h-3 mr-1 inline" /> Додати
+                            </button>
+                        )}
+                        <button
+                            onClick={() => setIsExpenseAddFromDocumentOpen(true)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
+                        >
+                            <Upload className="w-3 h-3 mr-1 inline" /> Додати з документа
+                        </button>
+                        </>
+                        )}
+                    </div>
                 </div>
                 {!isInvoicesCollapsed && (
-                <>
-                <div className="flex justify-end items-center gap-2 flex-wrap mb-4">
-                    <span className="text-gray-400 text-sm">Всього: <span className="text-white font-semibold">{formatCurrencyEUR(totalInvoicesAmount)}</span></span>
-                    <span className="text-emerald-400 text-sm">За місяць: <span className="text-emerald-300 font-semibold">{formatCurrencyEUR(monthlyInvoicesAmount)}</span></span>
-                    <button
-                        type="button"
-                        onClick={() => setIsExpenseCategoriesModalOpen(true)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
-                    >
-                        Категорії
-                    </button>
-                    <button
-                        onClick={() => {
-                            if (isExpenseEditing) handleSaveExpense();
-                            else setIsExpenseEditing(true);
-                        }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${isExpenseEditing ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}
-                    >
-                        {isExpenseEditing ? <><Check className="w-3 h-3 mr-1 inline"/> Зберегти</> : <><Edit className="w-3 h-3 mr-1 inline"/> Редагувати</>}
-                    </button>
-                    {isExpenseEditing && (
-                        <button
-                            onClick={() => { setIsExpenseEditing(false); refreshExpenseItems(); }}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-600 text-gray-300 hover:bg-gray-700/50"
-                        >
-                            Скасувати
-                        </button>
-                    )}
-                    {isExpenseEditing && (
-                        <button
-                            onClick={handleAddExpenseRow}
-                            disabled={expenseCategories.length === 0}
-                            className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50"
-                        >
-                            <Plus className="w-3 h-3 mr-1 inline" /> Додати
-                        </button>
-                    )}
-                    <button
-                        onClick={() => setIsExpenseAddFromDocumentOpen(true)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
-                    >
-                        <Upload className="w-3 h-3 mr-1 inline" /> Додати з документа
-                    </button>
-                </div>
                 <div className="rounded-lg border border-gray-700 overflow-hidden">
                     <div className="overflow-x-auto">
                     <table className="w-full table-fixed text-sm text-left">
@@ -7472,7 +7475,6 @@ ${internalCompany} Team`;
                     </table>
                     </div>
                 </div>
-                </>
                 )}
             </section>
 
@@ -7491,34 +7493,40 @@ ${internalCompany} Team`;
                         </button>
                         <h2 className="text-xl font-bold text-white">Меблі (Інвентар)</h2>
                     </div>
-                    <div className="flex gap-2">
-                        <button 
-                            onClick={() => {
-                              if (isPropertyInventoryCollapsed) setPropertyInventoryCollapsed(false);
-                              if (isInventoryEditing) handleSavePropertyInventory(); else setIsInventoryEditing(true);
-                            }}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${isInventoryEditing ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}
-                        >
-                            {isInventoryEditing ? <Check className="w-3 h-3 mr-1 inline"/> : <Edit className="w-3 h-3 mr-1 inline"/>}
-                            {isInventoryEditing ? 'Зберегти' : 'Редагувати'}
-                        </button>
-                        {isInventoryEditing && (
-                            <button
+                    <div className="flex items-center gap-3">
+                        {isPropertyInventoryCollapsed ? (
+                            <span className="text-gray-400 text-sm">Загальна вартість: <span className="text-emerald-400 font-semibold">{formatCurrencyEUR(totalInventoryCost)}</span></span>
+                        ) : (
+                            <>
+                            <button 
                                 onClick={() => {
                                   if (isPropertyInventoryCollapsed) setPropertyInventoryCollapsed(false);
-                                  handleAddInventoryRow();
+                                  if (isInventoryEditing) handleSavePropertyInventory(); else setIsInventoryEditing(true);
                                 }}
-                                className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${isInventoryEditing ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}
                             >
-                                <Plus className="w-3 h-3 mr-1 inline" /> Додати
+                                {isInventoryEditing ? <Check className="w-3 h-3 mr-1 inline"/> : <Edit className="w-3 h-3 mr-1 inline"/>}
+                                {isInventoryEditing ? 'Зберегти' : 'Редагувати'}
                             </button>
+                            {isInventoryEditing && (
+                                <button
+                                    onClick={() => {
+                                      if (isPropertyInventoryCollapsed) setPropertyInventoryCollapsed(false);
+                                      handleAddInventoryRow();
+                                    }}
+                                    className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                                >
+                                    <Plus className="w-3 h-3 mr-1 inline" /> Додати
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setIsPropertyAddFromDocumentOpen(true)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
+                            >
+                                <Upload className="w-3 h-3 mr-1 inline" /> Додати з документа
+                            </button>
+                            </>
                         )}
-                        <button
-                            onClick={() => setIsPropertyAddFromDocumentOpen(true)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
-                        >
-                            <Upload className="w-3 h-3 mr-1 inline" /> Додати з документа
-                        </button>
                     </div>
                 </div>
                 {!isPropertyInventoryCollapsed && (
@@ -7727,32 +7735,38 @@ ${internalCompany} Team`;
                         </button>
                         <h2 className="text-xl font-bold text-white">Показання Лічильників</h2>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (isMeterReadingsCollapsed) setMeterReadingsCollapsed(false);
-                                setMeterEditValues(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = m.meter_number ?? ''; return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
-                                setMeterEditUnit(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = (m.unit === 'm3' ? 'm³' : (m.unit ?? '')); return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
-                                setMeterEditPricePerUnit(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = m.price_per_unit != null ? String(m.price_per_unit) : ''; return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
-                                setIsMeterNumbersModalOpen(true);
-                            }}
-                            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
-                        >
-                            Лічильники
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (isMeterReadingsCollapsed) setMeterReadingsCollapsed(false);
-                                setMeterAddingNewRow(true);
-                                const d = new Date();
-                                setMeterEditDraft({ reading_date: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'), strom: '', gas: '', wasser: '', heizung: '' });
-                            }}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 transition-colors"
-                        >
-                            + Додати зняття
-                        </button>
+                    <div className="flex items-center gap-3">
+                        {isMeterReadingsCollapsed ? (
+                            <span className="text-gray-400 text-sm">Total: <span className="text-white font-semibold">{formatCurrencyEUR(utilitiesCostFromMeters)}</span></span>
+                        ) : (
+                            <>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (isMeterReadingsCollapsed) setMeterReadingsCollapsed(false);
+                                    setMeterEditValues(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = m.meter_number ?? ''; return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
+                                    setMeterEditUnit(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = (m.unit === 'm3' ? 'm³' : (m.unit ?? '')); return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
+                                    setMeterEditPricePerUnit(meterMetersList.reduce<Record<MeterType, string>>((acc, m) => { acc[m.type] = m.price_per_unit != null ? String(m.price_per_unit) : ''; return acc; }, { strom: '', gas: '', wasser: '', heizung: '' }));
+                                    setIsMeterNumbersModalOpen(true);
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700/50 transition-colors"
+                            >
+                                Лічильники
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (isMeterReadingsCollapsed) setMeterReadingsCollapsed(false);
+                                    setMeterAddingNewRow(true);
+                                    const d = new Date();
+                                    setMeterEditDraft({ reading_date: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'), strom: '', gas: '', wasser: '', heizung: '' });
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                            >
+                                + Додати зняття
+                            </button>
+                            </>
+                        )}
                     </div>
                 </div>
                 {!isMeterReadingsCollapsed && (
