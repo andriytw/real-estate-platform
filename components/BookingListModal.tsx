@@ -384,18 +384,18 @@ ${emailData.length > 1 ? `\n... та ще ${emailData.length - 1} email(ів)` :
                 </label>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-800">
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Apartment</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Address</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Guest</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Phone</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Date/Time</th>
+              <div className="overflow-x-auto rounded-lg border border-white/10 overflow-hidden">
+                <table className="w-full text-sm border-collapse">
+                  <thead className="bg-[#1a1d24] border-b border-white/10">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Apartment</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Address</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Guest</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Phone</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Date/Time</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-white/10">
                     {items.map((item, index) => {
                       const propertyId = getPropertyId(item);
                       const apartmentName = getApartmentName(propertyId, properties);
@@ -408,8 +408,8 @@ ${emailData.length > 1 ? `\n... та ще ${emailData.length - 1} email(ів)` :
                       return (
                         <tr
                           key={index}
-                          className={`border-b border-gray-800 hover:bg-gray-800/50 cursor-pointer ${
-                            isSelected ? 'bg-gray-800/30' : ''
+                          className={`hover:bg-white/[0.03] cursor-pointer ${
+                            isSelected ? 'bg-white/[0.06]' : ''
                           }`}
                           onClick={() => handleSelectItem(index)}
                         >

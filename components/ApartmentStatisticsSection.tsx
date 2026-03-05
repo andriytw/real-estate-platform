@@ -661,34 +661,34 @@ export function ApartmentStatisticsSection({
       </div>
 
       {/* D) Monthly table (last 6 months) */}
-      <div className="overflow-x-auto border border-gray-700 rounded-lg bg-[#16181D]">
-        <table className="w-full text-sm">
-          <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+      <div className="overflow-x-auto border border-white/10 rounded-lg bg-[#16181D]">
+        <table className="w-full text-sm border-collapse">
+          <thead className="bg-[#1a1d24] border-b border-white/10">
             <tr>
-              <th className="p-2 text-left font-bold text-xs uppercase">Month</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Rooms</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Op.Days</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">OOO</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Rented</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Empty</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Occupancy%</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Price/rn</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Plan</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Collected</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Diff</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">%Fulfill</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">ADR</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">ADR/rn</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Avg/op</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">OwnerDue</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Invoices</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Utilities</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Total Costs</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Net</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Inventory</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Month</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Rooms</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Op.Days</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">OOO</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Rented</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Empty</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Occupancy%</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Price/rn</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Plan</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Collected</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Diff</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">%Fulfill</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">ADR</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">ADR/rn</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Avg/op</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">OwnerDue</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Invoices</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Utilities</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Total Costs</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Net</th>
+              <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Inventory</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-700/50">
+          <tbody className="divide-y divide-white/10">
             {last6Months.map((mm) => {
               const din = daysInMonth(mm);
               const opDays = Math.max(0, din - 0);
@@ -744,28 +744,28 @@ export function ApartmentStatisticsSection({
               const occ = opDays > 0 ? (rent / opDays) * 100 : 0;
               const netVal = coll - tot;
               return (
-                <tr key={mm} className="hover:bg-[#1C1F24]">
-                  <td className="p-2 text-gray-300">{mm}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{roomsCount}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{opDays}</td>
-                  <td className="p-2 text-right text-white tabular-nums">0</td>
-                  <td className="p-2 text-right text-white tabular-nums">{rent}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{empty}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{occ.toFixed(1)}%</td>
-                  <td className="p-2 text-right text-white tabular-nums">{pricePerRoomNight}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(planVal)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(coll)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(diff)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{pct.toFixed(1)}%</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(adrVal)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(roomAdrVal)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(avgOp)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(own)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(inv)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(util)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(tot)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(netVal)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(totalInventoryCost)}</td>
+                <tr key={mm} className="hover:bg-white/[0.03]">
+                  <td className="px-3 py-2.5 text-gray-300">{mm}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{roomsCount}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{opDays}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">0</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{rent}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{empty}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{occ.toFixed(1)}%</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{pricePerRoomNight}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{formatCurrency(planVal)}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{formatCurrency(coll)}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{formatCurrency(diff)}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{pct.toFixed(1)}%</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{formatCurrency(adrVal)}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{formatCurrency(roomAdrVal)}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{formatCurrency(avgOp)}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{formatCurrency(own)}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{formatCurrency(inv)}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{formatCurrency(util)}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{formatCurrency(tot)}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{formatCurrency(netVal)}</td>
+                  <td className="px-3 py-2.5 text-right text-white tabular-nums">{formatCurrency(totalInventoryCost)}</td>
                 </tr>
               );
             })}

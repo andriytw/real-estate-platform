@@ -487,19 +487,19 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
             </div>
 
             {/* Items Table */}
-            <table className="w-full mb-8">
-                <thead>
-                    <tr className="border-b-2 border-gray-800 text-left">
-                        <th className="py-2 w-[50%]">Description</th>
-                        <th className="py-2 text-right">Qty</th>
-                        <th className="py-2 text-right">Price</th>
-                        <th className="py-2 text-right">Total</th>
+            <table className="w-full mb-8 border-collapse">
+                <thead className="bg-[#1a1d24] border-b border-white/10">
+                    <tr className="text-left">
+                        <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 w-[50%]">Description</th>
+                        <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 text-right">Qty</th>
+                        <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 text-right">Price</th>
+                        <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 text-right">Total</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-white/10">
                     {invoiceData.items?.map((item, idx) => (
-                        <tr key={idx} className="border-b border-gray-200">
-                            <td className="py-4">
+                        <tr key={idx} className="hover:bg-white/[0.03]">
+                            <td className="px-3 py-2.5">
                                 <input 
                                     disabled={!isEditing}
                                     value={item.description}
@@ -511,9 +511,9 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
                                     className="w-full bg-transparent outline-none disabled:cursor-default"
                                 />
                             </td>
-                            <td className="py-4 text-right">{item.quantity}</td>
-                            <td className="py-4 text-right">€{item.unitPrice.toFixed(2)}</td>
-                            <td className="py-4 text-right font-bold">€{item.total.toFixed(2)}</td>
+                            <td className="px-3 py-2.5 text-right">{item.quantity}</td>
+                            <td className="px-3 py-2.5 text-right">€{item.unitPrice.toFixed(2)}</td>
+                            <td className="px-3 py-2.5 text-right font-bold">€{item.total.toFixed(2)}</td>
                         </tr>
                     ))}
                 </tbody>

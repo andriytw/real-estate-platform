@@ -251,21 +251,21 @@ const UserManagement: React.FC = () => {
       )}
 
       {/* Users Table */}
-      <div className="bg-[#1C1F24] rounded-lg border border-gray-800 overflow-hidden">
+      <div className="bg-[#1C1F24] rounded-lg border border-white/10 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-[#111315] border-b border-gray-800">
+          <table className="w-full border-collapse">
+            <thead className="bg-[#1a1d24] border-b border-white/10">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Користувач</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Роль</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Департамент</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Доступ до категорій</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase">Дії</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Користувач</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Роль</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Департамент</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Доступ до категорій</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Дії</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-white/10">
               {users.map(user => (
-                <tr key={user.id} className={`hover:bg-gray-800/50 ${!user.isActive ? 'opacity-50' : ''}`}>
+                <tr key={user.id} className={`hover:bg-white/[0.03] ${!user.isActive ? 'opacity-50' : ''}`}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center">

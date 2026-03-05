@@ -25,7 +25,7 @@ export default function ApartmentDataSection({ property }: ApartmentDataSectionP
           const isOpen = !!openGroups[groupKey];
           const selectedCount = keys.filter((k) => !!amenities[k]).length;
           return (
-            <div key={groupKey} className="bg-[#1C1F24] border border-[#272A30] rounded-lg overflow-hidden">
+            <div key={groupKey} className="bg-[#1C1F24] border border-white/10 rounded-lg overflow-hidden">
               <button
                 type="button"
                 onClick={() => toggleGroup(groupKey)}
@@ -40,7 +40,7 @@ export default function ApartmentDataSection({ property }: ApartmentDataSectionP
                 </span>
               </button>
               {isOpen && (
-                <div className="border-t border-[#272A30] p-3 space-y-1.5">
+                <div className="border-t border-white/10 p-3 space-y-1.5">
                   {keys.map((key) => {
                     const checked = !!amenities[key];
                     return (

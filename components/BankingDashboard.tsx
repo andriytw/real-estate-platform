@@ -235,10 +235,10 @@ export default function BankingDashboard() {
 
         {/* TABLE HEADER (Sticky) */}
         <div className="flex-1 overflow-auto px-6 pb-24 pt-6">
-          <div className="bg-[#161B22] rounded-xl shadow-sm border border-gray-800 overflow-visible relative">
+          <div className="bg-[#161B22] rounded-xl shadow-sm border border-white/10 overflow-visible relative">
              <div className="overflow-x-auto min-h-[400px]"> 
               <table className="w-full text-left border-collapse min-w-[1550px]">
-                <thead className="bg-[#1C1F24] border-b border-gray-700 text-xs uppercase text-gray-400 font-semibold tracking-wider sticky top-0 z-20 shadow-md">
+                <thead className="bg-[#1a1d24] border-b border-white/10 text-xs font-semibold uppercase tracking-wider text-gray-400 sticky top-0 z-20 shadow-md">
                   <tr>
                     <th className="px-4 py-3 w-10 text-center">#</th>
                     <th className="px-4 py-3 w-24">Date</th>
@@ -253,9 +253,9 @@ export default function BankingDashboard() {
                     <th className="px-4 py-3 w-28 text-center bg-[#23262b]">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800">
+                <tbody className="divide-y divide-white/10">
                   {filteredTransactions.map(tx => (
-                    <tr key={tx.id} className={`transition-colors ${tx.isBooked ? 'bg-gray-800/30 opacity-60' : 'hover:bg-[#1C1F24]'}`}>
+                    <tr key={tx.id} className={`transition-colors ${tx.isBooked ? 'bg-gray-800/30 opacity-60' : 'hover:bg-white/[0.03]'}`}>
                       
                       {/* Checkbox */}
                       <td className="px-4 py-3 text-center">

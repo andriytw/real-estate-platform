@@ -435,29 +435,29 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 <h3 className="text-xs font-semibold text-gray-400 mb-2">
                   Inventory to transfer
                 </h3>
-                <div className="bg-[#1C1F24] rounded-lg border border-gray-800 overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead className="bg-[#111319] text-gray-400">
+                <div className="bg-[#1C1F24] rounded-lg border border-white/10 overflow-hidden">
+                  <table className="w-full text-xs border-collapse">
+                    <thead className="bg-[#1a1d24] border-b border-white/10">
                       <tr>
-                        <th className="px-3 py-2 text-left">Item</th>
-                        <th className="px-3 py-2 text-right">Qty</th>
-                        <th className="px-3 py-2 text-right">Price</th>
-                        <th className="px-3 py-2 text-left">SKU</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">Item</th>
+                        <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Qty</th>
+                        <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">Price</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">SKU</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-800">
+                    <tbody className="divide-y divide-white/10">
                       {parsedDescription.transferData.map((item: any, idx: number) => (
-                        <tr key={idx} className="hover:bg-[#1E2027]">
-                          <td className="px-3 py-2 text-gray-100">
+                        <tr key={idx} className="hover:bg-white/[0.03]">
+                          <td className="px-3 py-2.5 text-gray-100">
                             {item.itemName || '—'}
                           </td>
-                          <td className="px-3 py-2 text-right text-gray-200 font-mono">
+                          <td className="px-3 py-2.5 text-right text-gray-200 font-mono">
                             {item.quantity ?? '—'}
                           </td>
-                          <td className="px-3 py-2 text-right text-gray-300 font-mono">
+                          <td className="px-3 py-2.5 text-right text-gray-300 font-mono">
                             {item.unitPrice != null ? `€${Number(item.unitPrice).toFixed(2)}` : '—'}
                           </td>
-                          <td className="px-3 py-2 text-gray-400">
+                          <td className="px-3 py-2.5 text-gray-400">
                             {item.sku || '—'}
                           </td>
                         </tr>
