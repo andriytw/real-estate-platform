@@ -49,17 +49,6 @@ const SendRequestModal: React.FC<SendRequestModalProps> = ({
         createdAt: new Date().toISOString(),
       });
       setSuccess(true);
-      setTimeout(() => {
-        onClose();
-        setSuccess(false);
-        setDateFrom('');
-        setDateTo('');
-        setName('');
-        setEmail('');
-        setPhone('');
-        setMessage('');
-        setPeople(1);
-      }, 1500);
     } catch (err: any) {
       setError(err?.message || 'Failed to send request. Please try again.');
     } finally {
@@ -87,7 +76,26 @@ const SendRequestModal: React.FC<SendRequestModalProps> = ({
         </div>
         <div className="p-6">
           {success ? (
-            <p className="text-emerald-400 font-medium">Request sent. We will contact you soon.</p>
+            <>
+              <p className="text-emerald-400 font-medium">Request sent. We will contact you soon.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  setSuccess(false);
+                  setDateFrom('');
+                  setDateTo('');
+                  setName('');
+                  setEmail('');
+                  setPhone('');
+                  setMessage('');
+                  setPeople(1);
+                }}
+                className="mt-4 w-full px-4 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold"
+              >
+                Close
+              </button>
+            </>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <p className="text-sm text-gray-400 mb-4">{propertyTitle}</p>
