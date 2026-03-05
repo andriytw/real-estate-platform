@@ -11559,6 +11559,7 @@ ${internalCompany} Team`;
         onClose={() => { setIsRequestModalOpen(false); setSelectedRequest(null); }} 
         request={selectedRequest}
         onGoToCalendar={handleGoToCalendarFromRequest}
+        properties={properties}
       />
 
       {/* Create Warehouse Modal */}

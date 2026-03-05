@@ -1,16 +1,23 @@
 import React from 'react';
-import { X, Calendar, User, Mail, Phone, Building2, Users, MessageSquare, ArrowRight } from 'lucide-react';
-import { RequestData } from '../types';
+import { X, Calendar, User, Mail, Phone, Building2, Users, MessageSquare, ArrowRight, Home } from 'lucide-react';
+import { RequestData, Property } from '../types';
+import { formatPropertyAddress } from '../utils/formatPropertyAddress';
 
 interface RequestModalProps {
   isOpen: boolean;
   onClose: () => void;
   request: RequestData | null;
   onGoToCalendar: () => void;
+  /** Optional list of properties to resolve propertyId to address + title. */
+  properties?: Property[];
 }
 
-const RequestModal: React.FC<RequestModalProps> = ({ isOpen, onClose, request, onGoToCalendar }) => {
+const RequestModal: React.FC<RequestModalProps> = ({ isOpen, onClose, request, onGoToCalendar, properties }) => {
   if (!isOpen || !request) return null;
+
+  const property = request.propertyId && properties?.length
+    ? properties.find((p) => p.id === request.propertyId)
+    : undefined;
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm">
@@ -98,8 +105,18 @@ const RequestModal: React.FC<RequestModalProps> = ({ isOpen, onClose, request, o
                 </div>
                 {request.propertyId && (
                   <div>
-                    <span className="text-xs text-gray-500 block mb-1">Property ID</span>
-                    <span className="text-white">{request.propertyId}</span>
+                    <span className="text-xs text-gray-500 block mb-1">Property</span>
+                    <div className="flex items-center gap-2 text-white">
+                      <Home className="w-4 h-4 text-gray-400 shrink-0" />
+                      <div>
+                        <span className="font-medium">
+                          {property
+                            ? `${formatPropertyAddress(property)} — ${property.title}`
+                            : request.propertyId}
+                        </span>
+                        <p className="text-xs text-gray-500 mt-0.5">ID: {request.propertyId}</p>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
