@@ -1,25 +1,6 @@
-@import "tailwindcss";
-@config "../tailwind.config.js";
-
-/* Ensure all Tailwind classes are scanned (same coverage as main branch CDN) */
-@source "../App.tsx";
-@source "../components";
-@source "../contexts";
-@source "../index.html";
-
-@custom-variant dark (&:where(.dark, .dark *));
-
-/* Aurora / Aether–style design tokens (original reference) */
-@theme {
-  --color-primary: #10b981;
-  --color-accent: #10b981;
-  --color-accent-glow: #34d399;
-  --color-bg-dark: #020202;
-  --color-surface-dark: #0a0a0a;
-  --color-border-dark: rgba(255, 255, 255, 0.06);
-  --color-text-dark: #eaeaea;
-  --font-family-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* Base styles */
 * {
@@ -30,7 +11,7 @@
 
 body {
   margin: 0;
-  font-family: var(--font-family-sans);
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: #020202;
