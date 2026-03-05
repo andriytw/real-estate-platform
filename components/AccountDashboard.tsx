@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Square, Download, LayoutGrid, Bed, MoreVertical, Archive, RotateCcw } from 'lucide-react';
+import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Ruler, Download, LayoutGrid, Bed, MoreVertical, Archive, RotateCcw } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 import AdminCalendar from './AdminCalendar';
 import AdminMessages from './AdminMessages';
@@ -291,7 +291,7 @@ const DOCUMENTS_MODULE_LABELS: Record<string, string> = {
 
 const DOC_TABLE = {
   wrap: 'rounded-lg border border-white/10 overflow-hidden',
-  scroller: 'overflow-x-auto',
+  scroller: 'overflow-x-auto pr-4',
   table: 'w-full table-fixed border-separate border-spacing-0 text-xs',
   thead: 'bg-white/[0.03]',
   th: 'px-2 py-2 text-[11px] font-semibold text-gray-300 whitespace-nowrap border-b border-white/10',
@@ -299,7 +299,7 @@ const DOC_TABLE = {
   cellR: 'border-r border-white/5 last:border-r-0',
   row: 'hover:bg-white/[0.03]',
   empty: 'px-2 py-2 text-gray-500',
-  actions: 'w-[84px]',
+  actions: 'w-[84px] min-w-[84px]',
 };
 const monoNum = 'tabular-nums font-mono';
 const rightNum = 'text-right tabular-nums font-mono';
@@ -5701,7 +5701,7 @@ ${internalCompany} Team`;
                      <p className="text-xs text-gray-500 truncate mb-2">{formatPropertyAddress(prop)}</p>
                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-gray-400">
                         {(prop.details?.area != null && prop.details.area !== 0) && (
-                           <span className="flex items-center gap-1" title="Площа"><Square className="w-3 h-3 text-gray-500 shrink-0" /><span className="text-gray-300 font-medium">{prop.details.area} м²</span></span>
+                           <span className="flex items-center gap-1" title="Площа"><Ruler className="w-3 h-3 text-gray-500 shrink-0" /><span className="text-gray-300 font-medium">{prop.details.area} м²</span></span>
                         )}
                         {(prop.details?.rooms != null || prop.details?.beds != null) && (
                            <span className="flex items-center gap-3">

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { RequestData, Property } from '../types';
-import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar, Search, Square, LayoutGrid, Bed } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar, Search, Ruler, LayoutGrid, Bed } from 'lucide-react';
 import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus, Lead, PaymentProof } from '../types';
 import BookingDetailsModal from './BookingDetailsModal';
 import BookingStatsTiles from './BookingStatsTiles';
@@ -1214,7 +1214,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[9px] text-gray-400">
                             {(room.area != null && room.area !== '' && Number(room.area) > 0) && (
                                 <span className="flex items-center gap-1" title="Площа">
-                                    <Square className="w-3 h-3 text-gray-500 shrink-0" />
+                                    <Ruler className="w-3 h-3 text-gray-500 shrink-0" />
                                     <span className="text-gray-300 font-medium">{room.area} м²</span>
                                 </span>
                             )}

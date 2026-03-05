@@ -44,28 +44,31 @@ export function getBookingBorderStyle(status: BookingStatus | string): string {
   // Підтримка старого формату для сумісності
   const normalizedStatus = typeof status === 'string' ? status.toLowerCase() : status;
   
+  const baseSolid = 'border-2 border-solid border-white/20';
+  const baseDashed = 'border-2 border-dashed border-white/20';
+
   switch (normalizedStatus) {
     case BookingStatus.RESERVED:
-      return 'border-2 border-solid';
-    
+      return baseSolid;
+
     case BookingStatus.OFFER_PREPARED:
     case BookingStatus.OFFER_SENT:
-      return 'border-2 border-dashed';
-    
+      return baseDashed;
+
     case BookingStatus.INVOICED:
-      return 'border-2 border-solid';
-    
+      return baseSolid;
+
     case BookingStatus.PAID:
-      return 'border-2 border-solid';
-    
+      return baseSolid;
+
     case BookingStatus.CHECK_IN_DONE:
-      return 'border-2 border-solid';
-    
+      return baseSolid;
+
     case BookingStatus.COMPLETED:
-      return 'border-2 border-solid';
-    
+      return baseSolid;
+
     default:
-      return 'border-2 border-solid';
+      return baseSolid;
   }
 }
 
