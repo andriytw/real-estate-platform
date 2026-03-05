@@ -1,4 +1,6 @@
-@import "tailwindcss" source("..");
+@import "tailwindcss";
+@source "../App.tsx";
+@source "../components";
 
 /* Base styles */
 * {
