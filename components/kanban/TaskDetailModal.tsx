@@ -776,9 +776,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 )}
                 {chatMessages.map((msg, idx) => {
                   const isMe = !!chatMyUserId && msg.senderId === chatMyUserId;
-                  if (import.meta.env.DEV && idx === 0) {
-                    console.debug('[TaskChat align]', { chatMyUserId, firstSenderId: chatMessages[0].senderId });
-                  }
                   const senderLabel = isMe ? 'You' : (isWorker ? 'Manager' : 'Worker');
                   const hidePlaceholder = msg.attachments?.length && ['📎 Attachment', 'Attachment'].includes((msg.messageText ?? '').trim());
                   return (

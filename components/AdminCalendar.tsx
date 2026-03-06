@@ -2031,9 +2031,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                         )}
                         {taskMessages.map((msg, idx) => {
                            const isMe = !!chatMyUserId && msg.senderId === chatMyUserId;
-                           if (import.meta.env.DEV && idx === 0) {
-                             console.debug('[TaskChat align]', { chatMyUserId, firstSenderId: taskMessages[0].senderId });
-                           }
                            const senderLabel = isMe ? 'You' : (msg.sender === 'admin' ? 'Manager' : 'Worker');
                            const hidePlaceholder = msg.attachments?.length && ['📎 Attachment', 'Attachment'].includes((msg.text ?? '').trim());
                            return (
