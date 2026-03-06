@@ -10,6 +10,17 @@ export function formatDDMMYYYY(isoDate: string): string {
   return `${d}.${m}.${y}`;
 }
 
+/** Sanitize text to a single line for DOCX (no hard breaks, no NBSP/soft hyphen). */
+export function sanitizeOneLine(text: string | null | undefined): string {
+  const s = String(text ?? '');
+  return s
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\u00AD/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 export function buildPlaceholders(
   booking: Record<string, unknown>,
   property: Record<string, unknown>,
@@ -73,7 +84,7 @@ export function buildPlaceholders(
 
   for (let i = 1; i <= 46; i++) {
     const row = aggregatedInventory[i - 1];
-    data[`name${i}`] = row ? String(row.name).trim() : '';
+    data[`name${i}`] = row ? sanitizeOneLine(row.name) : '';
     data[`q${i}`] = row ? String(row.quantity) : '';
   }
 
