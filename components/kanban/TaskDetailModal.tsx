@@ -396,7 +396,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 {!isWorker && getStatusButton('in_progress', 'In Progress', <Circle className="w-3 h-3" />)}
                 {getStatusButton('completed', 'Mark as Done', <CheckCircle2 className="w-3 h-3" />)}
                 {isWorker
-                  ? (task?.status === 'verified' ? getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />, true) : <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-gray-700 bg-gray-800/50 text-gray-500 cursor-default">Verified (manager)</span>)}
+                  ? (task?.status === 'verified' ? getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />, true) : <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-gray-700 bg-gray-800/50 text-gray-500 cursor-default">Verified (manager)</span>)
                   : getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />)}
               </div>
               {/* Media upload for worker */}
