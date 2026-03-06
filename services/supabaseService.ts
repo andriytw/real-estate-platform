@@ -2360,6 +2360,14 @@ export interface TaskChatThreadInbox {
   lastMessageCreatedAt: string;
   lastMessageHasAttachments: boolean;
   lastMessageSenderId: string;
+  /** Task type / category from calendar_events.type */
+  taskTypeLabel?: string;
+  /** Scheduled date + time as ISO string (from date + time); empty if not set */
+  dueAt?: string;
+  /** Assignee user id (worker_id) */
+  assigneeId?: string;
+  /** Assignee display name; "—" if not found */
+  assigneeName?: string;
 }
 
 export async function listTaskChatThreadsForFacilityInbox(): Promise<TaskChatThreadInbox[]> {
@@ -2389,7 +2397,7 @@ export async function listTaskChatThreadsForFacilityInbox(): Promise<TaskChatThr
 
   const { data: eventsData, error: eventsError } = await supabase
     .from('calendar_events')
-    .select('id, title, status, property_id, location_text')
+    .select('id, title, status, property_id, location_text, date, time, type, worker_id')
     .in('id', eventIds);
 
   if (eventsError) throw eventsError;
@@ -2408,6 +2416,23 @@ export async function listTaskChatThreadsForFacilityInbox(): Promise<TaskChatThr
     }
   }
 
+  const assigneeIds = [...new Set(events.map((e) => e.worker_id).filter(Boolean))] as string[];
+  let assigneeMap = new Map<string, string>();
+  if (assigneeIds.length > 0) {
+    const { data: profilesData } = await supabase
+      .from('profiles')
+      .select('id, first_name, last_name, name')
+      .in('id', assigneeIds);
+    if (profilesData) {
+      for (const p of profilesData as any[]) {
+        const first = p.first_name ?? '';
+        const last = p.last_name ?? '';
+        const display = first && last ? `${first} ${last}`.trim() : (p.name ?? '—');
+        assigneeMap.set(p.id, display || '—');
+      }
+    }
+  }
+
   const result: TaskChatThreadInbox[] = [];
   for (const eventId of eventIds) {
     const last = byEvent.get(eventId);
@@ -2423,6 +2448,15 @@ export async function listTaskChatThreadsForFacilityInbox(): Promise<TaskChatThr
       ? [prop.full_address || prop.address, prop.title].filter(Boolean).join(' — ') || undefined
       : (ev.location_text || undefined);
 
+    const workerId = ev.worker_id ?? undefined;
+    const assigneeName = workerId ? (assigneeMap.get(workerId) ?? '—') : '—';
+    let dueAt: string | undefined;
+    if (ev.date) {
+      const raw = (ev.time && String(ev.time).trim()) || '';
+      const timePart = /^\d{1,2}:\d{2}/.test(raw) ? `${raw.slice(0, 5)}:00` : '00:00:00';
+      dueAt = `${ev.date}T${timePart}`;
+    }
+
     result.push({
       calendarEventId: eventId,
       title: ev.title ?? 'Task',
@@ -2432,6 +2466,10 @@ export async function listTaskChatThreadsForFacilityInbox(): Promise<TaskChatThr
       lastMessageCreatedAt: last.created_at,
       lastMessageHasAttachments: hasAttachments,
       lastMessageSenderId: String(last.sender_id ?? ''),
+      taskTypeLabel: ev.type ?? undefined,
+      dueAt,
+      assigneeId: workerId,
+      assigneeName: assigneeName || '—',
     });
   }
   return result;

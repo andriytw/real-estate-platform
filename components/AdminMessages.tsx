@@ -56,6 +56,21 @@ function formatLastActivity(iso: string): string {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
+/** Format dueAt (ISO) as DD.MM.YYYY HH:mm; time "00:00" shown as "—" when date-only. */
+function formatDueDate(iso: string): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  const dateStr = `${day}.${month}.${year}`;
+  const hours = d.getHours();
+  const mins = d.getMinutes();
+  const timeStr = hours === 0 && mins === 0 ? '—' : `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  return timeStr === '—' ? dateStr : `${dateStr} ${timeStr}`;
+}
+
 const AdminMessages: React.FC = () => {
   const [threads, setThreads] = useState<TaskChatThreadInbox[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
@@ -276,11 +291,14 @@ const AdminMessages: React.FC = () => {
   });
 
   const filteredThreads = searchTerm.trim()
-    ? sortedThreads.filter(
-        (t) =>
-          t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (t.propertyLabel?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
-      )
+    ? sortedThreads.filter((t) => {
+        const q = searchTerm.toLowerCase();
+        return (
+          t.title.toLowerCase().includes(q) ||
+          (t.propertyLabel?.toLowerCase().includes(q) ?? false) ||
+          (t.assigneeName?.toLowerCase().includes(q) ?? false)
+        );
+      })
     : sortedThreads;
 
   return (
@@ -331,20 +349,30 @@ const AdminMessages: React.FC = () => {
                     <Building2 className="w-6 h-6" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start mb-1">
+                    <div className="flex justify-between items-start gap-2 mb-0.5">
                       <h3
-                        className={`text-sm font-bold truncate pr-2 ${unread ? 'text-white' : 'text-gray-300'} ${isClosed ? 'line-through' : ''}`}
+                        className={`text-sm font-bold truncate ${unread ? 'text-white' : 'text-gray-300'} ${isClosed ? 'line-through' : ''}`}
                       >
                         {thread.title}
                       </h3>
-                      <span className="text-[10px] text-gray-500 whitespace-nowrap">
+                      <span className="text-[10px] text-gray-500 whitespace-nowrap flex-shrink-0">
                         {formatLastActivity(thread.lastMessageCreatedAt)}
                       </span>
                     </div>
                     {thread.propertyLabel && (
-                      <p className="text-[10px] text-gray-500 truncate mb-0.5">{thread.propertyLabel}</p>
+                      <p className="text-[10px] text-gray-500 truncate mb-1">{thread.propertyLabel}</p>
                     )}
-                    <p className={`text-xs truncate ${unread ? 'text-gray-300 font-medium' : 'text-gray-500'}`}>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-gray-500">
+                      {thread.dueAt ? (
+                        <span title={thread.dueAt}>
+                          📅 {formatDueDate(thread.dueAt)}
+                        </span>
+                      ) : (
+                        <span>📅 —</span>
+                      )}
+                      <span>👤 {thread.assigneeName ?? '—'}</span>
+                    </div>
+                    <p className={`text-xs truncate mt-0.5 ${unread ? 'text-gray-300 font-medium' : 'text-gray-500'}`}>
                       {snippet || '—'}
                     </p>
                   </div>
