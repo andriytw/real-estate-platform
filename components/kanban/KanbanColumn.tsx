@@ -115,6 +115,14 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
       );
     }
 
+    // Helper: scheduled/execution datetime for sorting (same as card/modal: date then created_at)
+    const getSortKey = (t: CalendarEvent) => {
+      const datePart = t.date || (t.createdAt ?? '').slice(0, 10);
+      const [h = '0', m = '0'] = (t.time || '0:0').split(':');
+      const timeStr = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+      return datePart ? `${datePart}T${timeStr}` : (t.createdAt ?? '');
+    };
+
     // Apply sorting
     filtered.sort((a, b) => {
       // Спочатку сортуємо за статусом: невиконані зверху, виконані внизу
@@ -125,16 +133,10 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
         return aCompleted ? 1 : -1; // Невиконані спочатку
       }
       
-      // Потім сортуємо за датою створення (нові зверху)
-      const dateA = a.createdAt || a.date || '';
-      const dateB = b.createdAt || b.date || '';
-      if (dateA && dateB) {
-        return dateB.localeCompare(dateA); // DESC - нові зверху
-      }
-      
-      // Якщо немає дати створення, використовуємо оригінальне сортування
       if (sortBy === 'date') {
-        const comparison = dateA.localeCompare(dateB);
+        const keyA = getSortKey(a);
+        const keyB = getSortKey(b);
+        const comparison = keyA.localeCompare(keyB);
         return sortOrder === 'asc' ? comparison : -comparison;
       } else {
         // Sort by type
@@ -217,7 +219,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   }, [column.tasks]);
 
   return (
-    <div className="flex-shrink-0 w-96 flex flex-col h-full bg-[#111315] border-r border-gray-800/50">
+    <div className="flex-shrink-0 w-96 flex flex-col h-[calc(100vh-3.5rem)] bg-[#111315] border-r border-gray-800/50">
       {/* Header */}
       <div className="p-3 border-b border-gray-800 flex items-center justify-between bg-[#16181b]">
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -396,8 +398,8 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
         </div>
       )}
 
-      {/* Task List */}
-      <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+      {/* Task List — scrolls inside column; min-h-0 required for flex overflow */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-2 pr-1 custom-scrollbar">
         {sortedTasks.length === 0 ? (
           <div className="h-32 flex flex-col items-center justify-center text-gray-600 border-2 border-dashed border-gray-800 rounded-lg m-2">
             <span className="text-xs">No tasks</span>
