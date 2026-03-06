@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Calendar, Clock, User, CheckCircle2, Circle, Building2, Wrench, Check, Image as ImageIcon, FileVideo, Zap, Droplets, Flame, ClipboardList, Send, Paperclip, FileIcon } from 'lucide-react';
-import { tasksService, workersService, propertiesService, getTaskChatMessages, insertTaskChatMessage, insertTaskChatMessageWithAttachment, type TaskChatMessageRow, type TaskChatAttachment } from '../../services/supabaseService';
+import { tasksService, workersService, propertiesService, getTaskChatMessages, insertTaskChatMessage, insertTaskChatMessageWithAttachment, createTaskAttachmentSignedUrl, type TaskChatMessageRow, type TaskChatAttachment } from '../../services/supabaseService';
 import { CalendarEvent, TaskStatus, Property, Worker } from '../../types';
 import { getTaskColor } from '../../utils/taskColors';
 import { supabase } from '../../utils/supabase/client';
@@ -27,7 +27,12 @@ function ChatAttachmentBlock({
   getUrl: (a: TaskChatAttachment) => Promise<string>;
 }) {
   const [openLoading, setOpenLoading] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const isImage = att.mimeType?.startsWith('image/') ?? /\.(jpe?g|png|gif|webp)$/i.test(att.filename ?? '');
+  useEffect(() => {
+    if (!isImage || !att.bucket || !att.path) return;
+    getUrl(att).then(setImageUrl).catch(() => setImageUrl(null));
+  }, [isImage, att.bucket, att.path, att]);
   const onOpen = async () => {
     setOpenLoading(true);
     try {
@@ -39,8 +44,8 @@ function ChatAttachmentBlock({
   };
   return (
     <div className={`flex items-center gap-2 p-2 rounded ${isMe ? 'bg-white/10' : 'bg-black/10'}`}>
-      {isImage && att.url ? (
-        <img src={att.url} alt={att.filename ?? ''} className="max-h-24 max-w-32 rounded object-cover" />
+      {isImage && imageUrl ? (
+        <img src={imageUrl} alt={att.filename ?? ''} className="max-h-24 max-w-32 rounded object-cover" />
       ) : isImage ? (
         <div className="w-16 h-12 rounded bg-white/10 flex items-center justify-center text-[10px]">Image</div>
       ) : (
@@ -160,10 +165,12 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const getAttachmentUrl = async (att: TaskChatAttachment): Promise<string> => {
     const bucket = att.bucket ?? TASK_MEDIA_BUCKET;
     const path = att.path;
+    if (!bucket?.trim() || !path?.trim()) {
+      throw new Error('Attachment is missing bucket or path and cannot be opened.');
+    }
     const key = `${bucket}:${path}`;
     if (attachmentUrlCache[key]) return attachmentUrlCache[key];
-    const { data: signedData } = await supabase.storage.from(bucket).createSignedUrl(path, 60);
-    const url = signedData?.signedUrl ?? '';
+    const url = await createTaskAttachmentSignedUrl(bucket, path, 60);
     setAttachmentUrlCache((prev) => ({ ...prev, [key]: url }));
     return url;
   };
@@ -175,14 +182,23 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     const path = `${task.id}/${Date.now()}-${safeName}`;
     setChatUploading(true);
     try {
-      const { error: uploadError } = await supabase.storage.from(TASK_MEDIA_BUCKET).upload(path, file, { upsert: false });
+      const { data: uploadData, error: uploadError } = await supabase.storage.from(TASK_MEDIA_BUCKET).upload(path, file, { upsert: false });
+      if (process.env.NODE_ENV === 'development') {
+        const bucket = TASK_MEDIA_BUCKET;
+        if (uploadError) {
+          console.debug('[Task chat upload]', { bucket, path, uploadError: JSON.stringify(uploadError, null, 2), message: uploadError?.message, statusCode: (uploadError as { statusCode?: number })?.statusCode });
+        } else {
+          console.debug('[Task chat upload]', { bucket, path, result: uploadData });
+        }
+      }
       if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from(TASK_MEDIA_BUCKET).getPublicUrl(path);
-      const url = urlData?.publicUrl ?? '';
+      if (process.env.NODE_ENV === 'development') {
+        const { data: listData, error: listError } = await supabase.storage.from(TASK_MEDIA_BUCKET).list(task.id, { limit: 5 });
+        console.debug('[Task chat upload] list after success', { visible: listError ? false : (listData ?? []).some((o: { name?: string }) => path.endsWith(o.name ?? '')), listError: listError?.message, fileCount: (listData ?? []).length });
+      }
       const payload: TaskChatAttachment[] = [{
         bucket: TASK_MEDIA_BUCKET,
         path,
-        url: url || undefined,
         filename: file.name,
         mimeType: file.type || undefined,
         size: file.size,

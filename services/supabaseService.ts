@@ -2326,6 +2326,21 @@ export async function insertTaskChatMessageWithAttachment(
   };
 }
 
+/** Create a signed URL for a task chat attachment. Throws if bucket/path missing or storage errors. */
+export async function createTaskAttachmentSignedUrl(
+  bucket: string,
+  path: string,
+  expirySeconds: number = 60
+): Promise<string> {
+  if (!bucket?.trim() || !path?.trim()) {
+    throw new Error('Attachment is missing bucket or path and cannot be opened.');
+  }
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expirySeconds);
+  if (error) throw new Error(error.message || 'Could not get download link. Check that the file exists and you have access.');
+  if (!data?.signedUrl) throw new Error('Could not get download link. Check that the file exists and you have access.');
+  return data.signedUrl;
+}
+
 // ==================== TRANSFORMERS ====================
 
 function transformWorkerFromDB(db: any): Worker {
