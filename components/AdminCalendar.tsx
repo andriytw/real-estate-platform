@@ -28,6 +28,7 @@ function isFacilityPdfAtt(att: TaskChatAttachment): boolean {
 interface TaskMessage {
   id: string;
   sender: 'admin' | 'worker';
+  senderId: string;
   text: string;
   timestamp: string;
   attachment?: {
@@ -377,8 +378,8 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     }
     if (isAccountingCalendar) {
       setTaskMessages([
-        { id: '1', sender: 'worker', text: 'Task received. I will be there on time.', timestamp: '08:30' },
-        ...(viewEvent.hasUnreadMessage ? [{ id: '2', sender: 'worker', text: 'Urgent update: I need access to the basement key.', timestamp: '09:15' } as TaskMessage] : [])
+        { id: '1', sender: 'worker', senderId: '', text: 'Task received. I will be there on time.', timestamp: '08:30' },
+        ...(viewEvent.hasUnreadMessage ? [{ id: '2', sender: 'worker', senderId: '', text: 'Urgent update: I need access to the basement key.', timestamp: '09:15' } as TaskMessage] : [])
       ]);
       return;
     }
@@ -396,6 +397,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         const mapped: TaskMessage[] = rows.map((r) => ({
           id: r.id,
           sender: (myUid && r.senderId === myUid) ? 'admin' : 'worker',
+          senderId: r.senderId ?? '',
           text: r.messageText,
           timestamp: r.createdAt ? new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—',
           attachments: r.attachments ?? [],
@@ -726,6 +728,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       const newMsg: TaskMessage = {
         id: Date.now().toString(),
         sender: 'admin',
+        senderId: chatMyUserId ?? '',
         text,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
@@ -738,6 +741,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       const newMsg: TaskMessage = {
         id: row.id,
         sender: 'admin',
+        senderId: row.senderId ?? '',
         text: row.messageText,
         timestamp: row.createdAt ? new Date(row.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         attachments: row.attachments ?? [],
@@ -756,6 +760,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       const newMsg: TaskMessage = {
         id: Date.now().toString(),
         sender: 'admin',
+        senderId: chatMyUserId ?? '',
         text: 'Attached a file',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         attachment: {
@@ -2024,17 +2029,22 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                         {!isAccountingCalendar && chatLoading && (
                            <div className="flex justify-center py-4 text-gray-500 text-sm">Loading messages…</div>
                         )}
-                        {taskMessages.map((msg) => {
+                        {taskMessages.map((msg, idx) => {
+                           const isMe = !!chatMyUserId && msg.senderId === chatMyUserId;
+                           if (import.meta.env.DEV && idx === 0) {
+                             console.debug('[TaskChat align]', { chatMyUserId, firstSenderId: taskMessages[0].senderId });
+                           }
+                           const senderLabel = isMe ? 'You' : (msg.sender === 'admin' ? 'Manager' : 'Worker');
                            const hidePlaceholder = msg.attachments?.length && ['📎 Attachment', 'Attachment'].includes((msg.text ?? '').trim());
                            return (
-                           <div key={msg.id} className={`flex ${msg.sender === 'admin' ? 'justify-end' : 'justify-start'}`}>
-                              <div 
-                                 className={`max-w-[75%] p-3 rounded-lg text-sm ${
-                                    msg.sender === 'admin' 
-                                       ? 'bg-[#005c4b] text-white rounded-tr-none' 
-                                       : 'bg-[#202c33] text-gray-200 rounded-tl-none'
-                                 }`}
-                              >
+                           <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                              <div className={`max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                 <span className="text-[11px] text-white/40 mb-1">{senderLabel}</span>
+                                 <div
+                                    className={`p-3 rounded-lg text-sm ${
+                                       isMe ? 'bg-[#005c4b] text-white rounded-tr-md rounded-tl-2xl rounded-bl-2xl rounded-br-2xl' : 'bg-[#202c33] text-gray-200 rounded-tl-md rounded-tr-2xl rounded-br-2xl rounded-bl-2xl'
+                                    }`}
+                                 >
                                  {!hidePlaceholder && msg.text ? <span className="block">{msg.text}</span> : null}
 
                                  {msg.attachments?.length ? (
@@ -2102,6 +2112,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
                                  <div className="text-[10px] text-white/50 text-right mt-1">
                                     {msg.timestamp}
+                                 </div>
                                  </div>
                               </div>
                            </div>

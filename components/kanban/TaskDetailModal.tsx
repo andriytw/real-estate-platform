@@ -775,9 +775,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   <div className="text-center text-gray-500 text-sm py-2">Loading messages…</div>
                 )}
                 {chatMessages.map((msg, idx) => {
-                  const isMe = chatMyUserId != null && msg.senderId === chatMyUserId;
+                  const isMe = !!chatMyUserId && msg.senderId === chatMyUserId;
                   if (import.meta.env.DEV && idx === 0) {
-                    console.debug('[TaskChat] bubble', { chatMyUserId, senderId: msg.senderId, isMe });
+                    console.debug('[TaskChat align]', { chatMyUserId, firstSenderId: chatMessages[0].senderId });
                   }
                   const senderLabel = isMe ? 'You' : (isWorker ? 'Manager' : 'Worker');
                   const hidePlaceholder = msg.attachments?.length && ['📎 Attachment', 'Attachment'].includes((msg.messageText ?? '').trim());
@@ -786,8 +786,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       <div className={`max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                         <span className="text-[10px] text-gray-500 mb-0.5">{senderLabel}</span>
                         <div
-                          className={`p-3 rounded-lg text-sm ${
-                            isMe ? 'bg-[#005c4b] text-white rounded-tr-none' : 'bg-[#202c33] text-gray-200 rounded-tl-none'
+                          className={`p-3 text-sm ${
+                            isMe ? 'bg-[#005c4b] text-white rounded-tr-md rounded-tl-2xl rounded-bl-2xl rounded-br-2xl' : 'bg-[#202c33] text-gray-200 rounded-tl-md rounded-tr-2xl rounded-br-2xl rounded-bl-2xl'
                           }`}
                         >
                           {!hidePlaceholder && msg.messageText ? <span className="block">{msg.messageText}</span> : null}
