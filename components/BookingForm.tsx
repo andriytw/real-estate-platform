@@ -126,7 +126,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ onAddRequest, prefilledData, 
 
     try {
       // Save to Supabase
-      const savedRequest = await requestsService.create(requestData);
+      const savedRequest = await requestsService.create(requestData, { origin: 'booking_form' });
       
       // Call callback if provided
       if (onAddRequest) {

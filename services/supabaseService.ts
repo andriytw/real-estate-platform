@@ -44,6 +44,7 @@ import {
   Message as MessageType,
 } from '../types';
 import { isoToEu } from '../utils/leaseTermDates';
+import { createLeadFromRequest, type LeadOrigin } from './leadsService';
 
 // Lightweight type for joined stock + item for UI
 export interface WarehouseStockItem {
@@ -2037,16 +2038,21 @@ export const requestsService = {
     return mapped;
   },
 
-  async create(request: Omit<RequestData, 'id'>): Promise<RequestData> {
+  async create(
+    request: Omit<RequestData, 'id'>,
+    options?: { origin?: LeadOrigin }
+  ): Promise<RequestData> {
     const dbData = transformRequestToDB(request);
     const { data, error } = await supabase
       .from('requests')
       .insert([dbData])
       .select()
       .single();
-    
+
     if (error) throw error;
-    return transformRequestFromDB(data);
+    const created = transformRequestFromDB(data);
+    await createLeadFromRequest(created, { origin: options?.origin ?? 'request' });
+    return created;
   },
 
   /** Guest (anon) flow: uses RPC so no SELECT on requests is required. Returns new request id. */
@@ -2074,10 +2080,16 @@ export const requestsService = {
       .eq('id', id)
       .select()
       .single();
-    
+
     if (error) throw error;
     return transformRequestFromDB(data);
-  }
+  },
+
+  /** Delete request only. Does NOT delete leads (no cascade). */
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase.from('requests').delete().eq('id', id);
+    if (error) throw error;
+  },
 };
 
 // ==================== CHAT ROOMS & MESSAGES (Sales / Marketplace guest) ====================

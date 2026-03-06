@@ -257,19 +257,22 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, propertyTitle, p
       }
       
       // 3. Створити Request
-      const request = await requestsService.create({
-        firstName: details.name.split(' ')[0],
-        lastName: details.name.split(' ').slice(1).join(' ') || '',
-        email: details.email,
-        phone: details.phone,
-        companyName: details.companyName,
-        peopleCount: parsePeopleCount(details.peopleCount || '1'),
-        startDate: parseDate(details.dateFrom || '') || new Date().toISOString().split('T')[0],
-        endDate: parseDate(details.dateTo || '') || new Date().toISOString().split('T')[0],
-        message: details.preferences || '', // Побажання зберігаються тут
-        propertyId: propertyId,
-        status: 'pending'
-      });
+      const request = await requestsService.create(
+        {
+          firstName: details.name.split(' ')[0],
+          lastName: details.name.split(' ').slice(1).join(' ') || '',
+          email: details.email,
+          phone: details.phone,
+          companyName: details.companyName,
+          peopleCount: parsePeopleCount(details.peopleCount || '1'),
+          startDate: parseDate(details.dateFrom || '') || new Date().toISOString().split('T')[0],
+          endDate: parseDate(details.dateTo || '') || new Date().toISOString().split('T')[0],
+          message: details.preferences || '', // Побажання зберігаються тут
+          propertyId: propertyId,
+          status: 'pending',
+        },
+        { origin: 'chat' }
+      );
       
       // 4. Створити ChatRoom
       const chatRoom = await chatRoomsService.create({

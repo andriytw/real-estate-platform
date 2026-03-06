@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { requestsService } from '../services/supabaseService';
+import { createLeadFromRequest } from '../services/leadsService';
 
 interface SendRequestModalProps {
   isOpen: boolean;
@@ -35,7 +36,7 @@ const SendRequestModal: React.FC<SendRequestModalProps> = ({
     const firstName = space > 0 ? trimName.slice(0, space) : trimName || 'Guest';
     const lastName = space > 0 ? trimName.slice(space + 1) : '';
     try {
-      await requestsService.createMarketplaceRequest({
+      const { id } = await requestsService.createMarketplaceRequest({
         firstName,
         lastName,
         email: email.trim(),
@@ -48,6 +49,23 @@ const SendRequestModal: React.FC<SendRequestModalProps> = ({
         status: 'pending',
         createdAt: new Date().toISOString(),
       });
+      await createLeadFromRequest(
+        {
+          id,
+          firstName,
+          lastName,
+          email: email.trim(),
+          phone: phone.trim(),
+          peopleCount: people >= 1 ? people : 1,
+          startDate: dateFrom || new Date().toISOString().slice(0, 10),
+          endDate: dateTo || new Date().toISOString().slice(0, 10),
+          message: message.trim() || undefined,
+          propertyId,
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+        },
+        { origin: 'marketplace_request' }
+      );
       setSuccess(true);
     } catch (err: any) {
       setError(err?.message || 'Failed to send request. Please try again.');

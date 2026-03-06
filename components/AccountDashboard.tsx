@@ -48,6 +48,7 @@ import {
   requestsService,
   type RequestWithProperty,
 } from '../services/supabaseService';
+import { createLeadFromRequest } from '../services/leadsService';
 import { AMENITY_GROUPS } from '../utils/amenityGroups';
 import { propertyInventoryService, type PropertyInventoryItemRow, type PropertyInventoryItemWithDocument } from '../services/propertyInventoryService';
 import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '../services/propertyExpenseService';
@@ -4146,22 +4147,16 @@ const AccountDashboard: React.FC = () => {
     }
   };
 
-  const handleAddRequest = (request: RequestData) => {
+  const handleAddRequest = async (request: RequestData) => {
       setRequests(prev => [request, ...prev]);
-      // Створити Lead з Request
-      const newLead: Lead = {
-          id: `lead-${Date.now()}`,
-          name: request.companyName || `${request.firstName} ${request.lastName}`,
-          type: request.companyName ? 'Company' : 'Private',
-          contactPerson: request.companyName ? `${request.firstName} ${request.lastName}` : undefined,
-          email: request.email,
-          phone: request.phone,
-          address: '',
-          status: 'Active',
-          createdAt: new Date().toISOString().split('T')[0],
-          source: request.id
-      };
-      setLeads(prev => [...prev, newLead]);
+      try {
+        const lead = await createLeadFromRequest(request, { origin: 'booking_form' });
+        if (lead) {
+          setLeads(prev => (prev.some(l => l.id === lead.id) ? prev : [lead, ...prev]));
+        }
+      } catch (e) {
+        console.error('Failed to create lead from request:', e);
+      }
   };
 
   const handleProcessRequest = (request: RequestData) => {
@@ -4179,10 +4174,14 @@ const AccountDashboard: React.FC = () => {
       // selectedRequest залишається встановленим для префілу форми
   };
 
-  const handleDeleteRequest = (requestId: string) => {
-      setRequests(prev => prev.map(req => 
-          req.id === requestId ? { ...req, status: 'archived' as const } : req
-      ));
+  const handleDeleteRequest = async (requestId: string) => {
+      try {
+        await requestsService.delete(requestId);
+        setRequests(prev => prev.filter(req => req.id !== requestId));
+      } catch (e) {
+        console.error('Failed to delete request:', e);
+        alert('Не вдалося видалити запит.');
+      }
   };
   
   const handleAddLeadFromBooking = async (bookingData: any) => {
