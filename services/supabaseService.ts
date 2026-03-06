@@ -2353,21 +2353,26 @@ export async function getTaskAttachmentSignedUrl(
 // Latest active inbox — threads not in the last 5000 messages may not appear.
 export interface TaskChatThreadInbox {
   calendarEventId: string;
+  /** Task title from calendar_events.title */
   title: string;
+  /** Alias for title (task card display) */
+  taskTitle: string;
   status: string;
+  /** Task type from calendar_events.type — used for Calendar/Kanban card color mapping */
+  taskType?: string;
   propertyLabel?: string;
+  /** Scheduled date+time ISO (from calendar_events date+time) */
+  dueAt?: string;
+  scheduledDateTime?: string;
+  assigneeId?: string;
+  assigneeName?: string;
+  description?: string;
   lastMessageText: string;
   lastMessageCreatedAt: string;
   lastMessageHasAttachments: boolean;
   lastMessageSenderId: string;
-  /** Task type / category from calendar_events.type */
+  /** Task type label (same as taskType) for display */
   taskTypeLabel?: string;
-  /** Scheduled date + time as ISO string (from date + time); empty if not set */
-  dueAt?: string;
-  /** Assignee user id (worker_id) */
-  assigneeId?: string;
-  /** Assignee display name; "—" if not found */
-  assigneeName?: string;
 }
 
 export async function listTaskChatThreadsForFacilityInbox(): Promise<TaskChatThreadInbox[]> {
@@ -2397,7 +2402,7 @@ export async function listTaskChatThreadsForFacilityInbox(): Promise<TaskChatThr
 
   const { data: eventsData, error: eventsError } = await supabase
     .from('calendar_events')
-    .select('id, title, status, property_id, location_text, date, time, type, worker_id')
+    .select('id, title, status, property_id, location_text, date, time, type, worker_id, description')
     .in('id', eventIds);
 
   if (eventsError) throw eventsError;
@@ -2457,19 +2462,25 @@ export async function listTaskChatThreadsForFacilityInbox(): Promise<TaskChatThr
       dueAt = `${ev.date}T${timePart}`;
     }
 
+    const taskTitle = ev.title ?? 'Task';
+    const taskType = ev.type ?? undefined;
     result.push({
       calendarEventId: eventId,
-      title: ev.title ?? 'Task',
+      title: taskTitle,
+      taskTitle,
       status: ev.status ?? 'open',
+      taskType,
+      taskTypeLabel: taskType,
       propertyLabel: propertyLabel || undefined,
+      dueAt,
+      scheduledDateTime: dueAt,
+      assigneeId: workerId,
+      assigneeName: assigneeName || '—',
+      description: ev.description ?? undefined,
       lastMessageText,
       lastMessageCreatedAt: last.created_at,
       lastMessageHasAttachments: hasAttachments,
       lastMessageSenderId: String(last.sender_id ?? ''),
-      taskTypeLabel: ev.type ?? undefined,
-      dueAt,
-      assigneeId: workerId,
-      assigneeName: assigneeName || '—',
     });
   }
   return result;

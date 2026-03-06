@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, Paperclip, Send, MapPin, User, Clock, FileText, FileIcon, Image as ImageIcon, X, Building2 } from 'lucide-react';
+import { Search, Paperclip, Send, MapPin, User, Clock, FileText, FileIcon, Image as ImageIcon, X, Calendar } from 'lucide-react';
 import {
   listTaskChatThreadsForFacilityInbox,
   getTaskChatMessages,
@@ -12,6 +12,7 @@ import {
   type TaskChatAttachment,
 } from '../services/supabaseService';
 import { supabase } from '../utils/supabase/client';
+import { getTaskColor } from '../utils/taskColors';
 
 const TASK_MEDIA_BUCKET = 'task-media';
 const SIGNED_URL_EXPIRY_SEC = 300;
@@ -335,47 +336,49 @@ const AdminMessages: React.FC = () => {
               const isClosed = ['completed', 'verified'].includes(thread.status);
               const snippet =
                 thread.lastMessageText.length > 60 ? thread.lastMessageText.slice(0, 60) + '…' : thread.lastMessageText;
+              const taskTypeForColor = thread.taskType || thread.taskTypeLabel || 'other';
+              const colorString = getTaskColor(taskTypeForColor);
+              const parts = colorString.split(' ');
+              const borderClass = parts.find((p) => p.startsWith('border-')) || 'border-gray-500';
+              const bgClass = parts.find((p) => p.startsWith('bg-')) || 'bg-gray-500/10';
+              const textClass = parts.find((p) => p.startsWith('text-')) || 'text-gray-400';
               return (
                 <div
                   key={thread.calendarEventId}
                   onClick={() => setSelectedThreadId(thread.calendarEventId)}
                   className={`
-                    p-4 border-b border-gray-800 cursor-pointer transition-colors hover:bg-[#1C2128] flex gap-3 items-start relative
-                    ${selectedThreadId === thread.calendarEventId ? 'bg-[#1C2128] border-l-4 border-l-emerald-500' : 'border-l-4 border-l-transparent'}
+                    p-4 border-b border-gray-800 cursor-pointer transition-colors hover:bg-[#1C2128] flex flex-col gap-0.5 relative
+                    border-l-4 ${borderClass} ${bgClass}
+                    ${selectedThreadId === thread.calendarEventId ? 'bg-[#1C2128] ring-inset ring-1 ring-gray-600' : ''}
                     ${isClosed ? 'opacity-75' : ''}
                   `}
                 >
-                  <div className="w-12 h-12 rounded-lg bg-emerald-500/20 flex items-center justify-center flex-shrink-0 text-emerald-400 border border-emerald-500/30">
-                    <Building2 className="w-6 h-6" />
+                  <div className="flex justify-between items-start gap-2">
+                    <h3
+                      className={`text-sm font-bold truncate flex-1 min-w-0 ${textClass} ${isClosed ? 'line-through' : ''}`}
+                    >
+                      {thread.taskTitle || thread.title}
+                    </h3>
+                    <span className="text-[10px] text-gray-500 whitespace-nowrap flex-shrink-0">
+                      {formatLastActivity(thread.lastMessageCreatedAt)}
+                    </span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start gap-2 mb-0.5">
-                      <h3
-                        className={`text-sm font-bold truncate ${unread ? 'text-white' : 'text-gray-300'} ${isClosed ? 'line-through' : ''}`}
-                      >
-                        {thread.title}
-                      </h3>
-                      <span className="text-[10px] text-gray-500 whitespace-nowrap flex-shrink-0">
-                        {formatLastActivity(thread.lastMessageCreatedAt)}
-                      </span>
-                    </div>
-                    {thread.propertyLabel && (
-                      <p className="text-[10px] text-gray-500 truncate mb-1">{thread.propertyLabel}</p>
-                    )}
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-gray-500">
-                      {thread.dueAt ? (
-                        <span title={thread.dueAt}>
-                          📅 {formatDueDate(thread.dueAt)}
-                        </span>
-                      ) : (
-                        <span>📅 —</span>
-                      )}
-                      <span>👤 {thread.assigneeName ?? '—'}</span>
-                    </div>
-                    <p className={`text-xs truncate mt-0.5 ${unread ? 'text-gray-300 font-medium' : 'text-gray-500'}`}>
-                      {snippet || '—'}
-                    </p>
+                  {thread.propertyLabel && (
+                    <p className="text-[10px] text-gray-500 truncate">{thread.propertyLabel}</p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3 h-3 flex-shrink-0" />
+                      {thread.dueAt ? formatDueDate(thread.dueAt) : '—'}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <User className="w-3 h-3 flex-shrink-0" />
+                      {thread.assigneeName ?? '—'}
+                    </span>
                   </div>
+                  <p className={`text-xs truncate ${unread ? 'text-gray-300 font-medium' : 'text-gray-500'}`}>
+                    {snippet || '—'}
+                  </p>
                   {unread > 0 && (
                     <div className="absolute top-4 right-4 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white">
                       1
@@ -408,12 +411,21 @@ const AdminMessages: React.FC = () => {
           <>
             <div className="p-4 border-b border-gray-800 bg-[#161B22] flex justify-between items-center">
               <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400">
-                  <Building2 className="w-5 h-5" />
+                <div
+                  className={`w-10 h-10 rounded-lg flex items-center justify-center border-l-4 ${(() => {
+                    const cs = getTaskColor(selectedThread.taskType || selectedThread.taskTypeLabel || 'other').split(' ');
+                    const border = cs.find((p) => p.startsWith('border-')) || 'border-gray-500';
+                    const bg = cs.find((p) => p.startsWith('bg-')) || 'bg-gray-500/10';
+                    const text = cs.find((p) => p.startsWith('text-')) || 'text-gray-400';
+                    return `${border} ${bg} ${text}`;
+                  })()}`}
+                  aria-hidden
+                >
+                  <Calendar className="w-5 h-5 opacity-90" />
                 </div>
                 <div>
                   <h2 className={`text-white font-bold ${isClosedTask ? 'line-through opacity-80' : ''}`}>
-                    {selectedThread.title}
+                    {selectedThread.taskTitle || selectedThread.title}
                   </h2>
                   <div className="flex items-center gap-2 text-xs text-gray-400">
                     {selectedThread.propertyLabel && (
