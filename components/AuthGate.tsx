@@ -11,6 +11,16 @@ function isPublicPath(path: string): boolean {
   return path === '/' || path === '/market' || path.startsWith('/property/');
 }
 
+/** When user opens /account (or children) without session: redirect to /market and set pendingRedirect so app opens login modal. */
+function RedirectAccountToMarket({ onRedirectDone }: { onRedirectDone?: () => void }) {
+  useEffect(() => {
+    window.history.replaceState(null, '', '/market');
+    sessionStorage.setItem('pendingRedirect', '/account');
+    onRedirectDone?.();
+  }, [onRedirectDone]);
+  return null;
+}
+
 /**
  * Session is the source of truth. Public-first: guests see Marketplace on / and /market.
  * - session === undefined → still determining (Reconnecting…)
@@ -49,6 +59,9 @@ export default function AuthGate({ children }: AuthGateProps) {
           }}
         />
       );
+    }
+    if (pathname.startsWith('/account')) {
+      return <RedirectAccountToMarket onRedirectDone={() => setNavTick((t) => t + 1)} />;
     }
     if (isPublicPath(pathname)) {
       return <>{children}</>;

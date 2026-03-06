@@ -13,6 +13,7 @@ import TestDB from './components/TestDB';
 import WorkerMobileApp from './components/WorkerMobileApp';
 import AdminTasksBoard from './components/AdminTasksBoard';
 import AuthGate from './components/AuthGate';
+import LoginPage from './components/LoginPage';
 import { WorkerProvider, useWorker } from './contexts/WorkerContext';
 import { propertiesService } from './services/supabaseService';
 import { propertyMediaService } from './services/propertyMediaService';
@@ -32,6 +33,8 @@ const AppContent: React.FC = () => {
   const [propertyDetailsModalPropertyId, setPropertyDetailsModalPropertyId] = useState<string | null>(null);
   const [pendingPropertyView, setPendingPropertyView] = useState<Property | null>(null);
   const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [loginModalRedirect, setLoginModalRedirect] = useState('/account');
   const [prefilledRequestData, setPrefilledRequestData] = useState<Partial<RequestData> | undefined>(undefined);
   const [coverPhotoUrlByPropertyId, setCoverPhotoUrlByPropertyId] = useState<Record<string, string>>({});
   const [filters, setFilters] = useState<FilterState>({
@@ -103,14 +106,26 @@ const AppContent: React.FC = () => {
     syncViewWithPath();
   }, [syncViewWithPath]);
 
+  // Open login modal when redirected from /account (no session) — pendingRedirect set by AuthGate
+  useEffect(() => {
+    if (session !== null) return;
+    const path = window.location.pathname;
+    if (path !== '/' && path !== '/market') return;
+    const pending = sessionStorage.getItem('pendingRedirect');
+    if (pending) {
+      sessionStorage.removeItem('pendingRedirect');
+      setLoginModalRedirect(pending);
+      setIsLoginModalOpen(true);
+    }
+  }, [session]);
+
   // Load properties from Supabase
   const loadProperties = async () => {
     try {
       setLoading(true);
       setError(null);
       console.log('🔄 Loading properties from Supabase...');
-      console.log('🔄 Current worker state:', worker?.id || 'not logged in');
-      
+
       // Use lightweight mode for faster initial load (especially for Marketplace)
       const startTime = Date.now();
       const data = await propertiesService.getAll(true);
@@ -523,7 +538,10 @@ const AppContent: React.FC = () => {
       );
     }
 
-    // Dashboard / Account — we only reach here when session exists (AuthGate); worker handled above
+    // Dashboard / Account — only when session exists; never show account UI to guests (avoid flash)
+    if ((currentView === 'dashboard' || currentView === 'account') && session === null) {
+      return null;
+    }
     if (currentView === 'dashboard' || currentView === 'account') {
       return (
         <div className="animate-fadeIn">
@@ -649,6 +667,15 @@ const AppContent: React.FC = () => {
     return null;
   };
 
+  const onMyAccountClick = useCallback(() => {
+    if (!session) {
+      setLoginModalRedirect('/account');
+      setIsLoginModalOpen(true);
+      return;
+    }
+    navigate('/account');
+  }, [session, navigate]);
+
   return (
     <div className="min-h-screen bg-[#0D0F11] text-gray-100 font-sans selection:bg-emerald-500/30">
       <Navbar 
@@ -662,12 +689,12 @@ const AppContent: React.FC = () => {
         }}
         onBecomePartner={() => setIsPartnerModalOpen(true)}
         currentView={currentView}
+        onMyAccountClick={onMyAccountClick}
         onNavigate={(view) => {
-          console.log('Navigating to:', view);
           if (view === 'tasks') {
             navigate('/tasks');
           } else if (view === 'account') {
-            navigate('/account');
+            onMyAccountClick();
           } else if (view === 'dashboard') {
             navigate('/dashboard');
           } else if (view === 'market') {
@@ -677,6 +704,31 @@ const AppContent: React.FC = () => {
       />
       
       {renderContent()}
+
+      {isLoginModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
+          <div className="relative w-full max-w-md">
+            <LoginPage
+              redirectTo={loginModalRedirect}
+              onLoginSuccess={() => {
+                setIsLoginModalOpen(false);
+                navigate(loginModalRedirect);
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                sessionStorage.removeItem('pendingRedirect');
+                setIsLoginModalOpen(false);
+              }}
+              className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center text-lg leading-none"
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       <PartnerModal 
         isOpen={isPartnerModalOpen} 

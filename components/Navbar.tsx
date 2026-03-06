@@ -7,10 +7,12 @@ interface NavbarProps {
   onBack?: () => void;
   onBecomePartner?: () => void;
   onNavigate?: (view: 'dashboard' | 'market' | 'account' | 'tasks') => void;
+  /** When provided, "My Account" uses this instead of onNavigate('account') (e.g. to open login modal when no session). */
+  onMyAccountClick?: () => void;
   currentView?: 'dashboard' | 'booking' | 'market' | 'account' | 'test-db' | 'worker' | 'admin-tasks' | 'register' | 'tasks';
 }
 
-const Navbar: React.FC<NavbarProps> = ({ showBackButton, onBack, onBecomePartner, onNavigate, currentView }) => {
+const Navbar: React.FC<NavbarProps> = ({ showBackButton, onBack, onBecomePartner, onNavigate, onMyAccountClick, currentView }) => {
   const { worker, logout } = useWorker();
   
   const handleLogout = async () => {
@@ -104,7 +106,7 @@ const Navbar: React.FC<NavbarProps> = ({ showBackButton, onBack, onBecomePartner
         </button>
 
         <button 
-          onClick={() => onNavigate?.('account')}
+          onClick={() => (onMyAccountClick ? onMyAccountClick() : onNavigate?.('account'))}
           className={`
             text-xs font-bold py-2 px-4 rounded transition-colors
             ${currentView === 'account' 
