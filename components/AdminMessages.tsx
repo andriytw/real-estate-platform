@@ -319,7 +319,7 @@ const AdminMessages: React.FC = () => {
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto p-2">
           {threadsLoading && (
             <div className="p-4 text-center text-gray-500 text-sm">Loading threads…</div>
           )}
@@ -328,65 +328,73 @@ const AdminMessages: React.FC = () => {
               {threads.length === 0 ? 'No task chats yet.' : 'No threads match your search.'}
             </div>
           )}
-          {!threadsLoading &&
-            filteredThreads.map((thread) => {
-              const lastSeen = getLastSeenAt(thread.calendarEventId);
-              const unread =
-                chatMyUserId && thread.lastMessageSenderId !== chatMyUserId && lastSeen && thread.lastMessageCreatedAt > lastSeen ? 1 : 0;
-              const isClosed = ['completed', 'verified'].includes(thread.status);
-              const snippet =
-                thread.lastMessageText.length > 60 ? thread.lastMessageText.slice(0, 60) + '…' : thread.lastMessageText;
-              const taskTypeForColor = thread.taskType || thread.taskTypeLabel || 'other';
-              const colorString = getTaskColor(taskTypeForColor);
-              const parts = colorString.split(' ');
-              const borderClass = parts.find((p) => p.startsWith('border-')) || 'border-gray-500';
-              const bgClass = parts.find((p) => p.startsWith('bg-')) || 'bg-gray-500/10';
-              const textClass = parts.find((p) => p.startsWith('text-')) || 'text-gray-400';
-              return (
-                <div
-                  key={thread.calendarEventId}
-                  onClick={() => setSelectedThreadId(thread.calendarEventId)}
-                  className={`
-                    p-4 border-b border-gray-800 cursor-pointer transition-colors hover:bg-[#1C2128] flex flex-col gap-0.5 relative
-                    border-l-4 ${borderClass} ${bgClass}
-                    ${selectedThreadId === thread.calendarEventId ? 'bg-[#1C2128] ring-inset ring-1 ring-gray-600' : ''}
-                    ${isClosed ? 'opacity-75' : ''}
-                  `}
-                >
-                  <div className="flex justify-between items-start gap-2">
-                    <h3
-                      className={`text-sm font-bold truncate flex-1 min-w-0 ${textClass} ${isClosed ? 'line-through' : ''}`}
-                    >
-                      {thread.taskTitle || thread.title}
-                    </h3>
-                    <span className="text-[10px] text-gray-500 whitespace-nowrap flex-shrink-0">
-                      {formatLastActivity(thread.lastMessageCreatedAt)}
-                    </span>
-                  </div>
-                  {thread.propertyLabel && (
-                    <p className="text-[10px] text-gray-500 truncate">{thread.propertyLabel}</p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-gray-500">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3 flex-shrink-0" />
-                      {thread.dueAt ? formatDueDate(thread.dueAt) : '—'}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <User className="w-3 h-3 flex-shrink-0" />
-                      {thread.assigneeName ?? '—'}
-                    </span>
-                  </div>
-                  <p className={`text-xs truncate ${unread ? 'text-gray-300 font-medium' : 'text-gray-500'}`}>
-                    {snippet || '—'}
-                  </p>
-                  {unread > 0 && (
-                    <div className="absolute top-4 right-4 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white">
-                      1
+          {!threadsLoading && (
+            <div className="space-y-2">
+              {filteredThreads.map((thread) => {
+                const lastSeen = getLastSeenAt(thread.calendarEventId);
+                const unread =
+                  chatMyUserId && thread.lastMessageSenderId !== chatMyUserId && lastSeen && thread.lastMessageCreatedAt > lastSeen ? 1 : 0;
+                const isClosed = ['completed', 'verified'].includes(thread.status);
+                const snippet =
+                  thread.lastMessageText.length > 60 ? thread.lastMessageText.slice(0, 60) + '…' : thread.lastMessageText;
+                const taskTypeForColor = thread.taskType || thread.taskTypeLabel || 'other';
+                const colorString = getTaskColor(taskTypeForColor);
+                const parts = colorString.split(' ');
+                const borderClass = parts.find((p) => p.startsWith('border-')) || 'border-gray-500';
+                const textClass = parts.find((p) => p.startsWith('text-')) || 'text-gray-400';
+                const accentBgClass = borderClass.replace('border-', 'bg-');
+                const isSelected = selectedThreadId === thread.calendarEventId;
+                return (
+                  <div
+                    key={thread.calendarEventId}
+                    onClick={() => setSelectedThreadId(thread.calendarEventId)}
+                    className={`
+                      relative rounded-2xl border border-white/10 bg-white/[0.03] p-3 pl-4 transition-colors cursor-pointer
+                      shadow-[0_1px_0_0_rgba(255,255,255,0.04)]
+                      hover:bg-white/[0.06]
+                      ${isSelected ? 'ring-2 ring-white/15 bg-white/[0.06]' : ''}
+                      ${isClosed ? 'opacity-60' : ''}
+                    `}
+                  >
+                    <div className={`absolute inset-y-0 left-0 w-1 rounded-l-2xl ${accentBgClass}`} aria-hidden />
+                    <div className="relative flex flex-col space-y-1">
+                      <div className="flex justify-between items-start gap-2">
+                        <h3
+                          className={`text-sm font-semibold truncate flex-1 min-w-0 ${textClass} ${isClosed ? 'line-through' : ''}`}
+                        >
+                          {thread.taskTitle || thread.title}
+                        </h3>
+                        <span className="text-xs text-white/50 whitespace-nowrap flex-shrink-0">
+                          {formatLastActivity(thread.lastMessageCreatedAt)}
+                        </span>
+                      </div>
+                      {thread.propertyLabel && (
+                        <p className="text-xs text-white/60 truncate">{thread.propertyLabel}</p>
+                      )}
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-white/55">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3 flex-shrink-0" />
+                          {thread.dueAt ? formatDueDate(thread.dueAt) : '—'}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <User className="w-3 h-3 flex-shrink-0" />
+                          {thread.assigneeName ?? '—'}
+                        </span>
+                      </div>
+                      <p className={`text-xs truncate mt-1 ${unread ? 'text-white/60 font-medium' : 'text-white/50'}`}>
+                        {snippet || '—'}
+                      </p>
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                    {unread > 0 && (
+                      <div className="absolute top-3 right-3 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white">
+                        1
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
