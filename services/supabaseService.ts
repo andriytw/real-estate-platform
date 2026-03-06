@@ -2350,6 +2350,93 @@ export async function getTaskAttachmentSignedUrl(
   return createTaskAttachmentSignedUrl(bucket, path, expirySeconds);
 }
 
+// Latest active inbox — threads not in the last 5000 messages may not appear.
+export interface TaskChatThreadInbox {
+  calendarEventId: string;
+  title: string;
+  status: string;
+  propertyLabel?: string;
+  lastMessageText: string;
+  lastMessageCreatedAt: string;
+  lastMessageHasAttachments: boolean;
+  lastMessageSenderId: string;
+}
+
+export async function listTaskChatThreadsForFacilityInbox(): Promise<TaskChatThreadInbox[]> {
+  const { data: messagesData, error: messagesError } = await supabase
+    .from('task_chat_messages')
+    .select('calendar_event_id, message_text, created_at, attachments, sender_id')
+    .order('created_at', { ascending: false })
+    .limit(5000);
+
+  if (messagesError) throw messagesError;
+  const rows = messagesData ?? [];
+
+  const byEvent = new Map<string, { message_text: string; created_at: string; sender_id: string; attachments: unknown }>();
+  for (const row of rows as any[]) {
+    const id = row.calendar_event_id;
+    if (!id || byEvent.has(id)) continue;
+    byEvent.set(id, {
+      message_text: row.message_text ?? '',
+      created_at: row.created_at ?? '',
+      sender_id: row.sender_id ?? '',
+      attachments: row.attachments,
+    });
+  }
+
+  const eventIds = Array.from(byEvent.keys());
+  if (eventIds.length === 0) return [];
+
+  const { data: eventsData, error: eventsError } = await supabase
+    .from('calendar_events')
+    .select('id, title, status, property_id, location_text')
+    .in('id', eventIds);
+
+  if (eventsError) throw eventsError;
+  const events = (eventsData ?? []) as any[];
+  const eventMap = new Map(events.map((e) => [e.id, e]));
+
+  const propertyIds = [...new Set(events.map((e) => e.property_id).filter(Boolean))];
+  let propertyMap = new Map<string, { title?: string; address?: string; full_address?: string }>();
+  if (propertyIds.length > 0) {
+    const { data: propsData } = await supabase
+      .from('properties')
+      .select('id, title, address, full_address')
+      .in('id', propertyIds);
+    if (propsData) {
+      propertyMap = new Map((propsData as any[]).map((p) => [p.id, p]));
+    }
+  }
+
+  const result: TaskChatThreadInbox[] = [];
+  for (const eventId of eventIds) {
+    const last = byEvent.get(eventId);
+    const ev = eventMap.get(eventId);
+    if (!last || !ev) continue;
+    const text = String(last.message_text ?? '').trim();
+    const attachments = Array.isArray(last.attachments) ? last.attachments : [];
+    const hasAttachments = attachments.length > 0;
+    const isPlaceholder = ['📎 Attachment', 'Attachment'].includes(text);
+    const lastMessageText = hasAttachments && isPlaceholder ? '📎 Attachment' : text;
+    const prop = ev.property_id ? propertyMap.get(ev.property_id) : undefined;
+    const propertyLabel = prop
+      ? [prop.full_address || prop.address, prop.title].filter(Boolean).join(' — ') || undefined
+      : (ev.location_text || undefined);
+
+    result.push({
+      calendarEventId: eventId,
+      title: ev.title ?? 'Task',
+      status: ev.status ?? 'open',
+      propertyLabel: propertyLabel || undefined,
+      lastMessageText,
+      lastMessageCreatedAt: last.created_at,
+      lastMessageHasAttachments: hasAttachments,
+      lastMessageSenderId: String(last.sender_id ?? ''),
+    });
+  }
+  return result;
+}
+
 // ==================== TRANSFORMERS ====================
 
 function transformWorkerFromDB(db: any): Worker {

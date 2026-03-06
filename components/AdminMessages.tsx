@@ -1,541 +1,590 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Search, Paperclip, Send, MapPin, User, Circle, CheckCheck, Clock, Filter, MoreVertical, Phone, Video, Image as ImageIcon, FileText, AlertCircle, Archive, Users } from 'lucide-react';
-import { MOCK_PROPERTIES } from '../constants';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Search, Paperclip, Send, MapPin, User, Clock, FileText, FileIcon, Image as ImageIcon, X, Building2 } from 'lucide-react';
+import {
+  listTaskChatThreadsForFacilityInbox,
+  getTaskChatMessages,
+  insertTaskChatMessage,
+  insertTaskChatMessageWithAttachment,
+  getTaskAttachmentSignedUrl,
+  type TaskChatThreadInbox,
+  type TaskChatMessageRow,
+  type TaskChatAttachment,
+} from '../services/supabaseService';
+import { supabase } from '../utils/supabase/client';
 
-// Types for the messaging system
-interface Message {
-  id: string;
-  sender: 'admin' | 'worker';
-  senderName: string;
-  text: string;
-  timestamp: string;
-  isRead: boolean;
-  // Context: Is this message linked to a specific task?
-  taskContext?: {
-    taskId: string;
-    taskTitle: string;
-    taskType: string; // e.g., 'Reklamation', 'Einzug'
-    status: 'Open' | 'In Review' | 'Solved' | 'Archived';
-  };
-  attachment?: {
-    type: 'image' | 'video' | 'file';
-    name: string;
-    url?: string;
-  };
+const TASK_MEDIA_BUCKET = 'task-media';
+const SIGNED_URL_EXPIRY_SEC = 300;
+const CACHE_REFRESH_BEFORE_MS = 5000;
+const FACILITY_INBOX_LAST_SEEN_PREFIX = 'facility_inbox_last_seen_';
+
+type AttachmentCacheEntry = { url: string; expiresAt: number };
+function isCacheValid(entry: AttachmentCacheEntry): boolean {
+  return Date.now() <= entry.expiresAt - CACHE_REFRESH_BEFORE_MS;
+}
+function isImageAtt(att: TaskChatAttachment): boolean {
+  return (att.mimeType?.startsWith('image/') ?? false) || /\.(jpe?g|png|gif|webp)$/i.test(att.filename ?? '');
+}
+function isPdfAtt(att: TaskChatAttachment): boolean {
+  return att.mimeType === 'application/pdf' || (att.filename?.toLowerCase().endsWith('.pdf') ?? false);
 }
 
-interface PropertyChat {
-  id: string; // Unique ID for the chat context
-  propertyId?: string; // Optional, as General Chat has no property ID
-  title: string;
-  subtitle?: string;
-  image: string | React.ReactNode; // Can be URL or Icon component
-  unreadCount: number;
-  lastMessage: Message;
-  messages: Message[];
-  isGeneral?: boolean;
+function getLastSeenAt(calendarEventId: string): string | null {
+  try {
+    return localStorage.getItem(FACILITY_INBOX_LAST_SEEN_PREFIX + calendarEventId);
+  } catch {
+    return null;
+  }
+}
+function setLastSeenAt(calendarEventId: string, iso: string): void {
+  try {
+    localStorage.setItem(FACILITY_INBOX_LAST_SEEN_PREFIX + calendarEventId, iso);
+  } catch {
+    // ignore
+  }
 }
 
-// Mock Data Generation
-const generateMockChats = (): PropertyChat[] => {
-  // 1. Create General Chat
-  const generalChat: PropertyChat = {
-    id: 'chat-general',
-    title: 'General Team Chat',
-    subtitle: 'All Staff',
-    image: 'icon-users', // Marker to render icon instead of img
-    unreadCount: 3,
-    isGeneral: true,
-    lastMessage: {
-      id: 'm-gen-last',
-      sender: 'worker',
-      senderName: 'Anna Schmidt',
-      text: 'Does anyone have the master key for the Charlottenburg office?',
-      timestamp: '10:45',
-      isRead: false
-    },
-    messages: [
-      {
-        id: 'm-gen-1',
-        sender: 'admin',
-        senderName: 'Me',
-        text: 'Weekly team meeting is moved to Friday 10 AM.',
-        timestamp: 'Mon, 09:00',
-        isRead: true
-      },
-      {
-        id: 'm-gen-2',
-        sender: 'worker',
-        senderName: 'Anna Schmidt',
-        text: 'Does anyone have the master key for the Charlottenburg office?',
-        timestamp: '10:45',
-        isRead: false
-      }
-    ]
-  };
-
-  // 2. Create Property Chats
-  const propertyChats = MOCK_PROPERTIES.map((prop, index) => {
-    const hasUnread = index === 0 || index === 2;
-    
-    const messages: Message[] = [
-      {
-        id: `m-${prop.id}-1`,
-        sender: 'admin',
-        senderName: 'Me',
-        text: 'Please check the radiator in the living room during your visit.',
-        timestamp: 'Yesterday, 14:00',
-        isRead: true,
-        taskContext: {
-          taskId: 't-101',
-          taskTitle: 'Annual Inspection',
-          taskType: 'Arbeit nach plan',
-          status: 'Archived' // This should be hidden by default
-        }
-      }
-    ];
-
-    if (index === 0) { // Friedrichstraße (Active Issue)
-      messages.push({
-        id: `m-${prop.id}-2`,
-        sender: 'worker',
-        senderName: 'Hans Weber',
-        text: 'I found the issue. The valve is stuck. Do we have spare parts in the warehouse or should I buy one?',
-        timestamp: '09:15',
-        isRead: false,
-        taskContext: {
-          taskId: 't-102',
-          taskTitle: 'Heating Repair',
-          taskType: 'Reklamation',
-          status: 'In Review'
-        },
-        attachment: {
-          type: 'image',
-          name: 'valve_photo.jpg',
-          url: 'https://images.unsplash.com/photo-1585909695334-9360a31772a3?q=80&w=2070&auto=format&fit=crop'
-        }
-      });
-    } else if (index === 2) { // Kurfürstendamm (General Question)
-        messages.push({
-            id: `m-${prop.id}-3`,
-            sender: 'worker',
-            senderName: 'Julia Müller',
-            text: 'The tenant is asking for an extra set of keys. Is this approved?',
-            timestamp: '10:30',
-            isRead: false,
-            // No task context (General property message)
-        });
-    } else {
-        messages.push({
-            id: `m-${prop.id}-last`,
-            sender: 'worker',
-            senderName: 'Max Mustermann',
-            text: 'Task completed. Everything looks good.',
-            timestamp: 'Mon, 16:00',
-            isRead: true,
-            taskContext: {
-                taskId: 't-99',
-                taskTitle: 'Final Cleaning',
-                taskType: 'Putzen',
-                status: 'Solved'
-            }
-        });
-    }
-
-    return {
-      id: `chat-prop-${prop.id}`,
-      propertyId: prop.id,
-      title: prop.address,
-      subtitle: `${prop.zip} ${prop.city}, ${prop.district}`,
-      image: prop.image,
-      unreadCount: hasUnread ? (index === 0 ? 1 : 2) : 0,
-      lastMessage: messages[messages.length - 1],
-      messages: messages
-    };
-  });
-
-  return [generalChat, ...propertyChats];
-};
+function formatLastActivity(iso: string): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
 
 const AdminMessages: React.FC = () => {
-  const [chats, setChats] = useState<PropertyChat[]>(generateMockChats());
-  const [selectedChatId, setSelectedChatId] = useState<string>(chats[0].id);
+  const [threads, setThreads] = useState<TaskChatThreadInbox[]>([]);
+  const [threadsLoading, setThreadsLoading] = useState(true);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [threadMessages, setThreadMessages] = useState<TaskChatMessageRow[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [chatMyUserId, setChatMyUserId] = useState<string | null>(null);
   const [inputText, setInputText] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [showArchived, setShowArchived] = useState(false);
-  
+  const [attachmentUrlCache, setAttachmentUrlCache] = useState<Record<string, AttachmentCacheEntry>>({});
+  const [lightboxAtt, setLightboxAtt] = useState<TaskChatAttachment | null>(null);
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
+  const [chatUploading, setChatUploading] = useState(false);
+  const [sending, setSending] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const selectedChat = chats.find(c => c.id === selectedChatId);
+  const selectedThread = selectedThreadId ? threads.find((t) => t.calendarEventId === selectedThreadId) : null;
+  const isClosedTask = selectedThread && ['completed', 'verified'].includes(selectedThread.status);
 
-  // Scroll to bottom on new message or chat change
+  // Load threads on mount
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [selectedChat?.messages, showArchived]);
+    let cancelled = false;
+    setThreadsLoading(true);
+    listTaskChatThreadsForFacilityInbox()
+      .then((list) => {
+        if (!cancelled) setThreads(list);
+      })
+      .catch((e) => {
+        if (!cancelled) console.warn('Facility inbox load failed', e);
+      })
+      .finally(() => {
+        if (!cancelled) setThreadsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
-  const handleSendMessage = () => {
-    if (!inputText.trim() || !selectedChat) return;
-
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      sender: 'admin',
-      senderName: 'Me',
-      text: inputText,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isRead: true,
-      // If the last message had a context, we assume the reply is in the same context unless archived
-      taskContext: selectedChat.messages[selectedChat.messages.length - 1].taskContext?.status !== 'Archived' 
-        ? selectedChat.messages[selectedChat.messages.length - 1].taskContext 
-        : undefined
-    };
-
-    const updatedChats = chats.map(chat => {
-      if (chat.id === selectedChatId) {
-        return {
-          ...chat,
-          messages: [...chat.messages, newMessage],
-          lastMessage: newMessage
-        };
-      }
-      return chat;
+  // Current user id for bubbles
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setChatMyUserId(user?.id ?? null);
     });
+  }, []);
 
-    setChats(updatedChats);
-    setInputText('');
-  };
+  // Load messages when thread selected; set lastSeenAt
+  useEffect(() => {
+    if (!selectedThreadId) {
+      setThreadMessages([]);
+      return;
+    }
+    setLastSeenAt(selectedThreadId, new Date().toISOString());
+    let cancelled = false;
+    setMessagesLoading(true);
+    getTaskChatMessages(selectedThreadId)
+      .then((rows) => {
+        if (!cancelled) setThreadMessages(rows);
+      })
+      .catch((e) => {
+        if (!cancelled) console.warn('Task chat messages load failed', e);
+      })
+      .finally(() => {
+        if (!cancelled) setMessagesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedThreadId]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0] && selectedChat) {
-        const file = e.target.files[0];
-        const newMessage: Message = {
-            id: Date.now().toString(),
-            sender: 'admin',
-            senderName: 'Me',
-            text: `Sent an attachment: ${file.name}`,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            isRead: true,
-            attachment: {
-                type: file.type.startsWith('image') ? 'image' : 'file',
-                name: file.name
+  useEffect(() => {
+    if (threadMessages.length) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [threadMessages.length]);
+
+  const getCachedOrFetchUrl = useCallback(async (att: TaskChatAttachment): Promise<string> => {
+    const bucket = (att.bucket ?? TASK_MEDIA_BUCKET).trim();
+    const path = (att.path ?? '').trim();
+    if (!bucket || !path) throw new Error('Attachment is missing bucket or path.');
+    const key = `${bucket}:${path}`;
+    const entry = attachmentUrlCache[key];
+    if (entry && isCacheValid(entry)) return entry.url;
+    const url = await getTaskAttachmentSignedUrl(bucket, path, SIGNED_URL_EXPIRY_SEC);
+    const expiresAt = Date.now() + SIGNED_URL_EXPIRY_SEC * 1000;
+    setAttachmentUrlCache((prev) => ({ ...prev, [key]: { url, expiresAt } }));
+    return url;
+  }, [attachmentUrlCache]);
+
+  const openAttachment = useCallback(async (att: TaskChatAttachment) => {
+    if (!att.bucket?.trim() || !att.path?.trim()) {
+      alert('Attachment is missing bucket/path.');
+      return;
+    }
+    try {
+      const url = await getCachedOrFetchUrl(att);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      alert('Could not open file (permission or missing object).');
+    }
+  }, [getCachedOrFetchUrl]);
+
+  // Lightbox close on Esc
+  useEffect(() => {
+    if (!lightboxAtt) return;
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setLightboxAtt(null);
+        setLightboxImageUrl(null);
+      }
+    };
+    window.addEventListener('keydown', onEsc);
+    return () => window.removeEventListener('keydown', onEsc);
+  }, [lightboxAtt]);
+
+  // Prefetch image thumbnails (last 10, concurrency 3)
+  useEffect(() => {
+    if (!threadMessages.length) return;
+    const imageAtts: TaskChatAttachment[] = [];
+    const seen = new Set<string>();
+    for (let i = threadMessages.length - 1; i >= 0 && imageAtts.length < 10; i--) {
+      const msg = threadMessages[i];
+      if (!msg.attachments?.length) continue;
+      for (const att of msg.attachments) {
+        if (!isImageAtt(att) || !att.bucket || !att.path) continue;
+        const key = `${att.bucket}:${att.path}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        imageAtts.push(att);
+        if (imageAtts.length >= 10) break;
+      }
+    }
+    const CONCURRENCY = 3;
+    let index = 0;
+    const run = async () => {
+      while (index < imageAtts.length) {
+        const batch = imageAtts.slice(index, index + CONCURRENCY);
+        index += batch.length;
+        await Promise.all(
+          batch.map(async (att) => {
+            const key = `${att.bucket ?? TASK_MEDIA_BUCKET}:${att.path}`;
+            if (attachmentUrlCache[key] && isCacheValid(attachmentUrlCache[key])) return;
+            try {
+              const url = await getTaskAttachmentSignedUrl(att.bucket ?? TASK_MEDIA_BUCKET, att.path, SIGNED_URL_EXPIRY_SEC);
+              const expiresAt = Date.now() + SIGNED_URL_EXPIRY_SEC * 1000;
+              setAttachmentUrlCache((prev) => ({ ...prev, [key]: { url, expiresAt } }));
+            } catch {
+              // ignore
             }
-        };
+          })
+        );
+      }
+    };
+    run();
+  }, [threadMessages]);
 
-        const updatedChats = chats.map(chat => {
-            if (chat.id === selectedChatId) {
-              return {
-                ...chat,
-                messages: [...chat.messages, newMessage],
-                lastMessage: newMessage
-              };
-            }
-            return chat;
-          });
-      
-          setChats(updatedChats);
+  const handleSendMessage = async () => {
+    if (!inputText.trim() || !selectedThreadId) return;
+    setSending(true);
+    try {
+      await insertTaskChatMessage(selectedThreadId, inputText.trim());
+      setInputText('');
+      const [rows, list] = await Promise.all([
+        getTaskChatMessages(selectedThreadId),
+        listTaskChatThreadsForFacilityInbox(),
+      ]);
+      setThreadMessages(rows);
+      setThreads(list);
+    } catch (e) {
+      console.error('Send message failed', e);
+      alert('Failed to send message.');
+    } finally {
+      setSending(false);
     }
   };
 
-  const filteredChats = chats.filter(chat => 
-    chat.title.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  // Helper to get status color
-  const getStatusColor = (status: string) => {
-      switch(status) {
-          case 'Open': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-          case 'In Review': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-          case 'Solved': return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
-          case 'Archived': return 'bg-gray-700 text-gray-400 border-gray-600';
-          default: return 'bg-gray-700 text-gray-400';
+  const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedThreadId || isClosedTask) return;
+    const safeName = file.name.replace(/[/\\:]/g, '_').trim() || 'file';
+    const path = `${selectedThreadId}/${Date.now()}-${safeName}`;
+    setChatUploading(true);
+    try {
+      const { error: uploadError } = await supabase.storage.from(TASK_MEDIA_BUCKET).upload(path, file, { upsert: false });
+      if (uploadError) throw uploadError;
+      const payload: TaskChatAttachment[] = [{
+        bucket: TASK_MEDIA_BUCKET,
+        path,
+        filename: file.name,
+        mimeType: file.type || undefined,
+        size: file.size,
+      }];
+      const row = await insertTaskChatMessageWithAttachment(selectedThreadId, payload);
+      if (row) {
+        setThreadMessages((prev) => [...prev, row]);
+      } else {
+        const messages = await getTaskChatMessages(selectedThreadId);
+        setThreadMessages(messages);
       }
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      setThreads(await listTaskChatThreadsForFacilityInbox());
+    } catch (err: any) {
+      const msg = err?.message ?? String(err ?? '');
+      const errStr = (msg + (err?.error ?? '')).toLowerCase();
+      const isBucketNotFound = err?.statusCode === 400 || (errStr.includes('bucket') && errStr.includes('not found'));
+      if (isBucketNotFound) {
+        alert('Storage bucket "task-media" not found. Create it in Supabase Dashboard → Storage.');
+      } else {
+        console.error('Task chat attachment upload failed', { error: msg });
+        alert(`Upload failed: ${msg}`);
+      }
+    } finally {
+      setChatUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
-  // Filter messages for display based on archive status
-  const displayedMessages = selectedChat?.messages.filter(msg => {
-    if (showArchived) return true;
-    // If message belongs to an Archived task, hide it
-    if (msg.taskContext?.status === 'Archived') return false;
-    return true;
-  }) || [];
+  const sortedThreads = [...threads].sort((a, b) => {
+    const aClosed = ['completed', 'verified'].includes(a.status);
+    const bClosed = ['completed', 'verified'].includes(b.status);
+    if (aClosed !== bClosed) return aClosed ? 1 : -1;
+    return new Date(b.lastMessageCreatedAt).getTime() - new Date(a.lastMessageCreatedAt).getTime();
+  });
+
+  const filteredThreads = searchTerm.trim()
+    ? sortedThreads.filter(
+        (t) =>
+          t.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (t.propertyLabel?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
+      )
+    : sortedThreads;
 
   return (
     <div className="flex h-[calc(100vh-6rem)] bg-[#0D1117] rounded-xl border border-gray-800 shadow-2xl overflow-hidden">
-      
-      {/* LEFT SIDEBAR: Property List */}
+      {/* LEFT: Thread list */}
       <div className="w-full md:w-[380px] bg-[#161B22] border-r border-gray-800 flex flex-col">
-        
-        {/* Sidebar Header */}
         <div className="p-4 border-b border-gray-800">
           <h2 className="text-lg font-bold text-white mb-4">Messages</h2>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-            <input 
-              type="text" 
-              placeholder="Search property or team..." 
+            <input
+              type="text"
+              placeholder="Search property or task..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-[#0D1117] border border-gray-700 rounded-lg py-2.5 pl-10 pr-4 text-sm text-white focus:border-emerald-500 focus:outline-none"
             />
           </div>
         </div>
-
-        {/* Chat List */}
         <div className="flex-1 overflow-y-auto">
-          {filteredChats.map((chat) => (
-            <div 
-              key={chat.id}
-              onClick={() => setSelectedChatId(chat.id)}
-              className={`
-                p-4 border-b border-gray-800 cursor-pointer transition-colors hover:bg-[#1C2128] flex gap-3 items-start relative
-                ${selectedChatId === chat.id ? 'bg-[#1C2128] border-l-4 border-l-emerald-500' : 'border-l-4 border-l-transparent'}
-              `}
-            >
-              {/* Avatar / Image */}
-              {chat.image === 'icon-users' ? (
-                <div className="w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center flex-shrink-0 text-blue-400 border border-blue-500/30">
-                  <Users className="w-6 h-6" />
-                </div>
-              ) : (
-                <img 
-                  src={chat.image as string} 
-                  alt={chat.title} 
-                  className="w-12 h-12 rounded-lg object-cover flex-shrink-0 bg-gray-700"
-                />
-              )}
-              
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-start mb-1">
-                  <h3 className={`text-sm font-bold truncate pr-2 ${chat.unreadCount > 0 ? 'text-white' : 'text-gray-300'}`}>
-                    {chat.title}
-                  </h3>
-                  <span className="text-[10px] text-gray-500 whitespace-nowrap">
-                    {chat.lastMessage.timestamp.includes(',') ? chat.lastMessage.timestamp.split(',')[0] : chat.lastMessage.timestamp}
-                  </span>
-                </div>
-                
-                <p className={`text-xs truncate ${chat.unreadCount > 0 ? 'text-gray-300 font-medium' : 'text-gray-500'}`}>
-                  <span className="text-emerald-500 mr-1">{chat.lastMessage.sender === 'admin' ? 'You:' : `${chat.lastMessage.senderName}:`}</span>
-                  {chat.lastMessage.text}
-                </p>
-
-                {chat.lastMessage.taskContext && (
-                    <div className="mt-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-gray-800 text-gray-400 border border-gray-700">
-                        <AlertCircle className="w-3 h-3 mr-1" />
-                        Task: {chat.lastMessage.taskContext.taskTitle}
-                    </div>
-                )}
-              </div>
-
-              {chat.unreadCount > 0 && (
-                <div className="absolute top-4 right-4 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-lg shadow-emerald-900/20">
-                  {chat.unreadCount}
-                </div>
-              )}
+          {threadsLoading && (
+            <div className="p-4 text-center text-gray-500 text-sm">Loading threads…</div>
+          )}
+          {!threadsLoading && filteredThreads.length === 0 && (
+            <div className="p-4 text-center text-gray-500 text-sm">
+              {threads.length === 0 ? 'No task chats yet.' : 'No threads match your search.'}
             </div>
-          ))}
+          )}
+          {!threadsLoading &&
+            filteredThreads.map((thread) => {
+              const lastSeen = getLastSeenAt(thread.calendarEventId);
+              const unread =
+                chatMyUserId && thread.lastMessageSenderId !== chatMyUserId && lastSeen && thread.lastMessageCreatedAt > lastSeen ? 1 : 0;
+              const isClosed = ['completed', 'verified'].includes(thread.status);
+              const snippet =
+                thread.lastMessageText.length > 60 ? thread.lastMessageText.slice(0, 60) + '…' : thread.lastMessageText;
+              return (
+                <div
+                  key={thread.calendarEventId}
+                  onClick={() => setSelectedThreadId(thread.calendarEventId)}
+                  className={`
+                    p-4 border-b border-gray-800 cursor-pointer transition-colors hover:bg-[#1C2128] flex gap-3 items-start relative
+                    ${selectedThreadId === thread.calendarEventId ? 'bg-[#1C2128] border-l-4 border-l-emerald-500' : 'border-l-4 border-l-transparent'}
+                    ${isClosed ? 'opacity-75' : ''}
+                  `}
+                >
+                  <div className="w-12 h-12 rounded-lg bg-emerald-500/20 flex items-center justify-center flex-shrink-0 text-emerald-400 border border-emerald-500/30">
+                    <Building2 className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start mb-1">
+                      <h3
+                        className={`text-sm font-bold truncate pr-2 ${unread ? 'text-white' : 'text-gray-300'} ${isClosed ? 'line-through' : ''}`}
+                      >
+                        {thread.title}
+                      </h3>
+                      <span className="text-[10px] text-gray-500 whitespace-nowrap">
+                        {formatLastActivity(thread.lastMessageCreatedAt)}
+                      </span>
+                    </div>
+                    {thread.propertyLabel && (
+                      <p className="text-[10px] text-gray-500 truncate mb-0.5">{thread.propertyLabel}</p>
+                    )}
+                    <p className={`text-xs truncate ${unread ? 'text-gray-300 font-medium' : 'text-gray-500'}`}>
+                      {snippet || '—'}
+                    </p>
+                  </div>
+                  {unread > 0 && (
+                    <div className="absolute top-4 right-4 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white">
+                      1
+                    </div>
+                  )}
+                </div>
+              );
+            })}
         </div>
       </div>
 
-      {/* RIGHT SIDEBAR: Chat Area */}
+      {/* RIGHT: Chat panel */}
       <div className="flex-1 flex flex-col bg-[#0D1117] relative">
-        {selectedChat ? (
+        {threads.length === 0 && !threadsLoading ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-500 p-8 text-center">
+            <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mb-4">
+              <Clock className="w-8 h-8" />
+            </div>
+            <p className="font-medium text-white mb-1">No task chats yet</p>
+            <p className="text-sm">Task chats appear when messages are sent from tasks in Calendar or Kanban.</p>
+          </div>
+        ) : !selectedThread ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
+            <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mb-4">
+              <Clock className="w-8 h-8" />
+            </div>
+            <p>Select a thread to view messages</p>
+          </div>
+        ) : (
           <>
-            {/* Chat Header */}
-            <div className="p-4 border-b border-gray-800 bg-[#161B22] flex justify-between items-center shadow-sm z-10">
+            <div className="p-4 border-b border-gray-800 bg-[#161B22] flex justify-between items-center">
               <div className="flex items-center gap-4">
-                <div className="relative">
-                    {selectedChat.image === 'icon-users' ? (
-                      <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400">
-                        <Users className="w-5 h-5" />
-                      </div>
-                    ) : (
-                      <img 
-                        src={selectedChat.image as string} 
-                        alt="Property" 
-                        className="w-10 h-10 rounded-lg object-cover"
-                      />
-                    )}
-                    <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-2 border-[#161B22] rounded-full"></div>
+                <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                  <Building2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-white font-bold flex items-center gap-2">
-                    {selectedChat.title}
+                  <h2 className={`text-white font-bold ${isClosedTask ? 'line-through opacity-80' : ''}`}>
+                    {selectedThread.title}
                   </h2>
-                  {selectedChat.isGeneral ? (
-                    <div className="flex items-center gap-2 text-xs text-gray-400">
-                      <Users className="w-3 h-3" />
-                      <span>All Staff (3)</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-xs text-gray-400">
-                      <MapPin className="w-3 h-3" />
-                      <span>{selectedChat.subtitle}</span>
-                      <span className="text-gray-600">•</span>
-                      <User className="w-3 h-3" />
-                      <span>Workers: Hans, Julia</span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    {selectedThread.propertyLabel && (
+                      <>
+                        <MapPin className="w-3 h-3" />
+                        <span>{selectedThread.propertyLabel}</span>
+                      </>
+                    )}
+                    {isClosedTask && (
+                      <span className="text-amber-400/90">Task closed</span>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="flex gap-2 items-center">
-                {/* Archive Toggle */}
-                <button 
-                  onClick={() => setShowArchived(!showArchived)}
-                  className={`
-                    p-2 rounded-lg transition-colors flex items-center gap-2 text-xs font-medium mr-2
-                    ${showArchived ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'}
-                  `}
-                  title={showArchived ? "Hide Archive" : "Show Archive"}
-                >
-                  <Archive className="w-4 h-4" />
-                  <span className="hidden md:inline">{showArchived ? 'Hide Archive' : 'Show Archive'}</span>
-                </button>
-
-                <div className="h-6 w-px bg-gray-700 mx-1"></div>
-
-                <button className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">
-                    <Phone className="w-5 h-5" />
-                </button>
-                <button className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">
-                    <Video className="w-5 h-5" />
-                </button>
-                <button className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">
-                    <MoreVertical className="w-5 h-5" />
-                </button>
               </div>
             </div>
 
-            {/* Messages Stream */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-[#0D1117] bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-fixed bg-opacity-5">
-              
-              {displayedMessages.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                  <p>No messages to show.</p>
-                  {!showArchived && selectedChat.messages.some(m => m.taskContext?.status === 'Archived') && (
-                    <button onClick={() => setShowArchived(true)} className="text-emerald-500 text-sm mt-2 hover:underline">
-                      View archived messages
-                    </button>
-                  )}
-                </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#0D1117] min-h-0">
+              {messagesLoading && (
+                <div className="text-center text-gray-500 text-sm py-2">Loading messages…</div>
               )}
-
-              {displayedMessages.map((msg, index) => {
-                const showAvatar = index === 0 || displayedMessages[index - 1].sender !== msg.sender;
-                
-                return (
-                  <div key={msg.id} className={`flex flex-col ${msg.sender === 'admin' ? 'items-end' : 'items-start'}`}>
-                    
-                    {/* Task Context Pill */}
-                    {msg.taskContext && (
-                        <div className={`
-                            mb-1 flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border bg-[#1C1F24] shadow-sm max-w-xs
-                            ${msg.sender === 'admin' ? 'mr-2' : 'ml-12'}
-                            ${msg.taskContext.status === 'Archived' ? 'opacity-60 grayscale' : ''}
-                        `}>
-                            <span className={`w-2 h-2 rounded-full ${msg.taskContext.status === 'Solved' ? 'bg-emerald-500' : msg.taskContext.status === 'Archived' ? 'bg-gray-500' : 'bg-yellow-500'}`}></span>
-                            <span className="text-gray-300">Task: {msg.taskContext.taskTitle}</span>
-                            <span className={`px-1.5 rounded text-[9px] border ${getStatusColor(msg.taskContext.status)}`}>
-                                {msg.taskContext.status}
-                            </span>
-                        </div>
-                    )}
-
-                    <div className="flex gap-3 max-w-[80%]">
-                        {/* Avatar for Worker */}
-                        {msg.sender === 'worker' && (
-                            <div className={`w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0 ${!showAvatar ? 'opacity-0' : ''}`}>
-                                <span className="text-emerald-500 font-bold text-xs">{msg.senderName.charAt(0)}</span>
-                            </div>
-                        )}
-
-                        {/* Message Bubble */}
-                        <div 
-                            className={`
-                                relative px-4 py-3 text-sm shadow-md
-                                ${msg.sender === 'admin' 
-                                    ? 'bg-[#005c4b] text-white rounded-2xl rounded-tr-none' 
-                                    : 'bg-[#1F2C34] text-gray-100 rounded-2xl rounded-tl-none'}
-                            `}
+              {!messagesLoading &&
+                threadMessages.map((msg) => {
+                  const isMe = !!chatMyUserId && msg.senderId === chatMyUserId;
+                  const senderLabel = isMe ? 'You' : 'Worker';
+                  const hidePlaceholder =
+                    msg.attachments?.length && ['📎 Attachment', 'Attachment'].includes((msg.messageText ?? '').trim());
+                  return (
+                    <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                        <span className="text-[11px] text-white/40 mb-1">{senderLabel}</span>
+                        <div
+                          className={`p-3 text-sm ${
+                            isMe
+                              ? 'bg-[#005c4b] text-white rounded-tr-md rounded-tl-2xl rounded-bl-2xl rounded-br-2xl'
+                              : 'bg-[#202c33] text-gray-200 rounded-tl-md rounded-tr-2xl rounded-br-2xl rounded-bl-2xl'
+                          }`}
                         >
-                            {/* Sender Name (Only for worker in group context) */}
-                            {msg.sender === 'worker' && showAvatar && (
-                                <p className="text-emerald-500 text-xs font-bold mb-1">{msg.senderName}</p>
-                            )}
-
-                            {/* Attachment */}
-                            {msg.attachment && (
-                                <div className="mb-2 mt-1">
-                                    {msg.attachment.type === 'image' && msg.attachment.url ? (
-                                        <img src={msg.attachment.url} alt="Attachment" className="rounded-lg max-h-48 object-cover border border-white/10" />
+                          {!hidePlaceholder && msg.messageText ? (
+                            <span className="block">{msg.messageText}</span>
+                          ) : null}
+                          {msg.attachments?.length ? (
+                            <div className="space-y-2 mt-1">
+                              {msg.attachments.map((att, attIdx) => {
+                                const bucket = att.bucket ?? TASK_MEDIA_BUCKET;
+                                const path = att.path ?? '';
+                                const cacheKey = `${bucket}:${path}`;
+                                const cached = attachmentUrlCache[cacheKey];
+                                const thumbUrl = cached && isCacheValid(cached) ? cached.url : null;
+                                const image = isImageAtt(att);
+                                const pdf = isPdfAtt(att);
+                                const handleCardClick = () => {
+                                  if (image) {
+                                    getCachedOrFetchUrl(att)
+                                      .then((url) => {
+                                        setLightboxImageUrl(url);
+                                        setLightboxAtt(att);
+                                      })
+                                      .catch(() => alert('Could not open image.'));
+                                  } else {
+                                    openAttachment(att);
+                                  }
+                                };
+                                return (
+                                  <div
+                                    key={attIdx}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={handleCardClick}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleCardClick()}
+                                    className="mt-2 w-full max-w-[320px] rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition px-3 py-2 cursor-pointer"
+                                  >
+                                    {image ? (
+                                      <>
+                                        {thumbUrl ? (
+                                          <img
+                                            src={thumbUrl}
+                                            alt={att.filename ?? ''}
+                                            className="mt-2 max-h-36 w-auto rounded-lg border border-white/10 object-cover"
+                                          />
+                                        ) : (
+                                          <div className="flex items-center gap-3 py-1">
+                                            <div className="h-9 w-9 rounded-lg bg-black/20 flex items-center justify-center border border-white/10">
+                                              <ImageIcon className="w-5 h-5 text-white/60" />
+                                            </div>
+                                            <p className="text-xs text-white/60">Loading…</p>
+                                          </div>
+                                        )}
+                                        <p className="text-xs text-white/60 mt-1 truncate">{att.filename ?? 'Image'}</p>
+                                      </>
                                     ) : (
-                                        <div className="flex items-center gap-2 bg-black/20 p-3 rounded-lg">
+                                      <div className="flex items-center gap-3">
+                                        <div className="h-9 w-9 rounded-lg bg-black/20 flex items-center justify-center border border-white/10">
+                                          {pdf ? (
                                             <FileText className="w-5 h-5 text-white/70" />
-                                            <span className="underline">{msg.attachment.name}</span>
+                                          ) : (
+                                            <FileIcon className="w-5 h-5 text-white/70" />
+                                          )}
                                         </div>
+                                        <div className="min-w-0 flex-1">
+                                          <p className="text-sm font-medium text-white truncate">{att.filename ?? 'File'}</p>
+                                          <p className="text-xs text-white/60">
+                                            {pdf ? 'PDF' : att.mimeType ?? 'File'}
+                                            {att.size != null ? ` · ${Math.round(att.size / 1024)} KB` : ''}
+                                          </p>
+                                        </div>
+                                      </div>
                                     )}
-                                </div>
-                            )}
-
-                            <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-                            
-                            <div className={`flex items-center justify-end gap-1 mt-1 text-[10px] ${msg.sender === 'admin' ? 'text-emerald-200' : 'text-gray-500'}`}>
-                                <span>{msg.timestamp}</span>
-                                {msg.sender === 'admin' && <CheckCheck className="w-3 h-3" />}
+                                  </div>
+                                );
+                              })}
                             </div>
+                          ) : null}
+                          <div className="text-[10px] text-white/50 text-right mt-1">
+                            {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                          </div>
                         </div>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Area */}
+            {/* Input area */}
             <div className="p-4 bg-[#161B22] border-t border-gray-800">
-              <div className="flex items-end gap-2 bg-[#0D1117] p-1 rounded-xl border border-gray-700">
-                <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    className="hidden" 
-                    onChange={handleFileUpload}
-                />
-                <button 
+              {isClosedTask ? (
+                <div className="text-center text-gray-500 text-xs py-2 flex items-center justify-center gap-2">
+                  <span>Task closed — chat is read-only.</span>
+                </div>
+              ) : (
+                <div className="flex items-end gap-2 bg-[#0D1117] p-1 rounded-xl border border-gray-700">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    onChange={handleAttachmentUpload}
+                    disabled={chatUploading}
+                  />
+                  <button
+                    type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="p-3 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-                >
-                  <Paperclip className="w-5 h-5" />
-                </button>
-                
-                <input 
-                  type="text" 
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                  placeholder="Type a message to the team..."
-                  className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none px-2 py-3"
-                />
-                
-                <button 
-                  onClick={handleSendMessage}
-                  disabled={!inputText.trim()}
-                  className="p-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors m-1"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </div>
-              <p className="text-[10px] text-center text-gray-600 mt-2">
-                  Messages sent here are visible to all assigned workers for this property.
-              </p>
+                    disabled={chatUploading}
+                    className="p-3 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    <Paperclip className="w-5 h-5" />
+                  </button>
+                  <input
+                    type="text"
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                    placeholder="Type a message..."
+                    className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none px-2 py-3"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendMessage}
+                    disabled={!inputText.trim() || sending}
+                    className="p-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors m-1"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
           </>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
-            <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mb-4">
-                <Clock className="w-8 h-8" />
+        )}
+
+        {/* Lightbox */}
+        {lightboxAtt && (
+          <div
+            className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-6"
+            onClick={() => {
+              setLightboxAtt(null);
+              setLightboxImageUrl(null);
+            }}
+          >
+            <div
+              className="relative max-w-5xl w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setLightboxAtt(null);
+                  setLightboxImageUrl(null);
+                }}
+                className="absolute -top-10 right-0 p-2 text-white hover:bg-white/10 rounded-lg"
+              >
+                <X className="w-6 h-6" />
+              </button>
+              {lightboxImageUrl && (
+                <img
+                  src={lightboxImageUrl}
+                  alt={lightboxAtt.filename ?? ''}
+                  className="max-h-[80vh] w-auto mx-auto rounded-xl border border-white/10"
+                />
+              )}
             </div>
-            <p>Select a property or chat to view messages</p>
           </div>
         )}
       </div>
