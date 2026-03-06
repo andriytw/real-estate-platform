@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CalendarEvent, Property } from '../../types';
 import { getTaskColor, getTaskBadgeColor, getTaskTextColor } from '../../utils/taskColors';
-import { Clock, AlertTriangle, CheckCircle2, Circle, AlertCircle, Building2, Calendar } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Circle, AlertCircle, Building2, Calendar } from 'lucide-react';
 import { propertiesService } from '../../services/supabaseService';
 
 function formatPropertyLabelAddressFirst(p: Property): string {
@@ -87,22 +87,16 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {/* Creation Date */}
-          {task.createdAt && (
+          {/* Scheduled / execution date (same as Task modal); fallback to created_at */}
+          {(task.date || task.createdAt) && (
             <div className="flex items-center gap-1 text-xs text-gray-500">
               <Calendar className="w-3 h-3" />
-              {new Date(task.createdAt).toLocaleDateString('uk-UA', { 
-                day: '2-digit', 
+              {new Date(task.date || task.createdAt!).toLocaleDateString('uk-UA', {
+                day: '2-digit',
                 month: '2-digit',
                 year: 'numeric'
               })}
-            </div>
-          )}
-          {/* Time */}
-          {task.time && (
-            <div className="flex items-center gap-1 text-xs text-gray-500">
-              <Clock className="w-3 h-3" />
-              {task.time}
+              {task.time && ` • ${task.time}`}
             </div>
           )}
         </div>
