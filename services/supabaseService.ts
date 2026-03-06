@@ -2268,7 +2268,7 @@ export async function getTaskChatMessages(calendarEventId: string): Promise<Task
     id: row.id,
     messageText: String(row.message_text ?? row.message ?? '').trim(),
     createdAt: row.created_at ?? '',
-    senderId: row.sender_id ?? '',
+    senderId: String(row.sender_id ?? ''),
     attachments: Array.isArray(row.attachments) ? row.attachments : [],
   }));
 }
@@ -2292,7 +2292,7 @@ export async function insertTaskChatMessage(calendarEventId: string, messageText
     id: row.id,
     messageText: String(row.message_text ?? row.message ?? '').trim(),
     createdAt: row.created_at ?? '',
-    senderId: row.sender_id ?? '',
+    senderId: String(row.sender_id ?? ''),
     attachments: Array.isArray(row.attachments) ? row.attachments : [],
   };
 }
@@ -2300,7 +2300,7 @@ export async function insertTaskChatMessage(calendarEventId: string, messageText
 export async function insertTaskChatMessageWithAttachment(
   calendarEventId: string,
   attachments: TaskChatAttachment[]
-): Promise<TaskChatMessageRow> {
+): Promise<TaskChatMessageRow | null> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user?.id) throw new Error('Not authenticated');
   const { data, error } = await supabase
@@ -2315,12 +2315,13 @@ export async function insertTaskChatMessageWithAttachment(
     .single();
 
   if (error) throw error;
+  if (!data) return null;
   const row = data as any;
   return {
     id: row.id,
     messageText: String(row.message_text ?? '').trim(),
     createdAt: row.created_at ?? '',
-    senderId: row.sender_id ?? '',
+    senderId: String(row.sender_id ?? ''),
     attachments: Array.isArray(row.attachments) ? row.attachments : [],
   };
 }

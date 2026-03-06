@@ -6,6 +6,8 @@ import { getTaskColor } from '../../utils/taskColors';
 import { supabase } from '../../utils/supabase/client';
 import { useWorker } from '../../contexts/WorkerContext';
 
+const TASK_MEDIA_BUCKET = 'task-media';
+
 interface TaskDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -156,12 +158,12 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   };
 
   const getAttachmentUrl = async (att: TaskChatAttachment): Promise<string> => {
-    const key = `${att.bucket ?? 'task-media'}:${att.path}`;
-    if (attachmentUrlCache[key]) return attachmentUrlCache[key];
-    const bucket = att.bucket ?? 'task-media';
+    const bucket = att.bucket ?? TASK_MEDIA_BUCKET;
     const path = att.path;
-    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-    const url = data?.publicUrl ?? '';
+    const key = `${bucket}:${path}`;
+    if (attachmentUrlCache[key]) return attachmentUrlCache[key];
+    const { data: signedData } = await supabase.storage.from(bucket).createSignedUrl(path, 60);
+    const url = signedData?.signedUrl ?? '';
     setAttachmentUrlCache((prev) => ({ ...prev, [key]: url }));
     return url;
   };
@@ -169,17 +171,16 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const handleChatAttachmentUpload = async (files: FileList | null) => {
     if (!files?.length || !task?.id || !isFacilityTask) return;
     const file = files[0];
-    const safeName = file.name.replace(/[/\\]/g, '_').trim() || 'file';
+    const safeName = file.name.replace(/[/\\:]/g, '_').trim() || 'file';
     const path = `${task.id}/${Date.now()}-${safeName}`;
-    const bucket = 'task-media';
     setChatUploading(true);
     try {
-      const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file);
+      const { error: uploadError } = await supabase.storage.from(TASK_MEDIA_BUCKET).upload(path, file, { upsert: false });
       if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
+      const { data: urlData } = supabase.storage.from(TASK_MEDIA_BUCKET).getPublicUrl(path);
       const url = urlData?.publicUrl ?? '';
       const payload: TaskChatAttachment[] = [{
-        bucket,
+        bucket: TASK_MEDIA_BUCKET,
         path,
         url: url || undefined,
         filename: file.name,
@@ -187,11 +188,23 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         size: file.size,
       }];
       const row = await insertTaskChatMessageWithAttachment(task.id, payload);
-      setChatMessages((prev) => [...prev, row]);
+      if (row) {
+        setChatMessages((prev) => [...prev, row]);
+      } else {
+        const messages = await getTaskChatMessages(task.id);
+        setChatMessages(messages);
+      }
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     } catch (err: any) {
-      console.error('Task chat attachment upload failed', { taskId: task.id, error: err?.message ?? err });
-      alert(`Помилка завантаження файлу: ${err?.message ?? String(err)}`);
+      const msg = err?.message ?? String(err ?? '');
+      const errStr = (msg + (err?.error ?? '')).toLowerCase();
+      const isBucketNotFound = err?.statusCode === 400 || errStr.includes('bucket') && errStr.includes('not found');
+      if (isBucketNotFound) {
+        alert('Storage bucket "task-media" not found. Create it in Supabase Dashboard → Storage.');
+      } else {
+        console.error('Task chat attachment upload failed', { taskId: task.id, error: msg });
+        alert(`Помилка завантаження файлу: ${msg}`);
+      }
     } finally {
       setChatUploading(false);
       if (chatFileInputRef.current) chatFileInputRef.current.value = '';
@@ -311,11 +324,12 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       const uploadedUrls: string[] = [];
 
       for (const file of Array.from(files)) {
-        const filePath = `task-media/${task.id}/${Date.now()}-${file.name}`;
+        const safeName = file.name.replace(/[/\\:]/g, '_').trim() || 'file';
+        const path = `${task.id}/${Date.now()}-${safeName}`;
         const { error: uploadError } = await supabase
           .storage
-          .from('task-media')
-          .upload(filePath, file);
+          .from(TASK_MEDIA_BUCKET)
+          .upload(path, file, { upsert: false });
 
         if (uploadError) {
           console.error('Upload error:', uploadError);
@@ -324,8 +338,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
         const { data } = supabase
           .storage
-          .from('task-media')
-          .getPublicUrl(filePath);
+          .from(TASK_MEDIA_BUCKET)
+          .getPublicUrl(path);
 
         if (data?.publicUrl) {
           uploadedUrls.push(data.publicUrl);
@@ -714,8 +728,11 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 {chatLoading && (
                   <div className="text-center text-gray-500 text-sm py-2">Loading messages…</div>
                 )}
-                {chatMessages.map((msg) => {
+                {chatMessages.map((msg, idx) => {
                   const isMe = chatMyUserId != null && msg.senderId === chatMyUserId;
+                  if (import.meta.env.DEV && idx === 0) {
+                    console.debug('[TaskChat] bubble', { chatMyUserId, senderId: msg.senderId, isMe });
+                  }
                   const senderLabel = isMe ? 'You' : (isWorker ? 'Manager' : 'Worker');
                   const isAttachmentOnly = msg.messageText === '📎 Attachment' && msg.attachments?.length;
                   return (
