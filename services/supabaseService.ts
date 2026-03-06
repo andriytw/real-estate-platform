@@ -2341,6 +2341,15 @@ export async function createTaskAttachmentSignedUrl(
   return data.signedUrl;
 }
 
+/** Get signed URL for opening/viewing task attachment (default 300s). Same validation as createTaskAttachmentSignedUrl. */
+export async function getTaskAttachmentSignedUrl(
+  bucket: string,
+  path: string,
+  expirySeconds: number = 300
+): Promise<string> {
+  return createTaskAttachmentSignedUrl(bucket, path, expirySeconds);
+}
+
 // ==================== TRANSFORMERS ====================
 
 function transformWorkerFromDB(db: any): Worker {

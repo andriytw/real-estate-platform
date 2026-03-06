@@ -1,12 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Calendar, Clock, User, CheckCircle2, Circle, Building2, Wrench, Check, Image as ImageIcon, FileVideo, Zap, Droplets, Flame, ClipboardList, Send, Paperclip, FileIcon } from 'lucide-react';
-import { tasksService, workersService, propertiesService, getTaskChatMessages, insertTaskChatMessage, insertTaskChatMessageWithAttachment, createTaskAttachmentSignedUrl, type TaskChatMessageRow, type TaskChatAttachment } from '../../services/supabaseService';
+import { X, Calendar, Clock, User, CheckCircle2, Circle, Building2, Wrench, Check, Image as ImageIcon, FileVideo, Zap, Droplets, Flame, ClipboardList, Send, Paperclip, FileIcon, FileText } from 'lucide-react';
+import { tasksService, workersService, propertiesService, getTaskChatMessages, insertTaskChatMessage, insertTaskChatMessageWithAttachment, getTaskAttachmentSignedUrl, type TaskChatMessageRow, type TaskChatAttachment } from '../../services/supabaseService';
 import { CalendarEvent, TaskStatus, Property, Worker } from '../../types';
 import { getTaskColor } from '../../utils/taskColors';
 import { supabase } from '../../utils/supabase/client';
 import { useWorker } from '../../contexts/WorkerContext';
 
 const TASK_MEDIA_BUCKET = 'task-media';
+const SIGNED_URL_EXPIRY_SEC = 300;
+const CACHE_REFRESH_BEFORE_MS = 5000;
+
+type AttachmentCacheEntry = { url: string; expiresAt: number };
+function isCacheValid(entry: AttachmentCacheEntry): boolean {
+  return Date.now() <= entry.expiresAt - CACHE_REFRESH_BEFORE_MS;
+}
 
 interface TaskDetailModalProps {
   isOpen: boolean;
@@ -17,54 +24,11 @@ interface TaskDetailModalProps {
   currentUser?: Worker | null;
 }
 
-function ChatAttachmentBlock({
-  att,
-  isMe,
-  getUrl,
-}: {
-  att: TaskChatAttachment;
-  isMe: boolean;
-  getUrl: (a: TaskChatAttachment) => Promise<string>;
-}) {
-  const [openLoading, setOpenLoading] = useState(false);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const isImage = att.mimeType?.startsWith('image/') ?? /\.(jpe?g|png|gif|webp)$/i.test(att.filename ?? '');
-  useEffect(() => {
-    if (!isImage || !att.bucket || !att.path) return;
-    getUrl(att).then(setImageUrl).catch(() => setImageUrl(null));
-  }, [isImage, att.bucket, att.path, att]);
-  const onOpen = async () => {
-    setOpenLoading(true);
-    try {
-      const url = await getUrl(att);
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
-    } finally {
-      setOpenLoading(false);
-    }
-  };
-  return (
-    <div className={`flex items-center gap-2 p-2 rounded ${isMe ? 'bg-white/10' : 'bg-black/10'}`}>
-      {isImage && imageUrl ? (
-        <img src={imageUrl} alt={att.filename ?? ''} className="max-h-24 max-w-32 rounded object-cover" />
-      ) : isImage ? (
-        <div className="w-16 h-12 rounded bg-white/10 flex items-center justify-center text-[10px]">Image</div>
-      ) : (
-        <FileIcon className="w-8 h-8 shrink-0 opacity-70" />
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="text-xs truncate">{att.filename ?? 'File'}</p>
-        {att.size != null && <p className="text-[10px] opacity-70">{Math.round(att.size / 1024)} KB</p>}
-      </div>
-      <button
-        type="button"
-        onClick={onOpen}
-        disabled={openLoading}
-        className="text-xs underline shrink-0 disabled:opacity-50"
-      >
-        {openLoading ? '…' : 'Open'}
-      </button>
-    </div>
-  );
+function isImageAtt(att: TaskChatAttachment): boolean {
+  return (att.mimeType?.startsWith('image/') ?? false) || /\.(jpe?g|png|gif|webp)$/i.test(att.filename ?? '');
+}
+function isPdfAtt(att: TaskChatAttachment): boolean {
+  return att.mimeType === 'application/pdf' || (att.filename?.toLowerCase().endsWith('.pdf') ?? false);
 }
 
 const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
@@ -95,7 +59,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const [chatMyUserId, setChatMyUserId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
-  const [attachmentUrlCache, setAttachmentUrlCache] = useState<Record<string, string>>({});
+  const [attachmentUrlCache, setAttachmentUrlCache] = useState<Record<string, AttachmentCacheEntry>>({});
+  const [lightboxAtt, setLightboxAtt] = useState<TaskChatAttachment | null>(null);
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen && task) {
@@ -145,6 +111,54 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     if (chatMessages.length) chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages.length]);
 
+  // Prefetch signed URLs for image thumbnails only (last 10, concurrency 3)
+  useEffect(() => {
+    if (!isFacilityTask || !chatMessages.length) return;
+    const imageAtts: TaskChatAttachment[] = [];
+    const seen = new Set<string>();
+    for (let i = chatMessages.length - 1; i >= 0 && imageAtts.length < 10; i--) {
+      const msg = chatMessages[i];
+      if (!msg.attachments?.length) continue;
+      for (const att of msg.attachments) {
+        if (!isImageAtt(att) || !att.bucket || !att.path) continue;
+        const key = `${att.bucket ?? TASK_MEDIA_BUCKET}:${att.path}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        imageAtts.push(att);
+        if (imageAtts.length >= 10) break;
+      }
+    }
+    const CONCURRENCY = 3;
+    let running = 0;
+    let index = 0;
+    const run = async () => {
+      while (index < imageAtts.length) {
+        const att = imageAtts[index++];
+        const key = `${att.bucket ?? TASK_MEDIA_BUCKET}:${att.path}`;
+        if (attachmentUrlCache[key] && isCacheValid(attachmentUrlCache[key])) continue;
+        running++;
+        try {
+          const url = await getTaskAttachmentSignedUrl(att.bucket ?? TASK_MEDIA_BUCKET, att.path, SIGNED_URL_EXPIRY_SEC);
+          const expiresAt = Date.now() + SIGNED_URL_EXPIRY_SEC * 1000;
+          setAttachmentUrlCache((prev) => ({ ...prev, [key]: { url, expiresAt } }));
+        } catch {
+          // ignore prefetch errors
+        } finally {
+          running--;
+          if (running < CONCURRENCY && index < imageAtts.length) run();
+        }
+      }
+    };
+    for (let i = 0; i < CONCURRENCY && index < imageAtts.length; i++) run();
+  }, [chatMessages, isFacilityTask]);
+
+  useEffect(() => {
+    if (!lightboxAtt) return;
+    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') { setLightboxAtt(null); setLightboxImageUrl(null); } };
+    window.addEventListener('keydown', onEsc);
+    return () => window.removeEventListener('keydown', onEsc);
+  }, [lightboxAtt]);
+
   const handleChatSend = async () => {
     const text = chatInput.trim();
     if (!text || !task?.id || !isFacilityTask) return;
@@ -162,17 +176,33 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     }
   };
 
-  const getAttachmentUrl = async (att: TaskChatAttachment): Promise<string> => {
-    const bucket = att.bucket ?? TASK_MEDIA_BUCKET;
-    const path = att.path;
-    if (!bucket?.trim() || !path?.trim()) {
-      throw new Error('Attachment is missing bucket or path and cannot be opened.');
-    }
+  const getCachedOrFetchUrl = async (att: TaskChatAttachment): Promise<string> => {
+    const bucket = (att.bucket ?? TASK_MEDIA_BUCKET).trim();
+    const path = (att.path ?? '').trim();
+    if (!bucket || !path) throw new Error('Attachment is missing bucket or path and cannot be opened.');
     const key = `${bucket}:${path}`;
-    if (attachmentUrlCache[key]) return attachmentUrlCache[key];
-    const url = await createTaskAttachmentSignedUrl(bucket, path, 60);
-    setAttachmentUrlCache((prev) => ({ ...prev, [key]: url }));
+    const entry = attachmentUrlCache[key];
+    if (entry && isCacheValid(entry)) return entry.url;
+    const url = await getTaskAttachmentSignedUrl(bucket, path, SIGNED_URL_EXPIRY_SEC);
+    const expiresAt = Date.now() + SIGNED_URL_EXPIRY_SEC * 1000;
+    setAttachmentUrlCache((prev) => ({ ...prev, [key]: { url, expiresAt } }));
     return url;
+  };
+
+  const openAttachment = async (att: TaskChatAttachment) => {
+    if (!att.bucket?.trim() || !att.path?.trim()) {
+      alert('Attachment is missing bucket/path.');
+      return;
+    }
+    if (import.meta.env.DEV) {
+      console.debug('[TaskChat] openAttachment', { bucket: att.bucket, path: att.path, filename: att.filename });
+    }
+    try {
+      const url = await getCachedOrFetchUrl(att);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      alert('Could not open file (permission or missing object).');
+    }
   };
 
   const handleChatAttachmentUpload = async (files: FileList | null) => {
@@ -750,7 +780,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                     console.debug('[TaskChat] bubble', { chatMyUserId, senderId: msg.senderId, isMe });
                   }
                   const senderLabel = isMe ? 'You' : (isWorker ? 'Manager' : 'Worker');
-                  const isAttachmentOnly = msg.messageText === '📎 Attachment' && msg.attachments?.length;
+                  const hidePlaceholder = msg.attachments?.length && ['📎 Attachment', 'Attachment'].includes((msg.messageText ?? '').trim());
                   return (
                     <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                       <div className={`max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
@@ -760,12 +790,67 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                             isMe ? 'bg-[#005c4b] text-white rounded-tr-none' : 'bg-[#202c33] text-gray-200 rounded-tl-none'
                           }`}
                         >
-                          {!isAttachmentOnly && msg.messageText ? <span className="block">{msg.messageText}</span> : null}
+                          {!hidePlaceholder && msg.messageText ? <span className="block">{msg.messageText}</span> : null}
                           {msg.attachments?.length ? (
                             <div className="space-y-2 mt-1">
-                              {msg.attachments.map((att, idx) => (
-                                <ChatAttachmentBlock key={idx} att={att} isMe={isMe} getUrl={getAttachmentUrl} />
-                              ))}
+                              {msg.attachments.map((att, attIdx) => {
+                                const bucket = att.bucket ?? TASK_MEDIA_BUCKET;
+                                const path = att.path ?? '';
+                                const cacheKey = `${bucket}:${path}`;
+                                const cached = attachmentUrlCache[cacheKey];
+                                const thumbUrl = cached && isCacheValid(cached) ? cached.url : null;
+                                const image = isImageAtt(att);
+                                const pdf = isPdfAtt(att);
+                                const handleCardClick = () => {
+                                  if (image) {
+                                    getCachedOrFetchUrl(att).then((url) => {
+                                      setLightboxImageUrl(url);
+                                      setLightboxAtt(att);
+                                    }).catch(() => alert('Could not open image.'));
+                                  } else {
+                                    openAttachment(att);
+                                  }
+                                };
+                                return (
+                                  <div
+                                    key={attIdx}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={handleCardClick}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleCardClick()}
+                                    className="mt-2 w-full max-w-[320px] rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition px-3 py-2 cursor-pointer"
+                                  >
+                                    {image ? (
+                                      <>
+                                        {thumbUrl ? (
+                                          <img src={thumbUrl} alt={att.filename ?? ''} className="mt-2 max-h-36 w-auto rounded-lg border border-white/10 object-cover" />
+                                        ) : (
+                                          <div className="flex items-center gap-3 py-1">
+                                            <div className="h-9 w-9 rounded-lg bg-black/20 flex items-center justify-center border border-white/10">
+                                              <ImageIcon className="w-5 h-5 text-white/60" />
+                                            </div>
+                                            <p className="text-xs text-white/60">Loading…</p>
+                                          </div>
+                                        )}
+                                        <p className="text-xs text-white/60 mt-1 truncate">{att.filename ?? 'Image'}</p>
+                                      </>
+                                    ) : (
+                                      <div className="flex items-center gap-3">
+                                        <div className="h-9 w-9 rounded-lg bg-black/20 flex items-center justify-center border border-white/10">
+                                          {pdf ? <FileText className="w-5 h-5 text-white/70" /> : <FileIcon className="w-5 h-5 text-white/70" />}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <p className="text-sm font-medium text-white truncate">{att.filename ?? 'File'}</p>
+                                          <p className="text-xs text-white/60">
+                                            {pdf ? 'PDF' : att.mimeType ?? 'File'}
+                                            {att.size != null ? ` · ${Math.round(att.size / 1024)} KB` : ''}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           ) : null}
                           <div className="text-[10px] text-white/50 text-right mt-1">
@@ -826,6 +911,32 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Lightbox for image attachments */}
+      {lightboxAtt && lightboxImageUrl && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-6"
+          onClick={() => { setLightboxAtt(null); setLightboxImageUrl(null); }}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="relative max-w-5xl w-full" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => { setLightboxAtt(null); setLightboxImageUrl(null); }}
+              className="absolute -top-2 right-0 p-2 text-white/80 hover:text-white rounded-full hover:bg-white/10 transition z-10"
+              aria-label="Close"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <img
+              src={lightboxImageUrl}
+              alt={lightboxAtt.filename ?? 'Attachment'}
+              className="max-h-[80vh] w-auto mx-auto rounded-xl border border-white/10"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

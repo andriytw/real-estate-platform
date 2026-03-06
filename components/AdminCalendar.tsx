@@ -1,16 +1,29 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Plus, ChevronDown, ChevronLeft, ChevronRight, Calendar as CalendarIcon, X, Check, Building, Clock, CheckCircle2, MoreHorizontal, User, AlignLeft, Tag, LayoutGrid, List, Filter, Paperclip, Send, Image as ImageIcon, FileText, Mail, ClipboardList, Loader, CheckSquare, ArrowUpDown, Layers, Archive, History, ShieldCheck, Hammer, Video, Download, XCircle } from 'lucide-react';
+import { Plus, ChevronDown, ChevronLeft, ChevronRight, Calendar as CalendarIcon, X, Check, Building, Clock, CheckCircle2, MoreHorizontal, User, AlignLeft, Tag, LayoutGrid, List, Filter, Paperclip, Send, Image as ImageIcon, FileText, FileIcon, Mail, ClipboardList, Loader, CheckSquare, ArrowUpDown, Layers, Archive, History, ShieldCheck, Hammer, Video, Download, XCircle } from 'lucide-react';
 import { MOCK_PROPERTIES } from '../constants';
 import { CalendarEvent, TaskType, TaskStatus, Property, BookingStatus, Worker } from '../types';
 import { updateBookingStatusFromTask } from '../bookingUtils';
-import { workersService, tasksService, getTaskChatMessages, insertTaskChatMessage } from '../services/supabaseService';
+import { workersService, tasksService, getTaskChatMessages, insertTaskChatMessage, getTaskAttachmentSignedUrl, type TaskChatAttachment } from '../services/supabaseService';
 import { supabase } from '../utils/supabase/client';
 import { ACCOUNTING_TASK_TYPES, getTaskColor } from '../utils/taskColors';
 
 type ViewMode = 'month' | 'week' | 'day';
 
 const TASK_TYPES: TaskType[] = ['Einzug', 'Auszug', 'Putzen', 'Reklamation', 'Arbeit nach plan', 'Zeit Abgabe von wohnung', 'Zählerstand'];
+
+const FACILITY_SIGNED_URL_EXPIRY_SEC = 300;
+const FACILITY_CACHE_REFRESH_BEFORE_MS = 5000;
+type FacilityAttachmentCacheEntry = { url: string; expiresAt: number };
+function isFacilityCacheValid(entry: FacilityAttachmentCacheEntry): boolean {
+  return Date.now() <= entry.expiresAt - FACILITY_CACHE_REFRESH_BEFORE_MS;
+}
+function isFacilityImageAtt(att: TaskChatAttachment): boolean {
+  return (att.mimeType?.startsWith('image/') ?? false) || /\.(jpe?g|png|gif|webp)$/i.test(att.filename ?? '');
+}
+function isFacilityPdfAtt(att: TaskChatAttachment): boolean {
+  return att.mimeType === 'application/pdf' || (att.filename?.toLowerCase().endsWith('.pdf') ?? false);
+}
 
 interface TaskMessage {
   id: string;
@@ -21,6 +34,7 @@ interface TaskMessage {
     name: string;
     type: 'image' | 'file';
   };
+  attachments?: TaskChatAttachment[];
 }
 
 interface AdminCalendarProps {
@@ -117,6 +131,9 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   const [chatMyUserId, setChatMyUserId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
+  const [facilityAttachmentCache, setFacilityAttachmentCache] = useState<Record<string, FacilityAttachmentCacheEntry>>({});
+  const [facilityLightboxAtt, setFacilityLightboxAtt] = useState<TaskChatAttachment | null>(null);
+  const [facilityLightboxImageUrl, setFacilityLightboxImageUrl] = useState<string | null>(null);
 
   const weekGridRef = useRef<HTMLDivElement>(null);
   const wheelAccumRef = useRef(0);
@@ -381,6 +398,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
           sender: (myUid && r.senderId === myUid) ? 'admin' : 'worker',
           text: r.messageText,
           timestamp: r.createdAt ? new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—',
+          attachments: r.attachments ?? [],
         }));
         setTaskMessages(mapped);
       } catch (e) {
@@ -722,6 +740,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         sender: 'admin',
         text: row.messageText,
         timestamp: row.createdAt ? new Date(row.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        attachments: row.attachments ?? [],
       };
       setTaskMessages((prev) => [...prev, newMsg]);
       setChatInputValue('');
@@ -747,6 +766,82 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       setTaskMessages([...taskMessages, newMsg]);
     }
   };
+
+  const FACILITY_TASK_MEDIA_BUCKET = 'task-media';
+  const getFacilityCachedOrFetchUrl = async (att: TaskChatAttachment): Promise<string> => {
+    const bucket = (att.bucket ?? FACILITY_TASK_MEDIA_BUCKET).trim();
+    const path = (att.path ?? '').trim();
+    if (!bucket || !path) throw new Error('Attachment is missing bucket or path and cannot be opened.');
+    const key = `${bucket}:${path}`;
+    const entry = facilityAttachmentCache[key];
+    if (entry && isFacilityCacheValid(entry)) return entry.url;
+    const url = await getTaskAttachmentSignedUrl(bucket, path, FACILITY_SIGNED_URL_EXPIRY_SEC);
+    const expiresAt = Date.now() + FACILITY_SIGNED_URL_EXPIRY_SEC * 1000;
+    setFacilityAttachmentCache((prev) => ({ ...prev, [key]: { url, expiresAt } }));
+    return url;
+  };
+  const openFacilityAttachment = async (att: TaskChatAttachment) => {
+    if (!att.bucket?.trim() || !att.path?.trim()) {
+      alert('Attachment is missing bucket/path.');
+      return;
+    }
+    if (import.meta.env.DEV) {
+      console.debug('[TaskChat] openAttachment', { bucket: att.bucket, path: att.path, filename: att.filename });
+    }
+    try {
+      const url = await getFacilityCachedOrFetchUrl(att);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch {
+      alert('Could not open file (permission or missing object).');
+    }
+  };
+
+  useEffect(() => {
+    if (!facilityLightboxAtt) return;
+    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') { setFacilityLightboxAtt(null); setFacilityLightboxImageUrl(null); } };
+    window.addEventListener('keydown', onEsc);
+    return () => window.removeEventListener('keydown', onEsc);
+  }, [facilityLightboxAtt]);
+
+  // Prefetch signed URLs for Facility image thumbnails (last 10, concurrency 3)
+  useEffect(() => {
+    if (isAccountingCalendar || !taskMessages.length) return;
+    const imageAtts: TaskChatAttachment[] = [];
+    const seen = new Set<string>();
+    for (let i = taskMessages.length - 1; i >= 0 && imageAtts.length < 10; i--) {
+      const msg = taskMessages[i];
+      if (!msg.attachments?.length) continue;
+      for (const att of msg.attachments) {
+        if (!isFacilityImageAtt(att) || !att.bucket || !att.path) continue;
+        const key = `${att.bucket ?? FACILITY_TASK_MEDIA_BUCKET}:${att.path}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        imageAtts.push(att);
+        if (imageAtts.length >= 10) break;
+      }
+    }
+    const CONCURRENCY = 3;
+    let index = 0;
+    const run = async () => {
+      while (index < imageAtts.length) {
+        const batch = imageAtts.slice(index, index + CONCURRENCY);
+        index += batch.length;
+        await Promise.all(
+          batch.map(async (att) => {
+            const key = `${att.bucket ?? FACILITY_TASK_MEDIA_BUCKET}:${att.path}`;
+            try {
+              const url = await getTaskAttachmentSignedUrl(att.bucket ?? FACILITY_TASK_MEDIA_BUCKET, att.path, FACILITY_SIGNED_URL_EXPIRY_SEC);
+              const expiresAt = Date.now() + FACILITY_SIGNED_URL_EXPIRY_SEC * 1000;
+              setFacilityAttachmentCache((prev) => ({ ...prev, [key]: { url, expiresAt } }));
+            } catch {
+              // ignore
+            }
+          })
+        );
+      }
+    };
+    run();
+  }, [taskMessages, isAccountingCalendar]);
 
   const selectedDayEvents = selectedDay ? getEventsForDay(selectedDay) : [];
 
@@ -1929,7 +2024,9 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                         {!isAccountingCalendar && chatLoading && (
                            <div className="flex justify-center py-4 text-gray-500 text-sm">Loading messages…</div>
                         )}
-                        {taskMessages.map((msg) => (
+                        {taskMessages.map((msg) => {
+                           const hidePlaceholder = msg.attachments?.length && ['📎 Attachment', 'Attachment'].includes((msg.text ?? '').trim());
+                           return (
                            <div key={msg.id} className={`flex ${msg.sender === 'admin' ? 'justify-end' : 'justify-start'}`}>
                               <div 
                                  className={`max-w-[75%] p-3 rounded-lg text-sm ${
@@ -1938,21 +2035,77 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                        : 'bg-[#202c33] text-gray-200 rounded-tl-none'
                                  }`}
                               >
-                                 {msg.text}
-                                 
-                                 {msg.attachment && (
-                                    <div className="mt-2 p-2 bg-black/20 rounded flex items-center gap-2">
-                                       {msg.attachment.type === 'image' ? <ImageIcon className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                                       <span className="text-xs underline truncate">{msg.attachment.name}</span>
+                                 {!hidePlaceholder && msg.text ? <span className="block">{msg.text}</span> : null}
+
+                                 {msg.attachments?.length ? (
+                                    <div className="space-y-2 mt-1">
+                                       {msg.attachments.map((att, attIdx) => {
+                                         const bucket = att.bucket ?? 'task-media';
+                                         const path = att.path ?? '';
+                                         const cacheKey = `${bucket}:${path}`;
+                                         const cached = facilityAttachmentCache[cacheKey];
+                                         const thumbUrl = cached && isFacilityCacheValid(cached) ? cached.url : null;
+                                         const image = isFacilityImageAtt(att);
+                                         const pdf = isFacilityPdfAtt(att);
+                                         const handleCardClick = () => {
+                                           if (image) {
+                                             getFacilityCachedOrFetchUrl(att).then((url) => {
+                                               setFacilityLightboxImageUrl(url);
+                                               setFacilityLightboxAtt(att);
+                                             }).catch(() => alert('Could not open image.'));
+                                           } else {
+                                             openFacilityAttachment(att);
+                                           }
+                                         };
+                                         return (
+                                           <div
+                                             key={attIdx}
+                                             role="button"
+                                             tabIndex={0}
+                                             onClick={handleCardClick}
+                                             onKeyDown={(e) => e.key === 'Enter' && handleCardClick()}
+                                             className="mt-2 w-full max-w-[320px] rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition px-3 py-2 cursor-pointer"
+                                           >
+                                             {image ? (
+                                               <>
+                                                 {thumbUrl ? (
+                                                   <img src={thumbUrl} alt={att.filename ?? ''} className="mt-2 max-h-36 w-auto rounded-lg border border-white/10 object-cover" />
+                                                 ) : (
+                                                   <div className="flex items-center gap-3 py-1">
+                                                     <div className="h-9 w-9 rounded-lg bg-black/20 flex items-center justify-center border border-white/10">
+                                                       <ImageIcon className="w-5 h-5 text-white/60" />
+                                                     </div>
+                                                     <p className="text-xs text-white/60">Loading…</p>
+                                                   </div>
+                                                 )}
+                                                 <p className="text-xs text-white/60 mt-1 truncate">{att.filename ?? 'Image'}</p>
+                                               </>
+                                             ) : (
+                                               <div className="flex items-center gap-3">
+                                                 <div className="h-9 w-9 rounded-lg bg-black/20 flex items-center justify-center border border-white/10">
+                                                   {pdf ? <FileText className="w-5 h-5 text-white/70" /> : <FileIcon className="w-5 h-5 text-white/70" />}
+                                                 </div>
+                                                 <div className="min-w-0 flex-1">
+                                                   <p className="text-sm font-medium text-white truncate">{att.filename ?? 'File'}</p>
+                                                   <p className="text-xs text-white/60">
+                                                     {pdf ? 'PDF' : att.mimeType ?? 'File'}
+                                                     {att.size != null ? ` · ${Math.round(att.size / 1024)} KB` : ''}
+                                                   </p>
+                                                 </div>
+                                               </div>
+                                             )}
+                                           </div>
+                                         );
+                                       })}
                                     </div>
-                                 )}
+                                 ) : null}
 
                                  <div className="text-[10px] text-white/50 text-right mt-1">
                                     {msg.timestamp}
                                  </div>
                               </div>
                            </div>
-                        ))}
+                         ); })}
                         <div ref={chatEndRef} />
                      </div>
 
@@ -1997,6 +2150,31 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                      </div>
                   </div>
 
+                  {/* Facility lightbox for image attachments */}
+                  {facilityLightboxAtt && facilityLightboxImageUrl && (
+                    <div
+                      className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-6"
+                      onClick={() => { setFacilityLightboxAtt(null); setFacilityLightboxImageUrl(null); }}
+                      role="dialog"
+                      aria-modal="true"
+                    >
+                      <div className="relative max-w-5xl w-full" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => { setFacilityLightboxAtt(null); setFacilityLightboxImageUrl(null); }}
+                          className="absolute -top-2 right-0 p-2 text-white/80 hover:text-white rounded-full hover:bg-white/10 transition z-10"
+                          aria-label="Close"
+                        >
+                          <X className="w-6 h-6" />
+                        </button>
+                        <img
+                          src={facilityLightboxImageUrl}
+                          alt={facilityLightboxAtt.filename ?? 'Attachment'}
+                          className="max-h-[80vh] w-auto mx-auto rounded-xl border border-white/10"
+                        />
+                      </div>
+                    </div>
+                  )}
                </div>
              </div>
           </div>
