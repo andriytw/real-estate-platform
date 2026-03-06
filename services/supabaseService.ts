@@ -2239,17 +2239,27 @@ export const messagesService = {
 export const calendarEventsService = tasksService;
 
 // ==================== TASK CHAT MESSAGES ====================
+export interface TaskChatAttachment {
+  bucket?: string;
+  path: string;
+  url?: string;
+  filename?: string;
+  mimeType?: string;
+  size?: number;
+}
+
 export interface TaskChatMessageRow {
   id: string;
   messageText: string;
   createdAt: string;
   senderId: string;
+  attachments?: TaskChatAttachment[];
 }
 
 export async function getTaskChatMessages(calendarEventId: string): Promise<TaskChatMessageRow[]> {
   const { data, error } = await supabase
     .from('task_chat_messages')
-    .select('id, message_text, created_at, sender_id')
+    .select('id, message_text, created_at, sender_id, attachments')
     .eq('calendar_event_id', calendarEventId)
     .order('created_at', { ascending: true });
 
@@ -2259,6 +2269,7 @@ export async function getTaskChatMessages(calendarEventId: string): Promise<Task
     messageText: String(row.message_text ?? row.message ?? '').trim(),
     createdAt: row.created_at ?? '',
     senderId: row.sender_id ?? '',
+    attachments: Array.isArray(row.attachments) ? row.attachments : [],
   }));
 }
 
@@ -2272,7 +2283,7 @@ export async function insertTaskChatMessage(calendarEventId: string, messageText
       sender_id: user.id,
       message_text: messageText.trim(),
     })
-    .select('id, message_text, created_at, sender_id')
+    .select('id, message_text, created_at, sender_id, attachments')
     .single();
 
   if (error) throw error;
@@ -2282,6 +2293,35 @@ export async function insertTaskChatMessage(calendarEventId: string, messageText
     messageText: String(row.message_text ?? row.message ?? '').trim(),
     createdAt: row.created_at ?? '',
     senderId: row.sender_id ?? '',
+    attachments: Array.isArray(row.attachments) ? row.attachments : [],
+  };
+}
+
+export async function insertTaskChatMessageWithAttachment(
+  calendarEventId: string,
+  attachments: TaskChatAttachment[]
+): Promise<TaskChatMessageRow> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.id) throw new Error('Not authenticated');
+  const { data, error } = await supabase
+    .from('task_chat_messages')
+    .insert({
+      calendar_event_id: calendarEventId,
+      sender_id: user.id,
+      message_text: '📎 Attachment',
+      attachments: attachments.length ? attachments : [],
+    })
+    .select('id, message_text, created_at, sender_id, attachments')
+    .single();
+
+  if (error) throw error;
+  const row = data as any;
+  return {
+    id: row.id,
+    messageText: String(row.message_text ?? '').trim(),
+    createdAt: row.created_at ?? '',
+    senderId: row.sender_id ?? '',
+    attachments: Array.isArray(row.attachments) ? row.attachments : [],
   };
 }
 

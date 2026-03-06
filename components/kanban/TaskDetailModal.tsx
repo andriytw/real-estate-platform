@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Calendar, Clock, User, CheckCircle2, Circle, Building2, Wrench, Check, Image as ImageIcon, FileVideo, Zap, Droplets, Flame, ClipboardList, Send } from 'lucide-react';
-import { tasksService, workersService, propertiesService, getTaskChatMessages, insertTaskChatMessage, type TaskChatMessageRow } from '../../services/supabaseService';
+import { X, Calendar, Clock, User, CheckCircle2, Circle, Building2, Wrench, Check, Image as ImageIcon, FileVideo, Zap, Droplets, Flame, ClipboardList, Send, Paperclip, FileIcon } from 'lucide-react';
+import { tasksService, workersService, propertiesService, getTaskChatMessages, insertTaskChatMessage, insertTaskChatMessageWithAttachment, type TaskChatMessageRow, type TaskChatAttachment } from '../../services/supabaseService';
 import { CalendarEvent, TaskStatus, Property, Worker } from '../../types';
 import { getTaskColor } from '../../utils/taskColors';
 import { supabase } from '../../utils/supabase/client';
@@ -13,6 +13,51 @@ interface TaskDetailModalProps {
   onUpdateTask: (task: CalendarEvent) => void;
   onDeleteTask?: (taskId: string) => void;
   currentUser?: Worker | null;
+}
+
+function ChatAttachmentBlock({
+  att,
+  isMe,
+  getUrl,
+}: {
+  att: TaskChatAttachment;
+  isMe: boolean;
+  getUrl: (a: TaskChatAttachment) => Promise<string>;
+}) {
+  const [openLoading, setOpenLoading] = useState(false);
+  const isImage = att.mimeType?.startsWith('image/') ?? /\.(jpe?g|png|gif|webp)$/i.test(att.filename ?? '');
+  const onOpen = async () => {
+    setOpenLoading(true);
+    try {
+      const url = await getUrl(att);
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    } finally {
+      setOpenLoading(false);
+    }
+  };
+  return (
+    <div className={`flex items-center gap-2 p-2 rounded ${isMe ? 'bg-white/10' : 'bg-black/10'}`}>
+      {isImage && att.url ? (
+        <img src={att.url} alt={att.filename ?? ''} className="max-h-24 max-w-32 rounded object-cover" />
+      ) : isImage ? (
+        <div className="w-16 h-12 rounded bg-white/10 flex items-center justify-center text-[10px]">Image</div>
+      ) : (
+        <FileIcon className="w-8 h-8 shrink-0 opacity-70" />
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="text-xs truncate">{att.filename ?? 'File'}</p>
+        {att.size != null && <p className="text-[10px] opacity-70">{Math.round(att.size / 1024)} KB</p>}
+      </div>
+      <button
+        type="button"
+        onClick={onOpen}
+        disabled={openLoading}
+        className="text-xs underline shrink-0 disabled:opacity-50"
+      >
+        {openLoading ? '…' : 'Open'}
+      </button>
+    </div>
+  );
 }
 
 const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
@@ -39,8 +84,11 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const [chatLoading, setChatLoading] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatSending, setChatSending] = useState(false);
+  const [chatUploading, setChatUploading] = useState(false);
   const [chatMyUserId, setChatMyUserId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatFileInputRef = useRef<HTMLInputElement>(null);
+  const [attachmentUrlCache, setAttachmentUrlCache] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (isOpen && task) {
@@ -104,6 +152,49 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       alert(`Помилка відправки повідомлення: ${err?.message ?? String(err)}`);
     } finally {
       setChatSending(false);
+    }
+  };
+
+  const getAttachmentUrl = async (att: TaskChatAttachment): Promise<string> => {
+    const key = `${att.bucket ?? 'task-media'}:${att.path}`;
+    if (attachmentUrlCache[key]) return attachmentUrlCache[key];
+    const bucket = att.bucket ?? 'task-media';
+    const path = att.path;
+    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+    const url = data?.publicUrl ?? '';
+    setAttachmentUrlCache((prev) => ({ ...prev, [key]: url }));
+    return url;
+  };
+
+  const handleChatAttachmentUpload = async (files: FileList | null) => {
+    if (!files?.length || !task?.id || !isFacilityTask) return;
+    const file = files[0];
+    const safeName = file.name.replace(/[/\\]/g, '_').trim() || 'file';
+    const path = `${task.id}/${Date.now()}-${safeName}`;
+    const bucket = 'task-media';
+    setChatUploading(true);
+    try {
+      const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file);
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
+      const url = urlData?.publicUrl ?? '';
+      const payload: TaskChatAttachment[] = [{
+        bucket,
+        path,
+        url: url || undefined,
+        filename: file.name,
+        mimeType: file.type || undefined,
+        size: file.size,
+      }];
+      const row = await insertTaskChatMessageWithAttachment(task.id, payload);
+      setChatMessages((prev) => [...prev, row]);
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    } catch (err: any) {
+      console.error('Task chat attachment upload failed', { taskId: task.id, error: err?.message ?? err });
+      alert(`Помилка завантаження файлу: ${err?.message ?? String(err)}`);
+    } finally {
+      setChatUploading(false);
+      if (chatFileInputRef.current) chatFileInputRef.current.value = '';
     }
   };
 
@@ -399,23 +490,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   ? (task?.status === 'verified' ? getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />, true) : <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-gray-700 bg-gray-800/50 text-gray-500 cursor-default">Verified (manager)</span>)
                   : getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />)}
               </div>
-              {/* Media upload for worker */}
-              <div className="mt-3 border-t border-blue-500/20 pt-3">
-                <label className="text-[10px] text-gray-300 mb-1 block">
-                  Attach photos / videos
-                </label>
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*,video/*"
-                  disabled={isUploadingMedia}
-                  onChange={(e) => handleMediaUpload(e.target.files)}
-                  className="text-[10px] text-gray-400"
-                />
-                {isUploadingMedia && (
-                  <p className="text-[10px] text-blue-300 mt-1">Uploading...</p>
-                )}
-              </div>
             </div>
 
             {/* Date & Time */}
@@ -642,16 +716,28 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 )}
                 {chatMessages.map((msg) => {
                   const isMe = chatMyUserId != null && msg.senderId === chatMyUserId;
+                  const senderLabel = isMe ? 'You' : (isWorker ? 'Manager' : 'Worker');
+                  const isAttachmentOnly = msg.messageText === '📎 Attachment' && msg.attachments?.length;
                   return (
                     <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                      <div
-                        className={`max-w-[75%] p-3 rounded-lg text-sm ${
-                          isMe ? 'bg-[#005c4b] text-white rounded-tr-none' : 'bg-[#202c33] text-gray-200 rounded-tl-none'
-                        }`}
-                      >
-                        {msg.messageText}
-                        <div className="text-[10px] text-white/50 text-right mt-1">
-                          {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                      <div className={`max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                        <span className="text-[10px] text-gray-500 mb-0.5">{senderLabel}</span>
+                        <div
+                          className={`p-3 rounded-lg text-sm ${
+                            isMe ? 'bg-[#005c4b] text-white rounded-tr-none' : 'bg-[#202c33] text-gray-200 rounded-tl-none'
+                          }`}
+                        >
+                          {!isAttachmentOnly && msg.messageText ? <span className="block">{msg.messageText}</span> : null}
+                          {msg.attachments?.length ? (
+                            <div className="space-y-2 mt-1">
+                              {msg.attachments.map((att, idx) => (
+                                <ChatAttachmentBlock key={idx} att={att} isMe={isMe} getUrl={getAttachmentUrl} />
+                              ))}
+                            </div>
+                          ) : null}
+                          <div className="text-[10px] text-white/50 text-right mt-1">
+                            {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -668,6 +754,23 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 ) : (
                   <div className="flex items-center gap-2">
                     <input
+                      ref={chatFileInputRef}
+                      type="file"
+                      accept="image/*,video/*,.pdf"
+                      multiple={false}
+                      className="hidden"
+                      onChange={(e) => handleChatAttachmentUpload(e.target.files)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => chatFileInputRef.current?.click()}
+                      disabled={chatUploading || chatSending}
+                      className="p-2 text-gray-400 hover:text-white rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title="Attach file"
+                    >
+                      <Paperclip className="w-5 h-5" />
+                    </button>
+                    <input
                       type="text"
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
@@ -675,9 +778,10 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       placeholder="Type a message..."
                       className="flex-1 bg-[#0D1117] border border-gray-700 rounded-lg px-4 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
                     />
+                    {chatUploading && <span className="text-[10px] text-gray-500">Uploading…</span>}
                     <button
                       onClick={handleChatSend}
-                      disabled={!chatInput.trim() || chatSending}
+                      disabled={!chatInput.trim() || chatSending || chatUploading}
                       className="p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       <Send className="w-5 h-5" />
