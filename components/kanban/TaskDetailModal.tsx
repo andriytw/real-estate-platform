@@ -268,22 +268,50 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       case 'pending':
         return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30';
       case 'in_progress':
-        return 'text-blue-400 bg-blue-400/10 border-blue-400/30';
+        return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30';
       case 'completed':
-        return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30';
-      case 'verified':
-        return 'text-green-400 bg-green-400/10 border-green-400/30';
       case 'done_by_worker':
-        return 'text-orange-400 bg-orange-400/10 border-orange-400/30';
+      case 'verified':
+        return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30';
       default:
         return 'text-gray-400 bg-gray-400/10 border-gray-400/30';
     }
   };
 
+  const isTerminalStatus = (s: string | undefined) =>
+    s === 'done_by_worker' || s === 'verified' || s === 'completed';
+
   const getStatusButton = (status: TaskStatus, label: string, icon: React.ReactNode, readOnly = false, extraDisabled = false) => {
-    const isActive = task?.status === status;
-    const activeColorClass = getStatusColor(status);
-    const disabled = isUpdating || isActive || readOnly || extraDisabled;
+    const current = task?.status;
+    const isActive = current === status;
+    const terminal = isTerminalStatus(current);
+    const inProgress = current === 'in_progress';
+    const inWorkerActionSet = current === 'in_progress' || current === 'done_by_worker' || current === 'verified' || current === 'completed';
+    let styleClass: string;
+    let disabled: boolean;
+    if (readOnly) {
+      styleClass = isActive ? getStatusColor(status) : 'bg-[#1C1F24] border-gray-700 text-gray-300';
+      disabled = true;
+    } else if (!inWorkerActionSet) {
+      styleClass = isActive ? getStatusColor(status) : 'bg-[#1C1F24] border-gray-700 text-gray-300 hover:border-blue-500 hover:text-blue-400';
+      disabled = isUpdating || isActive || extraDisabled;
+    } else {
+      if (terminal) {
+        styleClass = 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30';
+        disabled = true;
+      } else if (inProgress) {
+        if (status === 'in_progress') {
+          styleClass = 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30';
+          disabled = true;
+        } else {
+          styleClass = 'bg-[#1C1F24] border-gray-700 text-gray-300 hover:border-blue-500 hover:text-blue-400';
+          disabled = isUpdating || extraDisabled;
+        }
+      } else {
+        styleClass = isActive ? getStatusColor(status) : 'bg-[#1C1F24] border-gray-700 text-gray-300 hover:border-blue-500 hover:text-blue-400';
+        disabled = isUpdating || isActive || extraDisabled;
+      }
+    }
     return (
       <button
         type="button"
@@ -291,9 +319,10 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         disabled={disabled}
         className={`
           flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-all
-          ${isActive ? `${activeColorClass} cursor-default` : 'bg-[#1C1F24] border-gray-700 text-gray-300 hover:border-blue-500 hover:text-blue-400'}
+          ${styleClass}
           ${readOnly ? 'cursor-default opacity-90' : ''}
-          ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
+          ${disabled ? 'cursor-not-allowed' : ''}
+          ${!disabled && !readOnly ? 'hover:border-blue-500 hover:text-blue-400' : ''}
         `}
       >
         {icon}
@@ -363,10 +392,10 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 Change task status to mark progress
               </p>
               <div className="flex flex-wrap gap-2">
-                {!isWorker && getStatusButton('in_progress', 'In Progress', <Circle className="w-3 h-3" />, false, task?.status === 'in_progress' || task?.status === 'completed' || task?.status === 'verified')}
-                {getStatusButton('completed', 'Mark as Done', <CheckCircle2 className="w-3 h-3" />, false, task?.status === 'completed' || task?.status === 'verified')}
+                {!isWorker && getStatusButton('in_progress', 'In Progress', <Circle className="w-3 h-3" />)}
+                {getStatusButton('done_by_worker', 'Mark as Done', <CheckCircle2 className="w-3 h-3" />)}
                 {isWorker
-                  ? (task?.status === 'verified' ? getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />, true) : <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-gray-700 bg-gray-800/50 text-gray-500 cursor-default">Verified (manager)</span>)
+                  ? (task?.status === 'verified' ? getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />, true) : <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-gray-700 bg-gray-800/50 text-gray-500 cursor-default">Verified (manager)</span>)}
                   : getStatusButton('verified', 'Verified', <Check className="w-3 h-3" />)}
               </div>
               {/* Media upload for worker */}
@@ -587,7 +616,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             <div>
               <h3 className="text-xs font-semibold text-gray-400 mb-2">Status</h3>
               <div className="flex items-center gap-2">
-                {task.status === 'completed' || task.status === 'verified' ? (
+                {(task.status === 'done_by_worker' || task.status === 'verified' || task.status === 'completed') ? (
                   <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                 ) : (
                   <Circle className="w-4 h-4 text-gray-500" />
@@ -630,7 +659,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 <div ref={chatEndRef} />
               </div>
               <div className="p-3 bg-[#161B22] border-t border-gray-700 shrink-0">
-                {(task.status === 'completed' || task.status === 'verified') ? (
+                {(task.status === 'done_by_worker' || task.status === 'verified' || task.status === 'completed') ? (
                   <div className="text-center text-gray-500 text-xs py-2 flex items-center justify-center gap-2">
                     <CheckCircle2 className="w-4 h-4" />
                     This task is completed. Chat is read-only.
