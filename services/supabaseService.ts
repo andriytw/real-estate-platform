@@ -3747,10 +3747,11 @@ function transformReservationToDB(reservation: Reservation): any {
 // ==================== RPC WRAPPER FUNCTIONS ====================
 
 /**
- * Check if a date range overlaps with any confirmed booking
+ * Check if a date range overlaps with any confirmed booking.
+ * Uses half-open interval semantics [start, end): check-in inclusive, check-out exclusive.
  * @param propertyId - Property UUID
- * @param startDate - Start date (YYYY-MM-DD)
- * @param endDate - End date (YYYY-MM-DD)
+ * @param startDate - Start date (any ISO-like string, will be normalized to YYYY-MM-DD)
+ * @param endDate - End date (any ISO-like string, will be normalized to YYYY-MM-DD)
  * @returns true if overlaps, false otherwise
  */
 export async function checkBookingOverlap(
@@ -3758,10 +3759,17 @@ export async function checkBookingOverlap(
   startDate: string,
   endDate: string
 ): Promise<boolean> {
+  const start = (startDate ?? '').slice(0, 10);
+  const end = (endDate ?? '').slice(0, 10);
+
+  if (!start || !end) {
+    throw new Error('Invalid date range: start and end dates are required');
+  }
+
   const { data, error } = await supabase.rpc('is_booking_overlap', {
     p_property_id: propertyId,
-    p_start_date: startDate,
-    p_end_date: endDate,
+    p_start_date: start,
+    p_end_date: end,
   });
   
   if (error) {
