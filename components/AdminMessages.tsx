@@ -342,21 +342,21 @@ const AdminMessages: React.FC = () => {
                 const parts = colorString.split(' ');
                 const borderClass = parts.find((p) => p.startsWith('border-')) || 'border-gray-500';
                 const textClass = parts.find((p) => p.startsWith('text-')) || 'text-gray-400';
-                const accentBgClass = borderClass.replace('border-', 'bg-');
                 const isSelected = selectedThreadId === thread.calendarEventId;
                 return (
                   <div
                     key={thread.calendarEventId}
                     onClick={() => setSelectedThreadId(thread.calendarEventId)}
-                    className={`
-                      relative rounded-2xl border border-white/10 bg-white/[0.03] p-3 pl-4 transition-colors cursor-pointer
-                      shadow-[0_1px_0_0_rgba(255,255,255,0.04)]
-                      hover:bg-white/[0.06]
-                      ${isSelected ? 'ring-2 ring-white/15 bg-white/[0.06]' : ''}
-                      ${isClosed ? 'opacity-60' : ''}
-                    `}
+                    className={`rounded-2xl p-[2px] border-2 ${borderClass} cursor-pointer transition-colors ${isClosed ? 'opacity-60' : ''}`}
                   >
-                    <div className={`absolute inset-y-0 left-0 w-1 rounded-l-2xl ${accentBgClass}`} aria-hidden />
+                    <div
+                      className={`
+                        relative rounded-[14px] bg-white/[0.03] p-3 transition-colors
+                        shadow-[0_1px_0_0_rgba(255,255,255,0.04)]
+                        hover:bg-white/[0.06]
+                        ${isSelected ? 'ring-2 ring-white/15 bg-white/[0.06]' : ''}
+                      `}
+                    >
                     <div className="relative flex flex-col space-y-1">
                       <div className="flex justify-between items-start gap-2">
                         <h3
@@ -390,6 +390,7 @@ const AdminMessages: React.FC = () => {
                         1
                       </div>
                     )}
+                    </div>
                   </div>
                 );
               })}
