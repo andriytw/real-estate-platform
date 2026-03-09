@@ -877,6 +877,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   };
 
   const { nights, net, gross } = calculateFinancials();
+  const vatAmount = (parseFloat(gross) - parseFloat(net)).toFixed(2);
+  const taxRate = Number(formData.taxRate ?? 0);
+  const pricePerNightFormatted = Number(formData.pricePerNight ?? 0).toFixed(2);
 
   // --- Form Actions ---
 
@@ -1874,9 +1877,12 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                             </div>
                         </div>
 
-                        <div className="mt-4 bg-emerald-500/10 border border-emerald-500/30 p-3 rounded-lg flex justify-between items-center">
-                            <span className="text-emerald-500 font-bold text-sm">Total Gross</span>
-                            <span className="text-2xl font-bold text-white">€{gross}</span>
+                        <div className="mt-4 bg-emerald-500/10 border border-emerald-500/30 p-3 rounded-lg flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center">
+                            <div className="text-xs text-emerald-200/90 sm:text-sm sm:text-white/80 space-y-0.5">
+                                <div>Net: {nights} × €{pricePerNightFormatted} = €{net}</div>
+                                <div>VAT {taxRate}%: €{vatAmount}</div>
+                            </div>
+                            <div className="text-2xl font-bold text-white shrink-0">€{gross}</div>
                         </div>
                     </div>
 
