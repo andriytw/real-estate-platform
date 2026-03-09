@@ -1742,7 +1742,18 @@ export const offersService = {
       .select('id');
     if (error) throw error;
     if (!data || data.length === 0) throw new Error('Delete not allowed or offer not found. Check your role (Sales) and RLS policies.');
-  }
+  },
+
+  /** Read-only: offers linked to a reservation (for Virtual Documents Manager rental folder). Relation: offers.reservation_id = reservation.id */
+  async getByReservationId(reservationId: string): Promise<OfferData[]> {
+    const { data, error } = await supabase
+      .from('offers')
+      .select('*')
+      .eq('reservation_id', reservationId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(transformOfferFromDB);
+  },
 };
 
 // ==================== INVOICES ====================
@@ -1824,6 +1835,18 @@ export const invoicesService = {
       .from('invoices')
       .select('*')
       .in('booking_id', bookingIds)
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(transformInvoiceFromDB);
+  },
+
+  /** Read-only: invoices/proformas linked to reservations (for Virtual Documents Manager rental folder). Relation: invoices.reservation_id = reservation.id */
+  async getInvoicesByReservationIds(reservationIds: string[]): Promise<InvoiceData[]> {
+    if (!reservationIds.length) return [];
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .in('reservation_id', reservationIds)
       .order('date', { ascending: false });
     if (error) throw error;
     return (data || []).map(transformInvoiceFromDB);

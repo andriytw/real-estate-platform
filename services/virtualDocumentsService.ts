@@ -8,6 +8,7 @@ import { supabase } from '../utils/supabase/client';
 import {
   bookingsService,
   invoicesService,
+  offersService,
   tasksService,
   propertyDocumentsService,
   propertyDepositProofsService,
@@ -30,6 +31,9 @@ export interface RentalFolderMeta {
   tenantLabel?: string;
 }
 
+/** Type badge for rental folder list (Offer / Proforma / Invoice / Payment Proof / upload / task / workflow). */
+export type VirtualEntryType = 'invoice' | 'proforma' | 'offer' | 'payment_proof' | 'upload' | 'task' | 'workflow';
+
 /** Single file entry for list view; getOpenUrl() used when user opens the file. */
 export interface VirtualEntry {
   id: string;
@@ -39,6 +43,8 @@ export interface VirtualEntry {
   /** Created at (ISO) for secondary sort */
   createdAt: string;
   getOpenUrl: () => Promise<string>;
+  /** Optional type for badge in rental folder (e.g. Offer, Proforma, Invoice, Payment Proof). */
+  entryType?: VirtualEntryType;
 }
 
 /** Format date for rental folder label: DD.MM.YYYY or ... for open end */
@@ -215,29 +221,72 @@ async function listPropertyDocsBookingPrefix(propertyId: string, bookingId: stri
   return (data || []).map((o) => ({ name: o.name }));
 }
 
-/** Load one rental folder's flat file list (invoices, payment proofs, Übergabeprotokoll, task attachments, Einzug/Auszug only when booking_id set). */
+/**
+ * Relation chain for rental folder commercial docs (no heuristics):
+ * - Booking: source_reservation_id (FK to reservations).
+ * - Invoices: booking_id (direct) OR reservation_id (proformas/invoices before booking created); file_url, document_type ('proforma'|'invoice').
+ * - Offers: reservation_id only; no file_url; open = linked proforma/invoice (invoice.offer_id = offer.id) file_url when present.
+ * Resolution: (A) Invoices by booking_id. (B) If booking.source_reservation_id set: add invoices by reservation_id and offers by reservation_id.
+ */
 export async function loadRentalFolderFiles(propertyId: string, bookingId: string): Promise<VirtualEntry[]> {
   const entries: VirtualEntry[] = [];
   const bookingIdStr = String(bookingId);
 
-  const [invoices, events, listResult] = await Promise.all([
-    invoicesService.getInvoicesByBookingIds([bookingIdStr]),
+  const [booking, events, listResult] = await Promise.all([
+    bookingsService.getById(bookingIdStr),
     tasksService.getCalendarEventsByPropertyAndBookingIds(propertyId, [bookingIdStr]),
     listPropertyDocsBookingPrefix(propertyId, bookingIdStr).catch(() => []),
   ]);
 
+  const invoicesByBooking = await invoicesService.getInvoicesByBookingIds([bookingIdStr]);
+  const reservationId = booking?.sourceReservationId ?? undefined;
+  const invoicesByReservation = reservationId
+    ? await invoicesService.getInvoicesByReservationIds([reservationId])
+    : [];
+  const seenIds = new Set<string>(invoicesByBooking.map((i) => i.id));
+  const invoices: typeof invoicesByBooking = [...invoicesByBooking];
+  for (const inv of invoicesByReservation) {
+    if (!seenIds.has(inv.id)) {
+      seenIds.add(inv.id);
+      invoices.push(inv);
+    }
+  }
+
   for (const inv of invoices) {
-    const label = `Invoice ${inv.invoiceNumber}${inv.documentType === 'proforma' ? ' (Proforma)' : ''}`;
+    const isProforma = inv.documentType === 'proforma';
+    const label = isProforma
+      ? `Proforma ${inv.invoiceNumber}`
+      : `Invoice ${inv.invoiceNumber}`;
     entries.push({
       id: `inv-${inv.id}`,
       label,
       sortDate: inv.date || null,
       createdAt: inv.date || '',
+      entryType: isProforma ? 'proforma' : 'invoice',
       getOpenUrl: async () => {
         if (inv.fileUrl) return inv.fileUrl;
-        throw new Error('No file URL for this invoice');
+        throw new Error('No file URL for this document');
       },
     });
+  }
+
+  if (reservationId) {
+    const offers = await offersService.getByReservationId(reservationId);
+    for (const offer of offers) {
+      const linkedInv = invoices.find((inv) => inv.offerId === offer.id && inv.fileUrl);
+      const offerLabel = offer.offerNo ? `Offer ${offer.offerNo}` : `Offer ${offer.id.slice(0, 8)}`;
+      entries.push({
+        id: `offer-${offer.id}`,
+        label: offerLabel,
+        sortDate: offer.createdAt || null,
+        createdAt: offer.createdAt || '',
+        entryType: 'offer',
+        getOpenUrl: async () => {
+          if (linkedInv?.fileUrl) return linkedInv.fileUrl;
+          throw new Error('No linked document for this offer');
+        },
+      });
+    }
   }
 
   const invoiceIds = invoices.map((i) => i.id);
@@ -250,6 +299,7 @@ export async function loadRentalFolderFiles(propertyId: string, bookingId: strin
         label: pp.fileName || `Payment proof ${pp.documentNumber || pp.id}`,
         sortDate: pp.createdAt || null,
         createdAt: pp.createdAt || '',
+        entryType: 'payment_proof',
         getOpenUrl: () =>
           paymentProofsService.getPaymentProofSignedUrl(pp.filePath!, SIGNED_URL_EXPIRY_SEC),
       });
@@ -264,6 +314,7 @@ export async function loadRentalFolderFiles(propertyId: string, bookingId: strin
       label: obj.name,
       sortDate: null,
       createdAt: '',
+      entryType: 'upload',
       getOpenUrl: () =>
         propertyDocumentsService.getDocumentSignedUrl(fullPath, SIGNED_URL_EXPIRY_SEC),
     });
@@ -282,6 +333,7 @@ export async function loadRentalFolderFiles(propertyId: string, bookingId: strin
           label: att.filename || att.path.split('/').pop() || `Attachment ${i + 1}`,
           sortDate: msg.createdAt || null,
           createdAt: msg.createdAt || '',
+          entryType: 'task',
           getOpenUrl: () => getTaskAttachmentSignedUrl(bucket, att.path, SIGNED_URL_EXPIRY_SEC),
         });
       }
@@ -298,6 +350,7 @@ export async function loadRentalFolderFiles(propertyId: string, bookingId: strin
             label: `${ev.type} Step ${step.stepNumber} ${step.stepName} (${i + 1})`,
             sortDate: step.completedAt || null,
             createdAt: step.completedAt || '',
+            entryType: 'workflow',
             getOpenUrl: async () => url,
           });
         }
@@ -305,5 +358,6 @@ export async function loadRentalFolderFiles(propertyId: string, bookingId: strin
     }
   }
 
+  sortDocumentEntries(entries);
   return entries;
 }

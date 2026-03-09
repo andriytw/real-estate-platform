@@ -12,9 +12,29 @@ import {
   loadRentalFolderFiles,
   type RentalFolderMeta,
   type VirtualEntry,
+  type VirtualEntryType,
 } from '../services/virtualDocumentsService';
 
 type ViewState = 'none' | 'documents' | 'rentals' | { rental: string };
+
+const BADGE_LABELS: Record<VirtualEntryType, string> = {
+  offer: 'Offer',
+  proforma: 'Proforma',
+  invoice: 'Invoice',
+  payment_proof: 'Payment Proof',
+  upload: 'Upload',
+  task: 'Task',
+  workflow: 'Workflow',
+};
+
+function RentalEntryBadge({ type }: { type: VirtualEntryType }) {
+  const label = BADGE_LABELS[type];
+  return (
+    <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-700 text-gray-300">
+      {label}
+    </span>
+  );
+}
 
 interface VirtualDocumentsManagerProps {
   propertyId: string;
@@ -206,9 +226,12 @@ export const VirtualDocumentsManager: React.FC<VirtualDocumentsManagerProps> = (
                     className="flex justify-between items-center p-2 bg-[#1C1F24] rounded border border-gray-700 hover:bg-[#23262b] transition-colors cursor-pointer"
                     onClick={() => openEntry(entry)}
                   >
-                    <span className="flex items-center gap-2 text-white truncate">
+                    <span className="flex items-center gap-2 text-white truncate min-w-0">
                       <FileIcon className="w-4 h-4 text-red-500 shrink-0" />
                       <span className="truncate">{entry.label}</span>
+                      {entry.entryType && (
+                        <RentalEntryBadge type={entry.entryType} />
+                      )}
                     </span>
                   </li>
                 ))}
