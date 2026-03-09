@@ -233,6 +233,36 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       return s;
     }).join(',');
 
+  const formatUkrainianPositionCount = (n: number): string => {
+    if (n === 1) return '1 позиція';
+    if (n >= 2 && n <= 4) return `${n} позиції`;
+    return `${n} позицій`;
+  };
+
+  const formatCompletedTaskDescriptionForExport = (rawDescription: string, context?: { propertyTitle?: string }): string => {
+    const oneLine = (s: string) => s.trim().replace(/\r?\n/g, ' ').trim();
+    const raw = rawDescription.trim();
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.action === 'transfer_inventory') {
+        const arr = Array.isArray(parsed.transferData) ? parsed.transferData : [];
+        if (arr.length === 0) {
+          return oneLine("Перенесення інвентарю: позиції не вказані");
+        }
+        const names = arr.map((item: any) => String(item?.itemName || item?.name || item?.title || 'Невідома позиція').trim());
+        const count = names.length;
+        const countPhrase = formatUkrainianPositionCount(count);
+        const namePart = count <= 3 ? names.join(', ') : names.slice(0, 3).join(', ') + ' та ще ' + (count - 3);
+        let result = `Перенесення інвентарю: ${countPhrase} — ${namePart}`;
+        if (context?.propertyTitle?.trim()) result += " до об'єкта " + context.propertyTitle.trim();
+        return oneLine(result);
+      }
+      return oneLine('Системна дія');
+    } catch {
+      return oneLine(raw);
+    }
+  };
+
   // Facility CSV: column order date, property_address, property_title, time, task_title, type, status, assignee_name, description, last_comment (no id); sorted by date ASC, time ASC (empty time last)
   // Empty property/assignee columns only if calendar_events.property_id or worker_id missing, or propertyList/workers not loaded
   const buildFacilityCsv = (taskList: CalendarEvent[], lastCommentMap: Record<string, string>): string => {
@@ -258,7 +288,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       }
       const propertyTitle = prop?.title ?? '';
       const propertyAddress = prop?.address ?? (prop as any)?.full_address ?? (prop as any)?.fullAddress ?? '';
-      const description = (e.description ?? '').replace(/\r?\n/g, ' ').trim();
+      const description = formatCompletedTaskDescriptionForExport((e.description ?? '').trim(), { propertyTitle });
       const lastCommentRaw = (lastCommentMap[e.id] ?? '').replace(/\r?\n/g, ' ').trim();
       const lastComment = lastCommentRaw.slice(0, 200);
       lines.push(toCsvRow([
