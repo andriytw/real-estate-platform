@@ -2453,6 +2453,19 @@ export async function listTaskChatThreadsForFacilityInbox(): Promise<TaskChatThr
       ? [prop.full_address || prop.address, prop.title].filter(Boolean).join(' — ') || undefined
       : (ev.location_text || undefined);
 
+    const unitTitle = (prop?.title ?? '').trim().toLowerCase();
+    const eventTitle = (ev.title ?? '').trim();
+    const eventType = (ev.type ?? '').trim();
+    const titleSameAsUnit = unitTitle.length > 0 && eventTitle.toLowerCase() === unitTitle;
+    const taskTitle =
+      titleSameAsUnit && eventType
+        ? ev.type!
+        : eventTitle
+          ? ev.title!
+          : eventType
+            ? ev.type!
+            : (propertyLabel ?? 'Task');
+
     const workerId = ev.worker_id ?? undefined;
     const assigneeName = workerId ? (assigneeMap.get(workerId) ?? '—') : '—';
     let dueAt: string | undefined;
@@ -2462,7 +2475,6 @@ export async function listTaskChatThreadsForFacilityInbox(): Promise<TaskChatThr
       dueAt = `${ev.date}T${timePart}`;
     }
 
-    const taskTitle = ev.title ?? 'Task';
     const taskType = ev.type ?? undefined;
     result.push({
       calendarEventId: eventId,
