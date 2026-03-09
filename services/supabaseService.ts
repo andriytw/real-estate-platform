@@ -1051,6 +1051,19 @@ export const tasksService = {
     return data.map(transformCalendarEventFromDB);
   },
 
+  /** Calendar events for a property that are linked to the given booking IDs (for Virtual Documents Manager rental folder). */
+  async getCalendarEventsByPropertyAndBookingIds(propertyId: string, bookingIds: string[]): Promise<CalendarEvent[]> {
+    if (!propertyId || !bookingIds.length) return [];
+    const { data, error } = await supabase
+      .from('calendar_events')
+      .select('*')
+      .eq('property_id', propertyId)
+      .in('booking_id', bookingIds)
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(transformCalendarEventFromDB);
+  },
+
   async create(task: Omit<CalendarEvent, 'id'>): Promise<CalendarEvent> {
     const dbData = transformCalendarEventToDB(task);
     
@@ -1799,6 +1812,18 @@ export const invoicesService = {
       .select('*')
       .eq('document_type', 'invoice')
       .eq('proforma_id', proformaId)
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(transformInvoiceFromDB);
+  },
+
+  /** Invoices linked to the given booking IDs (for Virtual Documents Manager rental folder). */
+  async getInvoicesByBookingIds(bookingIds: string[]): Promise<InvoiceData[]> {
+    if (!bookingIds.length) return [];
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .in('booking_id', bookingIds)
       .order('date', { ascending: false });
     if (error) throw error;
     return (data || []).map(transformInvoiceFromDB);
@@ -3412,6 +3437,17 @@ export const propertyDepositProofsService = {
       .maybeSingle();
     if (error) throw new Error(error.message || 'Failed to get deposit proof');
     return data ? transformDepositProofFromDB(data) : null;
+  },
+
+  /** All deposit proofs for property (for Virtual Documents Manager Документи folder). */
+  async getByPropertyId(propertyId: string): Promise<PropertyDepositProof[]> {
+    const { data, error } = await supabase
+      .from('property_deposit_proofs')
+      .select('id, property_id, proof_type, bucket, file_path, original_filename, mime_type, created_at')
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message || 'Failed to list deposit proofs');
+    return (data || []).map(transformDepositProofFromDB);
   },
 
   async create(propertyId: string, proofType: 'payment' | 'return', file: File): Promise<PropertyDepositProof> {
