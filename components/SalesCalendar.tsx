@@ -351,7 +351,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   // Constants for Today (dynamic)
   const TODAY = today;
 
-  // Побудувати список кімнат із реальних properties
+  // Побудувати список кімнат із реальних properties (display-only fields for table columns)
   const roomsFromProperties = React.useMemo(
     () =>
       (properties || []).map((p) => ({
@@ -363,9 +363,23 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         beds: p.details?.beds ?? 0,
         area: p.details?.area ?? p.area ?? 0,
         termStatus: p.termStatus ?? undefined,
+        department: p.apartmentGroupName ?? '',
+        status: p.apartmentStatus ?? null,
       })),
     [properties]
   );
+
+  // Status column: real apartment status label only; do not confuse with termStatus
+  const getApartmentStatusLabel = (status: string | null | undefined): string => {
+    if (status == null || String(status).trim() === '') return '—';
+    switch (status) {
+      case 'ooo': return 'Out of order';
+      case 'preparation': return 'В підготовці';
+      case 'rented_worker': return 'Здана працівнику';
+      case 'active': return 'Активна';
+      default: return status;
+    }
+  };
 
   const cities = [
     'ALL',
@@ -913,8 +927,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       {/* Main Grid Area */}
       <div className="flex-1 flex overflow-hidden relative">
          
-         {/* Left Sidebar (Rooms) */}
-         <div className="w-56 flex-shrink-0 border-r border-gray-800 bg-[#161B22] z-20 flex flex-col">
+         {/* Left Sidebar (Rooms) — table-style single row per apartment, no header */}
+         <div className="w-64 flex-shrink-0 border-r border-gray-800 bg-[#161B22] z-20 flex flex-col">
             <div
                 className="sticky top-0 z-30 border-b border-gray-800 bg-[#1C1F24] flex flex-col justify-center px-4 py-3"
                 style={{ minHeight: CALENDAR_HEADER_HEIGHT, height: CALENDAR_HEADER_HEIGHT }}
@@ -936,42 +950,30 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                     const maxStack = maxStackForRoomId.get(room.id) ?? 0;
                     const extraHeight = maxStack > 0 ? (maxStack - 1) * (STRIPE_H + STRIPE_GAP) : 0;
                     const rowMinHeight = BASE_ROW_HEIGHT + extraHeight;
+                    const rowClass = 'text-[11px] text-gray-200 font-medium';
                     return (
                     <div
                         key={room.id}
-                        className="border-b border-gray-800 flex flex-col justify-center px-4 py-2 hover:bg-[#1C1F24] transition-colors group relative"
+                        className="border-b border-gray-800 flex items-center px-2 py-1.5 hover:bg-[#1C1F24] transition-colors group relative"
                         style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
                     >
-                        <div className="flex justify-between items-start gap-2 mb-0.5">
-                            <span className="text-xs font-bold text-white truncate">{room.name}</span>
-                            {room.termStatus != null && (
-                                <span className={`text-[9px] px-1 py-0.5 rounded shrink-0 ${room.termStatus === 'green' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
-                                    {room.termStatus === 'green' ? 'Active' : 'Expiring'}
-                                </span>
-                            )}
-                        </div>
-                        {room.details && (
-                            <span className="text-[10px] text-gray-500 truncate mb-0.5 block">{room.details}</span>
-                        )}
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[9px] text-gray-400">
-                            {(room.area != null && room.area !== '' && Number(room.area) > 0) && (
-                                <span className="flex items-center gap-1" title="Площа">
-                                    <Ruler className="w-3 h-3 text-gray-500 shrink-0" />
-                                    <span className="text-gray-300 font-medium">{room.area} м²</span>
-                                </span>
-                            )}
-                            {(room.rooms != null || room.beds != null) && (
-                                <span className="flex items-center gap-1.5">
-                                    <span className="flex items-center gap-0.5" title="Кімнати">
-                                        <LayoutGrid className="w-3 h-3 text-gray-500 shrink-0" />
-                                        <span className="text-gray-300 font-medium">{room.rooms ?? 0}</span>
-                                    </span>
-                                    <span className="flex items-center gap-0.5" title="Ліжка">
-                                        <Bed className="w-3 h-3 text-gray-500 shrink-0" />
-                                        <span className="text-gray-300 font-medium">{room.beds ?? 0}</span>
-                                    </span>
-                                </span>
-                            )}
+                        <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,0.7fr)_minmax(0,1.4fr)_minmax(0,0.8fr)_auto_auto_auto] gap-1.5 w-full min-w-0 items-center whitespace-nowrap">
+                            <span className={`truncate ${rowClass}`} title={room.department || undefined}>{room.department || '—'}</span>
+                            <span className={`shrink-0 ${rowClass}`}>{getApartmentStatusLabel(room.status)}</span>
+                            <span className={`truncate ${rowClass} text-gray-300`} title={room.details || undefined}>{room.details || '—'}</span>
+                            <span className={`truncate ${rowClass} font-semibold`} title={room.name || undefined}>{room.name || '—'}</span>
+                            <span className="flex items-center gap-0.5 shrink-0" title="QM">
+                                <Ruler className="w-3 h-3 text-gray-500 shrink-0" />
+                                <span className={rowClass}>{(room.area != null && room.area !== '' && Number(room.area) > 0) ? `${room.area} м²` : '—'}</span>
+                            </span>
+                            <span className="flex items-center gap-0.5 shrink-0" title="Betten">
+                                <Bed className="w-3 h-3 text-gray-500 shrink-0" />
+                                <span className={rowClass}>{room.beds ?? 0}</span>
+                            </span>
+                            <span className="flex items-center gap-0.5 shrink-0" title="Rooms">
+                                <LayoutGrid className="w-3 h-3 text-gray-500 shrink-0" />
+                                <span className={rowClass}>{room.rooms ?? 0}</span>
+                            </span>
                         </div>
                     </div>
                     );
