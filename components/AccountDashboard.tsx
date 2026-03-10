@@ -5,6 +5,7 @@ import { useWorker } from '../contexts/WorkerContext';
 import AdminCalendar from './AdminCalendar';
 import AdminMessages from './AdminMessages';
 import SalesCalendar from './SalesCalendar';
+import SalesStatsSection from './SalesStatsSection';
 import SalesChat from './SalesChat';
 import BookingDetailsModal from './BookingDetailsModal';
 import InvoiceModal from './InvoiceModal';
@@ -166,7 +167,7 @@ import { supabase } from '../utils/supabase/client';
 type Department = 'admin' | 'properties' | 'facility' | 'accounting' | 'sales' | 'tasks';
 type FacilityTab = 'overview' | 'calendar' | 'messages' | 'warehouse';
 type AccountingTab = 'dashboard' | 'invoices' | 'expenses' | 'calendar' | 'banking';
-type SalesTab = 'leads' | 'calendar' | 'offers' | 'reservations' | 'proformas' | 'requests' | 'history' | 'chat'; 
+type SalesTab = 'dashboard' | 'leads' | 'calendar' | 'offers' | 'reservations' | 'proformas' | 'requests' | 'history' | 'chat'; 
 type PropertiesTab = 'list' | 'units';
 
 type PaymentTileKey = 'from_company2_to_company1' | 'from_company1_to_owner' | 'owner_control';
@@ -9337,6 +9338,18 @@ ${internalCompany} Team`;
 
 
   const renderSalesContent = () => {
+    if (salesTab === 'dashboard') {
+      return (
+        <SalesStatsSection
+          reservations={reservations}
+          offers={offers}
+          confirmedBookings={confirmedBookings}
+          adminEvents={adminEvents}
+          properties={properties}
+          invoices={invoices}
+        />
+      );
+    }
     if (salesTab === 'leads') {
         return (
             <div className="p-8 bg-[#0D1117] text-white">
@@ -10238,6 +10251,16 @@ ${internalCompany} Team`;
           )}
           {expandedSections.sales && (
               <div className="ml-4 space-y-1 border-l border-gray-700 pl-3 my-1">
+                <button 
+                  onClick={() => { setActiveDepartment('sales'); setSalesTab('dashboard'); }} 
+                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
+                    activeDepartment === 'sales' && salesTab === 'dashboard'
+                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  Dashboard
+                </button>
                 <button 
                   onClick={() => { setActiveDepartment('sales'); setSalesTab('requests'); }} 
                   className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${

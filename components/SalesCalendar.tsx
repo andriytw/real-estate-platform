@@ -5,9 +5,8 @@ import { RequestData, Property } from '../types';
 import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar, Search, Ruler, LayoutGrid, Bed } from 'lucide-react';
 import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus, Lead, PaymentProof } from '../types';
 import BookingDetailsModal from './BookingDetailsModal';
-import BookingStatsTiles from './BookingStatsTiles';
-import BookingListModal from './BookingListModal';
 import { getBookingColor, getBookingBorderStyle, getBookingStyle } from '../bookingUtils';
+import { useSalesAllBookings } from '../hooks/useSalesAllBookings';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
 
 // Helper to normalize date strings for stacking key
@@ -16,37 +15,6 @@ const normalizeDateKey = (v: string) => {
   if (v.length >= 10) return v.slice(0, 10); // YYYY-MM-DD
   return v;
 };
-
-// Helper to get reservation label with priority (never returns "N/A")
-function getReservationLabel(r: ReservationData): string {
-  // Priority: internalCompany || companyName || company
-  if (r.internalCompany && r.internalCompany.trim() && r.internalCompany !== 'N/A') return r.internalCompany.trim();
-  if (r.companyName && r.companyName.trim() && r.companyName !== 'N/A') return r.companyName.trim();
-  if (r.company && r.company.trim() && r.company !== 'N/A') return r.company.trim();
-  
-  // Priority: leadLabel (if available)
-  if ((r as any).leadLabel && (r as any).leadLabel.trim()) return (r as any).leadLabel.trim();
-  
-  // Priority: firstName + lastName OR clientFirstName + clientLastName
-  if (r.firstName || r.lastName) {
-    const name = `${r.firstName || ''} ${r.lastName || ''}`.trim();
-    if (name) return name;
-  }
-  if ((r as any).clientFirstName || (r as any).clientLastName) {
-    const name = `${(r as any).clientFirstName || ''} ${(r as any).clientLastName || ''}`.trim();
-    if (name) return name;
-  }
-  
-  // Priority: guest (only if not "N/A" or empty)
-  if (r.guest && r.guest.trim() && r.guest !== 'N/A' && r.guest !== 'Guest') return r.guest.trim();
-  
-  // Priority: email || phone
-  if (r.email && r.email.trim()) return r.email.trim();
-  if (r.phone && r.phone.trim()) return r.phone.trim();
-  
-  // Fallback: Reservation #id
-  return `Reservation #${r.id}`;
-}
 
 // Never show blank in calendar/tooltip — API/DB may return empty guest
 function getDisplayGuest(booking: { guest?: string | null }): string {
@@ -164,6 +132,14 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   properties = [],
   onShowToast,
 }) => {
+  const { allBookings } = useSalesAllBookings({
+    reservations,
+    offers,
+    confirmedBookings,
+    invoices,
+    adminEvents,
+  });
+
   // State
   const [bookings, setBookings] = useState<Booking[]>([]); // Без демо-бронювань
 
@@ -213,13 +189,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   // View Details Modal State
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-
-  // Stats Tiles Modal State
-  const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
-  const [statsModalType, setStatsModalType] = useState<'checkin' | 'checkout' | 'cleaning' | 'reminder'>('checkin');
-  const [statsModalItems, setStatsModalItems] = useState<(Booking | CalendarEvent)[]>([]);
-  const [statsModalDate, setStatsModalDate] = useState<Date>(new Date());
-  const [statsModalTitle, setStatsModalTitle] = useState<string>('');
 
   // New Booking Form State
   const [formData, setFormData] = useState(() => {
@@ -307,198 +276,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     return map;
   }, [offers]);
 
-  // Convert Offers to Booking Objects for Visualization (exclude offers linked to a reservation — that reservation stripe is shown and styled as "offered")
-  const offerBookings: Booking[] = offers
-    .filter(offer => !offer.reservationId)
-    .map(offer => {
-    // Parse dates string "YYYY-MM-DD to YYYY-MM-DD"
-    const parts = offer.dates.split(' to ');
-    const start = parts[0];
-    const end = parts[1] || start;
-
-    // FIRST: Check if there's a reservation with this ID and use its status directly
-    const linkedReservation = reservations.find(r => 
-        String(r.id) === String(offer.id) || r.id === Number(offer.id)
-    );
-    
-    if (linkedReservation && linkedReservation.status) {
-        // Use the status directly from reservations array - this is the source of truth
-        const bookingStatus = linkedReservation.status;
-        const statusText = String(bookingStatus).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        const colorClass = getBookingStyle(bookingStatus);
-        
-        return {
-            id: Number(offer.id) || Date.now(),
-            roomId: offer.propertyId,
-            start,
-            end,
-            guest: offer.clientName + (statusText !== 'Offer Sent' && statusText !== 'Draft' ? ` (${statusText})` : ' (Offer)'),
-            color: colorClass, 
-            checkInTime: offer.checkInTime || '15:00',
-            checkOutTime: offer.checkOutTime || '11:00',
-            status: bookingStatus,
-            price: offer.price,
-            balance: '0.00 EUR',
-            guests: offer.guests || '-',
-            unit: offer.unit || '-',
-            comments: offer.comments || 'Converted from Offer',
-            paymentAccount: 'Pending',
-            company: 'N/A',
-            internalCompany: offer.internalCompany,
-            ratePlan: '-',
-            guarantee: '-',
-            cancellationPolicy: '-',
-            noShowPolicy: '-',
-            channel: 'Direct',
-            type: 'GUEST',
-            address: offer.address || '-',
-            phone: offer.phone || '-',
-            email: offer.email || '-',
-            guestList: offer.guestList || []
-        };
-    }
-
-    // FALLBACK: Check if this offer has an associated invoice
-    const linkedInvoice = invoices.find(inv => inv.offerIdSource === offer.id || inv.offerIdSource === String(offer.id));
-    const isPaid = linkedInvoice?.status === 'Paid';
-
-    // Determine Status using BookingStatus enum
-    let bookingStatus: BookingStatus | string = BookingStatus.OFFER_SENT;
-    let statusText: string = offer.status;
-
-    if (linkedInvoice) {
-        if (isPaid) {
-            // Check if Auszug (Move-Out) Task is verified (completed)
-            const moveOutTask = adminEvents.find(e => 
-                e.propertyId === offer.propertyId && 
-                e.type === 'Auszug' && 
-                e.date === end &&
-                e.bookingId === (linkedInvoice.bookingId || offer.id)
-            );
-            
-            // Check if Einzug (Move-In) Task is verified (done)
-            const moveInTask = adminEvents.find(e => 
-                e.propertyId === offer.propertyId && 
-                e.type === 'Einzug' && 
-                e.date === start &&
-                e.bookingId === (linkedInvoice.bookingId || offer.id)
-            );
-
-            if (moveOutTask && moveOutTask.status === 'verified') {
-                bookingStatus = BookingStatus.COMPLETED;
-                statusText = 'Completed';
-            } else if (moveInTask && moveInTask.status === 'verified') {
-                bookingStatus = BookingStatus.CHECK_IN_DONE;
-                statusText = 'Checked In';
-            } else {
-                bookingStatus = BookingStatus.PAID;
-                statusText = 'Paid';
-            }
-        } else {
-            bookingStatus = BookingStatus.INVOICED;
-            statusText = 'Invoiced';
-        }
-    } else if (offer.status === 'Sent') {
-        bookingStatus = BookingStatus.OFFER_SENT;
-        statusText = 'Offer Sent';
-    } else if (offer.status === 'Draft') {
-        bookingStatus = BookingStatus.OFFER_PREPARED;
-        statusText = 'Draft';
-    }
-
-    // Use centralized color functions
-    const colorClass = getBookingStyle(bookingStatus);
-
-    return {
-      id: Number(offer.id) || Date.now(), // Generate a number ID if not numeric
-      roomId: offer.propertyId,
-      start,
-      end,
-      guest: offer.clientName + (statusText !== 'Sent' && statusText !== 'Draft' ? ` (${statusText})` : ' (Offer)'),
-      color: colorClass, 
-      checkInTime: offer.checkInTime || '15:00',
-      checkOutTime: offer.checkOutTime || '11:00',
-      status: bookingStatus,
-      price: offer.price,
-      balance: '0.00 EUR',
-      guests: offer.guests || '-',
-      unit: offer.unit || '-',
-      comments: offer.comments || 'Converted from Offer',
-      paymentAccount: 'Pending',
-      company: 'N/A', // Guest Company placeholder
-      internalCompany: offer.internalCompany, // Map the issuing firm
-      ratePlan: '-',
-      guarantee: '-',
-      cancellationPolicy: '-',
-      noShowPolicy: '-',
-      channel: 'Direct',
-      type: 'GUEST',
-      // Map extended fields
-      address: offer.address || '-',
-      phone: offer.phone || '-',
-      email: offer.email || '-',
-      guestList: offer.guestList || []
-    };
-  });
-
-  // Separate confirmed bookings (solid) from reservations (dashed holds)
-  // Confirmed bookings come from bookings table (created when invoice paid)
-  // Reservations come from reservations table (holds, can overlap)
-  const confirmedBookingsWithColors = React.useMemo(
-    () => confirmedBookings.map(b => ({ ...b, color: getBookingStyle(b.status), isConfirmed: true })),
-    [confirmedBookings]
-  );
-
-  // Create individual reservation items (active only: exclude lost/won/cancelled)
-  const reservationItems = React.useMemo(() => {
-    const active = reservations.filter(
-      r => r.status !== 'lost' && r.status !== 'won' && r.status !== 'cancelled'
-    );
-
-    return active.map(reservation => {
-      return {
-        id: reservation.id, // REAL DB id
-        roomId: reservation.roomId,
-        propertyId: reservation.propertyId,
-        start: reservation.start,
-        end: reservation.end,
-        guest: getReservationLabel(reservation), // Never "N/A"
-        status: reservation.status as any,
-        color: getBookingStyle(reservation.status as any),
-        checkInTime: reservation.checkInTime || '15:00',
-        checkOutTime: reservation.checkOutTime || '11:00',
-        price: reservation.price || '0.00 EUR',
-        balance: reservation.balance || '0.00 EUR',
-        guests: reservation.guests || '1 Guest',
-        unit: reservation.unit || 'AUTO-UNIT',
-        comments: reservation.comments || 'Reservation',
-        paymentAccount: reservation.paymentAccount || 'Pending',
-        company: reservation.company || 'N/A',
-        ratePlan: reservation.ratePlan || 'Standard',
-        guarantee: reservation.guarantee || 'None',
-        cancellationPolicy: reservation.cancellationPolicy || 'Standard',
-        noShowPolicy: reservation.noShowPolicy || 'Standard',
-        channel: reservation.channel || 'Manual',
-        type: reservation.type || 'GUEST',
-        address: reservation.address,
-        phone: reservation.phone,
-        email: reservation.email,
-        pricePerNight: reservation.pricePerNight,
-        taxRate: reservation.taxRate,
-        totalGross: reservation.totalGross,
-        guestList: reservation.guestList || [],
-        clientType: reservation.clientType,
-        firstName: reservation.firstName,
-        lastName: reservation.lastName,
-        companyName: reservation.companyName,
-        internalCompany: reservation.internalCompany,
-        createdAt: reservation.createdAt,
-        isReservation: true,
-        reservationId: reservation.id, // Store real reservation id for delete
-      } as Booking & { isReservation: true; reservationId: string | number };
-    });
-  }, [reservations]);
-
   // Helper: two date ranges overlap (same room is checked separately)
   const datesOverlap = (s1: string, e1: string, s2: string, e2: string) => {
     const a = normalizeDateKey(s1);
@@ -570,14 +347,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
     return map;
   }, [reservations]);
-
-  const allBookings = React.useMemo(() => {
-    return [
-      ...confirmedBookingsWithColors,
-      ...reservationItems,
-      ...offerBookings // keep only if needed by existing UI
-    ];
-  }, [confirmedBookingsWithColors, reservationItems, offerBookings]);
 
   // Constants for Today (dynamic)
   const TODAY = today;
@@ -846,24 +615,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     setSelectedBooking(booking);
   };
 
-  const handleStatsTileClick = (
-    type: 'checkin' | 'checkout' | 'cleaning' | 'reminder',
-    date: Date,
-    items: (Booking | CalendarEvent)[]
-  ) => {
-    const titles = {
-      checkin: 'Check-ins',
-      checkout: 'Check-outs',
-      cleaning: 'Cleanings',
-      reminder: 'Reminders (Check-outs in 2 days)',
-    };
-    setStatsModalType(type);
-    setStatsModalItems(items);
-    setStatsModalDate(date);
-    setStatsModalTitle(titles[type]);
-    setIsStatsModalOpen(true);
-  };
-
   // --- Form Calculation ---
   
   const calculateFinancials = () => {
@@ -1100,18 +851,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                 <Plus className="w-4 h-4" /> Add Booking
             </button>
          </div>
-      </div>
-
-      {/* Stats Tiles */}
-      <div className="px-4 py-4 bg-[#111315] border-b border-gray-800">
-        <BookingStatsTiles
-          reservations={allBookings} // Mixed calendar data (for UI lists if needed)
-          confirmedBookings={confirmedBookings} // ✅ ONLY confirmed bookings from bookings table
-          adminEvents={adminEvents}
-          properties={properties}
-          initialDate={TODAY}
-          onTileClick={handleStatsTileClick}
-        />
       </div>
 
       {/* Filters: under tiles */}
@@ -1937,17 +1676,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
           await onDeleteBooking(bookingId);
           setSelectedBooking(null);
         } : undefined}
-      />
-
-      {/* --- STATS TILES MODAL --- */}
-      <BookingListModal
-        isOpen={isStatsModalOpen}
-        onClose={() => setIsStatsModalOpen(false)}
-        title={statsModalTitle}
-        items={statsModalItems}
-        type={statsModalType}
-        properties={properties}
-        date={statsModalDate}
       />
     </div>
   );
