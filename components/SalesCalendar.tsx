@@ -957,20 +957,20 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                         className="border-b border-gray-800 flex items-center px-3 py-1.5 hover:bg-[#1C1F24] transition-colors group relative overflow-hidden"
                         style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
                     >
-                        <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,0.7fr)_minmax(0,1.4fr)_minmax(0,0.8fr)_auto_auto_auto] gap-1.5 w-full min-w-0 overflow-hidden items-center whitespace-nowrap">
-                            <span className={`truncate ${rowClass}`} title={room.department || undefined}>{room.department || '—'}</span>
-                            <span className={`shrink-0 ${rowClass}`}>{getApartmentStatusLabel(room.status)}</span>
-                            <span className={`truncate ${rowClass} text-gray-300`} title={room.details || undefined}>{room.details || '—'}</span>
-                            <span className={`truncate ${rowClass} font-semibold`} title={room.name || undefined}>{room.name || '—'}</span>
-                            <span className="flex items-center gap-0.5 shrink-0" title="QM">
+                        <div className="grid grid-cols-[minmax(0,0.72fr)_minmax(0,0.98fr)_minmax(0,1.4fr)_minmax(0,0.8fr)_auto_auto_auto] gap-1 w-full min-w-0 overflow-hidden items-center whitespace-nowrap">
+                            <span className={`truncate text-left ${rowClass}`} title={room.department || undefined}>{room.department || '—'}</span>
+                            <span className={`text-left min-w-0 ${rowClass}`}>{getApartmentStatusLabel(room.status)}</span>
+                            <span className={`truncate text-left ${rowClass} text-gray-300`} title={room.details || undefined}>{room.details || '—'}</span>
+                            <span className={`truncate text-left ${rowClass} font-semibold`} title={room.name || undefined}>{room.name || '—'}</span>
+                            <span className="flex items-center gap-0.5 shrink-0 justify-start" title="QM">
                                 <Ruler className="w-3 h-3 text-gray-500 shrink-0" />
                                 <span className={rowClass}>{(room.area != null && room.area !== '' && Number(room.area) > 0) ? `${room.area} м²` : '—'}</span>
                             </span>
-                            <span className="flex items-center gap-0.5 shrink-0" title="Betten">
+                            <span className="flex items-center gap-0.5 shrink-0 justify-start" title="Betten">
                                 <Bed className="w-3 h-3 text-gray-500 shrink-0" />
                                 <span className={rowClass}>{room.beds ?? 0}</span>
                             </span>
-                            <span className="flex items-center gap-0.5 shrink-0" title="Rooms">
+                            <span className="flex items-center gap-0.5 shrink-0 justify-start" title="Rooms">
                                 <LayoutGrid className="w-3 h-3 text-gray-500 shrink-0" />
                                 <span className={rowClass}>{room.rooms ?? 0}</span>
                             </span>
