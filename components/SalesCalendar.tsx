@@ -928,7 +928,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       <div className="flex-1 flex overflow-hidden relative">
          
          {/* Left Sidebar (Rooms) — table-style single row per apartment, no header */}
-         <div className="w-[648px] flex-shrink-0 border-r border-gray-800 bg-[#161B22] z-20 flex flex-col">
+         <div className="w-[600px] flex-shrink-0 border-r border-gray-800 bg-[#161B22] z-20 flex flex-col">
             <div
                 className="sticky top-0 z-30 border-b border-gray-800 bg-[#1C1F24] flex flex-col justify-center px-4 py-3"
                 style={{ minHeight: CALENDAR_HEADER_HEIGHT, height: CALENDAR_HEADER_HEIGHT }}
