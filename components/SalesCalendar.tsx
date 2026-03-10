@@ -286,9 +286,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   };
 
   // Stacking constants for reservation stripes
-  const STRIPE_H = 26; // Height of each reservation stripe in pixels
-  const STRIPE_GAP = 6; // Gap between stacked stripes in pixels
-  const BASE_TOP_PX = 8; // Base top offset for first stripe
+  const STRIPE_H = 13; // Height of each reservation stripe in pixels
+  const STRIPE_GAP = 3; // Gap between stacked stripes in pixels
+  const BASE_TOP_PX = 4; // Base top offset for first stripe
   const stackIndexByReservationId = React.useMemo(() => {
     const map = new Map<string, number>();
     const active = reservations.filter(
@@ -951,7 +951,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                 >
                     <tbody>
                         {filteredRooms.map(room => {
-                            const BASE_ROW_HEIGHT = 64;
+                            const BASE_ROW_HEIGHT = 32;
                             const maxStack = maxStackForRoomId.get(room.id) ?? 0;
                             const extraHeight = maxStack > 0 ? (maxStack - 1) * (STRIPE_H + STRIPE_GAP) : 0;
                             const rowMinHeight = BASE_ROW_HEIGHT + extraHeight;
@@ -962,31 +962,31 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                     className="border-b border-gray-800 hover:bg-[#252a32] transition-colors group relative"
                                     style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
                                 >
-                                    <td className="py-1.5 px-2 text-left align-middle whitespace-nowrap">
+                                    <td className="py-1 px-2 text-left align-middle whitespace-nowrap">
                                         <span className={`block truncate min-w-0 ${rowClass}`} title={room.department || undefined}>{room.department || '—'}</span>
                                     </td>
-                                    <td className="py-1.5 px-2 text-left align-middle whitespace-nowrap">
+                                    <td className="py-1 px-2 text-left align-middle whitespace-nowrap">
                                         <span className={rowClass}>{getApartmentStatusLabel(room.status)}</span>
                                     </td>
-                                    <td className="py-1.5 px-2 text-left align-middle whitespace-nowrap">
+                                    <td className="py-1 px-2 text-left align-middle whitespace-nowrap">
                                         <span className={`block truncate min-w-0 ${rowClass} text-gray-300`} title={room.details || undefined}>{room.details || '—'}</span>
                                     </td>
-                                    <td className="py-1.5 px-2 text-left align-middle whitespace-nowrap">
+                                    <td className="py-1 px-2 text-left align-middle whitespace-nowrap">
                                         <span className={`block truncate min-w-0 ${rowClass} font-semibold`} title={room.name || undefined}>{room.name || '—'}</span>
                                     </td>
-                                    <td className="py-1.5 px-2 text-left align-middle whitespace-nowrap">
+                                    <td className="py-1 px-1 text-left align-middle whitespace-nowrap">
                                         <span className="flex items-center gap-0.5 w-fit" title="QM">
                                             <Ruler className="w-3 h-3 text-gray-500 shrink-0" />
                                             <span className={rowClass}>{(room.area != null && room.area !== '' && Number(room.area) > 0) ? `${room.area} м²` : '—'}</span>
                                         </span>
                                     </td>
-                                    <td className="py-1.5 px-2 text-left align-middle whitespace-nowrap">
+                                    <td className="py-1 px-1 text-left align-middle whitespace-nowrap">
                                         <span className="flex items-center gap-0.5 w-fit" title="Betten">
                                             <Bed className="w-3 h-3 text-gray-500 shrink-0" />
                                             <span className={rowClass}>{room.beds ?? 0}</span>
                                         </span>
                                     </td>
-                                    <td className="py-1.5 px-2 text-left align-middle whitespace-nowrap">
+                                    <td className="py-1 px-1 text-left align-middle whitespace-nowrap">
                                         <span className="flex items-center gap-0.5 w-fit" title="Rooms">
                                             <LayoutGrid className="w-3 h-3 text-gray-500 shrink-0" />
                                             <span className={rowClass}>{room.rooms ?? 0}</span>
@@ -1044,8 +1044,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                     )}
 
                     {filteredRooms.map(room => {
-                        // Calculate row height: base (h-16 = 64px) + extra for stacked reservations
-                        const BASE_ROW_HEIGHT = 64; // h-16 = 64px
+                        // Calculate row height: base 32px + extra for stacked reservations
+                        const BASE_ROW_HEIGHT = 32;
                         const maxStack = maxStackForRoomId.get(room.id) ?? 0;
                         const extraHeight = maxStack > 0 ? (maxStack - 1) * (STRIPE_H + STRIPE_GAP) : 0;
                         const rowMinHeight = BASE_ROW_HEIGHT + extraHeight;
@@ -1141,7 +1141,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 // For confirmed bookings: keep existing layout
                                 const topPx = isReservation 
                                   ? BASE_TOP_PX + stackIndex * (STRIPE_H + STRIPE_GAP)
-                                  : 8; // Base top for confirmed bookings
+                                  : 4; // Base top for confirmed bookings
                                 
                                 // Reservation stripe: dashed = open hold, solid = offer created/sent
                                 const reservationBorderClass = reservationHasOffer
@@ -1178,7 +1178,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                             absolute rounded-md text-[10px] text-white flex shadow-lg z-10 cursor-pointer items-center pointer-events-auto
                                             ${isReservation 
                                                 ? 'bg-sky-500/70 hover:bg-sky-500/85 ' + reservationBorderClass
-                                                : 'h-12 px-2 ' + getBookingColor(booking.status) + ' ' + getBookingBorderStyle(booking.status)
+                                                : 'h-6 px-2 ' + getBookingColor(booking.status) + ' ' + getBookingBorderStyle(booking.status)
                                             } hover:scale-[1.01] transition-all duration-150
                                         `}
                                         style={{ 
@@ -1239,17 +1239,15 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                                 </div>
                                             );
                                         })() : (
-                                            // Full confirmed booking: check-in, guest, nights/guests, check-out
+                                            // Full confirmed booking: check-in, guest, nights/guests, check-out (single line)
                                             <div className="flex justify-between items-center w-full h-full px-2">
                                                 {/* Left: Check-in */}
                                                 <span className="font-mono text-[9px] font-bold opacity-80 shrink-0">{booking.checkInTime}</span>
                                                 
-                                                {/* Center */}
-                                                <div className="flex flex-col items-center justify-center flex-1 px-1 min-w-0">
-                                                    <span className="font-bold text-[10px] truncate w-full text-center leading-tight">{displayGuest}</span>
-                                                    <span className="text-[8px] opacity-80 truncate leading-tight mt-0.5">
-                                                        {nights}N | {parseInt(booking.guests || '0')}G
-                                                    </span>
+                                                {/* Center: guest + nights|guests on one line */}
+                                                <div className="flex items-center justify-center flex-1 px-1 min-w-0 gap-1 overflow-hidden">
+                                                    <span className="font-bold text-[10px] truncate text-center whitespace-nowrap">{displayGuest}</span>
+                                                    <span className="text-[8px] opacity-80 shrink-0 whitespace-nowrap">{nights}N | {parseInt(booking.guests || '0')}G</span>
                                                 </div>
 
                                                 {/* Right: Check-out */}
