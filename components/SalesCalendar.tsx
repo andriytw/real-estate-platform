@@ -944,50 +944,59 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                     />
                 </div>
             </div>
-            <div className="overflow-y-auto flex-1 scrollbar-hide">
-                {/* Tymczasowy wiersz nagłówków kolumn — do usunięcia */}
-                <div className="grid grid-cols-[minmax(0,0.55fr)_minmax(0,0.37fr)_minmax(0,1.4fr)_minmax(0,0.39fr)_auto_auto_auto] gap-0.5 w-full min-w-0 px-2 py-1.5 border-b border-gray-700 bg-[#1C1F24]/80">
-                    <span className="text-[11px] text-gray-500 font-medium truncate">Abteilung</span>
-                    <span className="text-[11px] text-gray-500 font-medium">Status</span>
-                    <span className="text-[11px] text-gray-500 font-medium truncate">Adresse</span>
-                    <span className="text-[11px] text-gray-500 font-medium truncate">Wohnung</span>
-                    <span className="text-[11px] text-gray-500 font-medium">QM</span>
-                    <span className="text-[11px] text-gray-500 font-medium">Betten</span>
-                    <span className="text-[11px] text-gray-500 font-medium">Rooms</span>
-                </div>
-                {filteredRooms.map(room => {
-                    const BASE_ROW_HEIGHT = 64;
-                    const maxStack = maxStackForRoomId.get(room.id) ?? 0;
-                    const extraHeight = maxStack > 0 ? (maxStack - 1) * (STRIPE_H + STRIPE_GAP) : 0;
-                    const rowMinHeight = BASE_ROW_HEIGHT + extraHeight;
-                    const rowClass = 'text-[11px] text-gray-200 font-medium';
-                    return (
-                    <div
-                        key={room.id}
-                        className="border-b border-gray-800 flex items-center px-2 py-1.5 hover:bg-[#252a32] transition-colors group relative overflow-hidden"
-                        style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
-                    >
-                        <div className="grid grid-cols-[minmax(0,0.55fr)_minmax(0,0.37fr)_minmax(0,1.4fr)_minmax(0,0.39fr)_auto_auto_auto] gap-0.5 w-full min-w-0 overflow-hidden items-center whitespace-nowrap justify-items-start">
-                            <span className={`truncate text-left ${rowClass}`} title={room.department || undefined}>{room.department || '—'}</span>
-                            <span className={`text-left min-w-0 ${rowClass}`}>{getApartmentStatusLabel(room.status)}</span>
-                            <span className={`truncate text-left ${rowClass} text-gray-300`} title={room.details || undefined}>{room.details || '—'}</span>
-                            <span className={`truncate text-left ${rowClass} font-semibold`} title={room.name || undefined}>{room.name || '—'}</span>
-                            <span className="flex items-center gap-0.5 shrink-0 justify-start" title="QM">
-                                <Ruler className="w-3 h-3 text-gray-500 shrink-0" />
-                                <span className={rowClass}>{(room.area != null && room.area !== '' && Number(room.area) > 0) ? `${room.area} м²` : '—'}</span>
-                            </span>
-                            <span className="flex items-center gap-0.5 shrink-0 justify-start" title="Betten">
-                                <Bed className="w-3 h-3 text-gray-500 shrink-0" />
-                                <span className={rowClass}>{room.beds ?? 0}</span>
-                            </span>
-                            <span className="flex items-center gap-0.5 shrink-0 justify-start" title="Rooms">
-                                <LayoutGrid className="w-3 h-3 text-gray-500 shrink-0" />
-                                <span className={rowClass}>{room.rooms ?? 0}</span>
-                            </span>
-                        </div>
-                    </div>
-                    );
-                })}
+            <div className="overflow-auto flex-1 scrollbar-hide">
+                <table
+                    className="w-full border-collapse"
+                    style={{ tableLayout: 'auto', width: 'max-content', minWidth: '100%' }}
+                >
+                    <tbody>
+                        {filteredRooms.map(room => {
+                            const BASE_ROW_HEIGHT = 64;
+                            const maxStack = maxStackForRoomId.get(room.id) ?? 0;
+                            const extraHeight = maxStack > 0 ? (maxStack - 1) * (STRIPE_H + STRIPE_GAP) : 0;
+                            const rowMinHeight = BASE_ROW_HEIGHT + extraHeight;
+                            const rowClass = 'text-[11px] text-gray-200 font-medium';
+                            return (
+                                <tr
+                                    key={room.id}
+                                    className="border-b border-gray-800 hover:bg-[#252a32] transition-colors group relative"
+                                    style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
+                                >
+                                    <td className="py-1.5 px-2 text-left align-middle whitespace-nowrap">
+                                        <span className={`block truncate min-w-0 ${rowClass}`} title={room.department || undefined}>{room.department || '—'}</span>
+                                    </td>
+                                    <td className="py-1.5 px-2 text-left align-middle whitespace-nowrap">
+                                        <span className={rowClass}>{getApartmentStatusLabel(room.status)}</span>
+                                    </td>
+                                    <td className="py-1.5 px-2 text-left align-middle whitespace-nowrap">
+                                        <span className={`block truncate min-w-0 ${rowClass} text-gray-300`} title={room.details || undefined}>{room.details || '—'}</span>
+                                    </td>
+                                    <td className="py-1.5 px-2 text-left align-middle whitespace-nowrap">
+                                        <span className={`block truncate min-w-0 ${rowClass} font-semibold`} title={room.name || undefined}>{room.name || '—'}</span>
+                                    </td>
+                                    <td className="py-1.5 px-2 text-left align-middle whitespace-nowrap">
+                                        <span className="flex items-center gap-0.5 w-fit" title="QM">
+                                            <Ruler className="w-3 h-3 text-gray-500 shrink-0" />
+                                            <span className={rowClass}>{(room.area != null && room.area !== '' && Number(room.area) > 0) ? `${room.area} м²` : '—'}</span>
+                                        </span>
+                                    </td>
+                                    <td className="py-1.5 px-2 text-left align-middle whitespace-nowrap">
+                                        <span className="flex items-center gap-0.5 w-fit" title="Betten">
+                                            <Bed className="w-3 h-3 text-gray-500 shrink-0" />
+                                            <span className={rowClass}>{room.beds ?? 0}</span>
+                                        </span>
+                                    </td>
+                                    <td className="py-1.5 px-2 text-left align-middle whitespace-nowrap">
+                                        <span className="flex items-center gap-0.5 w-fit" title="Rooms">
+                                            <LayoutGrid className="w-3 h-3 text-gray-500 shrink-0" />
+                                            <span className={rowClass}>{room.rooms ?? 0}</span>
+                                        </span>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
             </div>
          </div>
 
