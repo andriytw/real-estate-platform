@@ -158,6 +158,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   });
   const [totalDays, setTotalDays] = useState(NUM_DAYS);
   const [cityFilter, setCityFilter] = useState('ALL');
+  const [groupFilter, setGroupFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [minPeopleFilter, setMinPeopleFilter] = useState<number | null>(null);
   const [minRoomsFilter, setMinRoomsFilter] = useState<number | null>(null);
@@ -388,6 +389,12 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     ...Array.from(new Set(roomsFromProperties.map((r) => r.city).filter(Boolean))).sort(),
   ];
 
+  // Same field as Abteilung column: apartmentGroupName → department
+  const apartmentGroups = [
+    'ALL',
+    ...Array.from(new Set(roomsFromProperties.map((r) => r.department).filter(Boolean))).sort(),
+  ];
+
   const filteredRooms = React.useMemo(() => {
     let hasAvailabilityFilter = availabilityStartDate.trim() !== '' && availabilityEndDate.trim() !== '';
     let availabilityStart = '';
@@ -401,6 +408,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     return roomsFromProperties.filter((r) => {
       // City filter
       const matchesCity = cityFilter === 'ALL' || r.city === cityFilter;
+      // Apartment group filter: same field as Abteilung (apartmentGroupName / department)
+      const matchesGroup = groupFilter === 'ALL' || r.department === groupFilter;
       
       // Search filter (case-insensitive, partial match)
       const matchesSearch = searchQuery === '' || 
@@ -419,9 +428,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         (b) => String(b.roomId) !== String(r.id) || !datesOverlap(availabilityStart, availabilityEnd, normalizeDateKey(b.start), normalizeDateKey(b.end))
       );
 
-      return matchesCity && matchesSearch && matchesPeople && matchesRooms && matchesAvailability;
+      return matchesCity && matchesGroup && matchesSearch && matchesPeople && matchesRooms && matchesAvailability;
     });
-  }, [roomsFromProperties, cityFilter, searchQuery, minPeopleFilter, minRoomsFilter, availabilityStartDate, availabilityEndDate, allBookings]);
+  }, [roomsFromProperties, cityFilter, groupFilter, searchQuery, minPeopleFilter, minRoomsFilter, availabilityStartDate, availabilityEndDate, allBookings]);
 
   const getRoomNameById = (roomId: string | undefined | null) => {
     if (!roomId) return '';
@@ -895,6 +904,16 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
           >
             {cities.map(city => (
               <option key={city} value={city}>{city === 'ALL' ? 'Усі міста' : city}</option>
+            ))}
+          </select>
+          <select
+            value={groupFilter}
+            onChange={(e) => setGroupFilter(e.target.value)}
+            className="bg-[#161B22] border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none min-w-[140px]"
+            title="Група квартири"
+          >
+            {apartmentGroups.map(group => (
+              <option key={group} value={group}>{group === 'ALL' ? 'Усі групи' : group}</option>
             ))}
           </select>
         </div>
