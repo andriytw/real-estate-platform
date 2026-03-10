@@ -358,7 +358,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         id: p.id,
         name: p.title,
         city: p.city,
-        details: formatPropertyAddress(p),
+        details: formatPropertyAddress({ ...p, country: '' }),
         rooms: p.details?.rooms ?? p.rooms ?? 0,
         beds: p.details?.beds ?? 0,
         area: p.details?.area ?? p.area ?? 0,
@@ -957,7 +957,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                         className="border-b border-gray-800 flex items-center px-2 py-1.5 hover:bg-[#252a32] transition-colors group relative overflow-hidden"
                         style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
                     >
-                        <div className="grid grid-cols-[minmax(0,0.55fr)_minmax(0,0.7fr)_minmax(0,1.4fr)_minmax(0,0.65fr)_auto_auto_auto] gap-2 w-full min-w-0 overflow-hidden items-center whitespace-nowrap justify-items-start">
+                        <div className="grid grid-cols-[minmax(0,0.55fr)_minmax(0,0.7fr)_minmax(0,1.4fr)_minmax(0,0.65fr)_auto_auto_auto] gap-0.5 w-full min-w-0 overflow-hidden items-center whitespace-nowrap justify-items-start">
                             <span className={`truncate text-left ${rowClass}`} title={room.department || undefined}>{room.department || '—'}</span>
                             <span className={`text-left min-w-0 ${rowClass}`}>{getApartmentStatusLabel(room.status)}</span>
                             <span className={`truncate text-left ${rowClass} text-gray-300`} title={room.details || undefined}>{room.details || '—'}</span>
