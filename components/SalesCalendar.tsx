@@ -397,10 +397,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         r.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (r.details && r.details.toLowerCase().includes(searchQuery.toLowerCase()));
       
-      // People/beds filter (ліжка)
-      const matchesPeople = minPeopleFilter === null || (r.beds >= minPeopleFilter);
-      // Rooms filter (кімнати)
-      const matchesRooms = minRoomsFilter === null || (r.rooms >= minRoomsFilter);
+      // People/beds filter (ліжка) — exact value
+      const matchesPeople = minPeopleFilter === null || (r.beds === minPeopleFilter);
+      // Rooms filter (кімнати) — exact value
+      const matchesRooms = minRoomsFilter === null || (r.rooms === minRoomsFilter);
       
       return matchesCity && matchesSearch && matchesPeople && matchesRooms;
     });
@@ -898,10 +898,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
           title="Кімнати"
         >
           <option value="">Кімнати: усі</option>
-          <option value={1}>1+</option>
-          <option value={2}>2+</option>
-          <option value={3}>3+</option>
-          <option value={4}>4+</option>
+          <option value={1}>1 кімната</option>
+          <option value={2}>2 кімнати</option>
+          <option value={3}>3 кімнати</option>
+          <option value={4}>4 кімнати</option>
         </select>
         <select
           value={minPeopleFilter === null ? '' : minPeopleFilter}
@@ -910,10 +910,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
           title="Ліжка"
         >
           <option value="">Ліжка: усі</option>
-          <option value={1}>1+</option>
-          <option value={2}>2+</option>
-          <option value={3}>3+</option>
-          <option value={4}>4+</option>
+          <option value={1}>1 ліжко</option>
+          <option value={2}>2 ліжка</option>
+          <option value={3}>3 ліжка</option>
+          <option value={4}>4 ліжка</option>
         </select>
         <span className="text-xs text-gray-400 whitespace-nowrap">
           {filteredRooms.length === 0 ? (
