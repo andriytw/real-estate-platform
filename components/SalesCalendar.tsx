@@ -164,6 +164,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const [minRoomsFilter, setMinRoomsFilter] = useState<number | null>(null);
   const [availabilityStartDate, setAvailabilityStartDate] = useState('');
   const [availabilityEndDate, setAvailabilityEndDate] = useState('');
+  const [showReservations, setShowReservations] = useState(true); // visibility toggle for reservation layer
   const [hoveredBooking, setHoveredBooking] = useState<{booking: Booking, x: number, y: number} | null>(null);
   const [ugpLoadingBookingId, setUgpLoadingBookingId] = useState<string | number | null>(null);
   const hoverLeaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -968,6 +969,15 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
             title="Виїзд"
           />
         </div>
+        <label className="flex items-center gap-2 cursor-pointer whitespace-nowrap">
+          <input
+            type="checkbox"
+            checked={showReservations}
+            onChange={(e) => setShowReservations(e.target.checked)}
+            className="rounded border-gray-600 bg-[#161B22] text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
+          />
+          <span className="text-sm text-gray-300">Показувати резервації</span>
+        </label>
         <span className="text-xs text-gray-400 whitespace-nowrap">
           {filteredRooms.length === 0 ? (
             <span className="text-red-400">Нічого не знайдено</span>
@@ -1140,7 +1150,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                             })}
 
                             {/* Bookings */}
-                            {allBookings.filter(b => b.roomId === room.id).map(booking => {
+                            {allBookings
+                              .filter(b => b.roomId === room.id)
+                              .filter(b => showReservations || (b as any).isReservation !== true)
+                              .map(booking => {
                                 const displayGuest = getDisplayGuest(booking);
                                 const bookingStartDate = parseDate(booking.start);
                                 const bookingEndDate = parseDate(booking.end);
