@@ -473,6 +473,7 @@ const AccountDashboard: React.FC = () => {
   const [facilityTab, setFacilityTab] = useState<FacilityTab>('overview');
   const [accountingTab, setAccountingTab] = useState<AccountingTab>('dashboard');
   const [salesTab, setSalesTab] = useState<SalesTab>('leads');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [properties, setProperties] = useState<Property[]>([]);
   const [propertySearch, setPropertySearch] = useState('');
@@ -10170,7 +10171,9 @@ ${internalCompany} Team`;
 
   return (
     <div className="flex h-screen bg-[#111315] text-white overflow-hidden font-sans">
-      <div className="w-64 flex-shrink-0 border-r border-gray-800 bg-[#111315] flex flex-col">
+      <div className="fixed left-0 top-0 h-full z-30" onMouseLeave={() => setSidebarOpen(false)}>
+        <div className="fixed left-0 top-0 h-full w-4 z-20" onMouseEnter={() => setSidebarOpen(true)} aria-hidden />
+        <div className={`fixed left-0 top-0 h-full w-64 z-30 flex flex-col border-r border-gray-800 bg-[#111315] transition-transform duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`} style={{ willChange: 'transform' }}>
         <div className="p-6 border-b border-gray-800">
           <h1 className="text-xl font-bold text-white flex items-center gap-2"><Building2 className="w-6 h-6 text-emerald-500" /> HeroRooms</h1>
         </div>
@@ -10464,6 +10467,7 @@ ${internalCompany} Team`;
             <LogOut className="w-3.5 h-3.5" />
             <span>Вийти</span>
           </button>
+        </div>
         </div>
       </div>
 
