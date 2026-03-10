@@ -3,8 +3,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { RequestData, Property } from '../types';
 import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar, Search, Ruler, LayoutGrid, Bed } from 'lucide-react';
-import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus, Lead, PaymentProof } from '../types';
+import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus, Lead, MultiApartmentOfferDraft, PaymentProof, SelectedApartmentData } from '../types';
 import BookingDetailsModal from './BookingDetailsModal';
+import MultiApartmentOfferModal from './MultiApartmentOfferModal';
 import { getBookingColor, getBookingBorderStyle, getBookingStyle } from '../bookingUtils';
 import { useSalesAllBookings } from '../hooks/useSalesAllBookings';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
@@ -23,8 +24,19 @@ function getDisplayGuest(booking: { guest?: string | null }): string {
   return 'Guest';
 }
 
+function splitStreetAndHouseNumber(address: string | undefined) {
+  const raw = String(address || '').trim();
+  if (!raw) return { street: '', houseNumber: '' };
+  const match = raw.match(/^(.*?)(?:\s+(\d+[A-Za-z0-9\/-]*))?$/);
+  return {
+    street: (match?.[1] || raw).trim(),
+    houseNumber: (match?.[2] || '').trim(),
+  };
+}
+
 interface SalesCalendarProps {
   onSaveOffer?: (offer: OfferData) => void;
+  onSaveMultiApartmentOffer?: (draft: MultiApartmentOfferDraft, mode: 'draft' | 'send') => Promise<void> | void;
   onSaveReservation?: (reservation: ReservationData) => void;
   onDeleteReservation?: (id: number | string) => Promise<void> | void;
   onDeleteBooking?: (bookingId: number | string) => Promise<void> | void; // Delete confirmed booking from calendar
@@ -115,6 +127,7 @@ const getInitialFormData = () => ({
 
 const SalesCalendar: React.FC<SalesCalendarProps> = ({
   onSaveOffer,
+  onSaveMultiApartmentOffer,
   onSaveReservation,
   onDeleteReservation,
   onDeleteBooking,
@@ -187,6 +200,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   // Add Booking Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isMultiOfferModalOpen, setIsMultiOfferModalOpen] = useState(false);
+  const [selectedPropertyIds, setSelectedPropertyIds] = useState<string[]>([]);
   const [leadSearchQuery, setLeadSearchQuery] = useState('');
   const [showLeadSuggestions, setShowLeadSuggestions] = useState(false);
   const leadSearchRef = useRef<HTMLDivElement>(null);
@@ -215,10 +230,15 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   
   // Відкрити модал автоматично якщо є prefilled data
   useEffect(() => {
-    if (prefilledRequestData && !isAddModalOpen) {
-      setIsAddModalOpen(true);
+    if (!prefilledRequestData || isMultiOfferModalOpen) return;
+    const prefilledPropertyId = prefilledRequestData.propertyId ? String(prefilledRequestData.propertyId) : '';
+    if (prefilledPropertyId && propertyById.has(prefilledPropertyId)) {
+      setSelectedPropertyIds([prefilledPropertyId]);
+      setIsMultiOfferModalOpen(true);
+    } else if (prefilledPropertyId) {
+      onShowToast?.('Обраний обʼєкт із запиту не знайдено в календарі.');
     }
-  }, [prefilledRequestData]);
+  }, [prefilledRequestData, isMultiOfferModalOpen, propertyById, onShowToast]);
 
   // Prefetch confirmation signed URL when popover opens
   useEffect(() => {
@@ -372,6 +392,35 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       })),
     [properties]
   );
+
+  const propertyById = React.useMemo(
+    () => new Map((properties || []).map((property) => [String(property.id), property])),
+    [properties]
+  );
+
+  const selectedApartmentPayloads = React.useMemo<SelectedApartmentData[]>(() => {
+    return selectedPropertyIds
+      .map((propertyId) => propertyById.get(String(propertyId)))
+      .filter((property): property is Property => Boolean(property))
+      .map((property) => {
+        const parts = splitStreetAndHouseNumber(property.address);
+        return {
+          propertyId: property.id,
+          title: property.title,
+          street: parts.street || property.address || '',
+          houseNumber: parts.houseNumber || undefined,
+          zip: property.zip || '',
+          city: property.city || '',
+          apartmentCode: property.title || property.id,
+          apartmentGroupName: property.apartmentGroupName ?? null,
+          marketplaceUrl: property.marketplaceUrl ?? null,
+          status: property.apartmentStatus ?? null,
+          area: property.details?.area ?? property.area ?? 0,
+          rooms: property.details?.rooms ?? property.rooms ?? 0,
+          beds: property.details?.beds ?? 0,
+        };
+      });
+  }, [propertyById, selectedPropertyIds]);
 
   // Status column: real apartment status label only; do not confuse with termStatus
   const getApartmentStatusLabel = (status: string | null | undefined): string => {
@@ -640,15 +689,20 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     return () => document.removeEventListener('mouseup', onDocMouseUp);
   }, []);
 
+  const togglePropertySelection = (propertyId: string) => {
+    setSelectedPropertyIds((prev) =>
+      prev.includes(propertyId)
+        ? prev.filter((id) => id !== propertyId)
+        : [...prev, propertyId]
+    );
+  };
+
   const handleManualAdd = () => {
-    resetForm();
-    setFormData(prev => ({
-        ...prev,
-        roomId: filteredRooms[0]?.id || '',
-        startDate: formatDateISO(TODAY),
-        endDate: formatDateISO(new Date(TODAY.getTime() + 86400000)),
-    }));
-    setIsAddModalOpen(true);
+    if (selectedApartmentPayloads.length === 0) {
+      onShowToast?.('Спочатку виберіть хоча б одну квартиру.');
+      return;
+    }
+    setIsMultiOfferModalOpen(true);
   };
 
   const handleBookingClick = (e: React.MouseEvent, booking: Booking) => {
@@ -887,10 +941,14 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
          <div className="flex items-center gap-3">
             <button 
                 onClick={handleManualAdd}
-                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors shadow-lg shadow-emerald-900/20"
+                disabled={selectedApartmentPayloads.length === 0}
+                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-900/40 disabled:text-gray-400 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors shadow-lg shadow-emerald-900/20"
             >
                 <Plus className="w-4 h-4" /> Add Booking
             </button>
+            <span className="text-xs text-gray-400 whitespace-nowrap">
+              Selected: {selectedApartmentPayloads.length}
+            </span>
          </div>
       </div>
 
@@ -1019,12 +1077,23 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                             const extraHeight = maxStack > 0 ? (maxStack - 1) * (STRIPE_H + STRIPE_GAP) : 0;
                             const rowMinHeight = BASE_ROW_HEIGHT + extraHeight;
                             const rowClass = 'text-[11px] text-gray-200 font-medium';
+                            const isSelected = selectedPropertyIds.includes(String(room.id));
                             return (
                                 <tr
                                     key={room.id}
-                                    className="border-b border-gray-800 hover:bg-[#252a32] transition-colors group relative"
+                                    onClick={() => togglePropertySelection(String(room.id))}
+                                    className={`border-b border-gray-800 transition-colors group relative cursor-pointer ${isSelected ? 'bg-emerald-900/20 hover:bg-emerald-900/25' : 'hover:bg-[#252a32]'}`}
                                     style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
                                 >
+                                    <td className="py-1 px-2 text-left align-middle whitespace-nowrap">
+                                        <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => togglePropertySelection(String(room.id))}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="rounded border-gray-600 bg-[#111315] text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
+                                        />
+                                    </td>
                                     <td className="py-1 px-2 text-left align-middle whitespace-nowrap">
                                         <span className={`block truncate min-w-0 ${rowClass}`} title={room.department || undefined}>{room.department || '—'}</span>
                                     </td>
@@ -1511,6 +1580,24 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       })()}
 
       {/* --- ADD BOOKING MODAL --- */}
+      <MultiApartmentOfferModal
+        isOpen={isMultiOfferModalOpen}
+        onClose={() => setIsMultiOfferModalOpen(false)}
+        apartments={selectedApartmentPayloads}
+        leads={leads}
+        prefilledRequestData={prefilledRequestData}
+        onSubmit={async (draft, mode) => {
+          if (!onSaveMultiApartmentOffer) return;
+          await onSaveMultiApartmentOffer(draft, mode);
+          if (mode === 'draft') {
+            onShowToast?.('Офер збережено.');
+          } else {
+            onShowToast?.('Офер збережено та позначено як надісланий.');
+          }
+          setSelectedPropertyIds([]);
+        }}
+      />
+
       {isAddModalOpen && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 backdrop-blur-sm">
             <div className="bg-[#1C1F24] w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl border border-gray-700 shadow-2xl flex flex-col animate-in zoom-in duration-200">

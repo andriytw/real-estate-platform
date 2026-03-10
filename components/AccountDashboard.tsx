@@ -10,6 +10,7 @@ import SalesChat from './SalesChat';
 import BookingDetailsModal from './BookingDetailsModal';
 import InvoiceModal from './InvoiceModal';
 import OfferEditModal from './OfferEditModal';
+import MultiApartmentOfferDetailsModal from './MultiApartmentOfferDetailsModal';
 import LeadEditModal from './LeadEditModal';
 import PropertyAddModal from './PropertyAddModal';
 import RequestModal from './RequestModal';
@@ -31,6 +32,9 @@ import {
   warehouseService,
   bookingsService,
   invoicesService,
+  multiApartmentOffersService,
+  offerHeadersService,
+  offerItemsService,
   offersService,
   reservationsService,
   leadsService,
@@ -124,6 +128,10 @@ function PropertyMediaPhotoThumb({ asset, onDelete }: { asset: PropertyMediaAsse
 import {
   ReservationData,
   OfferData,
+  OfferHeaderData,
+  OfferItemData,
+  OfferListRow,
+  MultiApartmentOfferDraft,
   InvoiceData,
   CalendarEvent,
   TaskType,
@@ -159,6 +167,7 @@ import {
 } from '../types';
 import { euToIso, validateEuDate } from '../utils/leaseTermDates';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
+import { formatApartmentIdentificationLine } from '../utils/salesOfferFlow';
 import { ensurePropertyHasCoords } from '../utils/ensurePropertyHasCoords';
 import { getRoomsCount } from '../utils/propertyStats';
 import { MOCK_PROPERTIES } from '../constants';
@@ -1065,6 +1074,9 @@ const AccountDashboard: React.FC = () => {
   }, []);
   
   const [offers, setOffers] = useState<OfferData[]>([]);
+  const [offerHeaders, setOfferHeaders] = useState<OfferHeaderData[]>([]);
+  const [offerItems, setOfferItems] = useState<OfferItemData[]>([]);
+  const [multiOfferRows, setMultiOfferRows] = useState<OfferListRow[]>([]);
 
   const [reservations, setReservations] = useState<ReservationData[]>([]);
   const [invoices, setInvoices] = useState<InvoiceData[]>([]);
@@ -2131,14 +2143,78 @@ const AccountDashboard: React.FC = () => {
   useEffect(() => {
     const loadOffers = async () => {
       try {
-        const loadedOffers = await offersService.getAll();
+        const [loadedOffers, loadedHeaders, loadedItems, loadedRows] = await Promise.all([
+          offersService.getAll(),
+          offerHeadersService.getAll(),
+          offerItemsService.getAll(),
+          multiApartmentOffersService.getRows(),
+        ]);
         setOffers(loadedOffers);
+        setOfferHeaders(loadedHeaders);
+        setOfferItems(loadedItems);
+        setMultiOfferRows(loadedRows);
       } catch (error) {
         console.error('Error loading offers:', error);
       }
     };
     loadOffers();
   }, []);
+
+  const refreshMultiApartmentOffers = useCallback(async () => {
+    const [loadedHeaders, loadedItems, loadedRows] = await Promise.all([
+      offerHeadersService.getAll(),
+      offerItemsService.getAll(),
+      multiApartmentOffersService.getRows(),
+    ]);
+    setOfferHeaders(loadedHeaders);
+    setOfferItems(loadedItems);
+    setMultiOfferRows(loadedRows);
+  }, []);
+
+  const legacyOfferRows = useMemo<OfferListRow[]>(
+    () =>
+      offers.map((offer) => {
+        const [startDate, endDate] = offer.dates.split(' to ');
+        const property = properties.find((p) => String(p.id) === String(offer.propertyId));
+        const apartmentLine = property
+          ? formatApartmentIdentificationLine({
+              street: property.address || '',
+              houseNumber: '',
+              zip: property.zip || '',
+              city: property.city || '',
+              apartmentCode: property.title || property.id,
+            })
+          : offer.unit || offer.propertyId;
+        return {
+          sourceType: 'legacy',
+          rowId: offer.id,
+          offerId: offer.id,
+          offerNo: offer.offerNo,
+          clientName: offer.clientName,
+          propertyId: offer.propertyId,
+          apartmentLine,
+          dates: offer.dates,
+          startDate: startDate || '',
+          endDate: endDate || startDate || '',
+          status: offer.status,
+          price: offer.price,
+          internalCompany: offer.internalCompany,
+          email: offer.email,
+          phone: offer.phone,
+          address: offer.address,
+          reservationId: offer.reservationId,
+        };
+      }),
+    [offers, properties]
+  );
+
+  const allOfferRows = useMemo(
+    () =>
+      [...multiOfferRows, ...legacyOfferRows].sort((a, b) =>
+        `${b.startDate}${b.offerNo || ''}`.localeCompare(`${a.startDate}${a.offerNo || ''}`)
+      ),
+    [legacyOfferRows, multiOfferRows]
+  );
 
   // Load proformas when Sales > Proformas tab is active
   useEffect(() => {
@@ -2305,6 +2381,10 @@ const AccountDashboard: React.FC = () => {
   const [proformaChildInvoices, setProformaChildInvoices] = useState<Record<string, InvoiceData[]>>({});
   const [isOfferEditModalOpen, setIsOfferEditModalOpen] = useState(false);
   const [offerToEdit, setOfferToEdit] = useState<OfferData | null>(null);
+  const [isMultiOfferDetailsOpen, setIsMultiOfferDetailsOpen] = useState(false);
+  const [selectedMultiOfferHeader, setSelectedMultiOfferHeader] = useState<OfferHeaderData | null>(null);
+  const [selectedMultiOfferItems, setSelectedMultiOfferItems] = useState<OfferItemData[]>([]);
+  const [pendingOfferItemForInvoice, setPendingOfferItemForInvoice] = useState<OfferItemData | null>(null);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<RequestData | null>(null);
   const [confirmPaymentModalProforma, setConfirmPaymentModalProforma] = useState<InvoiceData | null>(null);
@@ -4364,6 +4444,156 @@ const AccountDashboard: React.FC = () => {
       setIsManageModalOpen(true);
   };
 
+  const openMultiOfferDetails = async (offerHeaderId: string) => {
+    const existingHeader = offerHeaders.find((header) => header.id === offerHeaderId);
+    const header = existingHeader || await offerHeadersService.getById(offerHeaderId);
+    if (!header) return;
+    const items = await offerItemsService.getByHeaderId(offerHeaderId);
+    setSelectedMultiOfferHeader(header);
+    setSelectedMultiOfferItems(items);
+    setIsMultiOfferDetailsOpen(true);
+  };
+
+  const handleSaveMultiApartmentOffer = async (
+    draft: MultiApartmentOfferDraft,
+    mode: 'draft' | 'send'
+  ) => {
+    const result = await multiApartmentOffersService.createFromDraft(
+      draft,
+      mode === 'draft' ? 'Draft' : 'Sent'
+    );
+
+    const requestPayload: RequestData = {
+      id: `multi-offer-${Date.now()}`,
+      firstName: draft.shared.firstName,
+      lastName: draft.shared.lastName,
+      email: draft.shared.email,
+      phone: draft.shared.phone,
+      companyName: draft.shared.companyName || undefined,
+      peopleCount: 1,
+      startDate: draft.shared.checkIn,
+      endDate: draft.shared.checkOut,
+      message: draft.shared.clientMessage,
+      propertyId: draft.apartments[0]?.propertyId,
+      status: 'processed',
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      const createdLead = await createLeadFromRequest(requestPayload, { origin: 'booking_form' });
+      if (createdLead) {
+        setLeads((prev) => (prev.some((lead) => lead.id === createdLead.id) ? prev : [createdLead, ...prev]));
+      }
+    } catch (error) {
+      console.error('Failed to create lead for multi-apartment offer:', error);
+    }
+
+    setOfferHeaders((prev) => [result.header, ...prev]);
+    setOfferItems((prev) => [...result.items, ...prev]);
+    await refreshMultiApartmentOffers();
+    setSalesTab('offers');
+  };
+
+  const handleSelectMultiOfferItem = async (item: OfferItemData) => {
+    const siblingItems = offerItems.filter((candidate) => candidate.offerHeaderId === item.offerHeaderId);
+    await Promise.all(
+      siblingItems
+        .filter((candidate) => candidate.status === 'Selected' && candidate.id !== item.id)
+        .map((candidate) =>
+          offerItemsService.update(candidate.id, { status: 'Offered', selectedAt: null })
+        )
+    );
+    await offerItemsService.update(item.id, {
+      status: 'Selected',
+      selectedAt: new Date().toISOString(),
+    });
+    await refreshMultiApartmentOffers();
+    const refreshedItems = await offerItemsService.getByHeaderId(item.offerHeaderId);
+    setSelectedMultiOfferItems(refreshedItems);
+  };
+
+  const ensureLegacyOfferForItem = async (item: OfferItemData) => {
+    const header = offerHeaders.find((candidate) => candidate.id === item.offerHeaderId)
+      || await offerHeadersService.getById(item.offerHeaderId);
+    if (!header) {
+      throw new Error('Offer header not found.');
+    }
+
+    let reservationId = item.reservationId || null;
+    if (!reservationId) {
+      const createdReservation = await reservationsService.create({
+        propertyId: item.propertyId,
+        startDate: header.startDate,
+        endDate: header.endDate,
+        status: 'offered',
+        leadLabel: header.clientName,
+        clientFirstName: header.firstName,
+        clientLastName: header.lastName,
+        clientEmail: header.email,
+        clientPhone: header.phone,
+        clientAddress: header.address,
+        guestsCount: 1,
+        pricePerNightNet: item.nightlyPrice,
+        taxRate: item.taxRate,
+        totalNights: item.nights,
+        totalGross: item.grossTotal,
+      });
+      reservationId = createdReservation.id;
+    }
+
+    let legacyOffer = item.legacyOfferId
+      ? offers.find((offer) => offer.id === item.legacyOfferId) || null
+      : null;
+
+    if (!legacyOffer) {
+      legacyOffer = await offersService.create({
+        offerNo: header.offerNo,
+        clientName: header.clientName,
+        propertyId: item.propertyId,
+        internalCompany: header.internalCompany,
+        price: `${item.grossTotal.toFixed(2)} EUR`,
+        dates: `${header.startDate} to ${header.endDate}`,
+        status: header.status === 'Draft' ? 'Draft' : 'Sent',
+        guests: '1 Guest',
+        email: header.email,
+        phone: header.phone,
+        address: header.address,
+        unit: item.apartmentCode,
+        clientMessage: header.clientMessage,
+        reservationId: reservationId || undefined,
+      });
+      setOffers((prev) => [legacyOffer as OfferData, ...prev]);
+    }
+
+    const updatedItem = await offerItemsService.update(item.id, {
+      reservationId,
+      legacyOfferId: legacyOffer.id,
+    });
+
+    await refreshMultiApartmentOffers();
+    return { header, item: updatedItem, legacyOffer };
+  };
+
+  const handleAddProformaFromMultiOfferItem = async (item: OfferItemData) => {
+    const { item: updatedItem, legacyOffer } = await ensureLegacyOfferForItem(item);
+    setPendingOfferItemForInvoice(updatedItem);
+    setSelectedOfferForInvoice(legacyOffer);
+    setSelectedInvoice(null);
+    setSelectedProformaForInvoice(null);
+    setIsInvoiceModalOpen(true);
+  };
+
+  const handleDeleteMultiOfferHeader = async (offerHeaderId: string) => {
+    if (!window.confirm('Delete this multi-apartment offer and all its items?')) return;
+    await offerHeadersService.delete(offerHeaderId);
+    if (selectedMultiOfferHeader?.id === offerHeaderId) {
+      setIsMultiOfferDetailsOpen(false);
+      setSelectedMultiOfferHeader(null);
+      setSelectedMultiOfferItems([]);
+    }
+    await refreshMultiApartmentOffers();
+  };
+
   const closeManageModals = () => {
       setIsManageModalOpen(false);
       setSelectedReservation(null);
@@ -4715,6 +4945,7 @@ ${internalCompany} Team`;
     setConfirmedBookings(bookings);
     const offersData = await offersService.getAll();
     setOffers(offersData);
+    await refreshMultiApartmentOffers();
     const list = await invoicesService.getProformas();
     setProformas(list);
     const invoicesData = await invoicesService.getAll();
@@ -4926,6 +5157,15 @@ ${internalCompany} Team`;
                     : o
             ));
         }
+
+        if (pendingOfferItemForInvoice && savedInvoice.documentType === 'proforma') {
+          await offerItemsService.update(pendingOfferItemForInvoice.id, {
+            status: 'Converted',
+            convertedAt: new Date().toISOString(),
+            invoiceId: savedInvoice.id,
+          });
+          await refreshMultiApartmentOffers();
+        }
         
         // Оновити статус резервації на invoiced та колір якщо є bookingId
         if (invoice.bookingId) {
@@ -4943,6 +5183,7 @@ ${internalCompany} Team`;
         setSelectedOfferForInvoice(null);
         setSelectedInvoice(null);
         setSelectedProformaForInvoice(null);
+        setPendingOfferItemForInvoice(null);
         if (invoice.documentType === 'invoice' && invoice.proformaId) {
           setActiveDepartment('sales');
           setSalesTab('proformas');
@@ -5036,6 +5277,7 @@ ${internalCompany} Team`;
           // Reload offers (some may be marked as lost)
           const offersData = await offersService.getAll();
           setOffers(offersData);
+          await refreshMultiApartmentOffers();
           
           // Reload invoices (status updated to Paid)
           const invoicesData = await invoicesService.getAll();
@@ -9622,154 +9864,114 @@ ${internalCompany} Team`;
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-800">
-                            {offers.map(offer => {
-                                const isDraft = offer.status === 'Draft';
-                                const isInvoiced = offer.status === 'Invoiced';
-                                const isLost = offer.status === 'Lost';
-                                const isOfferClosedForActions = offer.status === 'Accepted' || offer.status === 'Lost';
-                                
-                                // Find linked reservation: by offer.reservationId first, else by matching dates, client, and property
-                                const [offerStart, offerEnd] = offer.dates.split(' to ');
-                                const linkedBooking = reservations.find(booking => {
-                                    const bookingStart = booking.start?.split('T')[0] || booking.start;
-                                    const bookingEnd = booking.end?.split('T')[0] || booking.end;
-                                    return bookingStart === offerStart && 
-                                           bookingEnd === offerEnd &&
-                                           booking.guest === offer.clientName &&
-                                           booking.roomId === offer.propertyId;
-                                });
-                                const linkedReservation = offer.reservationId
-                                    ? reservations.find(r => String(r.id) === String(offer.reservationId))
-                                    : linkedBooking;
-                                const linkedProforma = invoices.find(inv => inv.documentType === 'proforma' && (String(inv.offerId || inv.offerIdSource) === String(offer.id)));
-                                
+                            {allOfferRows.map((row) => {
+                                const rowOffer = row.sourceType === 'legacy'
+                                  ? offers.find((offer) => offer.id === row.offerId)
+                                  : undefined;
+                                const rowItem = row.offerItemId
+                                  ? offerItems.find((item) => item.id === row.offerItemId)
+                                  : undefined;
+                                const linkedReservation = row.reservationId
+                                  ? reservations.find((reservation) => String(reservation.id) === String(row.reservationId))
+                                  : undefined;
+                                const linkedProforma = row.sourceType === 'legacy'
+                                  ? invoices.find((inv) => inv.documentType === 'proforma' && String(inv.offerId || inv.offerIdSource) === String(row.offerId))
+                                  : (row.invoiceId ? invoices.find((inv) => inv.id === row.invoiceId) : undefined);
+                                const isMuted = ['Draft', 'Invoiced', 'Lost', 'Rejected', 'Expired', 'Converted'].includes(row.status);
                                 const getStatusStyle = () => {
-                                    if (isDraft) return 'bg-gray-500/20 text-gray-400 border-gray-500';
-                                    if (isInvoiced) return 'bg-purple-500/20 text-purple-400 border-purple-500';
-                                    if (offer.status === 'Accepted') return 'bg-emerald-500/20 text-emerald-400 border-emerald-500';
-                                    if (offer.status === 'Lost') return 'bg-red-500/20 text-red-400 border-red-500';
-                                    return 'bg-blue-500/20 text-blue-500 border-blue-500';
+                                  if (row.status === 'Draft') return 'bg-gray-500/20 text-gray-400 border-gray-500';
+                                  if (row.status === 'Invoiced' || row.status === 'Converted') return 'bg-purple-500/20 text-purple-400 border-purple-500';
+                                  if (row.status === 'Selected') return 'bg-amber-500/20 text-amber-400 border-amber-500';
+                                  if (row.status === 'Rejected' || row.status === 'Expired' || row.status === 'Lost') return 'bg-red-500/20 text-red-400 border-red-500';
+                                  return 'bg-blue-500/20 text-blue-500 border-blue-500';
                                 };
-                                
+
                                 return (
-                                    <tr key={offer.id} className={`hover:bg-[#16181D] ${isDraft || isInvoiced || isLost ? 'opacity-70' : ''}`}>
-                                        <td className={`p-4 ${isLost ? 'text-gray-500' : ''}`}>
-                                            <div className="flex items-center gap-2">
-                                                <span className={`font-mono text-sm ${isLost ? 'text-gray-500' : 'text-gray-300'}`}>
-                                                    {linkedProforma?.invoiceNumber ?? '—'}
-                                                </span>
-                                                {(linkedProforma?.invoiceNumber) && (
-                                                    <button
-                                                        onClick={() => {
-                                                            navigator.clipboard.writeText(linkedProforma.invoiceNumber || '');
-                                                        }}
-                                                        className="text-gray-500 hover:text-white transition-colors"
-                                                        title="Copy proforma number"
-                                                    >
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                                        </svg>
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className={`p-4 ${isLost ? 'text-gray-500' : ''}`}>
-                                            <div className="flex items-center gap-2">
-                                                <span className={`font-mono text-sm ${isLost ? 'text-gray-500' : 'text-gray-300'}`}>
-                                                    {offer.offerNo ?? '—'}
-                                                </span>
-                                                {(offer.offerNo) && (
-                                                    <button
-                                                        onClick={() => {
-                                                            navigator.clipboard.writeText(offer.offerNo || '');
-                                                        }}
-                                                        className="text-gray-500 hover:text-white transition-colors"
-                                                        title="Copy offer number"
-                                                    >
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                                        </svg>
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className={`p-4 ${isLost ? 'text-gray-500' : ''}`}>
-                                            <div className="flex items-center gap-2">
-                                                <span className={`font-mono text-sm ${isLost ? 'text-gray-500' : 'text-gray-300'}`}>
-                                                    {linkedReservation?.reservationNo ?? '—'}
-                                                </span>
-                                                {(linkedReservation?.reservationNo) && (
-                                                    <button
-                                                        onClick={() => {
-                                                            navigator.clipboard.writeText(linkedReservation.reservationNo || '');
-                                                        }}
-                                                        className="text-gray-500 hover:text-white transition-colors"
-                                                        title="Copy reservation number"
-                                                    >
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                                        </svg>
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className={`p-4 font-bold ${isLost ? 'text-gray-500 line-through' : ''}`}>{offer.clientName}</td>
-                                        <td className={`p-4 ${isLost ? 'text-gray-500' : ''}`}>{getPropertyNameById(offer.propertyId)}</td>
-                                        <td className={`p-4 tabular-nums ${isLost ? 'text-gray-500' : ''}`}>{[offerStart, offerEnd].map(d => formatDateEU(d)).join(' – ')}</td>
-                                        <td className="p-4">
-                                            <span className={`px-2 py-1 rounded text-xs font-bold border border-dashed ${getStatusStyle()}`}>
-                                                {offer.status}
-                                            </span>
-                                        </td>
-                                        <td className={`p-4 text-right font-mono ${isLost ? 'text-gray-500' : ''}`}>{offer.price}</td>
-                                        <td className="p-4 text-center">
-                                            <div className="flex justify-between items-center gap-4">
-                                                <div className="flex gap-2 items-center">
-                                                    {!isOfferClosedForActions && isDraft && (
-                                                        <button 
-                                                            onClick={() => {
-                                                                setOffers(prev => prev.map(o => 
-                                                                    o.id === offer.id ? { ...o, status: 'Sent' } : o
-                                                                ));
-                                                            }}
-                                                            className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-xs font-bold transition-colors"
-                                                        >
-                                                            Send Offer
-                                                        </button>
-                                                    )}
-                                                    {!isOfferClosedForActions && offer.status === 'Sent' && (
-                                                        <button 
-                                                            onClick={() => handleCreateInvoiceClick(offer)}
-                                                            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
-                                                        >
-                                                            Add Proforma
-                                                        </button>
-                                                    )}
-                                                    {!isOfferClosedForActions && isInvoiced && (
-                                                        <span className="px-3 py-1.5 text-gray-500 text-xs">Proforma added</span>
-                                                    )}
-                                                </div>
-                                                <div className="flex gap-2 shrink-0">
-                                                    <button 
-                                                        onClick={() => handleViewOffer(offer)}
-                                                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors"
-                                                    >
-                                                        View
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => handleDeleteOffer(offer.id)}
-                                                        className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded text-xs font-bold transition-colors"
-                                                        title="Delete offer"
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                  <tr key={`${row.sourceType}-${row.rowId}`} className={`hover:bg-[#16181D] ${isMuted ? 'opacity-70' : ''}`}>
+                                    <td className="p-4 text-gray-300 font-mono text-sm">{linkedProforma?.invoiceNumber ?? '—'}</td>
+                                    <td className="p-4 text-gray-300 font-mono text-sm">{row.offerNo ?? '—'}</td>
+                                    <td className="p-4 text-gray-300 font-mono text-sm">{linkedReservation?.reservationNo ?? '—'}</td>
+                                    <td className="p-4 font-bold">{row.clientName}</td>
+                                    <td className="p-4">{row.apartmentLine}</td>
+                                    <td className="p-4 tabular-nums">{[row.startDate, row.endDate].filter(Boolean).map((d) => formatDateEU(d)).join(' – ')}</td>
+                                    <td className="p-4">
+                                      <span className={`px-2 py-1 rounded text-xs font-bold border border-dashed ${getStatusStyle()}`}>
+                                        {row.status}
+                                      </span>
+                                    </td>
+                                    <td className="p-4 text-right font-mono">{row.price}</td>
+                                    <td className="p-4 text-center">
+                                      <div className="flex justify-between items-center gap-4">
+                                        <div className="flex gap-2 items-center">
+                                          {row.sourceType === 'legacy' && rowOffer && row.status === 'Draft' && (
+                                            <button
+                                              onClick={() => setOffers((prev) => prev.map((offer) => offer.id === rowOffer.id ? { ...offer, status: 'Sent' } : offer))}
+                                              className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-xs font-bold transition-colors"
+                                            >
+                                              Send Offer
+                                            </button>
+                                          )}
+                                          {row.sourceType === 'legacy' && rowOffer && row.status === 'Sent' && (
+                                            <button
+                                              onClick={() => handleCreateInvoiceClick(rowOffer)}
+                                              className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
+                                            >
+                                              Add Proforma
+                                            </button>
+                                          )}
+                                          {row.sourceType === 'multi' && rowItem && row.status === 'Offered' && (
+                                            <button
+                                              onClick={() => handleSelectMultiOfferItem(rowItem)}
+                                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors"
+                                            >
+                                              Select
+                                            </button>
+                                          )}
+                                          {row.sourceType === 'multi' && rowItem && row.status === 'Selected' && (
+                                            <button
+                                              onClick={() => handleAddProformaFromMultiOfferItem(rowItem)}
+                                              className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
+                                            >
+                                              Add Proforma
+                                            </button>
+                                          )}
+                                          {row.status === 'Invoiced' || row.status === 'Converted' ? (
+                                            <span className="px-3 py-1.5 text-gray-500 text-xs">Proforma added</span>
+                                          ) : null}
+                                        </div>
+                                        <div className="flex gap-2 shrink-0">
+                                          <button
+                                            onClick={() => {
+                                              if (row.sourceType === 'legacy' && rowOffer) {
+                                                handleViewOffer(rowOffer);
+                                              } else if (row.offerHeaderId) {
+                                                openMultiOfferDetails(row.offerHeaderId);
+                                              }
+                                            }}
+                                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors"
+                                          >
+                                            View
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              if (row.sourceType === 'legacy' && rowOffer) {
+                                                handleDeleteOffer(rowOffer.id);
+                                              } else if (row.offerHeaderId) {
+                                                handleDeleteMultiOfferHeader(row.offerHeaderId);
+                                              }
+                                            }}
+                                            className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded text-xs font-bold transition-colors"
+                                            title="Delete offer"
+                                          >
+                                            Delete
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
                                 );
                             })}
-                            {offers.length === 0 && (
+                            {allOfferRows.length === 0 && (
                                 <tr>
                                     <td colSpan={9} className="p-8 text-center text-gray-500">No offers found.</td>
                                 </tr>
@@ -10117,6 +10319,7 @@ ${internalCompany} Team`;
       return (
         <SalesCalendar 
           onSaveOffer={handleSaveOffer} 
+          onSaveMultiApartmentOffer={handleSaveMultiApartmentOffer}
           onSaveReservation={handleSaveReservation} 
           onDeleteReservation={handleDeleteReservation}
           onDeleteBooking={handleDeleteBooking}
@@ -11411,7 +11614,7 @@ ${internalCompany} Team`;
           onDeleteOffer={viewingOffer ? handleDeleteOffer : undefined}
           isViewingOffer={viewingOffer}
       />
-      <InvoiceModal isOpen={isInvoiceModalOpen} onClose={() => { setIsInvoiceModalOpen(false); setSelectedOfferForInvoice(null); setSelectedInvoice(null); setSelectedProformaForInvoice(null); }} offer={selectedOfferForInvoice} invoice={selectedInvoice} proforma={selectedProformaForInvoice} onSave={handleSaveInvoice} reservations={reservations} offers={offers} />
+      <InvoiceModal isOpen={isInvoiceModalOpen} onClose={() => { setIsInvoiceModalOpen(false); setSelectedOfferForInvoice(null); setSelectedInvoice(null); setSelectedProformaForInvoice(null); setPendingOfferItemForInvoice(null); }} offer={selectedOfferForInvoice} invoice={selectedInvoice} proforma={selectedProformaForInvoice} onSave={handleSaveInvoice} reservations={reservations} offers={offers} />
       <ConfirmPaymentModal
         isOpen={!!confirmPaymentModalProforma}
         onClose={() => setConfirmPaymentModalProforma(null)}
@@ -11436,6 +11639,18 @@ ${internalCompany} Team`;
           offer={offerToEdit} 
           onSave={handleSaveOfferUpdate}
           onDelete={handleDeleteOffer}
+      />
+      <MultiApartmentOfferDetailsModal
+        isOpen={isMultiOfferDetailsOpen}
+        onClose={() => {
+          setIsMultiOfferDetailsOpen(false);
+          setSelectedMultiOfferHeader(null);
+          setSelectedMultiOfferItems([]);
+        }}
+        header={selectedMultiOfferHeader}
+        items={selectedMultiOfferItems}
+        onSelectItem={handleSelectMultiOfferItem}
+        onAddProforma={handleAddProformaFromMultiOfferItem}
       />
       {editingLead && (
         <LeadEditModal

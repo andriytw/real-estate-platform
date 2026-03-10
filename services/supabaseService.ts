@@ -4,7 +4,13 @@ import {
   ApartmentGroup,
   Booking,
   OfferData,
+  OfferHeaderData,
+  OfferHeaderStatus,
+  OfferItemData,
+  OfferItemStatus,
+  OfferListRow,
   InvoiceData,
+  MultiApartmentOfferDraft,
   PaymentProof,
   Lead,
   RequestData,
@@ -1798,6 +1804,210 @@ export const offersService = {
   },
 };
 
+// ==================== MULTI-APARTMENT OFFER HEADERS / ITEMS ====================
+export const offerHeadersService = {
+  async getAll(): Promise<OfferHeaderData[]> {
+    const { data, error } = await supabase
+      .from('offer_headers')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return (data || []).map(transformOfferHeaderFromDB);
+  },
+
+  async getById(id: string): Promise<OfferHeaderData | null> {
+    const { data, error } = await supabase
+      .from('offer_headers')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data ? transformOfferHeaderFromDB(data) : null;
+  },
+
+  async create(header: Omit<OfferHeaderData, 'id'>): Promise<OfferHeaderData> {
+    const { data, error } = await supabase
+      .from('offer_headers')
+      .insert([transformOfferHeaderToDB(header as OfferHeaderData)])
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return transformOfferHeaderFromDB(data);
+  },
+
+  async update(id: string, updates: Partial<OfferHeaderData>): Promise<OfferHeaderData> {
+    const { data, error } = await supabase
+      .from('offer_headers')
+      .update(transformOfferHeaderToDB(updates as OfferHeaderData))
+      .eq('id', id)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return transformOfferHeaderFromDB(data);
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('offer_headers')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+};
+
+export const offerItemsService = {
+  async getAll(): Promise<OfferItemData[]> {
+    const { data, error } = await supabase
+      .from('offer_items')
+      .select('*, offer_headers(offer_no)')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return (data || []).map(transformOfferItemFromDB);
+  },
+
+  async getByHeaderId(offerHeaderId: string): Promise<OfferItemData[]> {
+    const { data, error } = await supabase
+      .from('offer_items')
+      .select('*, offer_headers(offer_no)')
+      .eq('offer_header_id', offerHeaderId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return (data || []).map(transformOfferItemFromDB);
+  },
+
+  async createMany(items: Array<Omit<OfferItemData, 'id'>>): Promise<OfferItemData[]> {
+    if (items.length === 0) return [];
+    const { data, error } = await supabase
+      .from('offer_items')
+      .insert(items.map((item) => transformOfferItemToDB(item as OfferItemData)))
+      .select('*, offer_headers(offer_no)');
+
+    if (error) throw error;
+    return (data || []).map(transformOfferItemFromDB);
+  },
+
+  async update(id: string, updates: Partial<OfferItemData>): Promise<OfferItemData> {
+    const { data, error } = await supabase
+      .from('offer_items')
+      .update(transformOfferItemToDB(updates as OfferItemData))
+      .eq('id', id)
+      .select('*, offer_headers(offer_no)')
+      .single();
+
+    if (error) throw error;
+    return transformOfferItemFromDB(data);
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('offer_items')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
+  async deleteByHeaderId(offerHeaderId: string): Promise<void> {
+    const { error } = await supabase
+      .from('offer_items')
+      .delete()
+      .eq('offer_header_id', offerHeaderId);
+
+    if (error) throw error;
+  },
+};
+
+export const multiApartmentOffersService = {
+  async getRows(): Promise<OfferListRow[]> {
+    const { data, error } = await supabase
+      .from('offer_items')
+      .select('*, offer_headers(*)')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return (data || []).map(transformOfferListRowFromDB);
+  },
+
+  async createFromDraft(
+    draft: MultiApartmentOfferDraft,
+    headerStatus: OfferHeaderStatus
+  ): Promise<{ header: OfferHeaderData; items: OfferItemData[] }> {
+    const checkIn = draft.shared.checkIn;
+    const checkOut = draft.shared.checkOut;
+    const nights = Math.max(
+      1,
+      Math.round(
+        (new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24)
+      )
+    );
+    const clientName =
+      draft.shared.clientType === 'Company'
+        ? draft.shared.companyName.trim()
+        : `${draft.shared.firstName} ${draft.shared.lastName}`.trim();
+
+    const header = await offerHeadersService.create({
+      status: headerStatus,
+      clientType: draft.shared.clientType,
+      clientName,
+      firstName: draft.shared.firstName,
+      lastName: draft.shared.lastName,
+      companyName: draft.shared.companyName,
+      address: draft.shared.address,
+      phone: draft.shared.phone,
+      email: draft.shared.email,
+      internalCompany: draft.shared.internalCompany,
+      recipientEmail: draft.shared.recipientEmail || draft.shared.email,
+      recipientPhone: draft.shared.recipientPhone || draft.shared.phone,
+      clientMessage: draft.shared.clientMessage,
+      startDate: checkIn,
+      endDate: checkOut,
+      nights,
+      leadSource: undefined,
+    });
+
+    const items = await offerItemsService.createMany(
+      draft.apartments.map((apartment) => {
+        const netTotal = nights * apartment.nightlyPrice;
+        const vatAmount = netTotal * (apartment.taxRate / 100);
+        const grossTotal = netTotal + vatAmount;
+        return {
+          offerHeaderId: header.id,
+          propertyId: apartment.propertyId,
+          apartmentTitle: apartment.title,
+          street: apartment.street,
+          houseNumber: apartment.houseNumber,
+          zip: apartment.zip,
+          city: apartment.city,
+          apartmentCode: apartment.apartmentCode,
+          apartmentGroupName: apartment.apartmentGroupName ?? null,
+          marketplaceUrl: apartment.marketplaceUrl ?? null,
+          nightlyPrice: apartment.nightlyPrice,
+          taxRate: apartment.taxRate,
+          nights,
+          netTotal,
+          vatAmount,
+          grossTotal,
+          status: 'Offered',
+          selectedAt: null,
+          convertedAt: null,
+          reservationId: null,
+          legacyOfferId: null,
+          invoiceId: null,
+        };
+      })
+    );
+
+    return { header, items };
+  },
+};
+
 // ==================== INVOICES ====================
 export const invoicesService = {
   async getAll(): Promise<InvoiceData[]> {
@@ -2959,6 +3169,7 @@ function transformOfferFromDB(db: any): OfferData {
 function transformOfferToDB(offer: OfferData): any {
   const [startDate, endDate] = offer.dates?.split(' to ') || ['', ''];
   return {
+    offer_no: offer.offerNo,
     client_name: offer.clientName,
     property_id: offer.propertyId,
     internal_company: offer.internalCompany,
@@ -2977,6 +3188,148 @@ function transformOfferToDB(offer: OfferData): any {
     unit: offer.unit,
     client_message: offer.clientMessage,
     reservation_id: offer.reservationId,
+  };
+}
+
+function transformOfferHeaderFromDB(db: any): OfferHeaderData {
+  return {
+    id: db.id,
+    offerNo: db.offer_no ?? undefined,
+    status: db.status,
+    clientType: db.client_type,
+    clientName: db.client_name,
+    firstName: db.first_name ?? undefined,
+    lastName: db.last_name ?? undefined,
+    companyName: db.company_name ?? undefined,
+    address: db.address ?? undefined,
+    phone: db.phone ?? undefined,
+    email: db.email ?? undefined,
+    internalCompany: db.internal_company,
+    recipientEmail: db.recipient_email ?? undefined,
+    recipientPhone: db.recipient_phone ?? undefined,
+    clientMessage: db.client_message ?? undefined,
+    startDate: db.start_date,
+    endDate: db.end_date,
+    nights: Number(db.nights ?? 0),
+    leadSource: db.lead_source ?? undefined,
+    createdAt: db.created_at ?? undefined,
+    updatedAt: db.updated_at ?? undefined,
+  };
+}
+
+function transformOfferHeaderToDB(header: OfferHeaderData): any {
+  return {
+    offer_no: header.offerNo,
+    status: header.status,
+    client_type: header.clientType,
+    client_name: header.clientName,
+    first_name: header.firstName,
+    last_name: header.lastName,
+    company_name: header.companyName,
+    address: header.address,
+    phone: header.phone,
+    email: header.email,
+    internal_company: header.internalCompany,
+    recipient_email: header.recipientEmail,
+    recipient_phone: header.recipientPhone,
+    client_message: header.clientMessage,
+    start_date: header.startDate,
+    end_date: header.endDate,
+    nights: header.nights,
+    lead_source: header.leadSource,
+  };
+}
+
+function transformOfferItemFromDB(db: any): OfferItemData {
+  return {
+    id: db.id,
+    offerHeaderId: db.offer_header_id,
+    offerNo: db.offer_no ?? db.offer_headers?.offer_no ?? undefined,
+    propertyId: db.property_id,
+    apartmentTitle: db.apartment_title ?? undefined,
+    street: db.street ?? '',
+    houseNumber: db.house_number ?? undefined,
+    zip: db.zip ?? '',
+    city: db.city ?? '',
+    apartmentCode: db.apartment_code ?? '',
+    apartmentGroupName: db.apartment_group_name ?? undefined,
+    marketplaceUrl: db.marketplace_url ?? undefined,
+    nightlyPrice: Number(db.nightly_price ?? 0),
+    taxRate: Number(db.tax_rate ?? 0),
+    nights: Number(db.nights ?? 0),
+    netTotal: Number(db.net_total ?? 0),
+    vatAmount: Number(db.vat_amount ?? 0),
+    grossTotal: Number(db.gross_total ?? 0),
+    status: db.status as OfferItemStatus,
+    selectedAt: db.selected_at ?? null,
+    convertedAt: db.converted_at ?? null,
+    reservationId: db.reservation_id ?? null,
+    legacyOfferId: db.legacy_offer_id ?? null,
+    invoiceId: db.invoice_id ?? null,
+    createdAt: db.created_at ?? undefined,
+    updatedAt: db.updated_at ?? undefined,
+  };
+}
+
+function transformOfferItemToDB(item: OfferItemData): any {
+  return {
+    offer_header_id: item.offerHeaderId,
+    property_id: item.propertyId,
+    apartment_title: item.apartmentTitle,
+    street: item.street,
+    house_number: item.houseNumber,
+    zip: item.zip,
+    city: item.city,
+    apartment_code: item.apartmentCode,
+    apartment_group_name: item.apartmentGroupName,
+    marketplace_url: item.marketplaceUrl,
+    nightly_price: item.nightlyPrice,
+    tax_rate: item.taxRate,
+    nights: item.nights,
+    net_total: item.netTotal,
+    vat_amount: item.vatAmount,
+    gross_total: item.grossTotal,
+    status: item.status,
+    selected_at: item.selectedAt,
+    converted_at: item.convertedAt,
+    reservation_id: item.reservationId,
+    legacy_offer_id: item.legacyOfferId,
+    invoice_id: item.invoiceId,
+  };
+}
+
+function transformOfferListRowFromDB(db: any): OfferListRow {
+  const header = db.offer_headers || {};
+  const startDate = header.start_date || '';
+  const endDate = header.end_date || '';
+  const apartmentLine = [db.street, db.house_number, db.zip, db.city]
+    .filter(Boolean)
+    .join(db.house_number ? ', ' : ' ')
+    .replace(/,\s+,/g, ', ')
+    .trim();
+  const apartmentWithCode = [apartmentLine, db.apartment_code].filter(Boolean).join(' — ');
+  return {
+    sourceType: 'multi',
+    rowId: db.id,
+    offerId: header.id || db.offer_header_id,
+    offerHeaderId: db.offer_header_id,
+    offerItemId: db.id,
+    offerNo: header.offer_no ?? undefined,
+    clientName: header.client_name || '',
+    propertyId: db.property_id,
+    apartmentLine: apartmentWithCode,
+    dates: `${startDate} to ${endDate}`,
+    startDate,
+    endDate,
+    status: db.status,
+    price: `${Number(db.gross_total ?? 0).toFixed(2)} EUR`,
+    internalCompany: header.internal_company ?? undefined,
+    email: header.email ?? undefined,
+    phone: header.phone ?? undefined,
+    address: header.address ?? undefined,
+    reservationId: db.reservation_id ?? null,
+    legacyOfferId: db.legacy_offer_id ?? null,
+    invoiceId: db.invoice_id ?? null,
   };
 }
 

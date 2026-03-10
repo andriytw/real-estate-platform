@@ -639,6 +639,126 @@ export interface OfferData {
   reservationId?: string; // UUID reference to reservations table
 }
 
+export type OfferHeaderStatus = 'Draft' | 'Sent' | 'Closed';
+export type OfferItemStatus = 'Offered' | 'Selected' | 'Converted' | 'Rejected' | 'Expired';
+
+export interface SelectedApartmentData {
+  propertyId: string;
+  title: string;
+  street: string;
+  houseNumber?: string;
+  zip: string;
+  city: string;
+  apartmentCode: string;
+  apartmentGroupName?: string | null;
+  marketplaceUrl?: string | null;
+  status?: Property['apartmentStatus'] | null;
+  area?: number;
+  rooms?: number;
+  beds?: number;
+}
+
+export interface OfferHeaderData {
+  id: string;
+  offerNo?: string;
+  status: OfferHeaderStatus;
+  clientType: 'Private' | 'Company';
+  clientName: string;
+  firstName?: string;
+  lastName?: string;
+  companyName?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  internalCompany: string;
+  recipientEmail?: string;
+  recipientPhone?: string;
+  clientMessage?: string;
+  startDate: string;
+  endDate: string;
+  nights: number;
+  leadSource?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface OfferItemData {
+  id: string;
+  offerHeaderId: string;
+  offerNo?: string;
+  propertyId: string;
+  apartmentTitle?: string;
+  street: string;
+  houseNumber?: string;
+  zip: string;
+  city: string;
+  apartmentCode: string;
+  apartmentGroupName?: string | null;
+  marketplaceUrl?: string | null;
+  nightlyPrice: number;
+  taxRate: number;
+  nights: number;
+  netTotal: number;
+  vatAmount: number;
+  grossTotal: number;
+  status: OfferItemStatus;
+  selectedAt?: string | null;
+  convertedAt?: string | null;
+  reservationId?: string | null;
+  legacyOfferId?: string | null;
+  invoiceId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface OfferListRow {
+  sourceType: 'legacy' | 'multi';
+  rowId: string;
+  offerId: string;
+  offerHeaderId?: string;
+  offerItemId?: string;
+  offerNo?: string;
+  clientName: string;
+  propertyId: string;
+  apartmentLine: string;
+  dates: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  price: string;
+  internalCompany?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  reservationId?: string | null;
+  legacyOfferId?: string | null;
+  invoiceId?: string | null;
+}
+
+export interface MultiApartmentOfferDraftApartment extends SelectedApartmentData {
+  nightlyPrice: number;
+  taxRate: number;
+}
+
+export interface MultiApartmentOfferDraft {
+  shared: {
+    clientType: 'Private' | 'Company';
+    firstName: string;
+    lastName: string;
+    companyName: string;
+    address: string;
+    phone: string;
+    email: string;
+    recipientEmail: string;
+    recipientPhone: string;
+    internalCompany: string;
+    clientMessage: string;
+    checkIn: string;
+    checkOut: string;
+  };
+  apartments: MultiApartmentOfferDraftApartment[];
+}
+
 export interface CompanyDetails {
   name: string;
   address: string;
