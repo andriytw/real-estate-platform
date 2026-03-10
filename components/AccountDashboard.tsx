@@ -25,6 +25,7 @@ import UserManagement from './admin/UserManagement';
 const KanbanBoard = React.lazy(() => import('./kanban/KanbanBoard'));
 import {
   propertiesService,
+  apartmentGroupsService,
   tasksService,
   workersService,
   warehouseService,
@@ -143,6 +144,7 @@ import {
   Booking,
   Reservation,
   PaymentProof,
+  ApartmentGroup,
   ContactParty,
   TenantDetails,
   PropertyDocument,
@@ -571,12 +573,19 @@ const AccountDashboard: React.FC = () => {
     title: string;
     floor: number;
     buildingFloors: number;
+    apartmentGroupId: string | null;
     landlord: ContactParty | null;
     management: ContactParty | null;
     tenant: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number };
     secondCompany: (TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number }) | null;
     deposit: PropertyDeposit | null;
   } | null>(null);
+  const [apartmentGroups, setApartmentGroups] = useState<ApartmentGroup[]>([]);
+  const [apartmentGroupsLoaded, setApartmentGroupsLoaded] = useState(false);
+  const [addApartmentGroupModalOpen, setAddApartmentGroupModalOpen] = useState(false);
+  const [addApartmentGroupName, setAddApartmentGroupName] = useState('');
+  const [addApartmentGroupError, setAddApartmentGroupError] = useState<string | null>(null);
+  const [addApartmentGroupSaving, setAddApartmentGroupSaving] = useState(false);
   const [card1DepositError, setCard1DepositError] = useState<string | null>(null);
   const [isDepositProofModalOpen, setIsDepositProofModalOpen] = useState(false);
   const [depositProofType, setDepositProofType] = useState<'payment' | 'return' | null>(null);
@@ -728,6 +737,17 @@ const AccountDashboard: React.FC = () => {
   const [rentIncreaseFormError, setRentIncreaseFormError] = useState<string | null>(null);
   const [isAddingRentIncrease, setIsAddingRentIncrease] = useState(false);
   const selectedProperty = useMemo(() => properties.find(p => p.id === selectedPropertyId) || properties[0] || null, [properties, selectedPropertyId]);
+
+  // Enrich selected property with getById (apartment_group etc.) so details card has full data without extending getAll
+  useEffect(() => {
+    if (!selectedPropertyId) return;
+    let cancelled = false;
+    propertiesService.getById(selectedPropertyId).then((prop) => {
+      if (cancelled || !prop) return;
+      setProperties(prev => prev.map(p => p.id === prop.id ? prop : p));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedPropertyId]);
 
   const paymentChainParties = useMemo(() => {
     const p = selectedProperty;
@@ -2684,6 +2704,7 @@ const AccountDashboard: React.FC = () => {
       title: prop.title ?? '',
       floor: prop.details?.floor ?? 0,
       buildingFloors: prop.details?.buildingFloors ?? 0,
+      apartmentGroupId: prop.apartmentGroupId ?? null,
       landlord,
       management,
       tenant,
@@ -2693,6 +2714,17 @@ const AccountDashboard: React.FC = () => {
     setCard1DepositError(null);
     setLeaseTermDraft(leaseTerm ? { contractStart: leaseTerm.contract_start, contractEnd: leaseTerm.contract_end ?? '', contractType: leaseTerm.contract_type, firstPaymentDate: leaseTerm.first_payment_date ?? '', note: leaseTerm.note ?? '' } : { contractStart: '', contractEnd: '', contractType: 'befristet', firstPaymentDate: '', note: '' });
     setIsEditingCard1(true);
+    if (!apartmentGroupsLoaded) {
+      (async () => {
+        try {
+          const list = await apartmentGroupsService.getAll();
+          setApartmentGroups(list);
+          setApartmentGroupsLoaded(true);
+        } catch (e) {
+          console.error('[ApartmentGroups load]', e);
+        }
+      })();
+    }
     if (!addressBookLoaded) {
       setAddressBookLoading(true);
       (async () => {
@@ -2720,6 +2752,9 @@ const AccountDashboard: React.FC = () => {
     setEditingRentTimelineRowId(null);
     setRentTimelineEditDraft(null);
     setRentTimelineEditError(null);
+    setAddApartmentGroupModalOpen(false);
+    setAddApartmentGroupName('');
+    setAddApartmentGroupError(null);
   };
 
   const isCard1LandlordValid = (l: ContactParty | null): boolean => {
@@ -2888,6 +2923,7 @@ const AccountDashboard: React.FC = () => {
         title: draftSnapshot.title,
         details: { ...(prop.details ?? {}), floor: draftSnapshot.floor, buildingFloors: draftSnapshot.buildingFloors },
         apartmentStatus: draftSnapshot.apartmentStatus,
+        apartmentGroupId: draftSnapshot.apartmentGroupId ?? null,
         landlord: draftSnapshot.landlord,
         management: draftSnapshot.management,
         tenant: tenantPayload,
@@ -5778,6 +5814,16 @@ ${internalCompany} Team`;
                                 <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Поверх (поточний)</label><input type="number" min={0} value={card1Draft.floor} onChange={e => setCard1Draft(d => d ? { ...d, floor: parseInt(e.target.value || '0', 10) } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
                                 <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Поверх (всього)</label><input type="number" min={0} value={card1Draft.buildingFloors} onChange={e => setCard1Draft(d => d ? { ...d, buildingFloors: parseInt(e.target.value || '0', 10) } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
                                 <div className="col-span-4"><label className="text-xs text-gray-500 block mb-1">Квартира / Код</label><input value={card1Draft.title} onChange={e => setCard1Draft(d => d ? { ...d, title: e.target.value } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                                <div className="col-span-4">
+                                    <label className="text-xs text-gray-500 block mb-1">Група квартири</label>
+                                    <div className="flex gap-2 items-center">
+                                        <select value={card1Draft.apartmentGroupId ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, apartmentGroupId: e.target.value === '' ? null : e.target.value } : null)} className="flex-1 min-w-0 bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white focus:border-emerald-500 focus:outline-none">
+                                            <option value="">—</option>
+                                            {apartmentGroups.map(ag => (<option key={ag.id} value={ag.id}>{ag.name}</option>))}
+                                        </select>
+                                        <button type="button" onClick={() => { setAddApartmentGroupModalOpen(true); setAddApartmentGroupName(''); setAddApartmentGroupError(null); }} className="shrink-0 px-3 py-2 rounded border border-gray-600 hover:bg-gray-700 text-gray-200 text-sm whitespace-nowrap">+ Додати групу</button>
+                                    </div>
+                                </div>
                             </div>
                             <div className="grid grid-cols-12 gap-4 items-start pb-4 border-b border-gray-700">
                                 <div className="col-span-4">
@@ -6394,10 +6440,11 @@ ${internalCompany} Team`;
                         </>
                     ) : (
                         <>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-4 border-b border-gray-700">
                                 <div><span className="text-xs text-gray-500 block mb-1">Адреса</span><span className="text-sm text-white font-bold">{formatPropertyAddress(selectedProperty)}</span></div>
                                 <div><span className="text-xs text-gray-500 block mb-1">Поверх / Сторона</span><span className="text-sm text-white">{selectedProperty.details?.floor != null ? `${selectedProperty.details.floor} OG` : '—'} {selectedProperty.details?.buildingFloors != null ? ` / ${selectedProperty.details.buildingFloors} поверхов` : ''}</span></div>
                                 <div><span className="text-xs text-gray-500 block mb-1">Квартира / Код</span><span className="text-sm text-white">{selectedProperty.title || '—'}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Група квартири</span><span className="text-sm text-white">{selectedProperty.apartmentGroupName ?? '—'}</span></div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-4 border-b border-gray-700">
                                 <div><span className="text-xs text-gray-500 block mb-1">Gültig von</span><span className="text-sm text-white">{leaseTerm?.contract_start || '—'}</span></div>
@@ -6868,6 +6915,41 @@ ${internalCompany} Team`;
                                                 </table>
                                             </div>
                                         )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {addApartmentGroupModalOpen && (
+                        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4" onClick={() => { if (!addApartmentGroupSaving) { setAddApartmentGroupModalOpen(false); setAddApartmentGroupError(null); } }}>
+                            <div className="bg-[#1C1F24] w-full max-w-md rounded-xl border border-gray-700 shadow-xl p-4" onClick={e => e.stopPropagation()}>
+                                <h3 className="text-lg font-bold text-white mb-3">Додати групу квартир</h3>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="text-xs text-gray-500 block mb-1">Назва групи</label>
+                                        <input value={addApartmentGroupName} onChange={e => { setAddApartmentGroupName(e.target.value); setAddApartmentGroupError(null); }} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="Наприклад: Berlin Zentrum" disabled={addApartmentGroupSaving} />
+                                    </div>
+                                    {addApartmentGroupError && <p className="text-xs text-amber-500">{addApartmentGroupError}</p>}
+                                    <div className="flex gap-2 justify-end pt-1">
+                                        <button type="button" onClick={() => { if (!addApartmentGroupSaving) { setAddApartmentGroupModalOpen(false); setAddApartmentGroupError(null); } }} className="px-3 py-2 rounded border border-gray-600 hover:bg-gray-700 text-gray-200 text-sm">Скасувати</button>
+                                        <button type="button" disabled={addApartmentGroupSaving || !addApartmentGroupName.trim()} onClick={async () => {
+                                            const name = addApartmentGroupName.trim();
+                                            if (!name) return;
+                                            setAddApartmentGroupError(null);
+                                            setAddApartmentGroupSaving(true);
+                                            try {
+                                                const created = await apartmentGroupsService.create(name);
+                                                const list = await apartmentGroupsService.getAll();
+                                                setApartmentGroups(list);
+                                                setCard1Draft(d => d ? { ...d, apartmentGroupId: created.id } : null);
+                                                setAddApartmentGroupModalOpen(false);
+                                                setAddApartmentGroupName('');
+                                            } catch (err) {
+                                                setAddApartmentGroupError(err instanceof Error ? err.message : 'Помилка створення групи.');
+                                            } finally {
+                                                setAddApartmentGroupSaving(false);
+                                            }
+                                        }} className="px-3 py-2 rounded bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-sm font-medium">Зберегти</button>
                                     </div>
                                 </div>
                             </div>

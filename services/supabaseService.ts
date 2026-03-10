@@ -1,6 +1,7 @@
 import { supabase } from '../utils/supabase/client';
 import {
   Property,
+  ApartmentGroup,
   Booking,
   OfferData,
   InvoiceData,
@@ -1183,6 +1184,47 @@ export const tasksService = {
   }
 };
 
+// ==================== APARTMENT GROUPS ====================
+export const apartmentGroupsService = {
+  async getAll(): Promise<ApartmentGroup[]> {
+    const { data, error } = await supabase
+      .from('apartment_groups')
+      .select('id, name, created_at, updated_at')
+      .order('name', { ascending: true });
+    if (error) throw error;
+    return (data ?? []).map((row: any) => ({
+      id: row.id,
+      name: row.name ?? '',
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  },
+
+  async create(name: string): Promise<ApartmentGroup> {
+    const trimmed = (name ?? '').trim();
+    const { data, error } = await supabase
+      .from('apartment_groups')
+      .insert([{ name: trimmed }])
+      .select('id, name, created_at, updated_at')
+      .single();
+    if (error) {
+      if (error.code === '23505') {
+        throw new Error('Група з такою назвою вже існує.');
+      }
+      if (error.code === '23514') {
+        throw new Error('Назва групи не може бути порожньою.');
+      }
+      throw error;
+    }
+    return {
+      id: data.id,
+      name: data.name ?? '',
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+  },
+};
+
 // ==================== PROPERTIES ====================
 export const propertiesService = {
   // Get all properties
@@ -1221,11 +1263,11 @@ export const propertiesService = {
     }
   },
 
-  // Get property by ID
+  // Get property by ID (with apartment_group for details card)
   async getById(id: string): Promise<Property | null> {
     const { data, error } = await supabase
       .from('properties')
-      .select('*')
+      .select('*, apartment_group:apartment_groups(id, name)')
       .eq('id', id)
       .single();
     
@@ -1256,7 +1298,7 @@ export const propertiesService = {
       .from('properties')
       .update(dbData)
       .eq('id', id)
-      .select()
+      .select('*, apartment_group:apartment_groups(id, name)')
       .single();
     
     if (error) {
@@ -2703,6 +2745,8 @@ function transformPropertyFromDB(db: any): Property {
     geocode_failed_reason: db.geocode_failed_reason ?? undefined,
     archivedAt: db.archived_at ?? undefined,
     archivedBy: db.archived_by ?? undefined,
+    apartmentGroupId: db.apartment_group_id ?? undefined,
+    apartmentGroupName: db.apartment_group?.name ?? undefined,
   };
 }
 
@@ -2779,6 +2823,7 @@ function transformPropertyToDB(property: Property): any {
   if (property.geocode_failed_reason !== undefined) result.geocode_failed_reason = property.geocode_failed_reason;
   if (property.archivedAt !== undefined) result.archived_at = property.archivedAt;
   if (property.archivedBy !== undefined) result.archived_by = property.archivedBy;
+  if (property.apartmentGroupId !== undefined) result.apartment_group_id = property.apartmentGroupId;
 
   return result;
 }

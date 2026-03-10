@@ -341,6 +341,14 @@ export interface WarehouseInvoiceLine {
   targetPropertyId?: string;  // Якщо інвойс явно вказує квартиру
 }
 
+/** Apartment group (Card 1): reference row from apartment_groups. */
+export interface ApartmentGroup {
+  id: string;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface PropertyDetails {
   area: number;
   rooms: number;
@@ -527,6 +535,10 @@ export interface Property {
   archivedAt?: string | null;
   /** User who archived the property; null if not archived or auditor unknown. */
   archivedBy?: string | null;
+  /** Card 1: apartment group FK. Stored in apartment_group_id. */
+  apartmentGroupId?: string | null;
+  /** Card 1: denormalized group name for display (from join when loading by id). */
+  apartmentGroupName?: string | null;
 }
 
 export interface FilterState {
