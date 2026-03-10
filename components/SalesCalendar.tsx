@@ -928,7 +928,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       <div className="flex-1 flex overflow-hidden relative">
          
          {/* Left Sidebar (Rooms) — table-style single row per apartment, no header */}
-         <div className="w-64 flex-shrink-0 border-r border-gray-800 bg-[#161B22] z-20 flex flex-col">
+         <div className="w-80 flex-shrink-0 border-r border-gray-800 bg-[#161B22] z-20 flex flex-col">
             <div
                 className="sticky top-0 z-30 border-b border-gray-800 bg-[#1C1F24] flex flex-col justify-center px-4 py-3"
                 style={{ minHeight: CALENDAR_HEADER_HEIGHT, height: CALENDAR_HEADER_HEIGHT }}
@@ -954,10 +954,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                     return (
                     <div
                         key={room.id}
-                        className="border-b border-gray-800 flex items-center px-2 py-1.5 hover:bg-[#1C1F24] transition-colors group relative"
+                        className="border-b border-gray-800 flex items-center px-3 py-1.5 hover:bg-[#1C1F24] transition-colors group relative overflow-hidden"
                         style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
                     >
-                        <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,0.7fr)_minmax(0,1.4fr)_minmax(0,0.8fr)_auto_auto_auto] gap-1.5 w-full min-w-0 items-center whitespace-nowrap">
+                        <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,0.7fr)_minmax(0,1.4fr)_minmax(0,0.8fr)_auto_auto_auto] gap-1.5 w-full min-w-0 overflow-hidden items-center whitespace-nowrap">
                             <span className={`truncate ${rowClass}`} title={room.department || undefined}>{room.department || '—'}</span>
                             <span className={`shrink-0 ${rowClass}`}>{getApartmentStatusLabel(room.status)}</span>
                             <span className={`truncate ${rowClass} text-gray-300`} title={room.details || undefined}>{room.details || '—'}</span>
