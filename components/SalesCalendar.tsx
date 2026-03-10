@@ -161,6 +161,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [minPeopleFilter, setMinPeopleFilter] = useState<number | null>(null);
   const [minRoomsFilter, setMinRoomsFilter] = useState<number | null>(null);
+  const [availabilityStartDate, setAvailabilityStartDate] = useState('');
+  const [availabilityEndDate, setAvailabilityEndDate] = useState('');
   const [hoveredBooking, setHoveredBooking] = useState<{booking: Booking, x: number, y: number} | null>(null);
   const [ugpLoadingBookingId, setUgpLoadingBookingId] = useState<string | number | null>(null);
   const hoverLeaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -387,6 +389,15 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   ];
 
   const filteredRooms = React.useMemo(() => {
+    let hasAvailabilityFilter = availabilityStartDate.trim() !== '' && availabilityEndDate.trim() !== '';
+    let availabilityStart = '';
+    let availabilityEnd = '';
+    if (hasAvailabilityFilter) {
+      availabilityStart = normalizeDateKey(availabilityStartDate);
+      availabilityEnd = normalizeDateKey(availabilityEndDate);
+      if (availabilityStart >= availabilityEnd) hasAvailabilityFilter = false; // invalid range: do not filter
+    }
+
     return roomsFromProperties.filter((r) => {
       // City filter
       const matchesCity = cityFilter === 'ALL' || r.city === cityFilter;
@@ -401,10 +412,16 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       const matchesPeople = minPeopleFilter === null || (r.beds === minPeopleFilter);
       // Rooms filter (кімнати) — exact value
       const matchesRooms = minRoomsFilter === null || (r.rooms === minRoomsFilter);
-      
-      return matchesCity && matchesSearch && matchesPeople && matchesRooms;
+
+      // Availability date-range filter: show only apartments with no booking overlapping [start, end)
+      // Same-day turnover: booking ending on request start date does not block (end date is exclusive)
+      const matchesAvailability = !hasAvailabilityFilter || allBookings.every(
+        (b) => String(b.roomId) !== String(r.id) || !datesOverlap(availabilityStart, availabilityEnd, normalizeDateKey(b.start), normalizeDateKey(b.end))
+      );
+
+      return matchesCity && matchesSearch && matchesPeople && matchesRooms && matchesAvailability;
     });
-  }, [roomsFromProperties, cityFilter, searchQuery, minPeopleFilter, minRoomsFilter]);
+  }, [roomsFromProperties, cityFilter, searchQuery, minPeopleFilter, minRoomsFilter, availabilityStartDate, availabilityEndDate, allBookings]);
 
   const getRoomNameById = (roomId: string | undefined | null) => {
     if (!roomId) return '';
@@ -915,6 +932,23 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
           <option value={3}>3 ліжка</option>
           <option value={4}>4 ліжка</option>
         </select>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={availabilityStartDate}
+            onChange={(e) => setAvailabilityStartDate(e.target.value)}
+            className="bg-[#161B22] border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none min-w-[120px]"
+            title="Заїзд"
+          />
+          <span className="text-gray-500 text-sm">—</span>
+          <input
+            type="date"
+            value={availabilityEndDate}
+            onChange={(e) => setAvailabilityEndDate(e.target.value)}
+            className="bg-[#161B22] border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none min-w-[120px]"
+            title="Виїзд"
+          />
+        </div>
         <span className="text-xs text-gray-400 whitespace-nowrap">
           {filteredRooms.length === 0 ? (
             <span className="text-red-400">Нічого не знайдено</span>
