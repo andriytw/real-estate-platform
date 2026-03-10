@@ -365,6 +365,16 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         termStatus: p.termStatus ?? undefined,
         department: p.apartmentGroupName ?? '',
         status: p.apartmentStatus ?? null,
+        ...((): { street: string; houseNo: string } => {
+          const a = (p.address ?? '').trim();
+          if (!a) return { street: '', houseNo: '' };
+          const parts = a.split(/\s+/);
+          const last = parts.pop() ?? '';
+          if (/^\d+[a-zA-Z]?$/.test(last)) return { street: parts.join(' ').trim(), houseNo: last };
+          return { street: a, houseNo: '' };
+        })(),
+        zip: (p.zip ?? '').trim() || '',
+        city: (p.city ?? '').trim() || '',
       })),
     [properties]
   );
@@ -954,13 +964,16 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                     return (
                     <div
                         key={room.id}
-                        className="border-b border-gray-800 flex items-center px-3 py-1.5 hover:bg-[#1C1F24] transition-colors group relative overflow-hidden"
+                        className="border-b border-gray-800 flex items-center px-2 py-1.5 hover:bg-[#252a32] transition-colors group relative overflow-hidden"
                         style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
                     >
-                        <div className="grid grid-cols-[minmax(0,0.72fr)_minmax(0,0.98fr)_minmax(0,1.4fr)_minmax(0,0.8fr)_auto_auto_auto] gap-1 w-full min-w-0 overflow-hidden items-center whitespace-nowrap">
+                        <div className="grid grid-cols-[minmax(0,0.55fr)_minmax(0,0.7fr)_minmax(0,1fr)_minmax(0,0.4fr)_minmax(0,0.4fr)_minmax(0,0.75fr)_minmax(0,0.65fr)_auto_auto_auto] gap-0 w-full min-w-0 overflow-hidden items-center whitespace-nowrap justify-items-start [&>span]:border-r [&>span]:border-gray-700/50 [&>span]:pr-2 [&>span:last-child]:border-r-0 [&>span:last-child]:pr-0">
                             <span className={`truncate text-left ${rowClass}`} title={room.department || undefined}>{room.department || '—'}</span>
                             <span className={`text-left min-w-0 ${rowClass}`}>{getApartmentStatusLabel(room.status)}</span>
-                            <span className={`truncate text-left ${rowClass} text-gray-300`} title={room.details || undefined}>{room.details || '—'}</span>
+                            <span className={`truncate text-left ${rowClass} text-gray-300`} title={room.street || undefined}>{room.street || '—'}</span>
+                            <span className={`text-left min-w-0 ${rowClass} text-gray-300`} title={room.houseNo || undefined}>{room.houseNo || '—'}</span>
+                            <span className={`text-left min-w-0 ${rowClass} text-gray-300`} title={room.zip || undefined}>{room.zip || '—'}</span>
+                            <span className={`truncate text-left ${rowClass} text-gray-300`} title={room.city || undefined}>{room.city || '—'}</span>
                             <span className={`truncate text-left ${rowClass} font-semibold`} title={room.name || undefined}>{room.name || '—'}</span>
                             <span className="flex items-center gap-0.5 shrink-0 justify-start" title="QM">
                                 <Ruler className="w-3 h-3 text-gray-500 shrink-0" />
