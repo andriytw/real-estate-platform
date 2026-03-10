@@ -945,6 +945,16 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                 </div>
             </div>
             <div className="overflow-y-auto flex-1 scrollbar-hide">
+                {/* Tymczasowy wiersz nagłówków kolumn — do usunięcia */}
+                <div className="grid grid-cols-[minmax(0,0.55fr)_minmax(0,0.7fr)_minmax(0,1.4fr)_minmax(0,0.65fr)_auto_auto_auto] gap-0.5 w-full min-w-0 px-2 py-1.5 border-b border-gray-700 bg-[#1C1F24]/80">
+                    <span className="text-[11px] text-gray-500 font-medium truncate">Abteilung</span>
+                    <span className="text-[11px] text-gray-500 font-medium">Status</span>
+                    <span className="text-[11px] text-gray-500 font-medium truncate">Adresse</span>
+                    <span className="text-[11px] text-gray-500 font-medium truncate">Wohnung</span>
+                    <span className="text-[11px] text-gray-500 font-medium">QM</span>
+                    <span className="text-[11px] text-gray-500 font-medium">Betten</span>
+                    <span className="text-[11px] text-gray-500 font-medium">Rooms</span>
+                </div>
                 {filteredRooms.map(room => {
                     const BASE_ROW_HEIGHT = 64;
                     const maxStack = maxStackForRoomId.get(room.id) ?? 0;
