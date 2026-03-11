@@ -403,7 +403,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     // Group by room, then for each reservation find all in same room that OVERLAP it (same or different end date)
     const byRoom = new Map<string, ReservationData[]>();
     for (const r of active) {
-      const roomId = r.roomId || (r as any).propertyId ?? '';
+      const roomId = (r.roomId || (r as any).propertyId) ?? '';
       const arr = byRoom.get(roomId) ?? [];
       arr.push(r);
       byRoom.set(roomId, arr);
@@ -433,7 +433,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     const active = visibleReservations;
     const byRoom = new Map<string, ReservationData[]>();
     for (const r of active) {
-      const roomId = r.roomId || (r as any).propertyId ?? '';
+      const roomId = (r.roomId || (r as any).propertyId) ?? '';
       const arr = byRoom.get(roomId) ?? [];
       arr.push(r);
       byRoom.set(roomId, arr);
