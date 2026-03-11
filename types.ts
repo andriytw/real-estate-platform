@@ -652,6 +652,7 @@ export interface OfferData {
   netTotal?: number;
   vatTotal?: number;
   grossTotal?: number;
+  leadId?: string; // UUID reference to leads table (set when offer is sent)
 }
 
 export type OfferHeaderStatus = 'Draft' | 'Sent' | 'Closed';
@@ -860,6 +861,7 @@ export interface RequestData {
   email: string;
   phone: string;
   companyName?: string;
+  address?: string;
   peopleCount: number;
   startDate: string;
   endDate: string;

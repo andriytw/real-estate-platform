@@ -4459,29 +4459,35 @@ const AccountDashboard: React.FC = () => {
         mode === 'draft' ? 'Draft' : 'Sent'
       );
 
-      const requestPayload: RequestData = {
-        id: `multi-offer-${Date.now()}`,
-        firstName: draft.shared.firstName,
-        lastName: draft.shared.lastName,
-        email: draft.shared.email,
-        phone: draft.shared.phone,
-        companyName: draft.shared.companyName || undefined,
-        peopleCount: 1,
-        startDate: draft.shared.checkIn,
-        endDate: draft.shared.checkOut,
-        message: draft.shared.clientMessage,
-        propertyId: draft.apartments[0]?.propertyId,
-        status: 'processed',
-        createdAt: new Date().toISOString(),
-      };
+      // Lead creation only on Save & Send (plan: offer-first flow). Not on draft.
+      if (mode === 'send') {
+        const requestPayload: RequestData = {
+          id: `multi-offer-${Date.now()}`,
+          firstName: draft.shared.firstName,
+          lastName: draft.shared.lastName,
+          email: draft.shared.email,
+          phone: draft.shared.phone,
+          companyName: draft.shared.companyName || undefined,
+          address: draft.shared.address,
+          peopleCount: 1,
+          startDate: draft.shared.checkIn,
+          endDate: draft.shared.checkOut,
+          message: draft.shared.clientMessage,
+          propertyId: draft.apartments[0]?.propertyId,
+          status: 'processed',
+          createdAt: new Date().toISOString(),
+        };
 
-      try {
-        const createdLead = await createLeadFromRequest(requestPayload, { origin: 'booking_form' });
-        if (createdLead) {
-          setLeads((prev) => (prev.some((lead) => lead.id === createdLead.id) ? prev : [createdLead, ...prev]));
+        try {
+          const lead = await createLeadFromRequest(requestPayload, { origin: 'offer' });
+          if (lead) {
+            await offersService.updateLeadIdForOffers(created.map((o) => o.id), lead.id);
+            setLeads((prev) => (prev.some((l) => l.id === lead.id) ? prev : [lead, ...prev]));
+          }
+          // When both email and phone missing, createLeadFromRequest returns null; no lead_id set on offers.
+        } catch (error) {
+          console.error('Failed to create lead for multi-apartment offer:', error);
         }
-      } catch (error) {
-        console.error('Failed to create lead for multi-apartment offer:', error);
       }
 
       await loadReservations();

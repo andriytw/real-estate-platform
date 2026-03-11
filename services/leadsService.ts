@@ -2,7 +2,7 @@ import { supabase } from '../utils/supabase/client';
 import type { RequestData } from '../types';
 import type { Lead } from '../types';
 
-export type LeadOrigin = 'marketplace_request' | 'booking_form' | 'chat' | 'request';
+export type LeadOrigin = 'marketplace_request' | 'booking_form' | 'chat' | 'request' | 'offer';
 
 export interface CreateLeadFromRequestOptions {
   origin?: LeadOrigin;
@@ -61,7 +61,8 @@ export async function createLeadFromRequest(
     : undefined;
   const origin = options?.origin ?? 'request';
 
-  // source is origin label; request id stored separately if possible
+  // source is origin label; for offer-first flow use status Potential (plan locked)
+  const leadStatus = origin === 'offer' ? 'Potential' : 'Active';
   const { data, error } = await supabase
     .from('leads')
     .insert({
@@ -70,8 +71,8 @@ export async function createLeadFromRequest(
       contact_person: contactPerson ?? null,
       email: email || '',
       phone: phone || '',
-      address: '', // NOT NULL in schema; empty string allowed
-      status: 'Active',
+      address: request.address?.trim() ?? '',
+      status: leadStatus,
       source: origin,
       notes: request.id, // store request id for reference
     })

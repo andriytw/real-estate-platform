@@ -1803,6 +1803,16 @@ export const offersService = {
     return (data || []).map(transformOfferFromDB);
   },
 
+  /** Set lead_id on the given offer rows (e.g. after creating/finding lead on Save & Send). Updates only these rows. */
+  async updateLeadIdForOffers(offerIds: string[], leadId: string): Promise<void> {
+    if (offerIds.length === 0) return;
+    const { error } = await supabase
+      .from('offers')
+      .update({ lead_id: leadId })
+      .in('id', offerIds);
+    if (error) throw error;
+  },
+
   /**
    * Create one logical multi-apartment offer as N rows in offers (same offer_no and offer_group_id).
    * For each offer row we create a matching reservation and set offers.reservation_id so the
@@ -3313,6 +3323,7 @@ function transformOfferFromDB(db: any): OfferData {
     netTotal: db.net_total != null ? Number(db.net_total) : undefined,
     vatTotal: db.vat_total != null ? Number(db.vat_total) : undefined,
     grossTotal: db.gross_total != null ? Number(db.gross_total) : undefined,
+    leadId: db.lead_id ?? undefined,
   };
 }
 
@@ -3352,6 +3363,7 @@ function transformOfferToDB(offer: OfferData): any {
     net_total: offer.netTotal ?? null,
     vat_total: offer.vatTotal ?? null,
     gross_total: offer.grossTotal ?? null,
+    lead_id: offer.leadId ?? null,
   };
 }
 
