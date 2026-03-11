@@ -4484,7 +4484,9 @@ const AccountDashboard: React.FC = () => {
         console.error('Failed to create lead for multi-apartment offer:', error);
       }
 
-      setOffers((prev) => [...created, ...prev]);
+      await loadReservations();
+      const allOffers = await offersService.getAll();
+      setOffers(allOffers);
       setSalesTab('offers');
     } catch (error) {
       console.error('Failed to save offer:', error);

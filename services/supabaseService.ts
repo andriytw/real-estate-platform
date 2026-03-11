@@ -1865,6 +1865,15 @@ export const offersService = {
     if (resError) throw resError;
     const reservationIds = (insertedReservations ?? []).map((r) => r.id);
 
+    if (reservationIds.length !== draft.apartments.length) {
+      throw new Error(
+        `Reservation creation failed: count mismatch (expected ${draft.apartments.length}, got ${reservationIds.length})`
+      );
+    }
+    if (typeof console !== 'undefined' && console.debug) {
+      console.debug('[createGroupFromMultiApartmentDraft] Inserted reservation ids:', reservationIds);
+    }
+
     const rows: Omit<OfferData, 'id'>[] = draft.apartments.map((apartment, index) => {
       const netTotal = nights * apartment.nightlyPrice;
       const vatAmount = netTotal * (apartment.taxRate / 100);
@@ -1905,7 +1914,27 @@ export const offersService = {
     const dbRows = rows.map((row) => transformOfferToDB(row as OfferData));
     const { data: inserted, error } = await supabase.from('offers').insert(dbRows).select('*');
     if (error) throw error;
-    return (inserted || []).map(transformOfferFromDB);
+    const insertedList = inserted ?? [];
+
+    for (const row of insertedList) {
+      if (row.reservation_id == null || row.reservation_id === '') {
+        throw new Error(
+          'Offer row missing reservation_id after insert; persistence/linking bug. Check payload, column, and RLS.'
+        );
+      }
+    }
+    if (typeof console !== 'undefined' && console.debug) {
+      console.debug(
+        '[createGroupFromMultiApartmentDraft] Created offer ids:',
+        insertedList.map((r) => r.id)
+      );
+      console.debug(
+        '[createGroupFromMultiApartmentDraft] Created offer reservation_id values:',
+        insertedList.map((r) => ({ offerId: r.id, reservation_id: r.reservation_id }))
+      );
+    }
+
+    return insertedList.map(transformOfferFromDB);
   },
 };
 
