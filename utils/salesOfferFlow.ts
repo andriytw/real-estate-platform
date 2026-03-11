@@ -46,11 +46,24 @@ export function buildMultiApartmentClientMessage(params: {
   apartments: Array<SelectedApartmentData | MultiApartmentOfferDraftApartment>;
 }) {
   const { clientLabel, internalCompany, checkIn, checkOut, apartments } = params;
-  const lines = apartments.map((apartment) => `- ${formatApartmentIdentificationLine(apartment)}`);
+  const nights = calculateOfferNights(checkIn, checkOut);
+
+  const apartmentBlocks = apartments.map((apartment) => {
+    const draft = apartment as MultiApartmentOfferDraftApartment;
+    const nightlyPrice = Number.isFinite(draft.nightlyPrice) ? draft.nightlyPrice : 0;
+    const taxRate = Number.isFinite(draft.taxRate) ? draft.taxRate : 19;
+    const { netTotal, vatAmount, grossTotal } = calculateOfferItemTotals(nightlyPrice, taxRate, nights);
+    const addressUnit = formatApartmentIdentificationLine(apartment);
+    const infoLine = `${addressUnit} — ${nightlyPrice} €/night · ${nights} nights · Net ${Math.round(netTotal)} € · VAT ${Math.round(vatAmount)} € · Gross ${Math.round(grossTotal)} €`;
+    const linkLine = apartment.marketplaceUrl ? `View apartment: ${apartment.marketplaceUrl}` : '';
+    return linkLine ? `${infoLine}\n${linkLine}` : infoLine;
+  });
+
   return `Hello ${clientLabel || 'Client'},
 
 thank you for your interest in the following apartments:
-${lines.join('\n')}
+
+${apartmentBlocks.join('\n\n')}
 
 Requested stay: ${checkIn}${checkOut ? ` – ${checkOut}` : ''}
 

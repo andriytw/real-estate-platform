@@ -55,6 +55,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
   const [selectedApartments, setSelectedApartments] = useState<MultiApartmentOfferDraftApartment[]>([]);
   const [clientMessage, setClientMessage] = useState('');
   const [leadSearch, setLeadSearch] = useState('');
+  const [showLeadDropdown, setShowLeadDropdown] = useState(false);
   const [messageDirty, setMessageDirty] = useState(false);
   const [savingMode, setSavingMode] = useState<'draft' | 'send' | null>(null);
 
@@ -72,6 +73,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     setCheckOut(prefilledRequestData?.endDate || '');
     setSelectedApartments(buildInitialApartments(apartments));
     setLeadSearch('');
+    setShowLeadDropdown(false);
     setMessageDirty(false);
   }, [isOpen, apartments, prefilledRequestData]);
 
@@ -150,6 +152,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     setPhone(lead.phone || '');
     setAddress(lead.address || '');
     setLeadSearch(lead.name);
+    setShowLeadDropdown(false);
   };
 
   const handleSubmit = async (mode: 'draft' | 'send') => {
@@ -222,11 +225,13 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
                 <input
                   value={leadSearch}
-                  onChange={(e) => setLeadSearch(e.target.value)}
+                  onChange={(e) => { setLeadSearch(e.target.value); setShowLeadDropdown(true); }}
+                  onFocus={() => setShowLeadDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowLeadDropdown(false), 150)}
                   placeholder="Lead lookup"
                   className="w-full pl-8 pr-2 py-1.5 bg-[#161B22] border border-gray-700 rounded text-sm text-white focus:outline-none focus:border-emerald-500"
                 />
-                {filteredLeads.length > 0 && (
+                {showLeadDropdown && filteredLeads.length > 0 && (
                   <div className="absolute left-0 right-0 top-[calc(100%+2px)] bg-[#0D1117] border border-gray-700 rounded shadow-xl overflow-hidden z-10">
                     {filteredLeads.map((lead) => (
                       <button
