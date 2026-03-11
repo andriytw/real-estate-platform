@@ -162,6 +162,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     d.setHours(0, 0, 0, 0);
     return d;
   }, []);
+  const TODAY = today;
 
   const [startDate] = useState(() => {
     const d = new Date();
@@ -205,6 +206,53 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const [leadSearchQuery, setLeadSearchQuery] = useState('');
   const [showLeadSuggestions, setShowLeadSuggestions] = useState(false);
   const leadSearchRef = useRef<HTMLDivElement>(null);
+
+  // propertyById, roomsFromProperties, selectedApartmentPayloads must be declared before any useEffect that uses them (avoid TDZ)
+  const propertyById = React.useMemo(
+    () => new Map((properties || []).map((property) => [String(property.id), property])),
+    [properties]
+  );
+
+  const roomsFromProperties = React.useMemo(
+    () =>
+      (properties || []).map((p) => ({
+        id: p.id,
+        name: p.title,
+        city: p.city,
+        details: formatPropertyAddress({ ...p, country: '' }),
+        rooms: p.details?.rooms ?? p.rooms ?? 0,
+        beds: p.details?.beds ?? 0,
+        area: p.details?.area ?? p.area ?? 0,
+        termStatus: p.termStatus ?? undefined,
+        department: p.apartmentGroupName ?? '',
+        status: p.apartmentStatus ?? null,
+      })),
+    [properties]
+  );
+
+  const selectedApartmentPayloads = React.useMemo<SelectedApartmentData[]>(() => {
+    return selectedPropertyIds
+      .map((propertyId) => propertyById.get(String(propertyId)))
+      .filter((property): property is Property => Boolean(property))
+      .map((property) => {
+        const parts = splitStreetAndHouseNumber(property.address);
+        return {
+          propertyId: property.id,
+          title: property.title,
+          street: parts.street || property.address || '',
+          houseNumber: parts.houseNumber || undefined,
+          zip: property.zip || '',
+          city: property.city || '',
+          apartmentCode: property.title || property.id,
+          apartmentGroupName: property.apartmentGroupName ?? null,
+          marketplaceUrl: property.marketplaceUrl ?? null,
+          status: property.apartmentStatus ?? null,
+          area: property.details?.area ?? property.area ?? 0,
+          rooms: property.details?.rooms ?? property.rooms ?? 0,
+          beds: property.details?.beds ?? 0,
+        };
+      });
+  }, [propertyById, selectedPropertyIds]);
 
   // View Details Modal State
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
@@ -371,56 +419,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
     return map;
   }, [reservations]);
-
-  // Constants for Today (dynamic)
-  const TODAY = today;
-
-  // Побудувати список кімнат із реальних properties (display-only fields for table columns)
-  const roomsFromProperties = React.useMemo(
-    () =>
-      (properties || []).map((p) => ({
-        id: p.id,
-        name: p.title,
-        city: p.city,
-        details: formatPropertyAddress({ ...p, country: '' }),
-        rooms: p.details?.rooms ?? p.rooms ?? 0,
-        beds: p.details?.beds ?? 0,
-        area: p.details?.area ?? p.area ?? 0,
-        termStatus: p.termStatus ?? undefined,
-        department: p.apartmentGroupName ?? '',
-        status: p.apartmentStatus ?? null,
-      })),
-    [properties]
-  );
-
-  const propertyById = React.useMemo(
-    () => new Map((properties || []).map((property) => [String(property.id), property])),
-    [properties]
-  );
-
-  const selectedApartmentPayloads = React.useMemo<SelectedApartmentData[]>(() => {
-    return selectedPropertyIds
-      .map((propertyId) => propertyById.get(String(propertyId)))
-      .filter((property): property is Property => Boolean(property))
-      .map((property) => {
-        const parts = splitStreetAndHouseNumber(property.address);
-        return {
-          propertyId: property.id,
-          title: property.title,
-          street: parts.street || property.address || '',
-          houseNumber: parts.houseNumber || undefined,
-          zip: property.zip || '',
-          city: property.city || '',
-          apartmentCode: property.title || property.id,
-          apartmentGroupName: property.apartmentGroupName ?? null,
-          marketplaceUrl: property.marketplaceUrl ?? null,
-          status: property.apartmentStatus ?? null,
-          area: property.details?.area ?? property.area ?? 0,
-          rooms: property.details?.rooms ?? property.rooms ?? 0,
-          beds: property.details?.beds ?? 0,
-        };
-      });
-  }, [propertyById, selectedPropertyIds]);
 
   // Status column: real apartment status label only; do not confuse with termStatus
   const getApartmentStatusLabel = (status: string | null | undefined): string => {
