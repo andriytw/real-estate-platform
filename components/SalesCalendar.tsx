@@ -145,6 +145,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   properties = [],
   onShowToast,
 }) => {
+  // Calendar layer: only confirmed bookings (occupancy). Offers/reservations/proformas stay in their sections.
   const { allBookings } = useSalesAllBookings({
     reservations,
     offers,
