@@ -1802,6 +1802,77 @@ export const offersService = {
     if (error) throw error;
     return (data || []).map(transformOfferFromDB);
   },
+
+  /**
+   * Create one logical multi-apartment offer as N rows in offers (same offer_no and offer_group_id).
+   * 1 apartment = 1 row; downstream (Add Proforma, payment, booking) works with each row as a normal offer.
+   */
+  async createGroupFromMultiApartmentDraft(
+    draft: MultiApartmentOfferDraft,
+    headerStatus: 'Draft' | 'Sent'
+  ): Promise<OfferData[]> {
+    const checkIn = draft.shared.checkIn;
+    const checkOut = draft.shared.checkOut;
+    const nights = Math.max(
+      1,
+      Math.round(
+        (new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (1000 * 60 * 60 * 24)
+      )
+    );
+    const clientName =
+      draft.shared.clientType === 'Company'
+        ? draft.shared.companyName.trim()
+        : `${draft.shared.firstName} ${draft.shared.lastName}`.trim();
+    const dates = `${checkIn} to ${checkOut}`;
+
+    const { data: offerNoData, error: rpcError } = await supabase.rpc('get_next_offer_no');
+    if (rpcError || offerNoData == null) {
+      throw new Error(rpcError?.message || 'Failed to generate offer number');
+    }
+    const offerNo = String(offerNoData);
+    const offerGroupId = crypto.randomUUID();
+
+    const rows: Omit<OfferData, 'id'>[] = draft.apartments.map((apartment) => {
+      const netTotal = nights * apartment.nightlyPrice;
+      const vatAmount = netTotal * (apartment.taxRate / 100);
+      const grossTotal = netTotal + vatAmount;
+      const priceStr = `${Number(grossTotal).toFixed(2)} EUR`;
+      return {
+        offerNo,
+        clientName,
+        propertyId: apartment.propertyId,
+        internalCompany: draft.shared.internalCompany,
+        price: priceStr,
+        dates,
+        status: headerStatus,
+        guests: '1 Guest',
+        email: draft.shared.email,
+        phone: draft.shared.phone,
+        address: draft.shared.address,
+        unit: apartment.apartmentCode,
+        clientMessage: draft.shared.clientMessage,
+        offerGroupId,
+        itemStatus: 'Offered' as const,
+        streetSnapshot: apartment.street,
+        houseNumberSnapshot: apartment.houseNumber ?? undefined,
+        zipSnapshot: apartment.zip,
+        citySnapshot: apartment.city,
+        apartmentCodeSnapshot: apartment.apartmentCode,
+        apartmentGroupSnapshot: apartment.apartmentGroupName ?? undefined,
+        nightlyPrice: apartment.nightlyPrice,
+        taxRate: apartment.taxRate,
+        nights,
+        netTotal,
+        vatTotal: vatAmount,
+        grossTotal,
+      };
+    });
+
+    const dbRows = rows.map((row) => transformOfferToDB(row as OfferData));
+    const { data: inserted, error } = await supabase.from('offers').insert(dbRows).select('*');
+    if (error) throw error;
+    return (inserted || []).map(transformOfferFromDB);
+  },
 };
 
 // ==================== MULTI-APARTMENT OFFER HEADERS / ITEMS ====================
@@ -3142,6 +3213,8 @@ function transformBookingToDB(booking: Booking): any {
 }
 
 function transformOfferFromDB(db: any): OfferData {
+  const startDate = db.start_date != null ? String(db.start_date).slice(0, 10) : '';
+  const endDate = db.end_date != null ? String(db.end_date).slice(0, 10) : '';
   return {
     id: db.id,
     offerNo: db.offer_no,
@@ -3149,7 +3222,7 @@ function transformOfferFromDB(db: any): OfferData {
     propertyId: db.property_id,
     internalCompany: db.internal_company,
     price: db.price,
-    dates: `${db.start_date} to ${db.end_date}`,
+    dates: startDate && endDate ? `${startDate} to ${endDate}` : (db.dates || ''),
     status: db.status,
     createdAt: db.created_at,
     guests: db.guests,
@@ -3163,6 +3236,20 @@ function transformOfferFromDB(db: any): OfferData {
     unit: db.unit,
     clientMessage: db.client_message,
     reservationId: db.reservation_id,
+    offerGroupId: db.offer_group_id ?? undefined,
+    itemStatus: db.item_status ?? undefined,
+    streetSnapshot: db.street_snapshot ?? undefined,
+    houseNumberSnapshot: db.house_number_snapshot ?? undefined,
+    zipSnapshot: db.zip_snapshot ?? undefined,
+    citySnapshot: db.city_snapshot ?? undefined,
+    apartmentCodeSnapshot: db.apartment_code_snapshot ?? undefined,
+    apartmentGroupSnapshot: db.apartment_group_snapshot ?? undefined,
+    nightlyPrice: db.nightly_price != null ? Number(db.nightly_price) : undefined,
+    taxRate: db.tax_rate != null ? Number(db.tax_rate) : undefined,
+    nights: db.nights != null ? Number(db.nights) : undefined,
+    netTotal: db.net_total != null ? Number(db.net_total) : undefined,
+    vatTotal: db.vat_total != null ? Number(db.vat_total) : undefined,
+    grossTotal: db.gross_total != null ? Number(db.gross_total) : undefined,
   };
 }
 
@@ -3188,6 +3275,20 @@ function transformOfferToDB(offer: OfferData): any {
     unit: offer.unit,
     client_message: offer.clientMessage,
     reservation_id: offer.reservationId,
+    offer_group_id: offer.offerGroupId ?? null,
+    item_status: offer.itemStatus ?? null,
+    street_snapshot: offer.streetSnapshot ?? null,
+    house_number_snapshot: offer.houseNumberSnapshot ?? null,
+    zip_snapshot: offer.zipSnapshot ?? null,
+    city_snapshot: offer.citySnapshot ?? null,
+    apartment_code_snapshot: offer.apartmentCodeSnapshot ?? null,
+    apartment_group_snapshot: offer.apartmentGroupSnapshot ?? null,
+    nightly_price: offer.nightlyPrice ?? null,
+    tax_rate: offer.taxRate ?? null,
+    nights: offer.nights ?? null,
+    net_total: offer.netTotal ?? null,
+    vat_total: offer.vatTotal ?? null,
+    gross_total: offer.grossTotal ?? null,
   };
 }
 

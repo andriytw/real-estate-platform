@@ -637,6 +637,21 @@ export interface OfferData {
   unit?: string;
   clientMessage?: string; // Client-facing message sent via email/WhatsApp
   reservationId?: string; // UUID reference to reservations table
+  // Multi-apartment: grouping and item-level (one row per apartment)
+  offerGroupId?: string;
+  itemStatus?: 'Offered' | 'Selected' | 'Converted' | 'Rejected' | 'Expired';
+  streetSnapshot?: string;
+  houseNumberSnapshot?: string;
+  zipSnapshot?: string;
+  citySnapshot?: string;
+  apartmentCodeSnapshot?: string;
+  apartmentGroupSnapshot?: string;
+  nightlyPrice?: number;
+  taxRate?: number;
+  nights?: number;
+  netTotal?: number;
+  vatTotal?: number;
+  grossTotal?: number;
 }
 
 export type OfferHeaderStatus = 'Draft' | 'Sent' | 'Closed';

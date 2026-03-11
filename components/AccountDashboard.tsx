@@ -2139,20 +2139,12 @@ const AccountDashboard: React.FC = () => {
     loadInvoices();
   }, []);
 
-  // Load offers from database
+  // Load offers from database (single source: offers table; multi-apartment = N rows with same offer_no and offer_group_id)
   useEffect(() => {
     const loadOffers = async () => {
       try {
-        const [loadedOffers, loadedHeaders, loadedItems, loadedRows] = await Promise.all([
-          offersService.getAll(),
-          offerHeadersService.getAll(),
-          offerItemsService.getAll(),
-          multiApartmentOffersService.getRows(),
-        ]);
+        const loadedOffers = await offersService.getAll();
         setOffers(loadedOffers);
-        setOfferHeaders(loadedHeaders);
-        setOfferItems(loadedItems);
-        setMultiOfferRows(loadedRows);
       } catch (error) {
         console.error('Error loading offers:', error);
       }
@@ -2161,30 +2153,33 @@ const AccountDashboard: React.FC = () => {
   }, []);
 
   const refreshMultiApartmentOffers = useCallback(async () => {
-    const [loadedHeaders, loadedItems, loadedRows] = await Promise.all([
-      offerHeadersService.getAll(),
-      offerItemsService.getAll(),
-      multiApartmentOffersService.getRows(),
-    ]);
-    setOfferHeaders(loadedHeaders);
-    setOfferItems(loadedItems);
-    setMultiOfferRows(loadedRows);
+    const loaded = await offersService.getAll();
+    setOffers(loaded);
   }, []);
 
   const legacyOfferRows = useMemo<OfferListRow[]>(
     () =>
       offers.map((offer) => {
-        const [startDate, endDate] = offer.dates.split(' to ');
+        const [startDate, endDate] = (offer.dates || '').split(' to ');
         const property = properties.find((p) => String(p.id) === String(offer.propertyId));
-        const apartmentLine = property
-          ? formatApartmentIdentificationLine({
-              street: property.address || '',
-              houseNumber: '',
-              zip: property.zip || '',
-              city: property.city || '',
-              apartmentCode: property.title || property.id,
-            })
-          : offer.unit || offer.propertyId;
+        const apartmentLine =
+          offer.apartmentCodeSnapshot != null || offer.streetSnapshot != null
+            ? formatApartmentIdentificationLine({
+                street: offer.streetSnapshot ?? '',
+                houseNumber: offer.houseNumberSnapshot ?? undefined,
+                zip: offer.zipSnapshot ?? '',
+                city: offer.citySnapshot ?? '',
+                apartmentCode: offer.apartmentCodeSnapshot ?? offer.unit ?? offer.propertyId,
+              })
+            : property
+              ? formatApartmentIdentificationLine({
+                  street: property.address || '',
+                  houseNumber: '',
+                  zip: property.zip || '',
+                  city: property.city || '',
+                  apartmentCode: property.title || property.id,
+                })
+              : offer.unit || offer.propertyId;
         return {
           sourceType: 'legacy',
           rowId: offer.id,
@@ -2210,10 +2205,10 @@ const AccountDashboard: React.FC = () => {
 
   const allOfferRows = useMemo(
     () =>
-      [...multiOfferRows, ...legacyOfferRows].sort((a, b) =>
+      [...legacyOfferRows].sort((a, b) =>
         `${b.startDate}${b.offerNo || ''}`.localeCompare(`${a.startDate}${a.offerNo || ''}`)
       ),
-    [legacyOfferRows, multiOfferRows]
+    [legacyOfferRows]
   );
 
   // Load proformas when Sales > Proformas tab is active
@@ -4459,7 +4454,7 @@ const AccountDashboard: React.FC = () => {
     mode: 'draft' | 'send'
   ) => {
     try {
-      const result = await multiApartmentOffersService.createFromDraft(
+      const created = await offersService.createGroupFromMultiApartmentDraft(
         draft,
         mode === 'draft' ? 'Draft' : 'Sent'
       );
@@ -4489,9 +4484,7 @@ const AccountDashboard: React.FC = () => {
         console.error('Failed to create lead for multi-apartment offer:', error);
       }
 
-      setOfferHeaders((prev) => [result.header, ...prev]);
-      setOfferItems((prev) => [...result.items, ...prev]);
-      await refreshMultiApartmentOffers();
+      setOffers((prev) => [...created, ...prev]);
       setSalesTab('offers');
     } catch (error) {
       console.error('Failed to save offer:', error);
@@ -9871,18 +9864,11 @@ ${internalCompany} Team`;
                         </thead>
                         <tbody className="divide-y divide-gray-800">
                             {allOfferRows.map((row) => {
-                                const rowOffer = row.sourceType === 'legacy'
-                                  ? offers.find((offer) => offer.id === row.offerId)
-                                  : undefined;
-                                const rowItem = row.offerItemId
-                                  ? offerItems.find((item) => item.id === row.offerItemId)
-                                  : undefined;
+                                const rowOffer = offers.find((offer) => offer.id === row.offerId);
                                 const linkedReservation = row.reservationId
                                   ? reservations.find((reservation) => String(reservation.id) === String(row.reservationId))
                                   : undefined;
-                                const linkedProforma = row.sourceType === 'legacy'
-                                  ? invoices.find((inv) => inv.documentType === 'proforma' && String(inv.offerId || inv.offerIdSource) === String(row.offerId))
-                                  : (row.invoiceId ? invoices.find((inv) => inv.id === row.invoiceId) : undefined);
+                                const linkedProforma = invoices.find((inv) => inv.documentType === 'proforma' && String(inv.offerId || inv.offerIdSource) === String(row.offerId));
                                 const isMuted = ['Draft', 'Invoiced', 'Lost', 'Rejected', 'Expired', 'Converted'].includes(row.status);
                                 const getStatusStyle = () => {
                                   if (row.status === 'Draft') return 'bg-gray-500/20 text-gray-400 border-gray-500';
@@ -9893,7 +9879,7 @@ ${internalCompany} Team`;
                                 };
 
                                 return (
-                                  <tr key={`${row.sourceType}-${row.rowId}`} className={`hover:bg-[#16181D] ${isMuted ? 'opacity-70' : ''}`}>
+                                  <tr key={row.rowId} className={`hover:bg-[#16181D] ${isMuted ? 'opacity-70' : ''}`}>
                                     <td className="p-4 text-gray-300 font-mono text-sm">{linkedProforma?.invoiceNumber ?? '—'}</td>
                                     <td className="p-4 text-gray-300 font-mono text-sm">{row.offerNo ?? '—'}</td>
                                     <td className="p-4 text-gray-300 font-mono text-sm">{linkedReservation?.reservationNo ?? '—'}</td>
@@ -9909,7 +9895,7 @@ ${internalCompany} Team`;
                                     <td className="p-4 text-center">
                                       <div className="flex justify-between items-center gap-4">
                                         <div className="flex gap-2 items-center">
-                                          {row.sourceType === 'legacy' && rowOffer && row.status === 'Draft' && (
+                                          {rowOffer && row.status === 'Draft' && (
                                             <button
                                               onClick={() => setOffers((prev) => prev.map((offer) => offer.id === rowOffer.id ? { ...offer, status: 'Sent' } : offer))}
                                               className="px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white rounded text-xs font-bold transition-colors"
@@ -9917,25 +9903,9 @@ ${internalCompany} Team`;
                                               Send Offer
                                             </button>
                                           )}
-                                          {row.sourceType === 'legacy' && rowOffer && row.status === 'Sent' && (
+                                          {rowOffer && row.status === 'Sent' && (
                                             <button
                                               onClick={() => handleCreateInvoiceClick(rowOffer)}
-                                              className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
-                                            >
-                                              Add Proforma
-                                            </button>
-                                          )}
-                                          {row.sourceType === 'multi' && rowItem && row.status === 'Offered' && (
-                                            <button
-                                              onClick={() => handleSelectMultiOfferItem(rowItem)}
-                                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors"
-                                            >
-                                              Select
-                                            </button>
-                                          )}
-                                          {row.sourceType === 'multi' && rowItem && row.status === 'Selected' && (
-                                            <button
-                                              onClick={() => handleAddProformaFromMultiOfferItem(rowItem)}
                                               className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded text-xs font-bold transition-colors"
                                             >
                                               Add Proforma
@@ -9946,31 +9916,23 @@ ${internalCompany} Team`;
                                           ) : null}
                                         </div>
                                         <div className="flex gap-2 shrink-0">
-                                          <button
-                                            onClick={() => {
-                                              if (row.sourceType === 'legacy' && rowOffer) {
-                                                handleViewOffer(rowOffer);
-                                              } else if (row.offerHeaderId) {
-                                                openMultiOfferDetails(row.offerHeaderId);
-                                              }
-                                            }}
-                                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors"
-                                          >
-                                            View
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              if (row.sourceType === 'legacy' && rowOffer) {
-                                                handleDeleteOffer(rowOffer.id);
-                                              } else if (row.offerHeaderId) {
-                                                handleDeleteMultiOfferHeader(row.offerHeaderId);
-                                              }
-                                            }}
-                                            className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded text-xs font-bold transition-colors"
-                                            title="Delete offer"
-                                          >
-                                            Delete
-                                          </button>
+                                          {rowOffer && (
+                                            <>
+                                              <button
+                                                onClick={() => handleViewOffer(rowOffer)}
+                                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors"
+                                              >
+                                                View
+                                              </button>
+                                              <button
+                                                onClick={() => handleDeleteOffer(rowOffer.id)}
+                                                className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded text-xs font-bold transition-colors"
+                                                title="Delete offer"
+                                              >
+                                                Delete
+                                              </button>
+                                            </>
+                                          )}
                                         </div>
                                       </div>
                                     </td>
