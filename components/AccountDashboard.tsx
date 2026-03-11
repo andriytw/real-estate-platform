@@ -11,6 +11,7 @@ import BookingDetailsModal from './BookingDetailsModal';
 import InvoiceModal from './InvoiceModal';
 import OfferEditModal from './OfferEditModal';
 import MultiApartmentOfferDetailsModal from './MultiApartmentOfferDetailsModal';
+import MultiApartmentOfferModal from './MultiApartmentOfferModal';
 import LeadEditModal from './LeadEditModal';
 import PropertyAddModal from './PropertyAddModal';
 import RequestModal from './RequestModal';
@@ -132,6 +133,7 @@ import {
   OfferItemData,
   OfferListRow,
   MultiApartmentOfferDraft,
+  OfferViewPayload,
   InvoiceData,
   CalendarEvent,
   TaskType,
@@ -168,6 +170,7 @@ import {
 import { euToIso, validateEuDate } from '../utils/leaseTermDates';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
 import { formatApartmentIdentificationLine } from '../utils/salesOfferFlow';
+import { getMarketplaceBaseUrl, getMarketplaceUrlForProperty } from '../utils/marketplaceUrl';
 import { ensurePropertyHasCoords } from '../utils/ensurePropertyHasCoords';
 import { getRoomsCount } from '../utils/propertyStats';
 import { MOCK_PROPERTIES } from '../constants';
@@ -202,6 +205,58 @@ function extractStreet(address?: string | null) {
   if (!address) return "";
   const firstPart = address.split(",")[0]?.trim() ?? "";
   return firstPart.replace(/\s*\d.*$/, "").trim();
+}
+
+/** Build view payload for read-only offer modal. Stable sort by offerNo then id so apartment order is identical regardless of which row's View was clicked. */
+function buildOfferViewPayload(offer: OfferData, offers: OfferData[], properties: Property[]): OfferViewPayload {
+  const groupOffers = offer.offerGroupId
+    ? offers.filter((o) => o.offerGroupId === offer.offerGroupId)
+    : [offer];
+  const sorted = [...groupOffers].sort((a, b) => {
+    const no = (a.offerNo ?? '').localeCompare(b.offerNo ?? '');
+    if (no !== 0) return no;
+    return (a.id ?? '').localeCompare(b.id ?? '');
+  });
+  const first = sorted[0];
+  const [checkIn, checkOut] = (first.dates ?? '').split(' to ');
+  const baseUrl = getMarketplaceBaseUrl();
+  const apartments = sorted.map((row) => {
+    const addressLine = formatApartmentIdentificationLine({
+      street: row.streetSnapshot ?? '',
+      houseNumber: row.houseNumberSnapshot ?? undefined,
+      zip: row.zipSnapshot ?? '',
+      city: row.citySnapshot ?? '',
+      apartmentCode: row.apartmentCodeSnapshot ?? row.unit ?? row.propertyId ?? '',
+    });
+    const prop = properties.find((p) => String(p.id) === String(row.propertyId));
+    const marketplaceUrl = getMarketplaceUrlForProperty(prop ?? { id: row.propertyId }, baseUrl);
+    return {
+      addressLine,
+      propertyId: row.propertyId,
+      nightlyPrice: Number(row.nightlyPrice) || 0,
+      taxRate: Number(row.taxRate) || 0,
+      nights: Number(row.nights) || 0,
+      netTotal: Number(row.netTotal) || 0,
+      vatTotal: Number(row.vatTotal) || 0,
+      grossTotal: Number(row.grossTotal) || 0,
+      marketplaceUrl,
+    };
+  });
+  return {
+    shared: {
+      clientName: first.clientName ?? '',
+      email: first.email,
+      phone: first.phone,
+      address: first.address,
+      internalCompany: first.internalCompany ?? 'Sotiso',
+      clientMessage: first.clientMessage,
+      checkIn: checkIn ?? '',
+      checkOut: checkOut ?? '',
+    },
+    apartments,
+    offerNo: first.offerNo,
+    status: first.status,
+  };
 }
 
 // --- TASK CATEGORIES ---
@@ -2379,6 +2434,8 @@ const AccountDashboard: React.FC = () => {
   const [isMultiOfferDetailsOpen, setIsMultiOfferDetailsOpen] = useState(false);
   const [selectedMultiOfferHeader, setSelectedMultiOfferHeader] = useState<OfferHeaderData | null>(null);
   const [selectedMultiOfferItems, setSelectedMultiOfferItems] = useState<OfferItemData[]>([]);
+  const [offerViewData, setOfferViewData] = useState<OfferViewPayload | null>(null);
+  const [isOfferViewModalOpen, setIsOfferViewModalOpen] = useState(false);
   const [pendingOfferItemForInvoice, setPendingOfferItemForInvoice] = useState<OfferItemData | null>(null);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<RequestData | null>(null);
@@ -4432,11 +4489,10 @@ const AccountDashboard: React.FC = () => {
   };
 
   const handleViewOffer = (offer: OfferData) => {
-      const mappedBooking = mapOfferToBooking(offer);
-      setViewingOffer(true); 
       setOfferToEdit(offer);
-      setSelectedReservation(mappedBooking);
-      setIsManageModalOpen(true);
+      const payload = buildOfferViewPayload(offer, offers, properties);
+      setOfferViewData(payload);
+      setIsOfferViewModalOpen(true);
   };
 
   const openMultiOfferDetails = async (offerHeaderId: string) => {
@@ -11590,6 +11646,19 @@ ${internalCompany} Team`;
           onDeleteOffer={viewingOffer ? handleDeleteOffer : undefined}
           isViewingOffer={viewingOffer}
       />
+      {isOfferViewModalOpen && offerViewData && (
+        <MultiApartmentOfferModal
+          isOpen
+          mode="view"
+          viewData={offerViewData}
+          onClose={() => {
+            setOfferViewData(null);
+            setIsOfferViewModalOpen(false);
+          }}
+          apartments={[]}
+          onSubmit={async () => {}}
+        />
+      )}
       <InvoiceModal isOpen={isInvoiceModalOpen} onClose={() => { setIsInvoiceModalOpen(false); setSelectedOfferForInvoice(null); setSelectedInvoice(null); setSelectedProformaForInvoice(null); setPendingOfferItemForInvoice(null); }} offer={selectedOfferForInvoice} invoice={selectedInvoice} proforma={selectedProformaForInvoice} onSave={handleSaveInvoice} reservations={reservations} offers={offers} />
       <ConfirmPaymentModal
         isOpen={!!confirmPaymentModalProforma}

@@ -775,6 +775,36 @@ export interface MultiApartmentOfferDraft {
   apartments: MultiApartmentOfferDraftApartment[];
 }
 
+/** Payload for read-only offer view modal. Shared data from first row; apartments in stable order. */
+export interface OfferViewPayload {
+  shared: {
+    clientName: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    internalCompany: string;
+    clientMessage?: string;
+    checkIn: string;
+    checkOut: string;
+    /** Only set when explicitly stored (e.g. from header); do not infer from clientName. */
+    clientType?: 'Private' | 'Company';
+  };
+  apartments: Array<{
+    addressLine: string;
+    propertyId: string;
+    nightlyPrice: number;
+    taxRate: number;
+    nights: number;
+    netTotal: number;
+    vatTotal: number;
+    grossTotal: number;
+    marketplaceUrl?: string;
+  }>;
+  /** From first row: offer number and status for header. */
+  offerNo?: string;
+  status?: string;
+}
+
 export interface CompanyDetails {
   name: string;
   address: string;

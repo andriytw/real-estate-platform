@@ -5,6 +5,7 @@ import {
   Lead,
   MultiApartmentOfferDraft,
   MultiApartmentOfferDraftApartment,
+  OfferViewPayload,
   RequestData,
   SelectedApartmentData,
 } from '../types';
@@ -23,6 +24,9 @@ interface MultiApartmentOfferModalProps {
   leads?: Lead[];
   prefilledRequestData?: Partial<RequestData>;
   onSubmit: (draft: MultiApartmentOfferDraft, mode: 'draft' | 'send') => Promise<void> | void;
+  /** When 'view', show read-only content from viewData; apartments and onSubmit are unused. */
+  mode?: 'create' | 'view';
+  viewData?: OfferViewPayload;
 }
 
 const INTERNAL_COMPANIES = Object.keys(INTERNAL_COMPANIES_DATA);
@@ -35,6 +39,13 @@ function buildInitialApartments(apartments: SelectedApartmentData[]): MultiApart
   }));
 }
 
+/** Format YYYY-MM-DD as DD.MM.YYYY for view display. */
+function formatDateView(iso: string): string {
+  const s = String(iso || '').trim();
+  const [y, m, d] = s.split('-');
+  return d && m && y ? `${d}.${m}.${y}` : s;
+}
+
 const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
   isOpen,
   onClose,
@@ -42,6 +53,8 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
   leads = [],
   prefilledRequestData,
   onSubmit,
+  mode = 'create',
+  viewData,
 }) => {
   const [clientType, setClientType] = useState<'Private' | 'Company'>('Private');
   const [firstName, setFirstName] = useState('');
@@ -127,6 +140,137 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
   }, [leadSearch, leads]);
 
   if (!isOpen) return null;
+
+  if (mode === 'view' && viewData) {
+    const { shared, apartments: viewApartments, offerNo, status } = viewData;
+    const viewNights = calculateOfferNights(shared.checkIn, shared.checkOut);
+    const viewTotals = viewApartments.reduce(
+      (acc, a) => {
+        acc.net += a.netTotal;
+        acc.vat += a.vatTotal;
+        acc.gross += a.grossTotal;
+        return acc;
+      },
+      { net: 0, vat: 0, gross: 0 }
+    );
+    return (
+      <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+        <div className="bg-[#1C1F24] w-full max-w-6xl max-h-[92vh] overflow-hidden rounded-xl border border-gray-700 shadow-2xl flex flex-col">
+          <div className="px-4 py-3 border-b border-gray-800 bg-[#23262b] flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-white">Unified Multi-Apartment Offer</h2>
+              <p className="text-xs text-gray-400">
+                {offerNo ? `Offer ${offerNo}` : ''}{status ? ` · ${status}` : ''} · {viewApartments.length} apartment{viewApartments.length === 1 ? '' : 's'}
+              </p>
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="overflow-y-auto p-4 space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <section className="bg-[#111315] border border-gray-800 rounded-lg p-3 space-y-2">
+                <h3 className="text-xs font-semibold text-white uppercase tracking-wide">Shared customer / contact</h3>
+                <div className="space-y-1.5 text-sm text-white">
+                  {shared.clientType != null ? (
+                    <p><span className="text-gray-400">Type: </span>{shared.clientType}</p>
+                  ) : null}
+                  <p>{shared.clientName || '—'}</p>
+                  {shared.email ? <p><span className="text-gray-400">Email: </span>{shared.email}</p> : null}
+                  {shared.phone ? <p><span className="text-gray-400">Phone: </span>{shared.phone}</p> : null}
+                  {shared.address ? <p><span className="text-gray-400">Address: </span>{shared.address}</p> : null}
+                </div>
+              </section>
+
+              <section className="bg-[#111315] border border-gray-800 rounded-lg p-3 space-y-2">
+                <h3 className="text-xs font-semibold text-white uppercase tracking-wide">Shared dates</h3>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-gray-400">Check-in:</span>
+                  <span className="text-white">{formatDateView(shared.checkIn) || '—'}</span>
+                  <span className="text-gray-400 ml-2">Check-out:</span>
+                  <span className="text-white">{formatDateView(shared.checkOut) || '—'}</span>
+                  <span className="text-gray-400 ml-2">Nights: <span className="text-white">{viewNights}</span></span>
+                </div>
+              </section>
+            </div>
+
+            <section className="bg-[#111315] border border-gray-800 rounded-lg p-3 space-y-2">
+              <h3 className="text-xs font-semibold text-white uppercase tracking-wide">Apartment pricing and financials</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="text-left text-gray-400 border-b border-gray-700">
+                      <th className="py-1.5 pr-2 font-medium">Address</th>
+                      <th className="py-1.5 px-2 font-medium w-24">Price / night</th>
+                      <th className="py-1.5 px-2 font-medium w-16">Tax %</th>
+                      <th className="py-1.5 px-2 font-medium w-14">Nights</th>
+                      <th className="py-1.5 px-2 font-medium w-20">Net</th>
+                      <th className="py-1.5 px-2 font-medium w-20">VAT</th>
+                      <th className="py-1.5 px-2 font-medium w-20">Gross</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {viewApartments.map((apt) => (
+                      <tr key={apt.propertyId} className="border-b border-gray-800/80">
+                        <td className="py-1.5 pr-2 text-white truncate max-w-[200px]" title={apt.addressLine}>
+                          {apt.addressLine}
+                          {apt.marketplaceUrl ? (
+                            <div className="text-xs mt-0.5">
+                              <a href={apt.marketplaceUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline">View apartment</a>
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="py-1.5 px-2 text-white">{apt.nightlyPrice.toFixed(2)}</td>
+                        <td className="py-1.5 px-2 text-white">{apt.taxRate.toFixed(2)}</td>
+                        <td className="py-1.5 px-2 text-gray-300">{apt.nights}</td>
+                        <td className="py-1.5 px-2 text-white">{apt.netTotal.toFixed(2)}</td>
+                        <td className="py-1.5 px-2 text-white">{apt.vatTotal.toFixed(2)}</td>
+                        <td className="py-1.5 px-2 text-emerald-300 font-medium">{apt.grossTotal.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex flex-wrap gap-3 pt-1.5 text-sm">
+                <span className="text-gray-400">Net total: <span className="text-white">{viewTotals.net.toFixed(2)} EUR</span></span>
+                <span className="text-gray-400">VAT total: <span className="text-white">{viewTotals.vat.toFixed(2)} EUR</span></span>
+                <span className="text-gray-400">Gross total: <span className="text-emerald-300 font-semibold">{viewTotals.gross.toFixed(2)} EUR</span></span>
+              </div>
+            </section>
+
+            <section className="bg-[#111315] border border-gray-800 rounded-lg p-3">
+              <h3 className="text-xs font-semibold text-white uppercase tracking-wide mb-2">Offer communication</h3>
+              <div className="flex gap-3 items-stretch">
+                <div className="min-w-[160px] shrink-0">
+                  <p className="text-sm text-gray-400">Internal company</p>
+                  <p className="text-sm text-white">{shared.internalCompany || '—'}</p>
+                </div>
+                <div className="flex-1 min-h-[120px]">
+                  <p className="text-sm text-gray-400 mb-1">Message</p>
+                  <pre className="bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white whitespace-pre-wrap font-sans overflow-x-auto">
+                    {shared.clientMessage ?? '—'}
+                  </pre>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div className="px-4 py-3 border-t border-gray-800 bg-[#23262b] flex justify-between items-center">
+            <div className="text-xs text-gray-400">
+              {viewApartments.length} apartment{viewApartments.length === 1 ? '' : 's'} · {viewNights} nights
+            </div>
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 rounded border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors text-sm"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const removeApartment = (propertyId: string) => {
     setSelectedApartments((prev) => prev.filter((apartment) => apartment.propertyId !== propertyId));
