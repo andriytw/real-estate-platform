@@ -1805,7 +1805,9 @@ export const offersService = {
 
   /**
    * Create one logical multi-apartment offer as N rows in offers (same offer_no and offer_group_id).
-   * 1 apartment = 1 row; downstream (Add Proforma, payment, booking) works with each row as a normal offer.
+   * For each offer row we create a matching reservation and set offers.reservation_id so the
+   * existing confirm-payment RPC (mark_invoice_paid_and_confirm_booking) continues to work.
+   * 1 apartment = 1 row; downstream (Add Proforma, Confirm payment, confirmed booking) unchanged.
    */
   async createGroupFromMultiApartmentDraft(
     draft: MultiApartmentOfferDraft,
@@ -1832,7 +1834,38 @@ export const offersService = {
     const offerNo = String(offerNoData);
     const offerGroupId = crypto.randomUUID();
 
-    const rows: Omit<OfferData, 'id'>[] = draft.apartments.map((apartment) => {
+    // 1. Create one reservation per apartment so confirm-payment flow can use offer.reservation_id
+    const reservationRows = draft.apartments.map((apartment) => {
+      const netTotal = nights * apartment.nightlyPrice;
+      const vatAmount = netTotal * (apartment.taxRate / 100);
+      const grossTotal = netTotal + vatAmount;
+      const resStatus = headerStatus === 'Sent' ? 'offered' : 'open';
+      return {
+        property_id: apartment.propertyId,
+        start_date: checkIn,
+        end_date: checkOut,
+        status: resStatus,
+        lead_label: clientName,
+        client_first_name: draft.shared.firstName?.trim() ?? null,
+        client_last_name: draft.shared.lastName?.trim() ?? null,
+        client_email: draft.shared.email?.trim() ?? null,
+        client_phone: draft.shared.phone?.trim() ?? null,
+        client_address: draft.shared.address?.trim() ?? null,
+        guests_count: 1,
+        price_per_night_net: apartment.nightlyPrice,
+        tax_rate: apartment.taxRate,
+        total_nights: nights,
+        total_gross: grossTotal,
+      };
+    });
+    const { data: insertedReservations, error: resError } = await supabase
+      .from('reservations')
+      .insert(reservationRows)
+      .select('id');
+    if (resError) throw resError;
+    const reservationIds = (insertedReservations ?? []).map((r) => r.id);
+
+    const rows: Omit<OfferData, 'id'>[] = draft.apartments.map((apartment, index) => {
       const netTotal = nights * apartment.nightlyPrice;
       const vatAmount = netTotal * (apartment.taxRate / 100);
       const grossTotal = netTotal + vatAmount;
@@ -1865,6 +1898,7 @@ export const offersService = {
         netTotal,
         vatTotal: vatAmount,
         grossTotal,
+        reservationId: reservationIds[index] ?? undefined,
       };
     });
 
