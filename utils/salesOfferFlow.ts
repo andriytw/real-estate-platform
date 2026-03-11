@@ -44,8 +44,12 @@ export function buildMultiApartmentClientMessage(params: {
   checkIn: string;
   checkOut: string;
   apartments: Array<SelectedApartmentData | MultiApartmentOfferDraftApartment>;
+  /** When true, append combined total sentence near the end of the message. */
+  showTotal?: boolean;
+  /** Combined totals (Net, VAT, Gross) for all apartments. Required when showTotal is true. */
+  combinedTotals?: { net: number; vat: number; gross: number };
 }) {
-  const { clientLabel, internalCompany, checkIn, checkOut, apartments } = params;
+  const { clientLabel, internalCompany, checkIn, checkOut, apartments, showTotal, combinedTotals } = params;
   const nights = calculateOfferNights(checkIn, checkOut);
 
   const apartmentBlocks = apartments.map((apartment) => {
@@ -56,18 +60,24 @@ export function buildMultiApartmentClientMessage(params: {
     const addressUnit = formatApartmentIdentificationLine(apartment);
     const infoLine = `${addressUnit} — ${nightlyPrice} €/night · ${nights} nights · Net ${Math.round(netTotal)} € · VAT ${Math.round(vatAmount)} € · Gross ${Math.round(grossTotal)} €`;
     const linkLine = apartment.marketplaceUrl ? `View apartment: ${apartment.marketplaceUrl}` : '';
-    return linkLine ? `${infoLine}\n${linkLine}` : infoLine;
+    const block = linkLine ? `• ${infoLine}\n  ${linkLine}` : `• ${infoLine}`;
+    return block;
   });
+
+  const requestedStayLine = checkIn && checkOut ? `Requested stay: ${checkIn} – ${checkOut}` : (checkIn ? `Requested stay: ${checkIn}` : '');
+  const totalSection =
+    showTotal && combinedTotals
+      ? `\nTotal: Net ${Math.round(combinedTotals.net)} € · VAT ${Math.round(combinedTotals.vat)} € · Gross ${Math.round(combinedTotals.gross)} €\n\n`
+      : '\n';
 
   return `Hello ${clientLabel || 'Client'},
 
 thank you for your interest in the following apartments:
 
+${requestedStayLine}
+
 ${apartmentBlocks.join('\n\n')}
-
-Requested stay: ${checkIn}${checkOut ? ` – ${checkOut}` : ''}
-
-Please find the offer attached.
+${totalSection}Please find the offer attached.
 
 Best regards,
 ${internalCompany} Team`;

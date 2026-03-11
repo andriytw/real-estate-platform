@@ -57,6 +57,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
   const [leadSearch, setLeadSearch] = useState('');
   const [showLeadDropdown, setShowLeadDropdown] = useState(false);
   const [messageDirty, setMessageDirty] = useState(false);
+  const [includeTotalInEmail, setIncludeTotalInEmail] = useState(true);
   const [savingMode, setSavingMode] = useState<'draft' | 'send' | null>(null);
 
   useEffect(() => {
@@ -79,6 +80,19 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
 
   const nights = useMemo(() => calculateOfferNights(checkIn, checkOut), [checkIn, checkOut]);
 
+  const totals = useMemo(() => {
+    return selectedApartments.reduce(
+      (acc, apartment) => {
+        const row = calculateOfferItemTotals(apartment.nightlyPrice, apartment.taxRate, nights);
+        acc.net += row.netTotal;
+        acc.vat += row.vatAmount;
+        acc.gross += row.grossTotal;
+        return acc;
+      },
+      { net: 0, vat: 0, gross: 0 }
+    );
+  }, [selectedApartments, nights]);
+
   useEffect(() => {
     if (!isOpen || messageDirty) return;
     const clientLabel =
@@ -92,9 +106,11 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
         checkIn,
         checkOut,
         apartments: selectedApartments,
+        showTotal: includeTotalInEmail,
+        combinedTotals: totals,
       })
     );
-  }, [isOpen, messageDirty, clientType, companyName, firstName, lastName, internalCompany, checkIn, checkOut, selectedApartments]);
+  }, [isOpen, messageDirty, clientType, companyName, firstName, lastName, internalCompany, checkIn, checkOut, selectedApartments, includeTotalInEmail, totals]);
 
   const filteredLeads = useMemo(() => {
     const q = leadSearch.trim().toLowerCase();
@@ -107,19 +123,6 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
       )
       .slice(0, 6);
   }, [leadSearch, leads]);
-
-  const totals = useMemo(() => {
-    return selectedApartments.reduce(
-      (acc, apartment) => {
-        const row = calculateOfferItemTotals(apartment.nightlyPrice, apartment.taxRate, nights);
-        acc.net += row.netTotal;
-        acc.vat += row.vatAmount;
-        acc.gross += row.grossTotal;
-        return acc;
-      },
-      { net: 0, vat: 0, gross: 0 }
-    );
-  }, [selectedApartments, nights]);
 
   if (!isOpen) return null;
 
@@ -367,6 +370,15 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                   ))}
                 </select>
               </div>
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={includeTotalInEmail}
+                  onChange={(e) => setIncludeTotalInEmail(e.target.checked)}
+                  className="rounded border-gray-600 bg-[#161B22] text-emerald-500 focus:ring-emerald-500"
+                />
+                Include combined total in email
+              </label>
               <textarea
                 value={clientMessage}
                 onChange={(e) => {
