@@ -361,35 +361,37 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
             </div>
           </section>
 
-          {/* Offer communication: issuing company + message only */}
-          <section className="bg-[#111315] border border-gray-800 rounded-lg p-3 space-y-2">
-            <h3 className="text-xs font-semibold text-white uppercase tracking-wide">Offer communication</h3>
-            <div className="space-y-2">
-              <div className="min-w-[140px]">
-                <select value={internalCompany} onChange={(e) => setInternalCompany(e.target.value)} className="w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500">
-                  {INTERNAL_COMPANIES.map((company) => (
-                    <option key={company} value={company}>{company}</option>
-                  ))}
-                </select>
+          {/* Offer communication: company + checkbox left, message field right at full height */}
+          <section className="bg-[#111315] border border-gray-800 rounded-lg p-3">
+            <h3 className="text-xs font-semibold text-white uppercase tracking-wide mb-2">Offer communication</h3>
+            <div className="flex gap-3 items-stretch">
+              <div className="flex flex-col gap-2 min-w-[160px] shrink-0">
+                <div>
+                  <select value={internalCompany} onChange={(e) => setInternalCompany(e.target.value)} className="w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500">
+                    {INTERNAL_COMPANIES.map((company) => (
+                      <option key={company} value={company}>{company}</option>
+                    ))}
+                  </select>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={includeTotalInEmail}
+                    onChange={(e) => setIncludeTotalInEmail(e.target.checked)}
+                    className="rounded border-gray-600 bg-[#161B22] text-emerald-500 focus:ring-emerald-500"
+                  />
+                  Show total
+                </label>
               </div>
-              <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
-                <input
-                  type="checkbox"
-                  checked={includeTotalInEmail}
-                  onChange={(e) => setIncludeTotalInEmail(e.target.checked)}
-                  className="rounded border-gray-600 bg-[#161B22] text-emerald-500 focus:ring-emerald-500"
-                />
-                Show total
-              </label>
               <textarea
                 value={clientMessage}
                 onChange={(e) => {
                   setClientMessage(e.target.value);
                   setMessageDirty(true);
                 }}
-                rows={3}
+                rows={14}
                 placeholder="Message to client"
-                className="flex-1 min-w-[200px] bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+                className="flex-1 min-h-[280px] bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500 resize-y"
               />
             </div>
           </section>
