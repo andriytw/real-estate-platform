@@ -349,6 +349,40 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     return map;
   }, [offers]);
 
+  // Active reservations (business data): not lost/won/cancelled. Used for availability only.
+  const activeReservations = React.useMemo(() => {
+    return reservations.filter(
+      r => r.status !== 'lost' && r.status !== 'won' && r.status !== 'cancelled'
+    );
+  }, [reservations]);
+
+  // VISUAL ONLY: reservations to show when toggle is ON. When OFF this is [].
+  // Used for: rendering bars, row height, overlap/lane/stacking. Never for availability.
+  const visibleReservations = React.useMemo(() => {
+    if (!showReservations) return [];
+    return activeReservations;
+  }, [showReservations, activeReservations]);
+
+  // Calendar bars = confirmed bookings + visible reservations (toggle controls visibility only)
+  const calendarBookings = React.useMemo(() => {
+    const asBookings = visibleReservations.map(r => ({
+      ...r,
+      isReservation: true as const,
+      roomId: r.roomId || (r as any).propertyId || '',
+    }));
+    return [...allBookings, ...asBookings];
+  }, [allBookings, visibleReservations]);
+
+  // Availability: always use full business dataset (confirmed + all active reservations).
+  // Toggle must never make a reserved apartment look available.
+  const bookingsForAvailability = React.useMemo(() => {
+    const asBookings = activeReservations.map(r => ({
+      ...r,
+      roomId: r.roomId || (r as any).propertyId || '',
+    }));
+    return [...allBookings, ...asBookings];
+  }, [allBookings, activeReservations]);
+
   // Helper: two date ranges overlap (same room is checked separately)
   const datesOverlap = (s1: string, e1: string, s2: string, e2: string) => {
     const a = normalizeDateKey(s1);
@@ -364,16 +398,15 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const BASE_TOP_PX = 4; // Base top offset for first stripe
   const stackIndexByReservationId = React.useMemo(() => {
     const map = new Map<string, number>();
-    const active = reservations.filter(
-      r => r.status !== 'lost' && r.status !== 'won' && r.status !== 'cancelled'
-    );
+    const active = visibleReservations;
 
     // Group by room, then for each reservation find all in same room that OVERLAP it (same or different end date)
     const byRoom = new Map<string, ReservationData[]>();
     for (const r of active) {
-      const arr = byRoom.get(r.roomId) ?? [];
+      const roomId = r.roomId || (r as any).propertyId ?? '';
+      const arr = byRoom.get(roomId) ?? [];
       arr.push(r);
-      byRoom.set(r.roomId, arr);
+      byRoom.set(roomId, arr);
     }
 
     for (const [, roomReservations] of byRoom.entries()) {
@@ -392,19 +425,18 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     }
 
     return map;
-  }, [reservations]);
+  }, [visibleReservations]);
 
   // Compute max stack count per room for row height (max overlapping reservations in that room)
   const maxStackForRoomId = React.useMemo(() => {
     const map = new Map<string, number>();
-    const active = reservations.filter(
-      r => r.status !== 'lost' && r.status !== 'won' && r.status !== 'cancelled'
-    );
+    const active = visibleReservations;
     const byRoom = new Map<string, ReservationData[]>();
     for (const r of active) {
-      const arr = byRoom.get(r.roomId) ?? [];
+      const roomId = r.roomId || (r as any).propertyId ?? '';
+      const arr = byRoom.get(roomId) ?? [];
       arr.push(r);
-      byRoom.set(r.roomId, arr);
+      byRoom.set(roomId, arr);
     }
 
     for (const [roomId, roomReservations] of byRoom.entries()) {
@@ -419,7 +451,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     }
 
     return map;
-  }, [reservations]);
+  }, [visibleReservations]);
 
   // Status column: real apartment status label only; do not confuse with termStatus
   const getApartmentStatusLabel = (status: string | null | undefined): string => {
@@ -473,13 +505,14 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
       // Availability date-range filter: show only apartments with no booking overlapping [start, end)
       // Same-day turnover: booking ending on request start date does not block (end date is exclusive)
-      const matchesAvailability = !hasAvailabilityFilter || allBookings.every(
+      // Always use full business data (confirmed + all active reservations). Toggle is visual only.
+      const matchesAvailability = !hasAvailabilityFilter || bookingsForAvailability.every(
         (b) => String(b.roomId) !== String(r.id) || !datesOverlap(availabilityStart, availabilityEnd, normalizeDateKey(b.start), normalizeDateKey(b.end))
       );
 
       return matchesCity && matchesGroup && matchesSearch && matchesPeople && matchesRooms && matchesAvailability;
     });
-  }, [roomsFromProperties, cityFilter, groupFilter, searchQuery, minPeopleFilter, minRoomsFilter, availabilityStartDate, availabilityEndDate, allBookings]);
+  }, [roomsFromProperties, cityFilter, groupFilter, searchQuery, minPeopleFilter, minRoomsFilter, availabilityStartDate, availabilityEndDate, bookingsForAvailability]);
 
   const getRoomNameById = (roomId: string | undefined | null) => {
     if (!roomId) return '';
@@ -1218,9 +1251,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                             })}
 
                             {/* Bookings */}
-                            {allBookings
+                            {calendarBookings
                               .filter(b => b.roomId === room.id)
-                              .filter(b => showReservations || (b as any).isReservation !== true)
                               .map(booking => {
                                 const displayGuest = getDisplayGuest(booking);
                                 const bookingStartDate = parseDate(booking.start);
