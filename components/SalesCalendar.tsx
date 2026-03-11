@@ -942,7 +942,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                 disabled={selectedApartmentPayloads.length === 0}
                 className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-900/40 disabled:text-gray-400 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors shadow-lg shadow-emerald-900/20"
             >
-                <Plus className="w-4 h-4" /> Add Booking
+                <Plus className="w-4 h-4" /> Create Offer
             </button>
             <span className="text-xs text-gray-400 whitespace-nowrap">
               Selected: {selectedApartmentPayloads.length}

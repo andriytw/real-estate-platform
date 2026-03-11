@@ -4458,40 +4458,46 @@ const AccountDashboard: React.FC = () => {
     draft: MultiApartmentOfferDraft,
     mode: 'draft' | 'send'
   ) => {
-    const result = await multiApartmentOffersService.createFromDraft(
-      draft,
-      mode === 'draft' ? 'Draft' : 'Sent'
-    );
-
-    const requestPayload: RequestData = {
-      id: `multi-offer-${Date.now()}`,
-      firstName: draft.shared.firstName,
-      lastName: draft.shared.lastName,
-      email: draft.shared.email,
-      phone: draft.shared.phone,
-      companyName: draft.shared.companyName || undefined,
-      peopleCount: 1,
-      startDate: draft.shared.checkIn,
-      endDate: draft.shared.checkOut,
-      message: draft.shared.clientMessage,
-      propertyId: draft.apartments[0]?.propertyId,
-      status: 'processed',
-      createdAt: new Date().toISOString(),
-    };
-
     try {
-      const createdLead = await createLeadFromRequest(requestPayload, { origin: 'booking_form' });
-      if (createdLead) {
-        setLeads((prev) => (prev.some((lead) => lead.id === createdLead.id) ? prev : [createdLead, ...prev]));
-      }
-    } catch (error) {
-      console.error('Failed to create lead for multi-apartment offer:', error);
-    }
+      const result = await multiApartmentOffersService.createFromDraft(
+        draft,
+        mode === 'draft' ? 'Draft' : 'Sent'
+      );
 
-    setOfferHeaders((prev) => [result.header, ...prev]);
-    setOfferItems((prev) => [...result.items, ...prev]);
-    await refreshMultiApartmentOffers();
-    setSalesTab('offers');
+      const requestPayload: RequestData = {
+        id: `multi-offer-${Date.now()}`,
+        firstName: draft.shared.firstName,
+        lastName: draft.shared.lastName,
+        email: draft.shared.email,
+        phone: draft.shared.phone,
+        companyName: draft.shared.companyName || undefined,
+        peopleCount: 1,
+        startDate: draft.shared.checkIn,
+        endDate: draft.shared.checkOut,
+        message: draft.shared.clientMessage,
+        propertyId: draft.apartments[0]?.propertyId,
+        status: 'processed',
+        createdAt: new Date().toISOString(),
+      };
+
+      try {
+        const createdLead = await createLeadFromRequest(requestPayload, { origin: 'booking_form' });
+        if (createdLead) {
+          setLeads((prev) => (prev.some((lead) => lead.id === createdLead.id) ? prev : [createdLead, ...prev]));
+        }
+      } catch (error) {
+        console.error('Failed to create lead for multi-apartment offer:', error);
+      }
+
+      setOfferHeaders((prev) => [result.header, ...prev]);
+      setOfferItems((prev) => [...result.items, ...prev]);
+      await refreshMultiApartmentOffers();
+      setSalesTab('offers');
+    } catch (error) {
+      console.error('Failed to save offer:', error);
+      setToastMessage('Failed to save offer. Please try again.');
+      throw error;
+    }
   };
 
   const handleSelectMultiOfferItem = async (item: OfferItemData) => {
