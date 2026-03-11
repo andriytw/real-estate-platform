@@ -1,4 +1,16 @@
 import { MultiApartmentOfferDraftApartment, SelectedApartmentData } from '../types';
+import { getMarketplaceUrlForProperty } from './marketplaceUrl';
+
+/** Manual YYYY-MM-DD → DD.MM.YYYY for display. Returns raw string if not ISO-like. */
+function formatDateISOToDDMMYYYY(iso: string): string {
+  const s = String(iso || '').trim();
+  const match = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!match) return s;
+  const [, y, m, d] = match;
+  const day = d.padStart(2, '0');
+  const month = m.padStart(2, '0');
+  return `${day}.${month}.${y}`;
+}
 
 export function calculateOfferNights(checkIn: string, checkOut: string): number {
   if (!checkIn || !checkOut) return 0;
@@ -44,12 +56,14 @@ export function buildMultiApartmentClientMessage(params: {
   checkIn: string;
   checkOut: string;
   apartments: Array<SelectedApartmentData | MultiApartmentOfferDraftApartment>;
+  /** Base URL for fallback property links (e.g. origin or VITE_PUBLIC_APP_URL). */
+  marketplaceBaseUrl?: string;
   /** When true, append combined total sentence near the end of the message. */
   showTotal?: boolean;
   /** Combined totals (Net, VAT, Gross) for all apartments. Required when showTotal is true. */
   combinedTotals?: { net: number; vat: number; gross: number };
 }) {
-  const { clientLabel, internalCompany, checkIn, checkOut, apartments, showTotal, combinedTotals } = params;
+  const { clientLabel, internalCompany, checkIn, checkOut, apartments, marketplaceBaseUrl = '', showTotal, combinedTotals } = params;
   const nights = calculateOfferNights(checkIn, checkOut);
 
   const apartmentBlocks = apartments.map((apartment) => {
@@ -59,12 +73,19 @@ export function buildMultiApartmentClientMessage(params: {
     const { netTotal, vatAmount, grossTotal } = calculateOfferItemTotals(nightlyPrice, taxRate, nights);
     const addressUnit = formatApartmentIdentificationLine(apartment);
     const infoLine = `${addressUnit} — ${nightlyPrice} €/night · ${nights} nights · Net ${Math.round(netTotal)} € · VAT ${Math.round(vatAmount)} € · Gross ${Math.round(grossTotal)} €`;
-    const linkLine = apartment.marketplaceUrl ? `View apartment: ${apartment.marketplaceUrl}` : '';
-    const block = linkLine ? `• ${infoLine}\n  ${linkLine}` : `• ${infoLine}`;
+    const url = getMarketplaceUrlForProperty(apartment, marketplaceBaseUrl);
+    const block = url ? `• ${infoLine}\n  View apartment: ${url}` : `• ${infoLine}`;
     return block;
   });
 
-  const requestedStayLine = checkIn && checkOut ? `Requested stay: ${checkIn} – ${checkOut}` : (checkIn ? `Requested stay: ${checkIn}` : '');
+  const checkInFormatted = checkIn ? formatDateISOToDDMMYYYY(checkIn) : '';
+  const checkOutFormatted = checkOut ? formatDateISOToDDMMYYYY(checkOut) : '';
+  const requestedStayLine =
+    checkInFormatted && checkOutFormatted
+      ? `Requested stay: ${checkInFormatted} – ${checkOutFormatted}`
+      : checkInFormatted
+        ? `Requested stay: ${checkInFormatted}`
+        : '';
   const totalSection =
     showTotal && combinedTotals
       ? `\nTotal: Net ${Math.round(combinedTotals.net)} € · VAT ${Math.round(combinedTotals.vat)} € · Gross ${Math.round(combinedTotals.gross)} €\n\n`

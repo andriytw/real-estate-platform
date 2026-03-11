@@ -4,6 +4,7 @@ import { X, Briefcase, Euro, CreditCard, Mail, Phone, MapPin, User, FileText, Se
 import { Booking, OfferData, BookingStatus, ReservationData } from '../types';
 import { ROOMS } from '../constants';
 import { canSendOffer, canCreateInvoice } from '../bookingUtils';
+import { getMarketplaceBaseUrl, getMarketplaceUrlForProperty } from '../utils/marketplaceUrl';
 
 interface BookingDetailsModalProps {
   isOpen: boolean;
@@ -32,18 +33,9 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
 
   const INTERNAL_COMPANIES = ['Sotiso', 'Wonowo', 'NowFlats'];
 
-  // Base URL for marketplace links (env for production, fallback to current origin)
-  const marketplaceBaseUrl =
-    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_PUBLIC_APP_URL) ||
-    (typeof import.meta !== 'undefined' && (import.meta.env as any)?.NEXT_PUBLIC_APP_URL) ||
-    (typeof window !== 'undefined' ? window.location.origin : '');
-
-  const getMarketplaceUrl = (prop: { marketplaceUrl?: string; id?: string } | null): string | undefined => {
-    if (!prop) return undefined;
-    if (prop.marketplaceUrl && prop.marketplaceUrl.trim()) return prop.marketplaceUrl.trim();
-    if (prop.id && marketplaceBaseUrl) return `${marketplaceBaseUrl.replace(/\/+$/, '')}/property/${prop.id}`;
-    return undefined;
-  };
+  const marketplaceBaseUrl = getMarketplaceBaseUrl();
+  const getMarketplaceUrl = (prop: { marketplaceUrl?: string; id?: string } | null) =>
+    getMarketplaceUrlForProperty(prop, marketplaceBaseUrl);
 
   // Fetch property for marketplace URL (use propertyId or roomId so reservations show link too)
   const propertyIdToFetch = booking?.propertyId ?? booking?.roomId;

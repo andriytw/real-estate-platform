@@ -8,6 +8,7 @@ import {
   RequestData,
   SelectedApartmentData,
 } from '../types';
+import { getMarketplaceBaseUrl } from '../utils/marketplaceUrl';
 import {
   buildMultiApartmentClientMessage,
   calculateOfferItemTotals,
@@ -106,6 +107,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
         checkIn,
         checkOut,
         apartments: selectedApartments,
+        marketplaceBaseUrl: getMarketplaceBaseUrl(),
         showTotal: includeTotalInEmail,
         combinedTotals: totals,
       })
@@ -362,7 +364,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
           {/* Offer communication: issuing company + message only */}
           <section className="bg-[#111315] border border-gray-800 rounded-lg p-3 space-y-2">
             <h3 className="text-xs font-semibold text-white uppercase tracking-wide">Offer communication</h3>
-            <div className="flex flex-wrap items-start gap-3">
+            <div className="space-y-2">
               <div className="min-w-[140px]">
                 <select value={internalCompany} onChange={(e) => setInternalCompany(e.target.value)} className="w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500">
                   {INTERNAL_COMPANIES.map((company) => (
@@ -377,7 +379,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                   onChange={(e) => setIncludeTotalInEmail(e.target.checked)}
                   className="rounded border-gray-600 bg-[#161B22] text-emerald-500 focus:ring-emerald-500"
                 />
-                Include combined total in email
+                Show total
               </label>
               <textarea
                 value={clientMessage}
