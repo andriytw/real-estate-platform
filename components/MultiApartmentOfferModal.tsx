@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Save, Send, Search, Trash2, Link as LinkIcon } from 'lucide-react';
+import { X, Save, Send, Search, Trash2 } from 'lucide-react';
 import { INTERNAL_COMPANIES_DATA } from '../constants';
 import {
   Lead,
@@ -49,8 +49,6 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [recipientEmail, setRecipientEmail] = useState('');
-  const [recipientPhone, setRecipientPhone] = useState('');
   const [internalCompany, setInternalCompany] = useState('Sotiso');
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
@@ -69,8 +67,6 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     setAddress('');
     setPhone(prefilledRequestData?.phone || '');
     setEmail(prefilledRequestData?.email || '');
-    setRecipientEmail(prefilledRequestData?.email || '');
-    setRecipientPhone(prefilledRequestData?.phone || '');
     setInternalCompany('Sotiso');
     setCheckIn(prefilledRequestData?.startDate || '');
     setCheckOut(prefilledRequestData?.endDate || '');
@@ -152,8 +148,6 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     }
     setEmail(lead.email || '');
     setPhone(lead.phone || '');
-    setRecipientEmail(lead.email || '');
-    setRecipientPhone(lead.phone || '');
     setAddress(lead.address || '');
     setLeadSearch(lead.name);
   };
@@ -185,8 +179,8 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
         address,
         phone,
         email,
-        recipientEmail,
-        recipientPhone,
+        recipientEmail: email,
+        recipientPhone: phone,
         internalCompany,
         clientMessage,
         checkIn,
@@ -207,10 +201,10 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
   return (
     <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="bg-[#1C1F24] w-full max-w-6xl max-h-[92vh] overflow-hidden rounded-xl border border-gray-700 shadow-2xl flex flex-col">
-        <div className="px-6 py-4 border-b border-gray-800 bg-[#23262b] flex items-center justify-between">
+        <div className="px-4 py-3 border-b border-gray-800 bg-[#23262b] flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-white">Unified Multi-Apartment Offer</h2>
-            <p className="text-sm text-gray-400">
+            <h2 className="text-lg font-bold text-white">Unified Multi-Apartment Offer</h2>
+            <p className="text-xs text-gray-400">
               {selectedApartments.length} apartment{selectedApartments.length === 1 ? '' : 's'} selected
             </p>
           </div>
@@ -219,229 +213,195 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
           </button>
         </div>
 
-        <div className="overflow-y-auto p-6 space-y-6">
-          <section className="bg-[#111315] border border-gray-800 rounded-xl p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-white">Selected apartments</h3>
-            {selectedApartments.map((apartment) => (
-              <div key={apartment.propertyId} className="flex items-start justify-between gap-3 border border-gray-800 rounded-lg bg-[#161B22] px-3 py-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-white truncate">
-                    {formatApartmentIdentificationLine(apartment)}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1 flex items-center gap-3">
-                    {apartment.apartmentGroupName ? <span>{apartment.apartmentGroupName}</span> : <span>Без групи</span>}
-                    {apartment.marketplaceUrl && (
-                      <a
-                        href={apartment.marketplaceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300"
-                      >
-                        <LinkIcon className="w-3 h-3" />
-                        Listing
-                      </a>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={() => removeApartment(apartment.propertyId)}
-                  className="text-gray-500 hover:text-red-400 transition-colors"
-                  title="Прибрати квартиру з оферу"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-          </section>
-
-          <section className="bg-[#111315] border border-gray-800 rounded-xl p-4 space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-white">Shared customer / contact</h3>
-              <div className="relative w-full max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+        <div className="overflow-y-auto p-4 space-y-4">
+          {/* Row 1: two columns - Shared customer/contact (left) + Shared dates (right) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <section className="bg-[#111315] border border-gray-800 rounded-lg p-3 space-y-2">
+              <h3 className="text-xs font-semibold text-white uppercase tracking-wide">Shared customer / contact</h3>
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
                 <input
                   value={leadSearch}
                   onChange={(e) => setLeadSearch(e.target.value)}
                   placeholder="Lead lookup"
-                  className="w-full pl-9 pr-3 py-2 bg-[#161B22] border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500"
+                  className="w-full pl-8 pr-2 py-1.5 bg-[#161B22] border border-gray-700 rounded text-sm text-white focus:outline-none focus:border-emerald-500"
                 />
                 {filteredLeads.length > 0 && (
-                  <div className="absolute left-0 right-0 top-[calc(100%+4px)] bg-[#0D1117] border border-gray-700 rounded-lg shadow-xl overflow-hidden z-10">
+                  <div className="absolute left-0 right-0 top-[calc(100%+2px)] bg-[#0D1117] border border-gray-700 rounded shadow-xl overflow-hidden z-10">
                     {filteredLeads.map((lead) => (
                       <button
                         key={lead.id}
                         onClick={() => applyLead(lead)}
-                        className="w-full text-left px-3 py-2 hover:bg-[#161B22] transition-colors border-b border-gray-800 last:border-b-0"
+                        className="w-full text-left px-2 py-1.5 hover:bg-[#161B22] transition-colors border-b border-gray-800 last:border-b-0 text-sm"
                       >
-                        <div className="text-sm text-white">{lead.name}</div>
+                        <div className="text-white">{lead.name}</div>
                         <div className="text-xs text-gray-500">{lead.email || lead.phone}</div>
                       </button>
                     ))}
                   </div>
                 )}
               </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setClientType('Private')}
-                className={`px-3 py-2 rounded-lg text-sm ${clientType === 'Private' ? 'bg-emerald-600 text-white' : 'bg-[#161B22] text-gray-300'}`}
-              >
-                Private
-              </button>
-              <button
-                onClick={() => setClientType('Company')}
-                className={`px-3 py-2 rounded-lg text-sm ${clientType === 'Company' ? 'bg-emerald-600 text-white' : 'bg-[#161B22] text-gray-300'}`}
-              >
-                Company
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {clientType === 'Company' ? (
-                <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Company name" className="w-full bg-[#161B22] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
-              ) : (
-                <>
-                  <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" className="w-full bg-[#161B22] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
-                  <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" className="w-full bg-[#161B22] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
-                </>
-              )}
-              <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="w-full bg-[#161B22] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className="w-full bg-[#161B22] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
-              <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address" className="w-full md:col-span-2 bg-[#161B22] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
-            </div>
-          </section>
-
-          <section className="bg-[#111315] border border-gray-800 rounded-xl p-4 space-y-4">
-            <h3 className="text-sm font-semibold text-white">Shared dates</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <input type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} className="w-full bg-[#161B22] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
-              <input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} className="w-full bg-[#161B22] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
-              <div className="bg-[#161B22] border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300 flex items-center">
-                Nights: {nights}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setClientType('Private')}
+                  className={`px-2 py-1 rounded text-xs ${clientType === 'Private' ? 'bg-emerald-600 text-white' : 'bg-[#161B22] text-gray-300'}`}
+                >
+                  Private
+                </button>
+                <button
+                  onClick={() => setClientType('Company')}
+                  className={`px-2 py-1 rounded text-xs ${clientType === 'Company' ? 'bg-emerald-600 text-white' : 'bg-[#161B22] text-gray-300'}`}
+                >
+                  Company
+                </button>
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                {clientType === 'Company' ? (
+                  <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Company name" className="col-span-2 bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                ) : (
+                  <>
+                    <input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="First name" className="bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                    <input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Last name" className="bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                  </>
+                )}
+                <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className="bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address" className="col-span-2 bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+              </div>
+            </section>
+
+            <section className="bg-[#111315] border border-gray-800 rounded-lg p-3 space-y-2">
+              <h3 className="text-xs font-semibold text-white uppercase tracking-wide">Shared dates</h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <input type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} className="bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                <input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} className="bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                <span className="text-sm text-gray-400">Nights: <span className="text-white">{nights}</span></span>
+              </div>
+            </section>
+          </div>
+
+          {/* Apartment pricing: compact table, one row per apartment */}
+          <section className="bg-[#111315] border border-gray-800 rounded-lg p-3 space-y-2">
+            <h3 className="text-xs font-semibold text-white uppercase tracking-wide">Apartment pricing and financials</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="text-left text-gray-400 border-b border-gray-700">
+                    <th className="py-1.5 pr-2 font-medium">Address</th>
+                    <th className="py-1.5 px-2 font-medium w-24">Price / night</th>
+                    <th className="py-1.5 px-2 font-medium w-16">Tax %</th>
+                    <th className="py-1.5 px-2 font-medium w-14">Nights</th>
+                    <th className="py-1.5 px-2 font-medium w-20">Net</th>
+                    <th className="py-1.5 px-2 font-medium w-20">VAT</th>
+                    <th className="py-1.5 px-2 font-medium w-20">Gross</th>
+                    <th className="py-1.5 pl-2 w-8" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedApartments.map((apartment) => {
+                    const rowTotals = calculateOfferItemTotals(apartment.nightlyPrice, apartment.taxRate, nights);
+                    return (
+                      <tr key={apartment.propertyId} className="border-b border-gray-800/80">
+                        <td className="py-1.5 pr-2 text-white truncate max-w-[200px]" title={formatApartmentIdentificationLine(apartment)}>
+                          {formatApartmentIdentificationLine(apartment)}
+                        </td>
+                        <td className="py-1 px-2">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={apartment.nightlyPrice}
+                            onChange={(e) => updateApartment(apartment.propertyId, { nightlyPrice: Number(e.target.value) })}
+                            className="w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-emerald-500"
+                          />
+                        </td>
+                        <td className="py-1 px-2">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={apartment.taxRate}
+                            onChange={(e) => updateApartment(apartment.propertyId, { taxRate: Number(e.target.value) })}
+                            className="w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-emerald-500"
+                          />
+                        </td>
+                        <td className="py-1.5 px-2 text-gray-300">{nights}</td>
+                        <td className="py-1.5 px-2 text-white">{rowTotals.netTotal.toFixed(2)}</td>
+                        <td className="py-1.5 px-2 text-white">{rowTotals.vatAmount.toFixed(2)}</td>
+                        <td className="py-1.5 px-2 text-emerald-300 font-medium">{rowTotals.grossTotal.toFixed(2)}</td>
+                        <td className="py-1.5 pl-2">
+                          <button
+                            onClick={() => removeApartment(apartment.propertyId)}
+                            className="text-gray-500 hover:text-red-400 transition-colors"
+                            title="Прибрати квартиру з оферу"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex flex-wrap gap-3 pt-1.5 text-sm">
+              <span className="text-gray-400">Net total: <span className="text-white">{totals.net.toFixed(2)} EUR</span></span>
+              <span className="text-gray-400">VAT total: <span className="text-white">{totals.vat.toFixed(2)} EUR</span></span>
+              <span className="text-gray-400">Gross total: <span className="text-emerald-300 font-semibold">{totals.gross.toFixed(2)} EUR</span></span>
             </div>
           </section>
 
-          <section className="bg-[#111315] border border-gray-800 rounded-xl p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-white">Per-apartment pricing and financials</h3>
-              <div className="text-xs text-gray-400">Nights are shared across all apartments</div>
+          {/* Offer communication: issuing company + message only */}
+          <section className="bg-[#111315] border border-gray-800 rounded-lg p-3 space-y-2">
+            <h3 className="text-xs font-semibold text-white uppercase tracking-wide">Offer communication</h3>
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="min-w-[140px]">
+                <select value={internalCompany} onChange={(e) => setInternalCompany(e.target.value)} className="w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500">
+                  {INTERNAL_COMPANIES.map((company) => (
+                    <option key={company} value={company}>{company}</option>
+                  ))}
+                </select>
+              </div>
+              <textarea
+                value={clientMessage}
+                onChange={(e) => {
+                  setClientMessage(e.target.value);
+                  setMessageDirty(true);
+                }}
+                rows={3}
+                placeholder="Message to client"
+                className="flex-1 min-w-[200px] bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+              />
             </div>
-            <div className="space-y-3">
-              {selectedApartments.map((apartment) => {
-                const rowTotals = calculateOfferItemTotals(apartment.nightlyPrice, apartment.taxRate, nights);
-                return (
-                  <div key={apartment.propertyId} className="border border-gray-800 rounded-lg bg-[#161B22] p-3">
-                    <div className="text-sm text-white font-medium mb-3">
-                      {formatApartmentIdentificationLine(apartment)}
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                      <div>
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Price / Night</div>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={apartment.nightlyPrice}
-                          onChange={(e) => updateApartment(apartment.propertyId, { nightlyPrice: Number(e.target.value) })}
-                          className="w-full bg-[#111315] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                        />
-                      </div>
-                      <div>
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Tax %</div>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={apartment.taxRate}
-                          onChange={(e) => updateApartment(apartment.propertyId, { taxRate: Number(e.target.value) })}
-                          className="w-full bg-[#111315] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                        />
-                      </div>
-                      <div className="bg-[#111315] border border-gray-700 rounded-lg px-3 py-2">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500">Nights</div>
-                        <div className="text-sm text-white mt-1">{nights}</div>
-                      </div>
-                      <div className="bg-[#111315] border border-gray-700 rounded-lg px-3 py-2">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500">Net</div>
-                        <div className="text-sm text-white mt-1">{rowTotals.netTotal.toFixed(2)} EUR</div>
-                      </div>
-                      <div className="bg-[#111315] border border-gray-700 rounded-lg px-3 py-2">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500">VAT</div>
-                        <div className="text-sm text-white mt-1">{rowTotals.vatAmount.toFixed(2)} EUR</div>
-                      </div>
-                      <div className="bg-[#111315] border border-gray-700 rounded-lg px-3 py-2">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500">Gross</div>
-                        <div className="text-sm font-semibold text-emerald-300 mt-1">{rowTotals.grossTotal.toFixed(2)} EUR</div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="grid grid-cols-3 gap-3 pt-2">
-              <div className="bg-[#161B22] border border-gray-800 rounded-lg px-3 py-3 text-sm text-gray-300">Net total: <span className="text-white">{totals.net.toFixed(2)} EUR</span></div>
-              <div className="bg-[#161B22] border border-gray-800 rounded-lg px-3 py-3 text-sm text-gray-300">VAT total: <span className="text-white">{totals.vat.toFixed(2)} EUR</span></div>
-              <div className="bg-[#161B22] border border-gray-800 rounded-lg px-3 py-3 text-sm text-gray-300">Gross total: <span className="text-emerald-300 font-semibold">{totals.gross.toFixed(2)} EUR</span></div>
-            </div>
-          </section>
-
-          <section className="bg-[#111315] border border-gray-800 rounded-xl p-4 space-y-4">
-            <h3 className="text-sm font-semibold text-white">Offer communication</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <select value={internalCompany} onChange={(e) => setInternalCompany(e.target.value)} className="w-full bg-[#161B22] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500">
-                {INTERNAL_COMPANIES.map((company) => (
-                  <option key={company} value={company}>
-                    {company}
-                  </option>
-                ))}
-              </select>
-              <input value={recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)} placeholder="Recipient email" className="w-full bg-[#161B22] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
-              <input value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} placeholder="Recipient phone" className="w-full bg-[#161B22] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" />
-            </div>
-            <textarea
-              value={clientMessage}
-              onChange={(e) => {
-                setClientMessage(e.target.value);
-                setMessageDirty(true);
-              }}
-              rows={8}
-              className="w-full bg-[#161B22] border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-            />
           </section>
         </div>
 
-        <div className="px-6 py-4 border-t border-gray-800 bg-[#23262b] flex justify-between items-center">
-          <div className="text-sm text-gray-400">
+        <div className="px-4 py-3 border-t border-gray-800 bg-[#23262b] flex justify-between items-center">
+          <div className="text-xs text-gray-400">
             {selectedApartments.length} apartment{selectedApartments.length === 1 ? '' : 's'} · {nights} nights
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors"
+              className="px-3 py-1.5 rounded border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors text-sm"
             >
               Cancel
             </button>
             <button
               onClick={() => handleSubmit('draft')}
               disabled={savingMode !== null}
-              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+              className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-60 inline-flex items-center gap-1.5"
             >
-              <span className="inline-flex items-center gap-2">
-                <Save className="w-4 h-4" />
-                {savingMode === 'draft' ? 'Saving…' : 'Save as Offer'}
-              </span>
+              <Save className="w-3.5 h-3.5" />
+              {savingMode === 'draft' ? 'Saving…' : 'Save as Offer'}
             </button>
             <button
               onClick={() => handleSubmit('send')}
               disabled={savingMode !== null}
-              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+              className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors disabled:opacity-60 inline-flex items-center gap-1.5"
             >
-              <span className="inline-flex items-center gap-2">
-                <Send className="w-4 h-4" />
-                {savingMode === 'send' ? 'Saving…' : 'Save & Send'}
-              </span>
+              <Send className="w-3.5 h-3.5" />
+              {savingMode === 'send' ? 'Saving…' : 'Save & Send'}
             </button>
           </div>
         </div>
