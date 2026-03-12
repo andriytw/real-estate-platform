@@ -74,6 +74,8 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
   const [messageDirty, setMessageDirty] = useState(false);
   const [includeTotalInEmail, setIncludeTotalInEmail] = useState(true);
   const [savingMode, setSavingMode] = useState<'draft' | 'send' | null>(null);
+  /** Per-apartment string values for Price/night, Tax %, Kaution. Empty string = valid during editing; never force 0 into field. */
+  const [editableApartmentStrings, setEditableApartmentStrings] = useState<Record<string, { nightlyPrice?: string; taxRate?: string; kaution?: string }>>({});
 
   useEffect(() => {
     if (!isOpen) return;
@@ -91,23 +93,50 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     setLeadSearch('');
     setShowLeadDropdown(false);
     setMessageDirty(false);
+    setEditableApartmentStrings({});
   }, [isOpen, apartments, prefilledRequestData]);
 
   const nights = useMemo(() => calculateOfferNights(checkIn, checkOut), [checkIn, checkOut]);
 
+  /** Numeric value for calculations only; empty/invalid string → 0. Does not write back to state. */
+  const getNumericNightlyPrice = (apartment: MultiApartmentOfferDraftApartment): number => {
+    const s = editableApartmentStrings[apartment.propertyId]?.nightlyPrice;
+    if (s === undefined) return Number.isFinite(apartment.nightlyPrice) ? apartment.nightlyPrice : 0;
+    if (s === '') return 0;
+    const n = parseFloat(s);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const getNumericTaxRate = (apartment: MultiApartmentOfferDraftApartment): number => {
+    const s = editableApartmentStrings[apartment.propertyId]?.taxRate;
+    if (s === undefined) return Number.isFinite(apartment.taxRate) ? apartment.taxRate : 0;
+    if (s === '') return 0;
+    const n = parseFloat(s);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const getNumericKaution = (apartment: MultiApartmentOfferDraftApartment): number => {
+    const s = editableApartmentStrings[apartment.propertyId]?.kaution;
+    if (s === undefined) return Number.isFinite(apartment.kaution) ? (apartment.kaution ?? 0) : 0;
+    if (s === '') return 0;
+    const n = parseFloat(s);
+    return Number.isFinite(n) ? n : 0;
+  };
+
   const totals = useMemo(() => {
     return selectedApartments.reduce(
       (acc, apartment) => {
-        const row = calculateOfferItemTotals(apartment.nightlyPrice, apartment.taxRate, nights, apartment.kaution ?? 0);
+        const nightly = getNumericNightlyPrice(apartment);
+        const tax = getNumericTaxRate(apartment);
+        const kautionVal = getNumericKaution(apartment);
+        const row = calculateOfferItemTotals(nightly, tax, nights, kautionVal);
         acc.net += row.netTotal;
         acc.vat += row.vatAmount;
-        acc.kaution += apartment.kaution ?? 0;
+        acc.kaution += kautionVal;
         acc.gross += row.grossTotal;
         return acc;
       },
       { net: 0, vat: 0, kaution: 0, gross: 0 }
     );
-  }, [selectedApartments, nights]);
+  }, [selectedApartments, nights, editableApartmentStrings]);
 
   useEffect(() => {
     if (!isOpen || messageDirty) return;
@@ -344,7 +373,12 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
         checkIn,
         checkOut,
       },
-      apartments: selectedApartments,
+      apartments: selectedApartments.map((apartment) => ({
+        ...apartment,
+        nightlyPrice: getNumericNightlyPrice(apartment),
+        taxRate: getNumericTaxRate(apartment),
+        kaution: getNumericKaution(apartment),
+      })),
     };
 
     try {
@@ -460,7 +494,18 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                 </thead>
                 <tbody>
                   {selectedApartments.map((apartment) => {
-                    const rowTotals = calculateOfferItemTotals(apartment.nightlyPrice, apartment.taxRate, nights, apartment.kaution ?? 0);
+                    const rowTotals = calculateOfferItemTotals(
+                      getNumericNightlyPrice(apartment),
+                      getNumericTaxRate(apartment),
+                      nights,
+                      getNumericKaution(apartment)
+                    );
+                    const id = apartment.propertyId;
+                    const strings = editableApartmentStrings[id];
+                    const displayNightly = strings?.nightlyPrice ?? (apartment.nightlyPrice === 0 ? '' : String(apartment.nightlyPrice));
+                    const displayTaxRate = strings?.taxRate ?? (apartment.taxRate === 0 ? '' : String(apartment.taxRate));
+                    const displayKaution = strings?.kaution ?? ((apartment.kaution ?? 0) === 0 ? '' : String(apartment.kaution ?? 0));
+                    const inputClass = 'w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-emerald-500 tabular-nums';
                     return (
                       <tr key={apartment.propertyId} className="border-b border-gray-800/80">
                         <td className="py-1.5 pr-2 text-white truncate max-w-[200px]" title={formatApartmentIdentificationLine(apartment)}>
@@ -468,22 +513,20 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                         </td>
                         <td className="py-1 px-2">
                           <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={apartment.nightlyPrice}
-                            onChange={(e) => updateApartment(apartment.propertyId, { nightlyPrice: Number(e.target.value) })}
-                            className="w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-emerald-500"
+                            type="text"
+                            inputMode="decimal"
+                            value={displayNightly}
+                            onChange={(e) => setEditableApartmentStrings((prev) => ({ ...prev, [id]: { ...prev[id], nightlyPrice: e.target.value } }))}
+                            className={inputClass}
                           />
                         </td>
                         <td className="py-1 px-2">
                           <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={apartment.taxRate}
-                            onChange={(e) => updateApartment(apartment.propertyId, { taxRate: Number(e.target.value) })}
-                            className="w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-emerald-500"
+                            type="text"
+                            inputMode="decimal"
+                            value={displayTaxRate}
+                            onChange={(e) => setEditableApartmentStrings((prev) => ({ ...prev, [id]: { ...prev[id], taxRate: e.target.value } }))}
+                            className={inputClass}
                           />
                         </td>
                         <td className="py-1.5 px-2 text-gray-300">{nights}</td>
@@ -491,12 +534,11 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                         <td className="py-1.5 px-2 text-white">{rowTotals.vatAmount.toFixed(2)}</td>
                         <td className="py-1 px-2">
                           <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={apartment.kaution ?? 0}
-                            onChange={(e) => updateApartment(apartment.propertyId, { kaution: Number(e.target.value) })}
-                            className="w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-emerald-500"
+                            type="text"
+                            inputMode="decimal"
+                            value={displayKaution}
+                            onChange={(e) => setEditableApartmentStrings((prev) => ({ ...prev, [id]: { ...prev[id], kaution: e.target.value } }))}
+                            className={inputClass}
                           />
                         </td>
                         <td className="py-1.5 px-2 text-emerald-300 font-medium">{rowTotals.grossTotal.toFixed(2)}</td>

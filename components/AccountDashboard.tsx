@@ -10654,16 +10654,6 @@ ${internalCompany} Team`;
                   Rent Calendar
                 </button>
                 <button 
-                  onClick={() => { setActiveDepartment('sales'); setSalesTab('reservations'); }} 
-                  className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
-                    activeDepartment === 'sales' && salesTab === 'reservations'
-                      ? 'text-emerald-500 font-bold bg-emerald-500/10'
-                      : 'text-gray-500 hover:text-gray-300'
-                  }`}
-                >
-                  Reservations
-                </button>
-                <button 
                   onClick={() => { setActiveDepartment('sales'); setSalesTab('offers'); }} 
                   className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${
                     activeDepartment === 'sales' && salesTab === 'offers'
