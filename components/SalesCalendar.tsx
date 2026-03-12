@@ -356,22 +356,47 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     );
   }, [reservations]);
 
-  // VISUAL ONLY: reservations to show when toggle is ON. When OFF this is [].
-  // Used for: rendering bars, row height, overlap/lane/stacking. Never for availability.
-  const visibleReservations = React.useMemo(() => {
-    if (!showReservations) return [];
-    return activeReservations;
-  }, [showReservations, activeReservations]);
+  // VISUAL ONLY: Sent offers as calendar bars when toggle is ON. One bar per offer row. Dates from persisted offer fields.
+  const parseOfferDates = (datesStr: string | undefined): { start: string; end: string } => {
+    const s = (datesStr ?? '').trim();
+    const parts = s.split(/\s+to\s+/);
+    const start = (parts[0] ?? '').slice(0, 10);
+    const end = (parts[1] ?? '').slice(0, 10);
+    return { start: start || '', end: end || '' };
+  };
+  const sentOffersAsBars = React.useMemo(() => {
+    return offers
+      .filter((o): o is OfferData => o.status === 'Sent')
+      .map((o) => {
+        const { start, end } = parseOfferDates(o.dates);
+        return {
+          id: o.id,
+          start,
+          end,
+          roomId: String(o.propertyId ?? ''),
+          isOffer: true as const,
+          guest: o.clientName ?? 'Offer',
+          status: o.status,
+        };
+      })
+      .filter((b) => b.start && b.end);
+  }, [offers]);
 
-  // Calendar bars = confirmed bookings + visible reservations (toggle controls visibility only)
+  const visibleOfferBars = React.useMemo(() => {
+    if (!showReservations) return [];
+    return sentOffersAsBars;
+  }, [showReservations, sentOffersAsBars]);
+
+  // Calendar bars = confirmed bookings + visible offer bars (toggle controls offer bar visibility)
   const calendarBookings = React.useMemo(() => {
-    const asBookings = visibleReservations.map(r => ({
-      ...r,
-      isReservation: true as const,
-      roomId: r.roomId || (r as any).propertyId || '',
+    const asBookings = visibleOfferBars.map((b) => ({
+      ...b,
+      isReservation: false,
+      isOffer: true as const,
+      roomId: b.roomId,
     }));
     return [...allBookings, ...asBookings];
-  }, [allBookings, visibleReservations]);
+  }, [allBookings, visibleOfferBars]);
 
   // Availability: always use full business dataset (confirmed + all active reservations).
   // Toggle must never make a reserved apartment look available.
@@ -392,58 +417,57 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     return a < d && c < b;
   };
 
-  // Stacking constants for reservation stripes
-  const STRIPE_H = 13; // Height of each reservation stripe in pixels
+  // Stacking constants for offer/reservation stripes
+  const STRIPE_H = 13; // Height of each stripe in pixels
   const STRIPE_GAP = 3; // Gap between stacked stripes in pixels
   const BASE_TOP_PX = 4; // Base top offset for first stripe
   const stackIndexByReservationId = React.useMemo(() => {
     const map = new Map<string, number>();
-    const active = visibleReservations;
+    const active = visibleOfferBars;
 
-    // Group by room, then for each reservation find all in same room that OVERLAP it (same or different end date)
-    const byRoom = new Map<string, ReservationData[]>();
+    const byRoom = new Map<string, typeof visibleOfferBars>();
     for (const r of active) {
-      const roomId = (r.roomId || (r as any).propertyId) ?? '';
+      const roomId = r.roomId ?? '';
       const arr = byRoom.get(roomId) ?? [];
       arr.push(r);
       byRoom.set(roomId, arr);
     }
 
-    for (const [, roomReservations] of byRoom.entries()) {
-      for (const r of roomReservations) {
-        const overlapping = roomReservations.filter(
-          other => datesOverlap(r.start, r.end, other.start, other.end)
+    for (const [, roomItems] of byRoom.entries()) {
+      for (const r of roomItems) {
+        const overlapping = roomItems.filter(
+          (other) => datesOverlap(r.start, r.end, other.start, other.end)
         );
         const sorted = [...overlapping].sort((a, b) => {
-          const A = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const B = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return B - A; // Newest first → index 0 is top stripe
+          const A = String(a.id);
+          const B = String(b.id);
+          return A.localeCompare(B);
         });
-        const index = sorted.findIndex(x => String(x.id) === String(r.id));
+        const index = sorted.findIndex((x) => String(x.id) === String(r.id));
         map.set(String(r.id), index >= 0 ? index : 0);
       }
     }
 
     return map;
-  }, [visibleReservations]);
+  }, [visibleOfferBars]);
 
-  // Compute max stack count per room for row height (max overlapping reservations in that room)
+  // Compute max stack count per room for row height (max overlapping offer bars in that room)
   const maxStackForRoomId = React.useMemo(() => {
     const map = new Map<string, number>();
-    const active = visibleReservations;
-    const byRoom = new Map<string, ReservationData[]>();
+    const active = visibleOfferBars;
+    const byRoom = new Map<string, typeof visibleOfferBars>();
     for (const r of active) {
-      const roomId = (r.roomId || (r as any).propertyId) ?? '';
+      const roomId = r.roomId ?? '';
       const arr = byRoom.get(roomId) ?? [];
       arr.push(r);
       byRoom.set(roomId, arr);
     }
 
-    for (const [roomId, roomReservations] of byRoom.entries()) {
+    for (const [roomId, roomItems] of byRoom.entries()) {
       let maxStack = 0;
-      for (const r of roomReservations) {
-        const overlapping = roomReservations.filter(
-          other => datesOverlap(r.start, r.end, other.start, other.end)
+      for (const r of roomItems) {
+        const overlapping = roomItems.filter(
+          (other) => datesOverlap(r.start, r.end, other.start, other.end)
         );
         if (overlapping.length > maxStack) maxStack = overlapping.length;
       }
@@ -451,7 +475,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     }
 
     return map;
-  }, [visibleReservations]);
+  }, [visibleOfferBars]);
 
   // Status column: real apartment status label only; do not confuse with termStatus
   const getApartmentStatusLabel = (status: string | null | undefined): string => {
@@ -1066,7 +1090,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
             onChange={(e) => setShowReservations(e.target.checked)}
             className="rounded border-gray-600 bg-[#161B22] text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
           />
-          <span className="text-sm text-gray-300">Показувати резервації</span>
+          <span className="text-sm text-gray-300">Показувати офери</span>
         </label>
         <span className="text-xs text-gray-400 whitespace-nowrap">
           {filteredRooms.length === 0 ? (
@@ -1293,24 +1317,22 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                     width = (bookingTotalDays - 1.3) * DAY_WIDTH;
                                 }
                                 
-                                // Determine if this is a reservation (hold) or confirmed booking
+                                // Determine if this is an offer bar, reservation (hold), or confirmed booking
+                                const isOffer = (booking as any).isOffer === true;
                                 const isReservation = (booking as any).isReservation === true;
-                                const isConfirmed = (booking as any).isConfirmed === true || (!isReservation);
+                                const isConfirmed = (booking as any).isConfirmed === true || (!isReservation && !isOffer);
                                 const reservationHasOffer = isReservation && (booking.status === 'offered' || (booking as any).status === 'offered');
                                 
-                                // Calculate dynamic top offset for stacking
-                                const stackIndex = isReservation 
-                                  ? (stackIndexByReservationId.get(String(booking.id)) ?? 0)
-                                  : 0;
+                                // Calculate dynamic top offset for stacking (offers and reservations use same stacking)
+                                const stackIndex = (stackIndexByReservationId.get(String(booking.id)) ?? 0);
                                 
-                                // For reservations: use new constants, inline styles for top/height
-                                // For confirmed bookings: keep existing layout
-                                const topPx = isReservation 
+                                const useStripeLayout = isReservation || isOffer;
+                                const topPx = useStripeLayout
                                   ? BASE_TOP_PX + stackIndex * (STRIPE_H + STRIPE_GAP)
-                                  : 4; // Base top for confirmed bookings
+                                  : 4;
                                 
-                                // Reservation stripe: dashed = open hold, solid = offer created/sent
-                                const reservationBorderClass = reservationHasOffer
+                                // Offer bar: solid. Reservation: dashed = open hold, solid = offer created/sent
+                                const reservationBorderClass = (isOffer || reservationHasOffer)
                                   ? 'border-2 border-white/60 ring-1 ring-white/20 shadow-[0_1px_0_rgba(0,0,0,0.35)] hover:-translate-y-[1px]'
                                   : 'border-2 border-dashed border-white/55 ring-1 ring-white/20 shadow-[0_1px_0_rgba(0,0,0,0.35)] hover:-translate-y-[1px]';
                                 
@@ -1342,7 +1364,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                         }}
                                         className={`
                                             absolute rounded-md text-[10px] text-white flex shadow-lg z-10 cursor-pointer items-center pointer-events-auto
-                                            ${isReservation 
+                                            ${isReservation || isOffer
                                                 ? 'bg-sky-500/70 hover:bg-sky-500/85 ' + reservationBorderClass
                                                 : 'h-6 px-2 ' + getBookingColor(booking.status) + ' ' + getBookingBorderStyle(booking.status)
                                             } hover:scale-[1.01] transition-all duration-150
@@ -1351,15 +1373,14 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                             left: `${left}px`, 
                                             width: `${width}px`, 
                                             top: `${topPx}px`,
-                                            height: isReservation ? `${STRIPE_H}px` : undefined,
+                                            height: (isReservation || isOffer) ? `${STRIPE_H}px` : undefined,
                                         }}
                                     >
-                                        {isReservation ? (() => {
-                                            const showTimes = width >= 110;
-                                            const showDetails = width >= 140;
+                                        {(isReservation || isOffer) ? (() => {
+                                            const showTimes = width >= 110 && !isOffer;
+                                            const showDetails = width >= 140 && !isOffer;
                                             const showOnlyInitials = width < 70;
                                             
-                                            // Get first letter for initials fallback
                                             const getInitial = (str: string) => {
                                                 const trimmed = str.trim();
                                                 return trimmed ? trimmed[0].toUpperCase() : '?';
@@ -1367,29 +1388,25 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                             
                                             return (
                                                 <div className="flex items-center w-full h-full px-2 whitespace-nowrap">
-                                                    {showOnlyInitials ? (
-                                                        // Very narrow: show only initial
+                                                    {isOffer ? (
+                                                        <span className="font-medium text-[10px] truncate w-full text-center whitespace-nowrap">
+                                                            {width >= 80 ? `Offer · ${displayGuest}` : displayGuest}
+                                                        </span>
+                                                    ) : showOnlyInitials ? (
                                                         <span className="font-bold text-[10px] w-full text-center">
                                                             {getInitial(displayGuest)}
                                                         </span>
                                                     ) : showTimes ? (
                                                         <>
-                                                            {/* Left: Check-in time (fixed width) */}
                                                             <span className="font-mono text-[9px] opacity-70 w-[40px] text-left shrink-0 whitespace-nowrap">
                                                                 {booking.checkInTime}
                                                             </span>
-                                                            
-                                                            {/* Center: Guest/Company label */}
                                                             <span className="font-medium text-[10px] truncate flex-1 min-w-0 text-center whitespace-nowrap px-0.5">
                                                                 {displayGuest}
                                                             </span>
-                                                            
-                                                            {/* Right: Check-out time (fixed width) */}
                                                             <span className="font-mono text-[9px] opacity-70 w-[40px] text-right shrink-0 whitespace-nowrap">
                                                                 {booking.checkOutTime}
                                                             </span>
-                                                            
-                                                            {/* Optional: Nights/Guests (if space allows) */}
                                                             {showDetails && (
                                                                 <span className="text-[8px] opacity-60 ml-1 shrink-0 whitespace-nowrap">
                                                                     {nights}N · {parseInt(booking.guests || '0')}G
@@ -1397,7 +1414,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                                             )}
                                                         </>
                                                     ) : (
-                                                        // Narrow: show only label centered
                                                         <span className="font-medium text-[10px] truncate w-full text-center whitespace-nowrap">
                                                             {displayGuest}
                                                         </span>

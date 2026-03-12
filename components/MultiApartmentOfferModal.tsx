@@ -36,6 +36,7 @@ function buildInitialApartments(apartments: SelectedApartmentData[]): MultiApart
     ...apartment,
     nightlyPrice: apartment.area && apartment.area > 0 ? Number((apartment.area * 2).toFixed(2)) : 100,
     taxRate: 19,
+    kaution: 0,
   }));
 }
 
@@ -97,13 +98,14 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
   const totals = useMemo(() => {
     return selectedApartments.reduce(
       (acc, apartment) => {
-        const row = calculateOfferItemTotals(apartment.nightlyPrice, apartment.taxRate, nights);
+        const row = calculateOfferItemTotals(apartment.nightlyPrice, apartment.taxRate, nights, apartment.kaution ?? 0);
         acc.net += row.netTotal;
         acc.vat += row.vatAmount;
+        acc.kaution += apartment.kaution ?? 0;
         acc.gross += row.grossTotal;
         return acc;
       },
-      { net: 0, vat: 0, gross: 0 }
+      { net: 0, vat: 0, kaution: 0, gross: 0 }
     );
   }, [selectedApartments, nights]);
 
@@ -148,10 +150,11 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
       (acc, a) => {
         acc.net += a.netTotal;
         acc.vat += a.vatTotal;
+        acc.kaution += a.kaution ?? 0;
         acc.gross += a.grossTotal;
         return acc;
       },
-      { net: 0, vat: 0, gross: 0 }
+      { net: 0, vat: 0, kaution: 0, gross: 0 }
     );
     return (
       <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/80 backdrop-blur-sm">
@@ -207,6 +210,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                       <th className="py-1.5 px-2 font-medium w-14">Nights</th>
                       <th className="py-1.5 px-2 font-medium w-20">Net</th>
                       <th className="py-1.5 px-2 font-medium w-20">VAT</th>
+                      <th className="py-1.5 px-2 font-medium w-20">Kaution</th>
                       <th className="py-1.5 px-2 font-medium w-20">Gross</th>
                     </tr>
                   </thead>
@@ -226,6 +230,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                         <td className="py-1.5 px-2 text-gray-300">{apt.nights}</td>
                         <td className="py-1.5 px-2 text-white">{apt.netTotal.toFixed(2)}</td>
                         <td className="py-1.5 px-2 text-white">{apt.vatTotal.toFixed(2)}</td>
+                        <td className="py-1.5 px-2 text-white">{(apt.kaution ?? 0).toFixed(2)}</td>
                         <td className="py-1.5 px-2 text-emerald-300 font-medium">{apt.grossTotal.toFixed(2)}</td>
                       </tr>
                     ))}
@@ -235,6 +240,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
               <div className="flex flex-wrap gap-3 pt-1.5 text-sm">
                 <span className="text-gray-400">Net total: <span className="text-white">{viewTotals.net.toFixed(2)} EUR</span></span>
                 <span className="text-gray-400">VAT total: <span className="text-white">{viewTotals.vat.toFixed(2)} EUR</span></span>
+                <span className="text-gray-400">Kaution total: <span className="text-white">{viewTotals.kaution.toFixed(2)} EUR</span></span>
                 <span className="text-gray-400">Gross total: <span className="text-emerald-300 font-semibold">{viewTotals.gross.toFixed(2)} EUR</span></span>
               </div>
             </section>
@@ -447,13 +453,14 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                     <th className="py-1.5 px-2 font-medium w-14">Nights</th>
                     <th className="py-1.5 px-2 font-medium w-20">Net</th>
                     <th className="py-1.5 px-2 font-medium w-20">VAT</th>
+                    <th className="py-1.5 px-2 font-medium w-20">Kaution</th>
                     <th className="py-1.5 px-2 font-medium w-20">Gross</th>
                     <th className="py-1.5 pl-2 w-8" />
                   </tr>
                 </thead>
                 <tbody>
                   {selectedApartments.map((apartment) => {
-                    const rowTotals = calculateOfferItemTotals(apartment.nightlyPrice, apartment.taxRate, nights);
+                    const rowTotals = calculateOfferItemTotals(apartment.nightlyPrice, apartment.taxRate, nights, apartment.kaution ?? 0);
                     return (
                       <tr key={apartment.propertyId} className="border-b border-gray-800/80">
                         <td className="py-1.5 pr-2 text-white truncate max-w-[200px]" title={formatApartmentIdentificationLine(apartment)}>
@@ -482,6 +489,16 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                         <td className="py-1.5 px-2 text-gray-300">{nights}</td>
                         <td className="py-1.5 px-2 text-white">{rowTotals.netTotal.toFixed(2)}</td>
                         <td className="py-1.5 px-2 text-white">{rowTotals.vatAmount.toFixed(2)}</td>
+                        <td className="py-1 px-2">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={apartment.kaution ?? 0}
+                            onChange={(e) => updateApartment(apartment.propertyId, { kaution: Number(e.target.value) })}
+                            className="w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-emerald-500"
+                          />
+                        </td>
                         <td className="py-1.5 px-2 text-emerald-300 font-medium">{rowTotals.grossTotal.toFixed(2)}</td>
                         <td className="py-1.5 pl-2">
                           <button
@@ -501,6 +518,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
             <div className="flex flex-wrap gap-3 pt-1.5 text-sm">
               <span className="text-gray-400">Net total: <span className="text-white">{totals.net.toFixed(2)} EUR</span></span>
               <span className="text-gray-400">VAT total: <span className="text-white">{totals.vat.toFixed(2)} EUR</span></span>
+              <span className="text-gray-400">Kaution total: <span className="text-white">{totals.kaution.toFixed(2)} EUR</span></span>
               <span className="text-gray-400">Gross total: <span className="text-emerald-300 font-semibold">{totals.gross.toFixed(2)} EUR</span></span>
             </div>
           </section>

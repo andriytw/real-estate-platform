@@ -239,6 +239,7 @@ function buildOfferViewPayload(offer: OfferData, offers: OfferData[], properties
       netTotal: Number(row.netTotal) || 0,
       vatTotal: Number(row.vatTotal) || 0,
       grossTotal: Number(row.grossTotal) || 0,
+      kaution: Number(row.kaution) || 0,
       marketplaceUrl,
     };
   });

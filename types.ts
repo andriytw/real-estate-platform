@@ -652,6 +652,7 @@ export interface OfferData {
   netTotal?: number;
   vatTotal?: number;
   grossTotal?: number;
+  kaution?: number;
   leadId?: string; // UUID reference to leads table (set when offer is sent)
 }
 
@@ -754,6 +755,7 @@ export interface OfferListRow {
 export interface MultiApartmentOfferDraftApartment extends SelectedApartmentData {
   nightlyPrice: number;
   taxRate: number;
+  kaution?: number;
 }
 
 export interface MultiApartmentOfferDraft {
@@ -798,6 +800,7 @@ export interface OfferViewPayload {
     netTotal: number;
     vatTotal: number;
     grossTotal: number;
+    kaution: number;
     marketplaceUrl?: string;
   }>;
   /** From first row: offer number and status for header. */

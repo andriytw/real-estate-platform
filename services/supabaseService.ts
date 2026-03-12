@@ -1885,9 +1885,10 @@ export const offersService = {
     }
 
     const rows: Omit<OfferData, 'id'>[] = draft.apartments.map((apartment, index) => {
-      const netTotal = nights * apartment.nightlyPrice;
-      const vatAmount = netTotal * (apartment.taxRate / 100);
-      const grossTotal = netTotal + vatAmount;
+      const netTotal = Number((nights * apartment.nightlyPrice).toFixed(2));
+      const vatAmount = Number((netTotal * (apartment.taxRate / 100)).toFixed(2));
+      const kaution = Number((apartment.kaution ?? 0).toFixed(2));
+      const grossTotal = Number((netTotal + vatAmount + kaution).toFixed(2));
       const priceStr = `${Number(grossTotal).toFixed(2)} EUR`;
       return {
         offerNo,
@@ -1917,6 +1918,7 @@ export const offersService = {
         netTotal,
         vatTotal: vatAmount,
         grossTotal,
+        kaution,
         reservationId: reservationIds[index] ?? undefined,
       };
     });
@@ -3334,6 +3336,7 @@ function transformOfferFromDB(db: any): OfferData {
     netTotal: db.net_total != null ? Number(db.net_total) : undefined,
     vatTotal: db.vat_total != null ? Number(db.vat_total) : undefined,
     grossTotal: db.gross_total != null ? Number(db.gross_total) : undefined,
+    kaution: db.kaution != null ? Number(db.kaution) : 0,
     leadId: db.lead_id ?? undefined,
   };
 }
@@ -3374,6 +3377,7 @@ function transformOfferToDB(offer: OfferData): any {
     net_total: offer.netTotal ?? null,
     vat_total: offer.vatTotal ?? null,
     gross_total: offer.grossTotal ?? null,
+    kaution: offer.kaution ?? null,
     lead_id: offer.leadId ?? null,
   };
 }
