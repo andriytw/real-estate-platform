@@ -3546,6 +3546,7 @@ function transformInvoiceFromDB(db: any): InvoiceData {
     paymentProofUrl: db.payment_proof_url ?? undefined,
     documentType: db.document_type ?? 'proforma',
     proformaId: db.proforma_id ?? undefined,
+    kautionStatus: db.kaution_status ?? undefined,
   };
 }
 
@@ -3583,6 +3584,7 @@ function transformInvoiceToDB(invoice: InvoiceData): any {
     payment_proof_url: invoice.paymentProofUrl ?? null,
     document_type: invoice.documentType ?? 'proforma',
     proforma_id: invoice.proformaId && isValidUUID(invoice.proformaId) ? invoice.proformaId : null,
+    kaution_status: invoice.kautionStatus ?? null,
   };
 }
 

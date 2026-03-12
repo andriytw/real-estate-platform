@@ -843,6 +843,8 @@ export interface InvoiceData {
   documentType?: 'proforma' | 'invoice';
   /** Parent proforma UUID when this record is an invoice under a proforma */
   proformaId?: string;
+  /** Kaution (deposit) return workflow: not_returned, returned, or partially_returned (future). NULL = not_returned for display. */
+  kautionStatus?: 'not_returned' | 'returned' | 'partially_returned';
 }
 
 /** One row per payment confirmation; PDF optional; is_current = proof shown in main row */

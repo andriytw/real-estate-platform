@@ -9764,6 +9764,10 @@ ${internalCompany} Team`;
           adminEvents={adminEvents}
           properties={properties}
           invoices={invoices}
+          onViewProforma={(proformaId) => {
+            setSalesTab('proformas');
+            setExpandedProformaIds((prev) => new Set([...prev, proformaId]));
+          }}
         />
       );
     }
@@ -10068,6 +10072,7 @@ ${internalCompany} Team`;
                                 <th className="px-2 py-2 text-right tabular-nums w-20">Net</th>
                                 <th className="px-2 py-2 text-right tabular-nums w-20">VAT</th>
                                 <th className="px-2 py-2 text-right tabular-nums w-20">Kaution</th>
+                                <th className="p-4 w-28">Kaution Status</th>
                                 <th className="px-2 py-2 text-right tabular-nums w-20">Gross</th>
                                 <th className="px-2 py-2 text-right tabular-nums">Remaining</th>
                                 <th className="p-4">Document</th>
@@ -10110,6 +10115,37 @@ ${internalCompany} Team`;
                                         <td className={numCell}>{proforma.totalNet != null ? `€${Number(proforma.totalNet).toFixed(2)}` : '—'}</td>
                                         <td className={numCell}>{proforma.taxAmount != null ? `€${Number(proforma.taxAmount).toFixed(2)}` : '—'}</td>
                                         <td className={numCell}>{kautionVal}</td>
+                                        <td className="p-4">
+                                            {linkedOffer && (linkedOffer.kaution != null && Number(linkedOffer.kaution) > 0) ? (
+                                              proforma.kautionStatus === 'returned' ? (
+                                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">Returned</span>
+                                              ) : (
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400">Not Returned</span>
+                                                  {!lost && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={async () => {
+                                                        try {
+                                                          await invoicesService.update(proforma.id, { ...proforma, kautionStatus: 'returned' });
+                                                          setProformas((prev) => prev.map((p) => (p.id === proforma.id ? { ...p, kautionStatus: 'returned' as const } : p)));
+                                                          setInvoices((prev) => prev.map((inv) => (inv.id === proforma.id ? { ...inv, kautionStatus: 'returned' as const } : inv)));
+                                                        } catch (e) {
+                                                          console.error(e);
+                                                          alert((e as Error)?.message ?? 'Failed to update');
+                                                        }
+                                                      }}
+                                                      className="text-xs text-emerald-400 hover:text-emerald-300"
+                                                    >
+                                                      Mark returned
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              )
+                                            ) : (
+                                              <span className="text-gray-500">—</span>
+                                            )}
+                                        </td>
                                         <td className={numCell}>{proforma.totalGross != null ? `€${Number(proforma.totalGross).toFixed(2)}` : '—'}</td>
                                         <td className={`${numCell} text-right`}>
                                             {(() => {
@@ -10185,6 +10221,7 @@ ${internalCompany} Team`;
                                                     <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
                                                     <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
                                                     <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
+                                                    <td className="p-4 text-gray-500">—</td>
                                                     <td className="px-2 py-2 text-right tabular-nums">€{inv.totalGross?.toFixed(2) ?? '—'}</td>
                                                     <td className="px-2 py-2 text-gray-500">—</td>
                                                     <td className="p-4">
@@ -10214,7 +10251,8 @@ ${internalCompany} Team`;
                                             <tr className="text-sm text-gray-400 hover:bg-[#16181D]">
                                                 <td className="p-4" />
                                                 <td className="p-4" />
-                                                <td colSpan={11} className="p-4 pl-8">
+                                                <td className="p-4" />
+                                                <td colSpan={10} className="p-4 pl-8">
                                                     <button
                                                         type="button"
                                                         disabled={lost}
@@ -10238,7 +10276,7 @@ ${internalCompany} Team`;
                                                             <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
                                                             <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
                                                             <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
-                                                            <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
+                                                            <td className="p-4 text-gray-500">—</td>
                                                             <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
                                                             <td className="px-2 py-2 text-gray-500">—</td>
                                                             <td className="p-4">
@@ -10278,7 +10316,7 @@ ${internalCompany} Team`;
                             })}
                             {proformas.length === 0 && (
                                 <tr>
-                                    <td colSpan={14} className="p-8 text-center text-gray-500">No payments yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
+                                    <td colSpan={15} className="p-8 text-center text-gray-500">No payments yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
                                 </tr>
                             )}
                         </tbody>
