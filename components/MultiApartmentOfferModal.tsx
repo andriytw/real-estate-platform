@@ -144,19 +144,25 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
       clientType === 'Company'
         ? companyName
         : `${firstName} ${lastName}`.trim();
+    const apartmentsWithLiveNumbers = selectedApartments.map((a) => ({
+      ...a,
+      nightlyPrice: getNumericNightlyPrice(a),
+      taxRate: getNumericTaxRate(a),
+      kaution: getNumericKaution(a),
+    }));
     setClientMessage(
       buildMultiApartmentClientMessage({
         clientLabel,
         internalCompany,
         checkIn,
         checkOut,
-        apartments: selectedApartments,
+        apartments: apartmentsWithLiveNumbers,
         marketplaceBaseUrl: getMarketplaceBaseUrl(),
         showTotal: includeTotalInEmail,
         combinedTotals: totals,
       })
     );
-  }, [isOpen, messageDirty, clientType, companyName, firstName, lastName, internalCompany, checkIn, checkOut, selectedApartments, includeTotalInEmail, totals]);
+  }, [isOpen, messageDirty, clientType, companyName, firstName, lastName, internalCompany, checkIn, checkOut, selectedApartments, includeTotalInEmail, totals, editableApartmentStrings]);
 
   const filteredLeads = useMemo(() => {
     const q = leadSearch.trim().toLowerCase();
