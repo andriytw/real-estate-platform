@@ -36,6 +36,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
   const [uploading, setUploading] = useState(false);
   /** Resolved apartment/property title for the offer (Unit row) */
   const [offerPropertyTitle, setOfferPropertyTitle] = useState<string | null>(null);
+  /** Add Invoice only: Net amount input (visually empty string, not 0) */
+  const [addInvoiceNetAmount, setAddInvoiceNetAmount] = useState('');
+  /** Add Invoice only: Tax rate % (default from proforma or 19) */
+  const [addInvoiceTaxRate, setAddInvoiceTaxRate] = useState<number>(19);
 
   // Resolve property title when offer has propertyId/roomId
   useEffect(() => {
@@ -195,10 +199,16 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
         setIsEditing(true); // Default to edit mode for new invoices
         setPdfFile(null);
       } else if (proforma && !invoice) {
-        // CASE 3: Adding Invoice under a Proforma
+        // CASE 3: Adding Invoice under a Proforma — manual financial structure; do NOT prefill amounts
         const companyKey = proforma.internalCompany || 'Sotiso';
         const companyData = INTERNAL_COMPANIES_DATA[companyKey] || INTERNAL_COMPANIES_DATA['Sotiso'];
         setSenderDetails(companyData);
+        const defaultTaxRate =
+          proforma.totalNet != null && proforma.totalNet > 0 && proforma.taxAmount != null
+            ? (proforma.taxAmount / proforma.totalNet) * 100
+            : 19;
+        setAddInvoiceTaxRate(defaultTaxRate);
+        setAddInvoiceNetAmount(''); // Visually empty, not 0
         setInvoiceData({
           id: Date.now().toString(),
           invoiceNumber: `INV-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 100000)).padStart(5, '0')}`,
@@ -208,9 +218,9 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
           clientName: proforma.clientName,
           clientAddress: proforma.clientAddress || '',
           items: proforma.items || [],
-          totalNet: proforma.totalNet ?? 0,
-          taxAmount: proforma.taxAmount ?? 0,
-          totalGross: proforma.totalGross ?? 0,
+          totalNet: undefined,
+          taxAmount: undefined,
+          totalGross: undefined,
           status: 'Unpaid',
           documentType: 'invoice',
           proformaId: proforma.id,
@@ -228,6 +238,17 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
 
   const isAddProformaMode = Boolean(offer && !invoice && !proforma);
   const isAddInvoiceToProformaMode = Boolean(proforma && !invoice);
+
+  const addInvoiceFinancialValid = (() => {
+    if (!isAddInvoiceToProformaMode) return true;
+    const netNum = parseFloat(addInvoiceNetAmount);
+    const validNet = Number.isFinite(netNum) && netNum > 0;
+    const taxRate = addInvoiceTaxRate;
+    const validTaxRate = Number.isFinite(taxRate) && taxRate >= 0;
+    const taxAmount = validNet ? netNum * (taxRate / 100) : 0;
+    const grossTotal = validNet ? netNum + taxAmount : 0;
+    return validNet && validTaxRate && grossTotal > 0;
+  })();
 
   const handleSave = async () => {
     if (!invoiceData || !senderDetails) return;
@@ -252,6 +273,24 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
       alert('Please attach a PDF file before saving.');
       return;
     }
+    let totalNet: number;
+    let taxAmount: number;
+    let totalGross: number;
+    if (isAddInvoiceToProformaMode) {
+      const netNum = parseFloat(addInvoiceNetAmount);
+      if (!Number.isFinite(netNum) || netNum <= 0) {
+        alert('Please enter a valid Net amount greater than 0.');
+        return;
+      }
+      const taxRate = Number.isFinite(addInvoiceTaxRate) && addInvoiceTaxRate >= 0 ? addInvoiceTaxRate : 0;
+      totalNet = Number(netNum.toFixed(2));
+      taxAmount = Number((totalNet * (taxRate / 100)).toFixed(2));
+      totalGross = Number((totalNet + taxAmount).toFixed(2));
+    } else {
+      totalNet = invoiceData.totalNet!;
+      taxAmount = invoiceData.taxAmount!;
+      totalGross = invoiceData.totalGross!;
+    }
     const finalInvoice: InvoiceData = {
       id: invoiceData.id || Date.now().toString(),
       invoiceNumber: invoiceData.invoiceNumber!,
@@ -261,9 +300,9 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
       clientName: invoiceData.clientName!,
       clientAddress: clientAddress,
       items: invoiceData.items!,
-      totalNet: invoiceData.totalNet!,
-      taxAmount: invoiceData.taxAmount!,
-      totalGross: invoiceData.totalGross!,
+      totalNet,
+      taxAmount,
+      totalGross,
       status: invoiceData.status || 'Unpaid',
       offerIdSource: invoiceData.offerIdSource,
       offerId: invoiceData.offerId,
@@ -327,6 +366,43 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
                 className="w-full bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-xs text-white font-mono"
                 placeholder={isAddProformaMode ? 'PRO-2026-00001' : 'INV-2026-00001'}
               />
+              {isAddInvoiceToProformaMode && (
+                <>
+                  <label className="text-[10px] font-medium text-gray-400 mt-2">Net amount <span className="text-red-400">*</span></label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={addInvoiceNetAmount}
+                    onChange={e => setAddInvoiceNetAmount(e.target.value)}
+                    placeholder=""
+                    className="w-full bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-xs text-white font-mono"
+                  />
+                  <label className="text-[10px] font-medium text-gray-400">Tax rate % <span className="text-red-400">*</span></label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={addInvoiceTaxRate}
+                    onChange={e => setAddInvoiceTaxRate(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-xs text-white font-mono"
+                  />
+                  {(() => {
+                    const netNum = parseFloat(addInvoiceNetAmount);
+                    const validNet = Number.isFinite(netNum) && netNum > 0;
+                    const taxRate = Number.isFinite(addInvoiceTaxRate) && addInvoiceTaxRate >= 0 ? addInvoiceTaxRate : 0;
+                    const taxAmount = validNet ? netNum * (taxRate / 100) : 0;
+                    const grossTotal = validNet ? netNum + taxAmount : 0;
+                    return (
+                      <>
+                        <label className="text-[10px] font-medium text-gray-400">Tax amount</label>
+                        <div className="text-xs text-gray-200 font-mono py-1">€{taxAmount.toFixed(2)}</div>
+                        <label className="text-[10px] font-medium text-gray-400">Gross total</label>
+                        <div className="text-xs text-emerald-300 font-mono font-medium py-1">€{grossTotal.toFixed(2)}</div>
+                      </>
+                    );
+                  })()}
+                </>
+              )}
               {offer && (
                 <div className="mt-3 rounded-lg border border-gray-800/80 overflow-hidden bg-[#111315]/60">
                   {[
@@ -359,7 +435,20 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
                 <div className="mt-3 rounded-lg border border-gray-800/80 overflow-hidden bg-[#111315]/60">
                   <div className="flex items-center gap-3 py-2 px-3 border-b border-gray-800/50"><span className="text-[11px] text-gray-500 font-medium w-24 flex-shrink-0">Client</span><span className="text-xs text-gray-200">{invoiceData.clientName}</span></div>
                   <div className="flex items-center gap-3 py-2 px-3 border-b border-gray-800/50"><span className="text-[11px] text-gray-500 font-medium w-24 flex-shrink-0">Date</span><span className="text-xs text-gray-200">{invoiceData.date}</span></div>
-                  <div className="flex items-center gap-3 py-2 px-3"><span className="text-[11px] text-gray-500 font-medium w-24 flex-shrink-0">Amount</span><span className="text-xs text-gray-200">€{invoiceData.totalGross?.toFixed(2) ?? '—'}</span></div>
+                  <div className="flex items-center gap-3 py-2 px-3">
+                    <span className="text-[11px] text-gray-500 font-medium w-24 flex-shrink-0">Amount</span>
+                    <span className="text-xs text-gray-200">
+                      {isAddInvoiceToProformaMode
+                        ? (() => {
+                            const netNum = parseFloat(addInvoiceNetAmount);
+                            const validNet = Number.isFinite(netNum) && netNum > 0;
+                            const taxRate = Number.isFinite(addInvoiceTaxRate) && addInvoiceTaxRate >= 0 ? addInvoiceTaxRate : 0;
+                            const gross = validNet ? netNum + netNum * (taxRate / 100) : null;
+                            return gross != null ? `€${gross.toFixed(2)}` : '—';
+                          })()
+                        : `€${invoiceData.totalGross?.toFixed(2) ?? '—'}`}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
@@ -568,7 +657,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
             {((isAddProformaMode || isAddInvoiceToProformaMode) ? true : isEditing) && (
                 <button 
                     onClick={handleSave}
-                    disabled={(isAddProformaMode || isAddInvoiceToProformaMode) && (!pdfFile || uploading)}
+                    disabled={(isAddProformaMode || isAddInvoiceToProformaMode) && (!pdfFile || uploading || (isAddInvoiceToProformaMode && !addInvoiceFinancialValid))}
                     className="px-6 py-2 rounded-lg text-sm font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <Save className="w-4 h-4" />
