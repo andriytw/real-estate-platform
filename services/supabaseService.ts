@@ -2224,6 +2224,17 @@ export const invoicesService = {
     return (data || []).map(transformInvoiceFromDB);
   },
 
+  /** All child invoices (document_type = 'invoice'). Used for Payments table Invoiced/Remaining aggregation. */
+  async getInvoices(): Promise<InvoiceData[]> {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('document_type', 'invoice')
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(transformInvoiceFromDB);
+  },
+
   /** Invoices linked to the given booking IDs (for Virtual Documents Manager rental folder). */
   async getInvoicesByBookingIds(bookingIds: string[]): Promise<InvoiceData[]> {
     if (!bookingIds.length) return [];

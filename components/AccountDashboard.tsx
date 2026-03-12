@@ -2266,18 +2266,30 @@ const AccountDashboard: React.FC = () => {
     [legacyOfferRows]
   );
 
-  // Load proformas when Sales > Proformas tab is active
+  // Load proformas and invoiced totals when Sales > Payments tab is active
   useEffect(() => {
     if (activeDepartment !== 'sales' || salesTab !== 'proformas') return;
-    const loadProformas = async () => {
+    const load = async () => {
       try {
-        const list = await invoicesService.getProformas();
+        const [list, childInvoices] = await Promise.all([
+          invoicesService.getProformas(),
+          invoicesService.getInvoices(),
+        ]);
         setProformas(list);
+        const byProforma: Record<string, number> = {};
+        childInvoices.forEach((inv) => {
+          const pid = inv.proformaId;
+          if (pid) {
+            const gross = inv.totalGross ?? 0;
+            byProforma[pid] = (byProforma[pid] ?? 0) + gross;
+          }
+        });
+        setInvoicedTotalByProformaId(byProforma);
       } catch (error) {
-        console.error('Error loading proformas:', error);
+        console.error('Error loading proformas/invoices:', error);
       }
     };
-    loadProformas();
+    load();
   }, [activeDepartment, salesTab]);
 
   // One-time load of proformas on mount for tile 7 (property payments); guarded so we do not double-load
@@ -2429,6 +2441,7 @@ const AccountDashboard: React.FC = () => {
   const proformasLoadStartedRef = useRef(false);
   const [expandedProformaIds, setExpandedProformaIds] = useState<Set<string>>(new Set());
   const [proformaChildInvoices, setProformaChildInvoices] = useState<Record<string, InvoiceData[]>>({});
+  const [invoicedTotalByProformaId, setInvoicedTotalByProformaId] = useState<Record<string, number>>({});
   const [isOfferEditModalOpen, setIsOfferEditModalOpen] = useState(false);
   const [offerToEdit, setOfferToEdit] = useState<OfferData | null>(null);
   const [isMultiOfferDetailsOpen, setIsMultiOfferDetailsOpen] = useState(false);
@@ -4928,6 +4941,23 @@ ${internalCompany} Team`;
     }
   };
 
+  const refreshInvoicedTotals = useCallback(async () => {
+    try {
+      const childInvoices = await invoicesService.getInvoices();
+      const byProforma: Record<string, number> = {};
+      childInvoices.forEach((inv) => {
+        const pid = inv.proformaId;
+        if (pid) {
+          const gross = inv.totalGross ?? 0;
+          byProforma[pid] = (byProforma[pid] ?? 0) + gross;
+        }
+      });
+      setInvoicedTotalByProformaId(byProforma);
+    } catch (e) {
+      console.error('Error refreshing invoiced totals:', e);
+    }
+  }, []);
+
   const handleDeleteProforma = async (proforma: InvoiceData) => {
     if (!window.confirm(`Видалити проформу ${proforma.invoiceNumber}?`)) return;
     try {
@@ -4944,6 +4974,7 @@ ${internalCompany} Team`;
       setProformas(prev => prev.filter(p => p.id !== proforma.id));
       setExpandedProformaIds(prev => { const next = new Set(prev); next.delete(proforma.id); return next; });
       setProformaChildInvoices(prev => { const next = { ...prev }; delete next[proforma.id]; return next; });
+      await refreshInvoicedTotals();
     } catch (e) {
       console.error('Error deleting proforma:', e);
       alert('Не вдалося видалити проформу.');
@@ -4958,6 +4989,7 @@ ${internalCompany} Team`;
         ...prev,
         [proformaId]: (prev[proformaId] ?? []).filter(i => i.id !== inv.id)
       }));
+      await refreshInvoicedTotals();
     } catch (e) {
       console.error('Error deleting invoice:', e);
       alert('Не вдалося видалити інвойс.');
@@ -5254,6 +5286,7 @@ ${internalCompany} Team`;
             ...prev,
             [invoice.proformaId!]: [savedInvoice, ...(prev[invoice.proformaId!] ?? [])],
           }));
+          await refreshInvoicedTotals();
         } else if (savedInvoice.documentType === 'proforma' && !invoice.proformaId) {
           setActiveDepartment('sales');
           setSalesTab('proformas');
@@ -10040,6 +10073,8 @@ ${internalCompany} Team`;
                                 <th className="p-4">Client</th>
                                 <th className="p-4">Date</th>
                                 <th className="p-4">Amount</th>
+                                <th className="p-4">Invoiced</th>
+                                <th className="p-4">Remaining</th>
                                 <th className="p-4">Document</th>
                                 <th className="p-4">Status</th>
                                 <th className="p-4 text-right w-32">Actions</th>
@@ -10067,7 +10102,20 @@ ${internalCompany} Team`;
                                         <td className={`p-4 font-mono ${lost ? 'line-through text-gray-500' : ''}`}>{proforma.invoiceNumber}</td>
                                         <td className={`p-4 ${lost ? 'line-through text-gray-500' : ''}`}>{proforma.clientName}</td>
                                         <td className="p-4 tabular-nums">{formatDateEU(proforma.date)}</td>
-                                        <td className="p-4">€{proforma.totalGross?.toFixed(2) ?? '—'}</td>
+                                        <td className="p-4 tabular-nums">€{proforma.totalGross?.toFixed(2) ?? '—'}</td>
+                                        <td className="p-4 tabular-nums">€{(invoicedTotalByProformaId[proforma.id] ?? 0).toFixed(2)}</td>
+                                        <td className="p-4 tabular-nums">
+                                            {(() => {
+                                              const invTotal = invoicedTotalByProformaId[proforma.id] ?? 0;
+                                              const proformaGross = proforma.totalGross ?? 0;
+                                              const remaining = proformaGross - invTotal;
+                                              const rounded = Number(remaining.toFixed(2));
+                                              if (rounded < 0) {
+                                                return <span className="text-red-400">-€{Math.abs(rounded).toFixed(2)}</span>;
+                                              }
+                                              return <>€{remaining.toFixed(2)}</>;
+                                            })()}
+                                        </td>
                                         <td className="p-4">
                                             <div className="flex flex-wrap items-center gap-2">
                                               {proforma.fileUrl ? (
@@ -10123,6 +10171,8 @@ ${internalCompany} Team`;
                                                     <td className="p-4" />
                                                     <td className="p-4 tabular-nums">{formatDateEU(inv.date)}</td>
                                                     <td className="p-4 tabular-nums">€{inv.totalGross?.toFixed(2) ?? '—'}</td>
+                                                    <td className="p-4 text-gray-500">—</td>
+                                                    <td className="p-4 text-gray-500">—</td>
                                                     <td className="p-4">
                                                         {inv.fileUrl ? (
                                                             <a href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className={DOC_LINK_PILL}>
@@ -10149,7 +10199,7 @@ ${internalCompany} Team`;
                                             ))}
                                             <tr className="text-sm text-gray-400 hover:bg-[#16181D]">
                                                 <td className="p-4" />
-                                                <td colSpan={6} className="p-4 pl-8">
+                                                <td colSpan={8} className="p-4 pl-8">
                                                     <button
                                                         type="button"
                                                         disabled={lost}
@@ -10170,6 +10220,8 @@ ${internalCompany} Team`;
                                                             <td className="p-4" />
                                                             <td className="p-4 tabular-nums text-gray-400">{formatDateEU(proof.createdAt)}</td>
                                                             <td className="p-4" />
+                                                            <td className="p-4 text-gray-500">—</td>
+                                                            <td className="p-4 text-gray-500">—</td>
                                                             <td className="p-4">
                                                                 {proof.filePath ? (
                                                                     <ProofLink filePath={proof.filePath} label="PDF" />
@@ -10207,7 +10259,7 @@ ${internalCompany} Team`;
                             })}
                             {proformas.length === 0 && (
                                 <tr>
-                                    <td colSpan={8} className="p-8 text-center text-gray-500">No payments yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
+                                    <td colSpan={10} className="p-8 text-center text-gray-500">No payments yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
                                 </tr>
                             )}
                         </tbody>
