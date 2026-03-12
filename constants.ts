@@ -36,6 +36,14 @@ export const INTERNAL_COMPANIES_DATA: Record<string, CompanyDetails> = {
     taxId: 'IE555666777',
     email: 'billing@nowflats.com',
     logo: 'N'
+  },
+  'Hero Rooms': {
+    name: 'Hero Rooms',
+    address: '',
+    iban: '',
+    taxId: '',
+    email: '',
+    logo: 'H'
   }
 };
 

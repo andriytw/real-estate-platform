@@ -10061,6 +10061,7 @@ ${internalCompany} Team`;
                             <tr>
                                 <th className="p-4 w-10" />
                                 <th className="p-4">Number</th>
+                                <th className="p-4">Operating Company</th>
                                 <th className="p-4">Client</th>
                                 <th className="px-2 py-2">Date</th>
                                 <th className="px-2 py-2 text-right tabular-nums w-24">Price/night</th>
@@ -10079,6 +10080,9 @@ ${internalCompany} Team`;
                                 const lost = isProformaLost(proforma);
                                 const offerId = proforma.offerId || proforma.offerIdSource;
                                 const linkedOffer = offerId ? offers.find(o => String(o.id) === String(offerId)) : undefined;
+                                const propertyId = getPropertyIdForProforma(proforma, { offers, reservations, confirmedBookings });
+                                const linkedProperty = propertyId ? properties.find(p => String(p.id) === String(propertyId)) : undefined;
+                                const operatingCompanyDisplay = (linkedProperty?.secondCompany?.name ?? '').trim() || (linkedProperty?.tenant?.name ?? '').trim() || '—';
                                 const priceNight = linkedOffer?.nightlyPrice != null ? `€${Number(linkedOffer.nightlyPrice).toFixed(2)}` : '—';
                                 const kautionVal = linkedOffer ? (linkedOffer.kaution != null ? `€${Number(linkedOffer.kaution).toFixed(2)}` : '€0.00') : '—';
                                 const numCell = 'px-2 py-2 text-right tabular-nums whitespace-nowrap';
@@ -10099,6 +10103,7 @@ ${internalCompany} Team`;
                                             </button>
                                         </td>
                                         <td className={`p-4 font-mono ${lost ? 'line-through text-gray-500' : ''}`}>{proforma.invoiceNumber}</td>
+                                        <td className={`p-4 ${lost ? 'line-through text-gray-500' : ''}`}>{operatingCompanyDisplay}</td>
                                         <td className={`p-4 ${lost ? 'line-through text-gray-500' : ''}`}>{proforma.clientName}</td>
                                         <td className="px-2 py-2 tabular-nums">{formatDateEU(proforma.date)}</td>
                                         <td className={numCell}>{priceNight}</td>
@@ -10173,6 +10178,7 @@ ${internalCompany} Team`;
                                                 <tr key={inv.id} className="text-sm text-gray-300 hover:bg-[#16181D]">
                                                     <td className="p-4" />
                                                     <td className="p-4 pl-8 font-mono">{inv.invoiceNumber}</td>
+                                                    <td className="p-4 text-gray-500">—</td>
                                                     <td className="p-4" />
                                                     <td className="px-2 py-2 tabular-nums">{formatDateEU(inv.date)}</td>
                                                     <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
@@ -10207,7 +10213,8 @@ ${internalCompany} Team`;
                                             ))}
                                             <tr className="text-sm text-gray-400 hover:bg-[#16181D]">
                                                 <td className="p-4" />
-                                                <td colSpan={12} className="p-4 pl-8">
+                                                <td className="p-4" />
+                                                <td colSpan={11} className="p-4 pl-8">
                                                     <button
                                                         type="button"
                                                         disabled={lost}
@@ -10225,6 +10232,7 @@ ${internalCompany} Team`;
                                                         <tr key={proof.id} className="text-sm text-gray-300 hover:bg-[#16181D]">
                                                             <td className="p-4" />
                                                             <td className="p-4 pl-8 font-mono">{proof.documentNumber ?? '—'}</td>
+                                                            <td className="p-4 text-gray-500">—</td>
                                                             <td className="p-4" />
                                                             <td className="px-2 py-2 tabular-nums text-gray-400">{formatDateEU(proof.createdAt)}</td>
                                                             <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
@@ -10270,7 +10278,7 @@ ${internalCompany} Team`;
                             })}
                             {proformas.length === 0 && (
                                 <tr>
-                                    <td colSpan={13} className="p-8 text-center text-gray-500">No payments yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
+                                    <td colSpan={14} className="p-8 text-center text-gray-500">No payments yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
                                 </tr>
                             )}
                         </tbody>

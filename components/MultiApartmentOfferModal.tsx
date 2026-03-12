@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, Save, Send, Search, Trash2 } from 'lucide-react';
-import { INTERNAL_COMPANIES_DATA } from '../constants';
 import {
   Lead,
   MultiApartmentOfferDraft,
@@ -29,7 +28,8 @@ interface MultiApartmentOfferModalProps {
   viewData?: OfferViewPayload;
 }
 
-const INTERNAL_COMPANIES = Object.keys(INTERNAL_COMPANIES_DATA);
+/** Fixed brand for all new offers; stored as internalCompany and used in message. */
+const OFFER_BRAND = 'Hero Rooms';
 
 function buildInitialApartments(apartments: SelectedApartmentData[]): MultiApartmentOfferDraftApartment[] {
   return apartments.map((apartment) => ({
@@ -64,7 +64,6 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [internalCompany, setInternalCompany] = useState('Sotiso');
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [selectedApartments, setSelectedApartments] = useState<MultiApartmentOfferDraftApartment[]>([]);
@@ -86,7 +85,6 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     setAddress('');
     setPhone(prefilledRequestData?.phone || '');
     setEmail(prefilledRequestData?.email || '');
-    setInternalCompany('Sotiso');
     setCheckIn(prefilledRequestData?.startDate || '');
     setCheckOut(prefilledRequestData?.endDate || '');
     setSelectedApartments(buildInitialApartments(apartments));
@@ -153,7 +151,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     setClientMessage(
       buildMultiApartmentClientMessage({
         clientLabel,
-        internalCompany,
+        internalCompany: OFFER_BRAND,
         checkIn,
         checkOut,
         apartments: apartmentsWithLiveNumbers,
@@ -162,7 +160,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
         combinedTotals: totals,
       })
     );
-  }, [isOpen, messageDirty, clientType, companyName, firstName, lastName, internalCompany, checkIn, checkOut, selectedApartments, includeTotalInEmail, totals, editableApartmentStrings]);
+  }, [isOpen, messageDirty, clientType, companyName, firstName, lastName, checkIn, checkOut, selectedApartments, includeTotalInEmail, totals, editableApartmentStrings]);
 
   const filteredLeads = useMemo(() => {
     const q = leadSearch.trim().toLowerCase();
@@ -374,7 +372,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
         email,
         recipientEmail: email,
         recipientPhone: phone,
-        internalCompany,
+        internalCompany: OFFER_BRAND,
         clientMessage,
         checkIn,
         checkOut,
@@ -571,18 +569,11 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
             </div>
           </section>
 
-          {/* Offer communication: company + checkbox left, message field right at full height */}
+          {/* Offer communication: checkbox left, message field right at full height */}
           <section className="bg-[#111315] border border-gray-800 rounded-lg p-3">
             <h3 className="text-xs font-semibold text-white uppercase tracking-wide mb-2">Offer communication</h3>
             <div className="flex gap-3 items-stretch">
               <div className="flex flex-col gap-2 min-w-[160px] shrink-0">
-                <div>
-                  <select value={internalCompany} onChange={(e) => setInternalCompany(e.target.value)} className="w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500">
-                    {INTERNAL_COMPANIES.map((company) => (
-                      <option key={company} value={company}>{company}</option>
-                    ))}
-                  </select>
-                </div>
                 <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
                   <input
                     type="checkbox"
