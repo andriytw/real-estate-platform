@@ -10073,7 +10073,6 @@ ${internalCompany} Team`;
                                 <th className="p-4">Client</th>
                                 <th className="p-4">Date</th>
                                 <th className="p-4">Amount</th>
-                                <th className="p-4">Invoiced</th>
                                 <th className="p-4">Remaining</th>
                                 <th className="p-4">Document</th>
                                 <th className="p-4">Status</th>
@@ -10103,17 +10102,19 @@ ${internalCompany} Team`;
                                         <td className={`p-4 ${lost ? 'line-through text-gray-500' : ''}`}>{proforma.clientName}</td>
                                         <td className="p-4 tabular-nums">{formatDateEU(proforma.date)}</td>
                                         <td className="p-4 tabular-nums">€{proforma.totalGross?.toFixed(2) ?? '—'}</td>
-                                        <td className="p-4 tabular-nums">€{(invoicedTotalByProformaId[proforma.id] ?? 0).toFixed(2)}</td>
                                         <td className="p-4 tabular-nums">
                                             {(() => {
                                               const invTotal = invoicedTotalByProformaId[proforma.id] ?? 0;
                                               const proformaGross = proforma.totalGross ?? 0;
                                               const remaining = proformaGross - invTotal;
                                               const rounded = Number(remaining.toFixed(2));
-                                              if (rounded < 0) {
-                                                return <span className="text-red-400">-€{Math.abs(rounded).toFixed(2)}</span>;
+                                              if (rounded > 0) {
+                                                return <span className="text-red-400">€{rounded.toFixed(2)}</span>;
                                               }
-                                              return <>€{remaining.toFixed(2)}</>;
+                                              if (rounded === 0) {
+                                                return <span className="text-emerald-400">€0.00</span>;
+                                              }
+                                              return <>-€{Math.abs(rounded).toFixed(2)}</>;
                                             })()}
                                         </td>
                                         <td className="p-4">
@@ -10172,7 +10173,6 @@ ${internalCompany} Team`;
                                                     <td className="p-4 tabular-nums">{formatDateEU(inv.date)}</td>
                                                     <td className="p-4 tabular-nums">€{inv.totalGross?.toFixed(2) ?? '—'}</td>
                                                     <td className="p-4 text-gray-500">—</td>
-                                                    <td className="p-4 text-gray-500">—</td>
                                                     <td className="p-4">
                                                         {inv.fileUrl ? (
                                                             <a href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className={DOC_LINK_PILL}>
@@ -10199,7 +10199,7 @@ ${internalCompany} Team`;
                                             ))}
                                             <tr className="text-sm text-gray-400 hover:bg-[#16181D]">
                                                 <td className="p-4" />
-                                                <td colSpan={8} className="p-4 pl-8">
+                                                <td colSpan={7} className="p-4 pl-8">
                                                     <button
                                                         type="button"
                                                         disabled={lost}
@@ -10220,7 +10220,6 @@ ${internalCompany} Team`;
                                                             <td className="p-4" />
                                                             <td className="p-4 tabular-nums text-gray-400">{formatDateEU(proof.createdAt)}</td>
                                                             <td className="p-4" />
-                                                            <td className="p-4 text-gray-500">—</td>
                                                             <td className="p-4 text-gray-500">—</td>
                                                             <td className="p-4">
                                                                 {proof.filePath ? (
@@ -10259,7 +10258,7 @@ ${internalCompany} Team`;
                             })}
                             {proformas.length === 0 && (
                                 <tr>
-                                    <td colSpan={10} className="p-8 text-center text-gray-500">No payments yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
+                                    <td colSpan={9} className="p-8 text-center text-gray-500">No payments yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
                                 </tr>
                             )}
                         </tbody>
