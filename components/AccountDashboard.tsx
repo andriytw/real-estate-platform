@@ -9158,7 +9158,6 @@ ${internalCompany} Team`;
                             <tr>
                                 <th className="p-4">Proforma No.</th>
                                 <th className="p-4">Offer No.</th>
-                                <th className="p-4">Reservation No.</th>
                                 <th className="p-4">Client</th>
                                 <th className="p-4">Property</th>
                                 <th className="p-4">Dates</th>
@@ -9171,9 +9170,6 @@ ${internalCompany} Team`;
                                 propertyOffers.map((offer) => {
                                     const isLost = offer.status === 'Lost';
                                     const [offerStart, offerEnd] = (offer.dates ?? '').split(' to ');
-                                    const linkedReservation = offer.reservationId
-                                        ? reservations.find((r) => String(r.id) === String(offer.reservationId))
-                                        : null;
                                     const linkedProforma = invoices.find((inv) => inv.documentType === 'proforma' && (String(inv.offerId ?? inv.offerIdSource) === String(offer.id)));
                                     const getStatusStyle = () => {
                                         if (offer.status === 'Draft') return 'bg-gray-500/20 text-gray-400 border-gray-500';
@@ -9186,7 +9182,6 @@ ${internalCompany} Team`;
                                         <tr key={offer.id} className={`hover:bg-[#16181D] ${isLost ? 'opacity-70' : ''}`}>
                                             <td className={`p-4 font-mono text-sm ${isLost ? 'text-gray-500' : 'text-gray-300'}`}>{linkedProforma?.invoiceNumber ?? '—'}</td>
                                             <td className={`p-4 font-mono text-sm ${isLost ? 'text-gray-500' : 'text-gray-300'}`}>{offer.offerNo ?? '—'}</td>
-                                            <td className={`p-4 font-mono text-sm ${isLost ? 'text-gray-500' : 'text-gray-300'}`}>{linkedReservation?.reservationNo ?? '—'}</td>
                                             <td className={`p-4 font-bold ${isLost ? 'text-gray-500 line-through' : ''}`}>{offer.clientName}</td>
                                             <td className={`p-4 ${isLost ? 'text-gray-500' : ''}`}>{getPropertyNameById(offer.propertyId)}</td>
                                             <td className={`p-4 tabular-nums ${isLost ? 'text-gray-500' : ''}`}>{offerStart && offerEnd ? [offerStart, offerEnd].map((d) => formatDateEU(d)).join(' – ') : '—'}</td>
@@ -9199,7 +9194,7 @@ ${internalCompany} Team`;
                                 })
                             ) : (
                                 <tr>
-                                    <td colSpan={8} className="p-4 text-center text-gray-500">Немає записів</td>
+                                    <td colSpan={7} className="p-4 text-center text-gray-500">Немає записів</td>
                                 </tr>
                             )}
                         </tbody>
@@ -9951,7 +9946,6 @@ ${internalCompany} Team`;
                             <tr>
                                 <th className="p-4">Proforma No.</th>
                                 <th className="p-4">Offer No.</th>
-                                <th className="p-4">Reservation No.</th>
                                 <th className="p-4">Client</th>
                                 <th className="p-4">Property</th>
                                 <th className="p-4">Dates</th>
@@ -9963,9 +9957,6 @@ ${internalCompany} Team`;
                         <tbody className="divide-y divide-gray-800">
                             {allOfferRows.map((row) => {
                                 const rowOffer = offers.find((offer) => offer.id === row.offerId);
-                                const linkedReservation = row.reservationId
-                                  ? reservations.find((reservation) => String(reservation.id) === String(row.reservationId))
-                                  : undefined;
                                 const linkedProforma = invoices.find((inv) => inv.documentType === 'proforma' && String(inv.offerId || inv.offerIdSource) === String(row.offerId));
                                 const isMuted = ['Draft', 'Invoiced', 'Lost', 'Rejected', 'Expired', 'Converted'].includes(row.status);
                                 const getStatusStyle = () => {
@@ -9980,7 +9971,6 @@ ${internalCompany} Team`;
                                   <tr key={row.rowId} className={`hover:bg-[#16181D] ${isMuted ? 'opacity-70' : ''}`}>
                                     <td className="p-4 text-gray-300 font-mono text-sm">{linkedProforma?.invoiceNumber ?? '—'}</td>
                                     <td className="p-4 text-gray-300 font-mono text-sm">{row.offerNo ?? '—'}</td>
-                                    <td className="p-4 text-gray-300 font-mono text-sm">{linkedReservation?.reservationNo ?? '—'}</td>
                                     <td className="p-4 font-bold">{row.clientName}</td>
                                     <td className="p-4">{row.apartmentLine}</td>
                                     <td className="p-4 tabular-nums">{[row.startDate, row.endDate].filter(Boolean).map((d) => formatDateEU(d)).join(' – ')}</td>
@@ -10039,7 +10029,7 @@ ${internalCompany} Team`;
                             })}
                             {allOfferRows.length === 0 && (
                                 <tr>
-                                    <td colSpan={9} className="p-8 text-center text-gray-500">No offers found.</td>
+                                    <td colSpan={8} className="p-8 text-center text-gray-500">No offers found.</td>
                                 </tr>
                             )}
                         </tbody>
@@ -10072,9 +10062,13 @@ ${internalCompany} Team`;
                                 <th className="p-4 w-10" />
                                 <th className="p-4">Number</th>
                                 <th className="p-4">Client</th>
-                                <th className="p-4">Date</th>
-                                <th className="p-4">Amount</th>
-                                <th className="p-4">Remaining</th>
+                                <th className="px-2 py-2">Date</th>
+                                <th className="px-2 py-2 text-right tabular-nums w-24">Price/night</th>
+                                <th className="px-2 py-2 text-right tabular-nums w-20">Net</th>
+                                <th className="px-2 py-2 text-right tabular-nums w-20">VAT</th>
+                                <th className="px-2 py-2 text-right tabular-nums w-20">Kaution</th>
+                                <th className="px-2 py-2 text-right tabular-nums w-20">Gross</th>
+                                <th className="px-2 py-2 text-right tabular-nums">Remaining</th>
                                 <th className="p-4">Document</th>
                                 <th className="p-4">Status</th>
                                 <th className="p-4 text-right w-32">Actions</th>
@@ -10083,6 +10077,11 @@ ${internalCompany} Team`;
                         <tbody className="divide-y divide-gray-800">
                             {proformas.map(proforma => {
                                 const lost = isProformaLost(proforma);
+                                const offerId = proforma.offerId || proforma.offerIdSource;
+                                const linkedOffer = offerId ? offers.find(o => String(o.id) === String(offerId)) : undefined;
+                                const priceNight = linkedOffer?.nightlyPrice != null ? `€${Number(linkedOffer.nightlyPrice).toFixed(2)}` : '—';
+                                const kautionVal = linkedOffer ? (linkedOffer.kaution != null ? `€${Number(linkedOffer.kaution).toFixed(2)}` : '€0.00') : '—';
+                                const numCell = 'px-2 py-2 text-right tabular-nums whitespace-nowrap';
                                 return (
                                 <React.Fragment key={proforma.id}>
                                     <tr className={`hover:bg-[#16181D] border-b border-white/5 ${lost ? 'opacity-70 text-gray-500' : ''}`}>
@@ -10101,9 +10100,13 @@ ${internalCompany} Team`;
                                         </td>
                                         <td className={`p-4 font-mono ${lost ? 'line-through text-gray-500' : ''}`}>{proforma.invoiceNumber}</td>
                                         <td className={`p-4 ${lost ? 'line-through text-gray-500' : ''}`}>{proforma.clientName}</td>
-                                        <td className="p-4 tabular-nums">{formatDateEU(proforma.date)}</td>
-                                        <td className="p-4 tabular-nums">€{proforma.totalGross?.toFixed(2) ?? '—'}</td>
-                                        <td className="p-4 tabular-nums">
+                                        <td className="px-2 py-2 tabular-nums">{formatDateEU(proforma.date)}</td>
+                                        <td className={numCell}>{priceNight}</td>
+                                        <td className={numCell}>{proforma.totalNet != null ? `€${Number(proforma.totalNet).toFixed(2)}` : '—'}</td>
+                                        <td className={numCell}>{proforma.taxAmount != null ? `€${Number(proforma.taxAmount).toFixed(2)}` : '—'}</td>
+                                        <td className={numCell}>{kautionVal}</td>
+                                        <td className={numCell}>{proforma.totalGross != null ? `€${Number(proforma.totalGross).toFixed(2)}` : '—'}</td>
+                                        <td className={`${numCell} text-right`}>
                                             {(() => {
                                               const invTotal = invoicedTotalByProformaId[proforma.id] ?? 0;
                                               const proformaGross = proforma.totalGross ?? 0;
@@ -10171,9 +10174,13 @@ ${internalCompany} Team`;
                                                     <td className="p-4" />
                                                     <td className="p-4 pl-8 font-mono">{inv.invoiceNumber}</td>
                                                     <td className="p-4" />
-                                                    <td className="p-4 tabular-nums">{formatDateEU(inv.date)}</td>
-                                                    <td className="p-4 tabular-nums">€{inv.totalGross?.toFixed(2) ?? '—'}</td>
-                                                    <td className="p-4 text-gray-500">—</td>
+                                                    <td className="px-2 py-2 tabular-nums">{formatDateEU(inv.date)}</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums">€{inv.totalGross?.toFixed(2) ?? '—'}</td>
+                                                    <td className="px-2 py-2 text-gray-500">—</td>
                                                     <td className="p-4">
                                                         {inv.fileUrl ? (
                                                             <a href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className={DOC_LINK_PILL}>
@@ -10200,7 +10207,7 @@ ${internalCompany} Team`;
                                             ))}
                                             <tr className="text-sm text-gray-400 hover:bg-[#16181D]">
                                                 <td className="p-4" />
-                                                <td colSpan={7} className="p-4 pl-8">
+                                                <td colSpan={12} className="p-4 pl-8">
                                                     <button
                                                         type="button"
                                                         disabled={lost}
@@ -10219,9 +10226,13 @@ ${internalCompany} Team`;
                                                             <td className="p-4" />
                                                             <td className="p-4 pl-8 font-mono">{proof.documentNumber ?? '—'}</td>
                                                             <td className="p-4" />
-                                                            <td className="p-4 tabular-nums text-gray-400">{formatDateEU(proof.createdAt)}</td>
-                                                            <td className="p-4" />
-                                                            <td className="p-4 text-gray-500">—</td>
+                                                            <td className="px-2 py-2 tabular-nums text-gray-400">{formatDateEU(proof.createdAt)}</td>
+                                                            <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
+                                                            <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
+                                                            <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
+                                                            <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
+                                                            <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
+                                                            <td className="px-2 py-2 text-gray-500">—</td>
                                                             <td className="p-4">
                                                                 {proof.filePath ? (
                                                                     <ProofLink filePath={proof.filePath} label="PDF" />
@@ -10259,7 +10270,7 @@ ${internalCompany} Team`;
                             })}
                             {proformas.length === 0 && (
                                 <tr>
-                                    <td colSpan={9} className="p-8 text-center text-gray-500">No payments yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
+                                    <td colSpan={13} className="p-8 text-center text-gray-500">No payments yet. Add a proforma from an offer (Offers tab → Add Proforma).</td>
                                 </tr>
                             )}
                         </tbody>
