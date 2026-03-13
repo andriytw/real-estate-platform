@@ -473,8 +473,9 @@ const AppContent: React.FC = () => {
     // Never show Login due to timeout — only Reconnecting… while worker loads.
     const protectedViews = ['account', 'dashboard', 'worker', 'tasks'];
     const isProtected = protectedViews.includes(currentView);
+    const missingWorker = worker == null;
 
-    if (isProtected && authLoading) {
+    if (isProtected && missingWorker && authLoading) {
       return (
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-white mb-2">Reconnecting…</div>
@@ -483,7 +484,7 @@ const AppContent: React.FC = () => {
       );
     }
 
-    if (isProtected && session !== null && profileLoadStatus === 'loading') {
+    if (isProtected && missingWorker && session !== null && profileLoadStatus === 'loading') {
       return (
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-white mb-2">Reconnecting…</div>
@@ -492,7 +493,7 @@ const AppContent: React.FC = () => {
       );
     }
 
-    if (isProtected && session !== null && profileLoadStatus === 'timed_out') {
+    if (isProtected && missingWorker && session !== null && profileLoadStatus === 'timed_out') {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen text-gray-400">
           <div className="text-white mb-2">Loading is taking longer than usual</div>
@@ -509,7 +510,7 @@ const AppContent: React.FC = () => {
       );
     }
 
-    if (isProtected && session !== null && profileLoadStatus === 'error') {
+    if (isProtected && missingWorker && session !== null && profileLoadStatus === 'error') {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen text-gray-400">
           <div className="text-white mb-2">Could not load your profile</div>
