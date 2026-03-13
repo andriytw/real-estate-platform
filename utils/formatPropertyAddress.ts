@@ -37,3 +37,32 @@ export function formatPropertyAddress(
     (p.address_label ?? '').trim();
   return fallback || '-';
 }
+
+/** Property-like shape for display label (address + apartment code). */
+export interface PropertyDisplayLike extends PropertyAddressLike {
+  title?: string | null;
+}
+
+/**
+ * Display label: "Street / address — apartment code".
+ * Used in Client History modal (Rental, Financials, Offers) and Create Booking property dropdown.
+ */
+export function getPropertyDisplayLabel(
+  p: PropertyDisplayLike | null | undefined,
+  options?: { maxAddressChars?: number }
+): string {
+  if (p == null) return '—';
+  const codePart = (p.title ?? '').trim() || '—';
+  const maxChars = options?.maxAddressChars;
+
+  let addressPart = (p.fullAddress ?? '').trim() || formatPropertyAddress(p);
+  if (addressPart === '-') addressPart = (p.address ?? '').trim() || '—';
+
+  if (maxChars != null && addressPart.length > maxChars) {
+    const short = (p.address ?? '').trim() || addressPart;
+    addressPart = short.length > maxChars ? short.slice(0, maxChars).trim() + '…' : short;
+  }
+
+  if (addressPart === '—' && codePart === '—') return '—';
+  return `${addressPart} — ${codePart}`;
+}

@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import type { Lead, Property } from '../types';
+import { getPropertyDisplayLabel } from '../utils/formatPropertyAddress';
 
 export interface CreateBookingModalProps {
   lead: Lead;
@@ -120,7 +121,7 @@ const CreateBookingModal: React.FC<CreateBookingModalProps> = ({ lead, propertie
             <select value={propertyId} onChange={(e) => setPropertyId(e.target.value)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white">
               <option value="">Select property</option>
               {properties.map((p) => (
-                <option key={p.id} value={p.id}>{p.title ?? p.address ?? p.id}</option>
+                <option key={p.id} value={p.id}>{getPropertyDisplayLabel(p)}</option>
               ))}
             </select>
           </div>

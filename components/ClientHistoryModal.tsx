@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { X, User, Mail, Phone, MapPin } from 'lucide-react';
 import type { Lead, Booking, InvoiceData, ReservationData, Property } from '../types';
 import { buildClientHistoryForLead, type ClientHistoryContext, type ClientHistory } from '../utils/clientHistory';
+import { getPropertyDisplayLabel } from '../utils/formatPropertyAddress';
 import CreateBookingModal from './CreateBookingModal';
 
 export interface ClientHistoryModalProps {
@@ -26,10 +27,11 @@ function formatCurrency(amount: number): string {
   return `${Number(amount).toFixed(2).replace('.', ',')} €`;
 }
 
-function getPropertyName(propertyId: string | undefined, properties: Property[]): string {
+function getPropertyDisplayLabelForTable(propertyId: string | undefined, properties: Property[]): string {
   if (!propertyId) return '—';
   const p = properties.find((x) => String(x.id) === String(propertyId));
-  return p?.title ?? p?.address ?? String(propertyId).slice(0, 8);
+  if (!p) return `#${String(propertyId).slice(0, 8)}`;
+  return getPropertyDisplayLabel(p, { maxAddressChars: 50 });
 }
 
 type TabId = 'overview' | 'rental' | 'financials' | 'offers' | 'activity';
@@ -127,13 +129,13 @@ const ClientHistoryModal: React.FC<ClientHistoryModalProps> = ({ lead, onClose, 
             <OverviewTab history={history} properties={properties} formatDateEU={formatDateEU} formatCurrency={formatCurrency} />
           )}
           {activeTab === 'rental' && (
-            <RentalTab history={history} properties={properties} formatDateEU={formatDateEU} getPropertyName={getPropertyName} />
+            <RentalTab history={history} properties={properties} formatDateEU={formatDateEU} getPropertyName={getPropertyDisplayLabelForTable} />
           )}
           {activeTab === 'financials' && (
-            <FinancialsTab history={history} properties={properties} formatDateEU={formatDateEU} formatCurrency={formatCurrency} getPropertyName={getPropertyName} />
+            <FinancialsTab history={history} properties={properties} formatDateEU={formatDateEU} formatCurrency={formatCurrency} getPropertyName={getPropertyDisplayLabelForTable} />
           )}
           {activeTab === 'offers' && (
-            <OffersTab history={history} properties={properties} formatDateEU={formatDateEU} formatCurrency={formatCurrency} getPropertyName={getPropertyName} />
+            <OffersTab history={history} properties={properties} formatDateEU={formatDateEU} formatCurrency={formatCurrency} getPropertyName={getPropertyDisplayLabelForTable} />
           )}
           {activeTab === 'activity' && (
             <ActivityTab history={history} formatDateEU={formatDateEU} />
