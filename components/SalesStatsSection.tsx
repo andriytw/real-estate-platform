@@ -141,6 +141,9 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
   const [isPaidModalOpen, setIsPaidModalOpen] = useState(false);
   const [isOpenModalOpen, setIsOpenModalOpen] = useState(false);
   const [isKautionLiabilityModalOpen, setIsKautionLiabilityModalOpen] = useState(false);
+  const [paidModalOpCo, setPaidModalOpCo] = useState<string>('All companies');
+  const [openModalOpCo, setOpenModalOpCo] = useState<string>('All companies');
+  const [kautionModalOpCo, setKautionModalOpCo] = useState<string>('All companies');
   const [proofsByInvoiceId, setProofsByInvoiceId] = useState<Record<string, PaymentProof[]>>({});
 
   const opCoMatch = useCallback(
@@ -179,6 +182,36 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
   const kautionLiabilityTotal = useMemo(
     () => kautionLiabilityProformas.reduce((sum, p) => sum + p.kautionAmount, 0),
     [kautionLiabilityProformas]
+  );
+
+  const paidModalOpCoOptions = useMemo(() => {
+    const set = new Set<string>();
+    paidProformas.forEach((p) => { if (p.operatingCompany && p.operatingCompany !== '—') set.add(p.operatingCompany); });
+    return ['All companies', ...Array.from(set).sort()];
+  }, [paidProformas]);
+  const paidModalFiltered = useMemo(
+    () => paidModalOpCo === 'All companies' ? paidProformas : paidProformas.filter((p) => p.operatingCompany === paidModalOpCo),
+    [paidProformas, paidModalOpCo]
+  );
+
+  const openModalOpCoOptions = useMemo(() => {
+    const set = new Set<string>();
+    openProformas.forEach((p) => { if (p.operatingCompany && p.operatingCompany !== '—') set.add(p.operatingCompany); });
+    return ['All companies', ...Array.from(set).sort()];
+  }, [openProformas]);
+  const openModalFiltered = useMemo(
+    () => openModalOpCo === 'All companies' ? openProformas : openProformas.filter((p) => p.operatingCompany === openModalOpCo),
+    [openProformas, openModalOpCo]
+  );
+
+  const kautionModalOpCoOptions = useMemo(() => {
+    const set = new Set<string>();
+    kautionLiabilityProformas.forEach((p) => { if (p.operatingCompany && p.operatingCompany !== '—') set.add(p.operatingCompany); });
+    return ['All companies', ...Array.from(set).sort()];
+  }, [kautionLiabilityProformas]);
+  const kautionModalFiltered = useMemo(
+    () => kautionModalOpCo === 'All companies' ? kautionLiabilityProformas : kautionLiabilityProformas.filter((p) => p.operatingCompany === kautionModalOpCo),
+    [kautionLiabilityProformas, kautionModalOpCo]
   );
 
   const paidGross = useMemo(() => paidProformas.reduce((s, p) => s + (p.totalGross ?? 0), 0), [paidProformas]);
@@ -355,15 +388,27 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
       {isPaidModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="bg-[#1C1F24] rounded-xl border border-gray-700 shadow-xl max-w-4xl w-full max-h-[85vh] flex flex-col">
-            <div className="px-4 py-3 border-b border-gray-700 flex justify-between items-center">
+            <div className="px-4 py-3 border-b border-gray-700 flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-lg font-bold text-white">Paid Proformas</h3>
-              <button
-                type="button"
-                onClick={() => setIsPaidModalOpen(false)}
-                className="p-1.5 text-gray-400 hover:text-white rounded transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-400 whitespace-nowrap">Operating Company</label>
+                <select
+                  value={paidModalOpCo}
+                  onChange={(e) => setPaidModalOpCo(e.target.value)}
+                  className="bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500 min-w-[160px]"
+                >
+                  {paidModalOpCoOptions.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setIsPaidModalOpen(false)}
+                  className="p-1.5 text-gray-400 hover:text-white rounded transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
             <div className="overflow-auto p-4">
               <table className="w-full text-sm text-left">
@@ -381,7 +426,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
-                  {paidProformas.map((p) => (
+                  {paidModalFiltered.map((p) => (
                     <tr key={p.id} className="hover:bg-[#16181D]">
                       <td className="p-2 font-mono text-white">{p.invoiceNumber}</td>
                       <td className="p-2 text-gray-300">{p.operatingCompany}</td>
@@ -408,7 +453,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                   ))}
                 </tbody>
               </table>
-              {paidProformas.length === 0 && (
+              {paidModalFiltered.length === 0 && (
                 <p className="p-4 text-center text-gray-500">No paid proformas for this period.</p>
               )}
             </div>
@@ -420,15 +465,27 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
       {isOpenModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="bg-[#1C1F24] rounded-xl border border-gray-700 shadow-xl max-w-4xl w-full max-h-[85vh] flex flex-col">
-            <div className="px-4 py-3 border-b border-gray-700 flex justify-between items-center">
+            <div className="px-4 py-3 border-b border-gray-700 flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-lg font-bold text-white">Open Proformas</h3>
-              <button
-                type="button"
-                onClick={() => setIsOpenModalOpen(false)}
-                className="p-1.5 text-gray-400 hover:text-white rounded transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-400 whitespace-nowrap">Operating Company</label>
+                <select
+                  value={openModalOpCo}
+                  onChange={(e) => setOpenModalOpCo(e.target.value)}
+                  className="bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500 min-w-[160px]"
+                >
+                  {openModalOpCoOptions.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setIsOpenModalOpen(false)}
+                  className="p-1.5 text-gray-400 hover:text-white rounded transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
             <div className="overflow-auto p-4">
               <table className="w-full text-sm text-left">
@@ -447,7 +504,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
-                  {openProformas.map((p) => (
+                  {openModalFiltered.map((p) => (
                     <tr key={p.id} className="hover:bg-[#16181D]">
                       <td className="p-2 font-mono text-white">{p.invoiceNumber}</td>
                       <td className="p-2 text-gray-300">{p.operatingCompany}</td>
@@ -475,7 +532,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                   ))}
                 </tbody>
               </table>
-              {openProformas.length === 0 && (
+              {openModalFiltered.length === 0 && (
                 <p className="p-4 text-center text-gray-500">No open proformas for this period.</p>
               )}
             </div>
@@ -487,15 +544,27 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
       {isKautionLiabilityModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="bg-[#1C1F24] rounded-xl border border-gray-700 shadow-xl max-w-4xl w-full max-h-[85vh] flex flex-col">
-            <div className="px-4 py-3 border-b border-gray-700 flex justify-between items-center">
+            <div className="px-4 py-3 border-b border-gray-700 flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-lg font-bold text-white">Kaution Liability — Open deposits</h3>
-              <button
-                type="button"
-                onClick={() => setIsKautionLiabilityModalOpen(false)}
-                className="p-1.5 text-gray-400 hover:text-white rounded transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-400 whitespace-nowrap">Operating Company</label>
+                <select
+                  value={kautionModalOpCo}
+                  onChange={(e) => setKautionModalOpCo(e.target.value)}
+                  className="bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500 min-w-[160px]"
+                >
+                  {kautionModalOpCoOptions.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setIsKautionLiabilityModalOpen(false)}
+                  className="p-1.5 text-gray-400 hover:text-white rounded transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
             <div className="overflow-auto p-4">
               <table className="w-full text-sm text-left">
@@ -512,7 +581,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
-                  {kautionLiabilityProformas.map((p) => (
+                  {kautionModalFiltered.map((p) => (
                     <tr key={p.id} className="hover:bg-[#16181D]">
                       <td className="p-2 font-mono text-white">{p.invoiceNumber}</td>
                       <td className="p-2 text-gray-300">{p.operatingCompany}</td>
@@ -540,7 +609,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                   ))}
                 </tbody>
               </table>
-              {kautionLiabilityProformas.length === 0 && (
+              {kautionModalFiltered.length === 0 && (
                 <p className="p-4 text-center text-gray-500">No open deposits.</p>
               )}
             </div>
