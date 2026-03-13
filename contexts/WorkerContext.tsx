@@ -338,6 +338,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       if (data.session) {
         setSession(data.session);
         const result = await loadWorkerWithTimeoutFeedback();
+        bootstrapCompleteRef.current = true;
         if (result.status === 'error') {
           throw new Error('Worker profile not found. Please contact administrator.');
         }

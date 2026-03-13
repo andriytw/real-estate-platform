@@ -565,7 +565,7 @@ const AppContent: React.FC = () => {
       return (
         <div className="animate-fadeIn">
           <ErrorBoundary>
-            <AccountDashboard />
+            <AccountDashboard initialProperties={properties} />
           </ErrorBoundary>
         </div>
       );

@@ -520,9 +520,22 @@ function getActiveRentTimelineRow<T extends { validFrom: string; validTo: string
   return sorted[0];
 }
 
-const AccountDashboard: React.FC = () => {
+interface AccountDashboardProps {
+  /** Lightweight properties from App (marketplace load). Used only as initial seed; dashboard owns state after mount. */
+  initialProperties?: Property[];
+  /** Optional pre-selected property id when it represents a valid dashboard-side selection. Must exist in initialProperties. */
+  initialSelectedPropertyId?: string;
+}
+
+const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties = [], initialSelectedPropertyId }) => {
   const { worker, logout } = useWorker();
-  
+
+  const initialProps = initialProperties ?? [];
+  const initialId =
+    initialSelectedPropertyId && initialProps.some((p) => p.id === initialSelectedPropertyId)
+      ? initialSelectedPropertyId
+      : initialProps[0]?.id ?? '';
+
   // Navigation State
   const [activeDepartment, setActiveDepartment] = useState<Department>('properties');
   const [expandedSections, setExpandedSections] = useState<Record<Department, boolean>>({
@@ -533,22 +546,22 @@ const AccountDashboard: React.FC = () => {
     sales: true,
     tasks: true
   });
-  
+
   const [propertiesTab, setPropertiesTab] = useState<PropertiesTab>('list');
   const [facilityTab, setFacilityTab] = useState<FacilityTab>('overview');
   const [accountingTab, setAccountingTab] = useState<AccountingTab>('dashboard');
   const [salesTab, setSalesTab] = useState<SalesTab>('leads');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const [properties, setProperties] = useState<Property[]>([]);
+  const [properties, setProperties] = useState<Property[]>(initialProps);
   const [propertySearch, setPropertySearch] = useState('');
   const [archiveFilter, setArchiveFilter] = useState<'active' | 'archived'>('active');
   const [propertyMenuOpenId, setPropertyMenuOpenId] = useState<string | null>(null);
   const [archiveModalPropertyId, setArchiveModalPropertyId] = useState<string | null>(null);
   const [deleteModalPropertyId, setDeleteModalPropertyId] = useState<string | null>(null);
   const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
-  const [isLoadingProperties, setIsLoadingProperties] = useState(true);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string>(initialId);
+  const [isLoadingProperties, setIsLoadingProperties] = useState(initialProps.length === 0);
   const [einzugAuszugTasks, setEinzugAuszugTasks] = useState<CalendarEvent[]>([]);
 
   // Load Einzug/Auszug tasks for selected property
@@ -6047,7 +6060,31 @@ ${internalCompany} Team`;
   };
 
   const renderPropertiesContent = () => {
-    if (!selectedProperty) return <div>Loading...</div>;
+    if (!selectedProperty) {
+      return (
+        <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-[#111315]" aria-busy="true">
+          <div className="w-full md:w-[350px] flex-shrink-0 border-r border-gray-800 p-4 space-y-3 bg-[#161B22] animate-pulse">
+            <div className="h-10 rounded-lg bg-gray-800/60" />
+            <div className="h-9 rounded-lg bg-gray-800/60" />
+            <div className="flex gap-2">
+              <div className="h-8 flex-1 rounded-md bg-gray-800/60" />
+              <div className="h-8 flex-1 rounded-md bg-gray-800/60" />
+            </div>
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-24 rounded-xl bg-gray-800/60" />
+            ))}
+          </div>
+          <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-[#0D1117] animate-pulse">
+            <div className="h-64 rounded-xl bg-gray-800/60 mb-8" />
+            <div className="space-y-6">
+              <div className="h-32 rounded-xl bg-gray-800/60" />
+              <div className="h-48 rounded-xl bg-gray-800/60" />
+              <div className="h-40 rounded-xl bg-gray-800/60" />
+            </div>
+          </div>
+        </div>
+      );
+    }
     const expense = selectedProperty.ownerExpense || { mortgage: 0, management: 0, taxIns: 0, reserve: 0 };
     const totalExpense = expense.mortgage + expense.management + expense.taxIns + expense.reserve;
     const totalInventoryCost = propertyInventoryItems.reduce((acc, item) => {
