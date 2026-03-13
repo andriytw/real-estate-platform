@@ -56,6 +56,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   const [workerError, setWorkerError] = useState<string | null>(null);
   const [profileLoadStatus, setProfileLoadStatus] = useState<ProfileLoadStatus>('idle');
   const initialWorkerLoadStartedRef = useRef(false);
+  const bootstrapCompleteRef = useRef(false);
   const activeProfileLoadIdRef = useRef(0);
   const workerRef = useRef<Worker | null>(null);
 
@@ -269,6 +270,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
         }
         initialWorkerLoadStartedRef.current = true;
         await loadWorkerWithTimeoutFeedback();
+        bootstrapCompleteRef.current = true;
         if (!mounted) return;
       } else {
         invalidateActiveProfileLoad();
@@ -297,6 +299,8 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
       if (event === 'SIGNED_OUT') {
         invalidateActiveProfileLoad();
+        bootstrapCompleteRef.current = false;
+        initialWorkerLoadStartedRef.current = false;
         setSession(null);
         setProfileLoadStatus('idle');
         setWorker(null);
@@ -305,6 +309,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       }
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && s) {
         setSession(s);
+        if (!bootstrapCompleteRef.current) return;
         await loadWorkerWhenSessionExists();
       }
       if (event === 'INITIAL_SESSION') {
@@ -313,6 +318,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
           if (!initialWorkerLoadStartedRef.current) {
             initialWorkerLoadStartedRef.current = true;
             await loadWorkerWhenSessionExists();
+            bootstrapCompleteRef.current = true;
           }
         } else {
           invalidateActiveProfileLoad();
@@ -345,6 +351,8 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     try {
       await supabase.auth.signOut();
       invalidateActiveProfileLoad();
+      bootstrapCompleteRef.current = false;
+      initialWorkerLoadStartedRef.current = false;
       setSession(null);
       setProfileLoadStatus('idle');
       setWorker(null);
