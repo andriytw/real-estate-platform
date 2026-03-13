@@ -13,6 +13,7 @@ import OfferEditModal from './OfferEditModal';
 import MultiApartmentOfferDetailsModal from './MultiApartmentOfferDetailsModal';
 import MultiApartmentOfferModal from './MultiApartmentOfferModal';
 import LeadEditModal from './LeadEditModal';
+import ClientHistoryModal from './ClientHistoryModal';
 import PropertyAddModal from './PropertyAddModal';
 import RequestModal from './RequestModal';
 import ConfirmPaymentModal from './ConfirmPaymentModal';
@@ -2497,6 +2498,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const [proofSignedUrlByInvoiceId, setProofSignedUrlByInvoiceId] = useState<Record<string, string>>({});
   const [paymentProofModal, setPaymentProofModal] = useState<{ mode: 'add' | 'replace'; proof: PaymentProof } | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [clientHistoryLead, setClientHistoryLead] = useState<Lead | null>(null);
 
   /** Load payment proofs for given invoice ids and signed URLs for current proofs. */
   const loadPaymentProofsForInvoiceIds = async (invoiceIds: string[]) => {
@@ -9855,7 +9857,11 @@ ${internalCompany} Team`;
                         </thead>
                         <tbody className="divide-y divide-gray-800">
                             {leads.map(lead => (
-                                <tr key={lead.id} className="hover:bg-[#16181D]">
+                                <tr
+                                    key={lead.id}
+                                    onClick={() => setClientHistoryLead(lead)}
+                                    className="hover:bg-[#16181D] cursor-pointer"
+                                >
                                     <td className="p-4 text-gray-400">#{String(lead.id).slice(0, 8)}</td>
                                     <td className="p-4 font-bold">{lead.name}</td>
                                     <td className="p-4">
@@ -9878,10 +9884,10 @@ ${internalCompany} Team`;
                                         </span>
                                     </td>
                                     <td className="p-4 text-gray-400">{typeof lead.createdAt === 'string' ? lead.createdAt.slice(0, 10) : lead.createdAt}</td>
-                                    <td className="p-4 text-center">
+                                    <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
                                         <div className="flex items-center justify-center gap-2">
-                                            <button type="button" onClick={() => setEditingLead(lead)} className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors" title="Редагувати"><Edit className="w-4 h-4" /></button>
-                                            <button type="button" onClick={() => handleDeleteLead(lead.id)} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити"><Trash2 className="w-4 h-4" /></button>
+                                            <button type="button" onClick={(e) => { e.stopPropagation(); setEditingLead(lead); }} className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors" title="Редагувати"><Edit className="w-4 h-4" /></button>
+                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteLead(lead.id); }} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити"><Trash2 className="w-4 h-4" /></button>
                                         </div>
                                     </td>
                                 </tr>
@@ -11864,6 +11870,22 @@ ${internalCompany} Team`;
           lead={editingLead}
           onClose={() => setEditingLead(null)}
           onSave={(updates) => handleSaveLeadEdit(editingLead.id, updates)}
+        />
+      )}
+      {clientHistoryLead && (
+        <ClientHistoryModal
+          lead={clientHistoryLead}
+          onClose={() => setClientHistoryLead(null)}
+          context={{
+            leads,
+            offers,
+            reservations,
+            confirmedBookings,
+            invoices,
+            proformas,
+            properties,
+            paymentProofsByInvoiceId,
+          }}
         />
       )}
       <PropertyAddModal 
