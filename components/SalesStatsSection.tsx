@@ -138,6 +138,8 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
   const [statsModalItems, setStatsModalItems] = useState<(Booking | CalendarEvent)[]>([]);
   const [statsModalDate, setStatsModalDate] = useState<Date>(new Date());
   const [statsModalTitle, setStatsModalTitle] = useState<string>('');
+  const [isPaidModalOpen, setIsPaidModalOpen] = useState(false);
+  const [isOpenModalOpen, setIsOpenModalOpen] = useState(false);
   const [isKautionLiabilityModalOpen, setIsKautionLiabilityModalOpen] = useState(false);
   const [proofsByInvoiceId, setProofsByInvoiceId] = useState<Record<string, PaymentProof[]>>({});
 
@@ -291,22 +293,30 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
 
         {/* Proforma tiles */}
         <div className="flex flex-wrap gap-4">
-          <div className={tileClass}>
+          <button
+            type="button"
+            onClick={() => setIsPaidModalOpen(true)}
+            className={`${tileClass} text-left hover:border-emerald-600/50 hover:bg-[#23262b] transition-colors cursor-pointer`}
+          >
             <div className={tileTitleClass}>Paid Proformas</div>
             <div className={amountClass}>€{paidGross.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             <div className={countClass}>{paidProformas.length} proformas</div>
             <div className="mt-2 text-xs text-gray-500 space-y-0.5">
               <div>Net €{paidNet.toLocaleString('de-DE', { minimumFractionDigits: 2 })} · VAT €{paidVat.toLocaleString('de-DE', { minimumFractionDigits: 2 })} · Kaution €{paidKaution.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</div>
             </div>
-          </div>
-          <div className={tileClass}>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsOpenModalOpen(true)}
+            className={`${tileClass} text-left hover:border-emerald-600/50 hover:bg-[#23262b] transition-colors cursor-pointer`}
+          >
             <div className={tileTitleClass}>Open Proformas</div>
             <div className={amountClass}>€{openGross.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             <div className={countClass}>{openProformas.length} proformas</div>
             <div className="mt-2 text-xs text-gray-500 space-y-0.5">
               <div>Net €{openNet.toLocaleString('de-DE', { minimumFractionDigits: 2 })} · VAT €{openVat.toLocaleString('de-DE', { minimumFractionDigits: 2 })} · Kaution €{openKaution.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</div>
             </div>
-          </div>
+          </button>
           <button
             type="button"
             onClick={() => setIsKautionLiabilityModalOpen(true)}
@@ -340,6 +350,138 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
         properties={properties}
         date={statsModalDate}
       />
+
+      {/* Paid Proformas detail modal — same shell as Kaution Liability */}
+      {isPaidModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-[#1C1F24] rounded-xl border border-gray-700 shadow-xl max-w-4xl w-full max-h-[85vh] flex flex-col">
+            <div className="px-4 py-3 border-b border-gray-700 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-white">Paid Proformas</h3>
+              <button
+                type="button"
+                onClick={() => setIsPaidModalOpen(false)}
+                className="p-1.5 text-gray-400 hover:text-white rounded transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="overflow-auto p-4">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                  <tr>
+                    <th className="p-2">Proforma Number</th>
+                    <th className="p-2">Operating Company</th>
+                    <th className="p-2">Client</th>
+                    <th className="p-2">Date</th>
+                    <th className="p-2 text-right">Net</th>
+                    <th className="p-2 text-right">VAT</th>
+                    <th className="p-2 text-right">Kaution</th>
+                    <th className="p-2 text-right">Gross</th>
+                    <th className="p-2 text-right">View</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800">
+                  {paidProformas.map((p) => (
+                    <tr key={p.id} className="hover:bg-[#16181D]">
+                      <td className="p-2 font-mono text-white">{p.invoiceNumber}</td>
+                      <td className="p-2 text-gray-300">{p.operatingCompany}</td>
+                      <td className="p-2 text-gray-300">{p.clientName}</td>
+                      <td className="p-2 tabular-nums text-gray-300">{formatDateEU(p.date)}</td>
+                      <td className="p-2 text-right tabular-nums text-white">€{(p.totalNet ?? 0).toFixed(2)}</td>
+                      <td className="p-2 text-right tabular-nums text-gray-300">€{(p.taxAmount ?? 0).toFixed(2)}</td>
+                      <td className="p-2 text-right tabular-nums text-gray-300">€{p.kautionAmount.toFixed(2)}</td>
+                      <td className="p-2 text-right tabular-nums text-white">€{(p.totalGross ?? 0).toFixed(2)}</td>
+                      <td className="p-2 text-right">
+                        {onViewProforma ? (
+                          <button
+                            type="button"
+                            onClick={() => { onViewProforma(p.id); setIsPaidModalOpen(false); }}
+                            className="text-emerald-400 hover:text-emerald-300 text-xs font-medium"
+                          >
+                            View
+                          </button>
+                        ) : (
+                          <span className="text-gray-500">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {paidProformas.length === 0 && (
+                <p className="p-4 text-center text-gray-500">No paid proformas for this period.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Open Proformas detail modal — same shell as Kaution Liability */}
+      {isOpenModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-[#1C1F24] rounded-xl border border-gray-700 shadow-xl max-w-4xl w-full max-h-[85vh] flex flex-col">
+            <div className="px-4 py-3 border-b border-gray-700 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-white">Open Proformas</h3>
+              <button
+                type="button"
+                onClick={() => setIsOpenModalOpen(false)}
+                className="p-1.5 text-gray-400 hover:text-white rounded transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="overflow-auto p-4">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                  <tr>
+                    <th className="p-2">Proforma Number</th>
+                    <th className="p-2">Operating Company</th>
+                    <th className="p-2">Client</th>
+                    <th className="p-2">Date</th>
+                    <th className="p-2 text-right">Net</th>
+                    <th className="p-2 text-right">VAT</th>
+                    <th className="p-2 text-right">Kaution</th>
+                    <th className="p-2 text-right">Gross</th>
+                    <th className="p-2 text-right">Days Open</th>
+                    <th className="p-2 text-right">View</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800">
+                  {openProformas.map((p) => (
+                    <tr key={p.id} className="hover:bg-[#16181D]">
+                      <td className="p-2 font-mono text-white">{p.invoiceNumber}</td>
+                      <td className="p-2 text-gray-300">{p.operatingCompany}</td>
+                      <td className="p-2 text-gray-300">{p.clientName}</td>
+                      <td className="p-2 tabular-nums text-gray-300">{formatDateEU(p.date)}</td>
+                      <td className="p-2 text-right tabular-nums text-white">€{(p.totalNet ?? 0).toFixed(2)}</td>
+                      <td className="p-2 text-right tabular-nums text-gray-300">€{(p.taxAmount ?? 0).toFixed(2)}</td>
+                      <td className="p-2 text-right tabular-nums text-gray-300">€{p.kautionAmount.toFixed(2)}</td>
+                      <td className="p-2 text-right tabular-nums text-white">€{(p.totalGross ?? 0).toFixed(2)}</td>
+                      <td className="p-2 text-right tabular-nums text-gray-300">{daysOpenFromDate(p.date)} days</td>
+                      <td className="p-2 text-right">
+                        {onViewProforma ? (
+                          <button
+                            type="button"
+                            onClick={() => { onViewProforma(p.id); setIsOpenModalOpen(false); }}
+                            className="text-emerald-400 hover:text-emerald-300 text-xs font-medium"
+                          >
+                            View
+                          </button>
+                        ) : (
+                          <span className="text-gray-500">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {openProformas.length === 0 && (
+                <p className="p-4 text-center text-gray-500">No open proformas for this period.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Kaution Liability detail modal */}
       {isKautionLiabilityModalOpen && (
