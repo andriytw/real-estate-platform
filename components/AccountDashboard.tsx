@@ -527,6 +527,20 @@ interface AccountDashboardProps {
   initialSelectedPropertyId?: string;
 }
 
+/** When applying getAll() results, preserve enriched fields (e.g. apartmentGroupName from getById) so the selected property never downgrades. */
+function mergeGetAllPreservingEnriched(prev: Property[], cleanedData: Property[]): Property[] {
+  const byId = new Map(prev.map((p) => [String(p.id), p]));
+  return cleanedData.map((incoming) => {
+    const existing = byId.get(String(incoming.id));
+    if (!existing) return incoming;
+    const merged = { ...incoming };
+    if (existing.apartmentGroupName != null && (incoming.apartmentGroupName == null || incoming.apartmentGroupName === '')) {
+      merged.apartmentGroupName = existing.apartmentGroupName;
+    }
+    return merged;
+  });
+}
+
 const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties = [], initialSelectedPropertyId }) => {
   const { worker, logout } = useWorker();
 
@@ -600,7 +614,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
           const data = await propertiesService.getAll();
           if (!mountedRef.current) return;
           const cleanedData = data;
-          setProperties(cleanedData);
+          setProperties((prev) => mergeGetAllPreservingEnriched(prev, cleanedData));
           setSelectedPropertyId(prev => {
             if (!prev && data.length > 0) return data[0].id;
             return prev;
