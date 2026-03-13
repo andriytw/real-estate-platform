@@ -575,38 +575,50 @@ const AccountDashboard: React.FC = () => {
     loadEinzugAuszugTasks();
   }, [selectedPropertyId]);
 
-  // Load properties from Supabase
+  // Load properties from Supabase (deferred so it does not block first paint)
+  const mountedRef = useRef(true);
   useEffect(() => {
-    const loadProperties = async () => {
-      try {
+    mountedRef.current = true;
+    const run = () => {
+      const loadProperties = async () => {
+        if (!mountedRef.current) return;
         setIsLoadingProperties(true);
-        const data = await propertiesService.getAll();
-        // Property inventory lives in property_inventory_items; do not write to properties.inventory
-        const cleanedData = data;
-        
-        setProperties(cleanedData);
-        // Use functional update to avoid dependency on selectedPropertyId
-        setSelectedPropertyId(prev => {
-          if (!prev && data.length > 0) {
-            return data[0].id;
-          }
-          return prev;
-        });
-      } catch (error) {
-        console.error('Error loading properties in Dashboard:', error);
-        // Fallback to mock data if error
-        setProperties(MOCK_PROPERTIES);
-        setSelectedPropertyId(prev => {
-          if (!prev && MOCK_PROPERTIES.length > 0) {
-            return MOCK_PROPERTIES[0].id;
-          }
-          return prev;
-        });
-      } finally {
-        setIsLoadingProperties(false);
-      }
+        try {
+          const data = await propertiesService.getAll();
+          if (!mountedRef.current) return;
+          const cleanedData = data;
+          setProperties(cleanedData);
+          setSelectedPropertyId(prev => {
+            if (!prev && data.length > 0) return data[0].id;
+            return prev;
+          });
+        } catch (error) {
+          console.error('Error loading properties in Dashboard:', error);
+          if (!mountedRef.current) return;
+          setProperties(MOCK_PROPERTIES);
+          setSelectedPropertyId(prev => {
+            if (!prev && MOCK_PROPERTIES.length > 0) return MOCK_PROPERTIES[0].id;
+            return prev;
+          });
+        } finally {
+          if (mountedRef.current) setIsLoadingProperties(false);
+        }
+      };
+      void loadProperties();
     };
-    loadProperties();
+    const FALLBACK_MS = 150;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let idleId: number | null = null;
+    if (typeof requestIdleCallback !== 'undefined') {
+      idleId = requestIdleCallback(run, { timeout: 200 });
+    } else {
+      timeoutId = setTimeout(run, FALLBACK_MS);
+    }
+    return () => {
+      mountedRef.current = false;
+      if (idleId != null && typeof cancelIdleCallback !== 'undefined') cancelIdleCallback(idleId);
+      if (timeoutId != null) clearTimeout(timeoutId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps - only run once on mount
   const [isPropertyAddModalOpen, setIsPropertyAddModalOpen] = useState(false);

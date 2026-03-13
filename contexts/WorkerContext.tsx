@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase, getSupabaseRestUrl } from '../utils/supabase/client';
 
@@ -15,12 +15,16 @@ export interface Worker {
   updatedAt?: string;
 }
 
+export type ProfileLoadStatus = 'idle' | 'loading' | 'timed_out' | 'error' | 'ready';
+
 interface WorkerContextType {
   session: Session | null | undefined;
   worker: Worker | null;
   /** True only while session is undefined (initializing). Not worker loading. */
   loading: boolean;
-  /** Set when worker profile fetch failed (e.g. API down). Do not treat as logout. */
+  /** Profile load state: idle, loading, timed_out (slow), error (real failure), ready. */
+  profileLoadStatus: ProfileLoadStatus;
+  /** Set when profileLoadStatus === 'error'. Do not treat as logout. */
   workerError: string | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -28,7 +32,7 @@ interface WorkerContextType {
   isManager: boolean;
   isWorker: boolean;
   refreshWorker: () => Promise<void>;
-  /** Clear workerError and retry loading worker. */
+  /** Reset status and retry loading worker. */
   retryWorker: () => Promise<void>;
 }
 
@@ -50,6 +54,8 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [worker, setWorker] = useState<Worker | null>(null);
   const [workerError, setWorkerError] = useState<string | null>(null);
+  const [profileLoadStatus, setProfileLoadStatus] = useState<ProfileLoadStatus>('idle');
+  const initialWorkerLoadStartedRef = useRef(false);
 
   /** loading = session not yet determined (session === undefined) */
   const loading = session === undefined;
@@ -142,43 +148,62 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
 
   const PROFILE_LOAD_TIMEOUT_MS = 15000;
 
-  const getCurrentWorkerWithTimeout = useCallback(async (): Promise<{ worker: Worker | null; error: string | null }> => {
-    const timeoutPromise = new Promise<{ worker: Worker | null; error: string | null }>((resolve) => {
+  type WorkerResult = { worker: Worker | null; error: string | null; timedOut?: boolean };
+
+  const getCurrentWorkerWithTimeout = useCallback(async (): Promise<WorkerResult> => {
+    const timeoutPromise = new Promise<WorkerResult>((resolve) => {
       setTimeout(
-        () => resolve({ worker: null, error: 'Profile load timed out. Please retry or log out.' }),
+        () => resolve({ worker: null, error: null, timedOut: true }),
         PROFILE_LOAD_TIMEOUT_MS
       );
     });
-    return Promise.race([getCurrentWorker(), timeoutPromise]);
+    const result = await Promise.race([getCurrentWorker().then((r) => ({ ...r, timedOut: false } as WorkerResult)), timeoutPromise]);
+    return result;
   }, [getCurrentWorker]);
 
   const loadWorkerWhenSessionExists = useCallback(async () => {
-    const { worker: w, error: err } = await getCurrentWorkerWithTimeout();
-    if (err) {
-      setWorkerError(err);
-    } else if (w) {
-      setWorker(w);
+    setProfileLoadStatus('loading');
+    setWorkerError(null);
+    const result = await getCurrentWorkerWithTimeout();
+    if (result.timedOut) {
+      setProfileLoadStatus('timed_out');
+      setWorkerError(null);
+    } else if (result.error) {
+      setProfileLoadStatus('error');
+      setWorkerError(result.error);
+    } else if (result.worker) {
+      setProfileLoadStatus('ready');
+      setWorker(result.worker);
       setWorkerError(null);
     } else {
+      setProfileLoadStatus('error');
       setWorkerError('Failed to load profile.');
     }
   }, [getCurrentWorkerWithTimeout]);
 
   const refreshWorker = useCallback(async () => {
     if (session == null) return;
+    setProfileLoadStatus('loading');
     setWorkerError(null);
-    const { worker: w, error: err } = await getCurrentWorkerWithTimeout();
-    if (err) {
-      setWorkerError(err);
-    } else if (w) {
-      setWorker(w);
+    const result = await getCurrentWorkerWithTimeout();
+    if (result.timedOut) {
+      setProfileLoadStatus('timed_out');
+      setWorkerError(null);
+    } else if (result.error) {
+      setProfileLoadStatus('error');
+      setWorkerError(result.error);
+    } else if (result.worker) {
+      setProfileLoadStatus('ready');
+      setWorker(result.worker);
       setWorkerError(null);
     } else {
+      setProfileLoadStatus('error');
       setWorkerError('Failed to load profile.');
     }
   }, [session, getCurrentWorkerWithTimeout]);
 
   const retryWorker = useCallback(async () => {
+    setProfileLoadStatus('loading');
     setWorkerError(null);
     await loadWorkerWhenSessionExists();
   }, [loadWorkerWhenSessionExists]);
@@ -191,21 +216,30 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       }
       setSession(s ?? null);
       if (s) {
-        const { worker: w, error: err } = await getCurrentWorkerWithTimeout();
-        if (err) {
-          setWorkerError(err);
-        } else if (w) {
-          setWorker(w);
+        setProfileLoadStatus('loading');
+        const result = await getCurrentWorkerWithTimeout();
+        if (result.timedOut) {
+          setProfileLoadStatus('timed_out');
+          setWorkerError(null);
+        } else if (result.error) {
+          setProfileLoadStatus('error');
+          setWorkerError(result.error);
+        } else if (result.worker) {
+          setProfileLoadStatus('ready');
+          setWorker(result.worker);
           setWorkerError(null);
         } else {
+          setProfileLoadStatus('error');
           setWorkerError('Failed to load profile.');
         }
       } else {
+        setProfileLoadStatus('idle');
         setWorker(null);
         setWorkerError(null);
       }
     } catch {
       setSession(null);
+      setProfileLoadStatus('idle');
       setWorker(null);
       setWorkerError(null);
     }
@@ -221,17 +255,30 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       if (!mounted) return;
       setSession(s ?? null);
       if (s) {
-        const { worker: w, error: err } = await getCurrentWorkerWithTimeout();
+        if (initialWorkerLoadStartedRef.current) {
+          return;
+        }
+        initialWorkerLoadStartedRef.current = true;
+        setProfileLoadStatus('loading');
+        setWorkerError(null);
+        const result = await getCurrentWorkerWithTimeout();
         if (!mounted) return;
-        if (err) {
-          setWorkerError(err);
-        } else if (w) {
-          setWorker(w);
+        if (result.timedOut) {
+          setProfileLoadStatus('timed_out');
+          setWorkerError(null);
+        } else if (result.error) {
+          setProfileLoadStatus('error');
+          setWorkerError(result.error);
+        } else if (result.worker) {
+          setProfileLoadStatus('ready');
+          setWorker(result.worker);
           setWorkerError(null);
         } else {
+          setProfileLoadStatus('error');
           setWorkerError('Failed to load profile.');
         }
       } else {
+        setProfileLoadStatus('idle');
         setWorker(null);
         setWorkerError(null);
       }
@@ -253,6 +300,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
       if (event === 'SIGNED_OUT') {
         setSession(null);
+        setProfileLoadStatus('idle');
         setWorker(null);
         setWorkerError(null);
         return;
@@ -263,8 +311,13 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       }
       if (event === 'INITIAL_SESSION') {
         setSession(s ?? null);
-        if (s) await loadWorkerWhenSessionExists();
-        else {
+        if (s) {
+          if (!initialWorkerLoadStartedRef.current) {
+            initialWorkerLoadStartedRef.current = true;
+            await loadWorkerWhenSessionExists();
+          }
+        } else {
+          setProfileLoadStatus('idle');
           setWorker(null);
           setWorkerError(null);
         }
@@ -279,13 +332,27 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       if (error) throw error;
       if (data.session) {
         setSession(data.session);
+        setProfileLoadStatus('loading');
         setWorkerError(null);
-        const { worker: w, error: err } = await getCurrentWorkerWithTimeout();
-        if (err) {
-          setWorkerError(err);
+        const result = await getCurrentWorkerWithTimeout();
+        if (result.timedOut) {
+          setProfileLoadStatus('timed_out');
+          setWorkerError(null);
+          throw new Error('Profile load timed out. Please retry.');
+        }
+        if (result.error) {
+          setProfileLoadStatus('error');
+          setWorkerError(result.error);
           throw new Error('Worker profile not found. Please contact administrator.');
         }
-        setWorker(w);
+        if (result.worker) {
+          setProfileLoadStatus('ready');
+          setWorker(result.worker);
+        } else {
+          setProfileLoadStatus('error');
+          setWorkerError('Failed to load profile.');
+          throw new Error('Worker profile not found. Please contact administrator.');
+        }
       }
     } finally {
       /* session is set above, so loading becomes false */
@@ -296,6 +363,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     try {
       await supabase.auth.signOut();
       setSession(null);
+      setProfileLoadStatus('idle');
       setWorker(null);
       setWorkerError(null);
     } finally {
@@ -313,6 +381,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
         session,
         worker,
         loading,
+        profileLoadStatus,
         workerError,
         login,
         logout,

@@ -245,18 +245,31 @@ export const propertyMediaService = {
     return out;
   },
 
+  /**
+   * Get signed URLs for property cover photos.
+   * @param propertyIdsOrRows - Either array of property ids (will query properties for cover_photo_asset_id) or array of { id, cover_photo_asset_id } to skip the properties query when already fetched (e.g. from getAll).
+   */
   async getCoverPhotoSignedUrlsForProperties(
-    propertyIds: string[],
+    propertyIdsOrRows: string[] | Array<{ id: string; cover_photo_asset_id: string | null }>,
     expiresInSeconds = 3600
   ): Promise<Record<string, string>> {
-    if (propertyIds.length === 0) return {};
-    const { data: properties, error: propError } = await supabase
-      .from('properties')
-      .select('id, cover_photo_asset_id')
-      .in('id', propertyIds)
-      .not('cover_photo_asset_id', 'is', null);
-    if (propError) throw propError;
-    const rows = (properties ?? []) as { id: string; cover_photo_asset_id: string }[];
+    let rows: { id: string; cover_photo_asset_id: string }[];
+    if (propertyIdsOrRows.length === 0) return {};
+    if (typeof propertyIdsOrRows[0] === 'object' && propertyIdsOrRows[0] !== null && 'cover_photo_asset_id' in propertyIdsOrRows[0]) {
+      const withCover = (propertyIdsOrRows as Array<{ id: string; cover_photo_asset_id: string | null }>).filter(
+        (r): r is { id: string; cover_photo_asset_id: string } => r.cover_photo_asset_id != null
+      );
+      rows = withCover;
+    } else {
+      const propertyIds = propertyIdsOrRows as string[];
+      const { data: properties, error: propError } = await supabase
+        .from('properties')
+        .select('id, cover_photo_asset_id')
+        .in('id', propertyIds)
+        .not('cover_photo_asset_id', 'is', null);
+      if (propError) throw propError;
+      rows = (properties ?? []) as { id: string; cover_photo_asset_id: string }[];
+    }
     if (rows.length === 0) return {};
     const coverIds = [...new Set(rows.map((r) => r.cover_photo_asset_id))];
     const { data: assets, error: assetError } = await supabase

@@ -24,7 +24,7 @@ const KanbanBoard = React.lazy(() => import('./components/kanban/KanbanBoard'));
 
 // Internal AppContent: only rendered when session exists (inside AuthGate)
 const AppContent: React.FC = () => {
-  const { session, worker, loading: authLoading, workerError, retryWorker, logout } = useWorker();
+  const { session, worker, loading: authLoading, profileLoadStatus, workerError, retryWorker, logout } = useWorker();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -130,24 +130,27 @@ const AppContent: React.FC = () => {
       const startTime = Date.now();
       const data = await propertiesService.getAll(true);
       const loadTime = Date.now() - startTime;
-      
+
       console.log(`✅ Properties loaded: ${data.length} items in ${loadTime}ms`);
       console.log('📊 Properties data:', data.length > 0 ? data.slice(0, 3).map(p => ({ id: p.id, title: p.title })) : 'empty');
-      
+
       setProperties(data);
-      try {
-        const urls = await propertyMediaService.getCoverPhotoSignedUrlsForProperties(data.map((p) => p.id));
-        setCoverPhotoUrlByPropertyId(urls);
-      } catch (e) {
-        console.warn('Cover photo URLs fetch failed:', e);
-        setCoverPhotoUrlByPropertyId({});
-      }
+      setLoading(false);
       if (data.length > 0 && !selectedProperty) {
         setSelectedProperty(data[0]);
       } else if (data.length === 0) {
         console.warn('⚠️ No properties found in database');
         setError('Немає доступних об\'єктів нерухомості');
       }
+      void propertyMediaService
+        .getCoverPhotoSignedUrlsForProperties(
+          data.map((p) => ({ id: p.id, cover_photo_asset_id: p.cover_photo_asset_id ?? null }))
+        )
+        .then((urls) => setCoverPhotoUrlByPropertyId(urls))
+        .catch((e) => {
+          console.warn('Cover photo URLs fetch failed:', e);
+          setCoverPhotoUrlByPropertyId({});
+        });
     } catch (err: any) {
       console.error('❌ Error loading properties:', err);
       const errorMessage = err.message || 'Failed to load properties';
@@ -480,8 +483,7 @@ const AppContent: React.FC = () => {
       );
     }
 
-    // Don't show protected content until worker is determined (worker or workerError). Avoid empty dashboard when worker still loading.
-    if (isProtected && session !== null && worker === null && workerError === null) {
+    if (isProtected && session !== null && profileLoadStatus === 'loading') {
       return (
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-white mb-2">Reconnecting…</div>
@@ -490,12 +492,28 @@ const AppContent: React.FC = () => {
       );
     }
 
-    // Only show profile error when definitely logged in, worker still null, and workerError set. Don't block before WorkerContext init.
-    if (isProtected && session !== null && worker === null && !!workerError) {
+    if (isProtected && session !== null && profileLoadStatus === 'timed_out') {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen text-gray-400">
+          <div className="text-white mb-2">Loading is taking longer than usual</div>
+          <div className="flex gap-3 mt-4">
+            <button
+              type="button"
+              onClick={() => retryWorker()}
+              className="px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-500"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (isProtected && session !== null && profileLoadStatus === 'error') {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen text-gray-400">
           <div className="text-white mb-2">Could not load your profile</div>
-          <div className="text-sm mb-2">{workerError}</div>
+          <div className="text-sm mb-2">{workerError ?? 'An error occurred'}</div>
           <div className="flex gap-3 mt-4">
             <button
               type="button"
