@@ -4505,63 +4505,95 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
 
   const handleCreateBookingFromLead = async (formData: CreateBookingFormData) => {
     if (!clientHistoryLead) return;
+
+    const property = properties.find((p) => String(p.id) === String(formData.propertyId));
+    const managementName = property?.management?.name?.trim();
+    const internalCompany = managementName && managementName.length > 0 ? managementName : 'Sotiso';
+
+    const checkInDate = new Date(formData.checkIn);
+    const checkOutDate = new Date(formData.checkOut);
+    const diffMs = checkOutDate.getTime() - checkInDate.getTime();
+    const nights =
+      diffMs > 0 ? Math.round(diffMs / (1000 * 60 * 60 * 24)) : 0;
+
+    const netTotalRaw = nights * formData.nightlyPrice;
+    const netTotal = Number(netTotalRaw.toFixed(2));
+    const vatAmount = Number((netTotal * (formData.taxRate / 100)).toFixed(2));
+    const grossTotal = Number((netTotal + vatAmount + formData.kaution).toFixed(2));
+    const price = `${grossTotal.toFixed(2)} EUR`;
+    const dates = `${formData.checkIn} to ${formData.checkOut}`;
+
+    // 1. Create technical reservation first (same payload shape as handleSaveReservation)
+    const reservationToSave: Omit<Reservation, 'id' | 'createdAt' | 'updatedAt'> = {
+      propertyId: formData.propertyId,
+      startDate: formData.checkIn,
+      endDate: formData.checkOut,
+      status: 'open',
+      leadLabel: formData.clientName || clientHistoryLead.name || 'Guest',
+      clientFirstName: undefined,
+      clientLastName: undefined,
+      clientEmail: formData.email,
+      clientPhone: formData.phone,
+      clientAddress: formData.address,
+      guestsCount: 1,
+      pricePerNightNet: formData.nightlyPrice,
+      taxRate: formData.taxRate ?? 19,
+      totalNights: nights,
+      totalGross: grossTotal,
+    };
+
+    let savedReservation: Reservation;
     try {
-      const property = properties.find((p) => String(p.id) === String(formData.propertyId));
-      const managementName = property?.management?.name?.trim();
-      const internalCompany = managementName && managementName.length > 0 ? managementName : 'Sotiso';
+      savedReservation = await reservationsService.create(reservationToSave);
+    } catch (err) {
+      console.error('Failed to create reservation from booking:', err);
+      alert('Failed to create reservation. Please try again.');
+      return;
+    }
 
-      const checkInDate = new Date(formData.checkIn);
-      const checkOutDate = new Date(formData.checkOut);
-      const diffMs = checkOutDate.getTime() - checkInDate.getTime();
-      const nights =
-        diffMs > 0 ? Math.round(diffMs / (1000 * 60 * 60 * 24)) : 0;
+    const reservationId = savedReservation.id;
 
-      const netTotalRaw = nights * formData.nightlyPrice;
-      const netTotal = Number(netTotalRaw.toFixed(2));
-      const vatAmount = Number((netTotal * (formData.taxRate / 100)).toFixed(2));
-      const grossTotal = Number((netTotal + vatAmount + formData.kaution).toFixed(2));
-      const price = `${grossTotal.toFixed(2)} EUR`;
-      const dates = `${formData.checkIn} to ${formData.checkOut}`;
+    const offerNo = await offersService.getNextOfferNo();
 
-      const offerNo = await offersService.getNextOfferNo();
+    const offerToCreate: Omit<OfferData, 'id'> = {
+      offerNo,
+      clientName: formData.clientName,
+      propertyId: String(formData.propertyId),
+      internalCompany,
+      price,
+      dates,
+      status: 'Sent',
+      email: formData.email || undefined,
+      phone: formData.phone || undefined,
+      address: formData.address || undefined,
+      checkInTime: undefined,
+      checkOutTime: undefined,
+      guests: undefined,
+      comments: formData.notes || undefined,
+      unit: property?.title,
+      reservationId,
+      clientMessage: undefined,
+      nightlyPrice: formData.nightlyPrice,
+      taxRate: formData.taxRate,
+      nights,
+      netTotal,
+      vatTotal: vatAmount,
+      grossTotal,
+      kaution: formData.kaution,
+      leadId: clientHistoryLead.id,
+    };
 
-      const offerToCreate: Omit<OfferData, 'id'> = {
-        offerNo,
-        clientName: formData.clientName,
-        propertyId: String(formData.propertyId),
-        internalCompany,
-        price,
-        dates,
-        status: 'Sent',
-        email: formData.email || undefined,
-        phone: formData.phone || undefined,
-        address: formData.address || undefined,
-        checkInTime: undefined,
-        checkOutTime: undefined,
-        guests: undefined,
-        comments: formData.notes || undefined,
-        unit: property?.title,
-        reservationId: undefined,
-        clientMessage: undefined,
-        nightlyPrice: formData.nightlyPrice,
-        taxRate: formData.taxRate,
-        nights,
-        netTotal,
-        vatTotal: vatAmount,
-        grossTotal,
-        kaution: formData.kaution,
-        leadId: clientHistoryLead.id,
-      };
-
+    try {
       const savedOffer = await offersService.create(offerToCreate);
       setOffers((prev) => [savedOffer, ...prev]);
       setClientHistoryLead(null);
       setSalesTab('offers');
       setToastMessage('Offer created from booking.');
       setCreatedOfferId(savedOffer.id);
-    } catch (error) {
-      console.error('Failed to create booking offer from lead:', error);
+    } catch (err) {
+      console.error('Failed to create offer from booking:', err);
       alert('Failed to create offer from booking. Please try again.');
+      return;
     }
   };
 
