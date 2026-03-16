@@ -616,6 +616,20 @@ export interface Booking {
   sourceReservationId?: string; // UUID reference to reservations table
 }
 
+export interface CreateBookingFormData {
+  clientName: string;
+  email: string;
+  phone: string;
+  address: string;
+  propertyId: string;
+  checkIn: string;
+  checkOut: string;
+  nightlyPrice: number;
+  taxRate: number;
+  kaution: number;
+  notes: string;
+}
+
 export interface OfferData {
   id: string;
   offerNo?: string; // Human-readable offer number (OFF-YYYY-000001)

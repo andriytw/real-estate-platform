@@ -1757,6 +1757,14 @@ export const offersService = {
     return data.map(transformOfferFromDB);
   },
 
+  async getNextOfferNo(): Promise<string> {
+    const { data, error } = await supabase.rpc('get_next_offer_no');
+    if (error || data == null) {
+      throw new Error(error?.message || 'Failed to generate offer number');
+    }
+    return String(data);
+  },
+
   async create(offer: Omit<OfferData, 'id'>): Promise<OfferData> {
     const dbData = transformOfferToDB(offer);
     const { data, error } = await supabase

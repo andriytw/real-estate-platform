@@ -167,6 +167,7 @@ import {
   PaymentChainAttachment,
   PaymentChain,
   PaymentChainFile,
+  CreateBookingFormData,
 } from '../types';
 import { euToIso, validateEuDate } from '../utils/leaseTermDates';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
@@ -4499,6 +4500,68 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     } catch (error) {
       console.error('Error deleting booking:', error);
       alert('Не вдалося видалити бронювання. Спробуйте ще раз.');
+    }
+  };
+
+  const handleCreateBookingFromLead = async (formData: CreateBookingFormData) => {
+    if (!clientHistoryLead) return;
+    try {
+      const property = properties.find((p) => String(p.id) === String(formData.propertyId));
+      const managementName = property?.management?.name?.trim();
+      const internalCompany = managementName && managementName.length > 0 ? managementName : 'Sotiso';
+
+      const checkInDate = new Date(formData.checkIn);
+      const checkOutDate = new Date(formData.checkOut);
+      const diffMs = checkOutDate.getTime() - checkInDate.getTime();
+      const nights =
+        diffMs > 0 ? Math.round(diffMs / (1000 * 60 * 60 * 24)) : 0;
+
+      const netTotalRaw = nights * formData.nightlyPrice;
+      const netTotal = Number(netTotalRaw.toFixed(2));
+      const vatAmount = Number((netTotal * (formData.taxRate / 100)).toFixed(2));
+      const grossTotal = Number((netTotal + vatAmount + formData.kaution).toFixed(2));
+      const price = `${grossTotal.toFixed(2)} EUR`;
+      const dates = `${formData.checkIn} to ${formData.checkOut}`;
+
+      const offerNo = await offersService.getNextOfferNo();
+
+      const offerToCreate: Omit<OfferData, 'id'> = {
+        offerNo,
+        clientName: formData.clientName,
+        propertyId: String(formData.propertyId),
+        internalCompany,
+        price,
+        dates,
+        status: 'Sent',
+        email: formData.email || undefined,
+        phone: formData.phone || undefined,
+        address: formData.address || undefined,
+        checkInTime: undefined,
+        checkOutTime: undefined,
+        guests: undefined,
+        comments: formData.notes || undefined,
+        unit: property?.title,
+        reservationId: undefined,
+        clientMessage: undefined,
+        nightlyPrice: formData.nightlyPrice,
+        taxRate: formData.taxRate,
+        nights,
+        netTotal,
+        vatTotal: vatAmount,
+        grossTotal,
+        kaution: formData.kaution,
+        leadId: clientHistoryLead.id,
+      };
+
+      const savedOffer = await offersService.create(offerToCreate);
+      setOffers((prev) => [savedOffer, ...prev]);
+      setClientHistoryLead(null);
+      setSalesTab('offers');
+      setToastMessage('Offer created from booking.');
+      setCreatedOfferId(savedOffer.id);
+    } catch (error) {
+      console.error('Failed to create booking offer from lead:', error);
+      alert('Failed to create offer from booking. Please try again.');
     }
   };
 
@@ -11886,6 +11949,7 @@ ${internalCompany} Team`;
             properties,
             paymentProofsByInvoiceId,
           }}
+          onCreateBooking={handleCreateBookingFromLead}
         />
       )}
       <PropertyAddModal 

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import type { Lead, Property } from '../types';
+import type { Lead, Property, CreateBookingFormData } from '../types';
 import { getPropertyDisplayLabel } from '../utils/formatPropertyAddress';
 
 export interface CreateBookingModalProps {
@@ -13,20 +13,6 @@ export interface CreateBookingModalProps {
   properties: Property[];
   onClose: () => void;
   onSave?: (data: CreateBookingFormData) => void;
-}
-
-export interface CreateBookingFormData {
-  clientName: string;
-  email: string;
-  phone: string;
-  address: string;
-  propertyId: string;
-  checkIn: string;
-  checkOut: string;
-  nightlyPrice: number;
-  taxRate: number;
-  kaution: number;
-  notes: string;
 }
 
 const CreateBookingModal: React.FC<CreateBookingModalProps> = ({ lead, properties, onClose, onSave }) => {
@@ -41,6 +27,7 @@ const CreateBookingModal: React.FC<CreateBookingModalProps> = ({ lead, propertie
   const [taxRate, setTaxRate] = useState(7.7);
   const [kaution, setKaution] = useState(0);
   const [notes, setNotes] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setClientName(lead.name);
@@ -60,23 +47,83 @@ const CreateBookingModal: React.FC<CreateBookingModalProps> = ({ lead, propertie
   const vatAmount = netTotal * (taxRate / 100);
   const grossPreview = netTotal + vatAmount;
 
-  const handleSave = () => {
-    if (onSave) {
-      onSave({
-        clientName,
-        email,
-        phone,
-        address,
-        propertyId,
-        checkIn,
-        checkOut,
-        nightlyPrice,
-        taxRate,
-        kaution,
-        notes,
-      });
+  const handleSave = async () => {
+    // Stub mode: no real save wired, keep old behavior.
+    if (!onSave) {
+      onClose();
+      return;
     }
-    onClose();
+
+    setError(null);
+
+    if (!clientName.trim()) {
+      setError('Client name is required.');
+      return;
+    }
+
+    if (!propertyId) {
+      setError('Property is required.');
+      return;
+    }
+
+    if (!checkIn || !checkOut) {
+      setError('Check-in and check-out dates are required.');
+      return;
+    }
+
+    const start = new Date(checkIn);
+    const end = new Date(checkOut);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      setError('Dates are invalid.');
+      return;
+    }
+
+    const diffMs = end.getTime() - start.getTime();
+    const nightsComputed = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    if (diffMs <= 0 || nightsComputed <= 0) {
+      setError('Check-out must be after check-in and nights must be greater than 0.');
+      return;
+    }
+
+    if (nightlyPrice <= 0) {
+      setError('Nightly price must be greater than 0.');
+      return;
+    }
+
+    if (taxRate < 0) {
+      setError('Tax rate cannot be negative.');
+      return;
+    }
+
+    if (kaution < 0) {
+      setError('Kaution cannot be negative.');
+      return;
+    }
+
+    const payload: CreateBookingFormData = {
+      clientName,
+      email,
+      phone,
+      address,
+      propertyId,
+      checkIn,
+      checkOut,
+      nightlyPrice,
+      taxRate,
+      kaution,
+      notes,
+    };
+
+    try {
+      await onSave(payload);
+      // Important: parent (AccountDashboard) is single source of truth for close.
+      // Do not call onClose() here on success; parent closes by clearing clientHistoryLead.
+    } catch (e) {
+      // Keep modal open so the user can retry.
+      // eslint-disable-next-line no-console
+      console.error('Failed to create booking from lead:', e);
+      setError('Failed to create booking. Please try again.');
+    }
   };
 
   const isStub = onSave == null;
@@ -98,6 +145,11 @@ const CreateBookingModal: React.FC<CreateBookingModalProps> = ({ lead, propertie
           {isStub && (
             <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs">
               This is a stub. Save will not create a record until a safe creation path is implemented.
+            </div>
+          )}
+          {error && (
+            <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/40 text-red-200 text-xs">
+              {error}
             </div>
           )}
           <div>

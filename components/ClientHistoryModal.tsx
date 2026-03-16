@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { X, User, Mail, Phone, MapPin } from 'lucide-react';
-import type { Lead, Booking, InvoiceData, ReservationData, Property } from '../types';
+import type { Lead, Booking, InvoiceData, ReservationData, Property, CreateBookingFormData } from '../types';
 import { buildClientHistoryForLead, type ClientHistoryContext, type ClientHistory } from '../utils/clientHistory';
 import { getPropertyDisplayLabel } from '../utils/formatPropertyAddress';
 import CreateBookingModal from './CreateBookingModal';
@@ -10,7 +10,7 @@ export interface ClientHistoryModalProps {
   onClose: () => void;
   context: ClientHistoryContext;
   onCreateOffer?: () => void;
-  onCreateBooking?: () => void;
+  onCreateBooking?: (data: CreateBookingFormData) => Promise<void> | void;
 }
 
 function formatDateEU(value: string | undefined): string {
