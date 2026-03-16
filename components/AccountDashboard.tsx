@@ -10133,6 +10133,7 @@ ${internalCompany} Team`;
                                   if (row.status === 'Invoiced' || row.status === 'Converted') return 'bg-purple-500/20 text-purple-400 border-purple-500';
                                   if (row.status === 'Selected') return 'bg-amber-500/20 text-amber-400 border-amber-500';
                                   if (row.status === 'Rejected' || row.status === 'Expired' || row.status === 'Lost') return 'bg-red-500/20 text-red-400 border-red-500';
+                                  if (row.status === 'Accepted') return 'bg-emerald-500/20 text-emerald-400 border-emerald-500';
                                   return 'bg-blue-500/20 text-blue-500 border-blue-500';
                                 };
 
@@ -10281,32 +10282,54 @@ ${internalCompany} Team`;
                                         <td className={numCell}>{proforma.taxAmount != null ? `€${Number(proforma.taxAmount).toFixed(2)}` : '—'}</td>
                                         <td className={numCell}>{kautionVal}</td>
                                         <td className="p-4">
-                                            {linkedOffer && (linkedOffer.kaution != null && Number(linkedOffer.kaution) > 0) ? (
-                                              proforma.kautionStatus === 'returned' ? (
-                                                <span className="px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">Returned</span>
-                                              ) : (
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400">Not Returned</span>
-                                                  {!lost && (
-                                                    <button
-                                                      type="button"
-                                                      onClick={async () => {
-                                                        try {
-                                                          await invoicesService.update(proforma.id, { ...proforma, kautionStatus: 'returned' });
-                                                          setProformas((prev) => prev.map((p) => (p.id === proforma.id ? { ...p, kautionStatus: 'returned' as const } : p)));
-                                                          setInvoices((prev) => prev.map((inv) => (inv.id === proforma.id ? { ...inv, kautionStatus: 'returned' as const } : inv)));
-                                                        } catch (e) {
-                                                          console.error(e);
-                                                          alert((e as Error)?.message ?? 'Failed to update');
-                                                        }
-                                                      }}
-                                                      className="text-xs text-emerald-400 hover:text-emerald-300"
-                                                    >
-                                                      Mark returned
-                                                    </button>
-                                                  )}
-                                                </div>
-                                              )
+                                            {linkedOffer && linkedOffer.kaution != null && Number(linkedOffer.kaution) > 0 ? (
+                                              <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
+                                                {proforma.kautionStatus === 'returned' ? (
+                                                  <>
+                                                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">Returned</span>
+                                                    {!lost && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={async () => {
+                                                          try {
+                                                            await invoicesService.update(proforma.id, { ...proforma, kautionStatus: 'not_returned' });
+                                                            setProformas((prev) => prev.map((p) => (p.id === proforma.id ? { ...p, kautionStatus: 'not_returned' as const } : p)));
+                                                            setInvoices((prev) => prev.map((inv) => (inv.id === proforma.id ? { ...inv, kautionStatus: 'not_returned' as const } : inv)));
+                                                          } catch (e) {
+                                                            console.error(e);
+                                                            alert((e as Error)?.message ?? 'Failed to update');
+                                                          }
+                                                        }}
+                                                        className="text-xs text-emerald-400 hover:text-emerald-300"
+                                                      >
+                                                        Undo
+                                                      </button>
+                                                    )}
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400">Not Returned</span>
+                                                    {!lost && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={async () => {
+                                                          try {
+                                                            await invoicesService.update(proforma.id, { ...proforma, kautionStatus: 'returned' });
+                                                            setProformas((prev) => prev.map((p) => (p.id === proforma.id ? { ...p, kautionStatus: 'returned' as const } : p)));
+                                                            setInvoices((prev) => prev.map((inv) => (inv.id === proforma.id ? { ...inv, kautionStatus: 'returned' as const } : inv)));
+                                                          } catch (e) {
+                                                            console.error(e);
+                                                            alert((e as Error)?.message ?? 'Failed to update');
+                                                          }
+                                                        }}
+                                                        className="text-xs text-emerald-400 hover:text-emerald-300"
+                                                      >
+                                                        Mark returned
+                                                      </button>
+                                                    )}
+                                                  </>
+                                                )}
+                                              </div>
                                             ) : (
                                               <span className="text-gray-500">—</span>
                                             )}
