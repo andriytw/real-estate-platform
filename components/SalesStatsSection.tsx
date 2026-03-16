@@ -10,6 +10,7 @@ import BookingStatsTiles from './BookingStatsTiles';
 import BookingListModal from './BookingListModal';
 import { useSalesAllBookings } from '../hooks/useSalesAllBookings';
 import { paymentProofsService } from '../services/supabaseService';
+import { getPropertyDisplayLabel } from '../utils/formatPropertyAddress';
 import { X } from 'lucide-react';
 
 export interface SalesStatsSectionProps {
@@ -60,6 +61,37 @@ function daysOpenFromDate(fromIso: string): number {
   from.setHours(0, 0, 0, 0);
   today.setHours(0, 0, 0, 0);
   return Math.floor((today.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Available Apartments tile: availability = only confirmed bookings (bookings table) block.
+ * Counts include only properties that pass the existing active inventory filter (e.g. archivedAt == null).
+ * Room count from Property.rooms; null/undefined/invalid excluded from grouped counts (not treated as 1 room).
+ * Reservations/offers/unpaid proformas do not block.
+ */
+function getAvailablePropertiesForDate(
+  dateStr: string,
+  properties: Property[],
+  confirmedBookings: Booking[]
+): Property[] {
+  const activeProperties = properties.filter((p) => p.archivedAt == null);
+  const blockedIds = new Set(
+    confirmedBookings
+      .filter((b) => b.start <= dateStr && b.end > dateStr)
+      .map((b) => String(b.propertyId))
+      .filter(Boolean)
+  );
+  return activeProperties.filter((p) => !blockedIds.has(String(p.id)));
+}
+
+/** Room bucket for display. Returns null if rooms is invalid (excluded from grouped counts). */
+function getRoomBucket(rooms: number | undefined | null): '1' | '2' | '3' | '4+' | null {
+  if (typeof rooms !== 'number' || !Number.isFinite(rooms) || rooms < 1) return null;
+  if (rooms === 1) return '1';
+  if (rooms === 2) return '2';
+  if (rooms === 3) return '3';
+  if (rooms >= 4) return '4+';
+  return null;
 }
 
 const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
@@ -146,6 +178,13 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
   const [kautionModalOpCo, setKautionModalOpCo] = useState<string>('All companies');
   const [proofsByInvoiceId, setProofsByInvoiceId] = useState<Record<string, PaymentProof[]>>({});
 
+  const [availabilityDate, setAvailabilityDate] = useState<Date>(() => {
+    const d = new Date(TODAY);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+  const [availableApartmentsModalRoom, setAvailableApartmentsModalRoom] = useState<'1' | '2' | '3' | '4+' | null>(null);
+
   const opCoMatch = useCallback(
     (opCo: string) => selectedOperatingCompany === 'All' || opCo === selectedOperatingCompany,
     [selectedOperatingCompany]
@@ -183,6 +222,39 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
     () => kautionLiabilityProformas.reduce((sum, p) => sum + p.kautionAmount, 0),
     [kautionLiabilityProformas]
   );
+
+  const availabilityDateStr = useMemo(() => {
+    const y = availabilityDate.getFullYear();
+    const m = String(availabilityDate.getMonth() + 1).padStart(2, '0');
+    const d = String(availabilityDate.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, [availabilityDate]);
+
+  const availablePropertiesOnDate = useMemo(
+    () => getAvailablePropertiesForDate(availabilityDateStr, properties, confirmedBookings),
+    [availabilityDateStr, properties, confirmedBookings]
+  );
+
+  const availableByRoomBucket = useMemo(() => {
+    const bucket: Record<'1' | '2' | '3' | '4+', Property[]> = { '1': [], '2': [], '3': [], '4+': [] };
+    for (const p of availablePropertiesOnDate) {
+      const b = getRoomBucket(p.rooms);
+      if (b) bucket[b].push(p);
+    }
+    return bucket;
+  }, [availablePropertiesOnDate]);
+
+  const availableRoomCounts = useMemo(
+    () => ({
+      '1': availableByRoomBucket['1'].length,
+      '2': availableByRoomBucket['2'].length,
+      '3': availableByRoomBucket['3'].length,
+      '4+': availableByRoomBucket['4+'].length,
+    }),
+    [availableByRoomBucket]
+  );
+
+  const totalAvailable = availablePropertiesOnDate.length;
 
   const paidModalOpCoOptions = useMemo(() => {
     const set = new Set<string>();
@@ -359,6 +431,60 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
             <div className={amountClass}>€{kautionLiabilityTotal.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             <div className={countClass}>{kautionLiabilityProformas.length} open deposits</div>
           </button>
+
+          {/* Available Apartments by room count (only confirmed bookings block; active inventory only) */}
+          <div className={tileClass}>
+            <div className={tileTitleClass}>Available Apartments</div>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="text-xs text-gray-500">{availabilityDateStr}</span>
+              <div className="flex items-center gap-1">
+                {(['Today', 'Tomorrow', 'Day+2'] as const).map((label, i) => {
+                  const d = new Date(TODAY);
+                  d.setDate(d.getDate() + i);
+                  const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                  const isActive = availabilityDateStr === dStr;
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => setAvailabilityDate(new Date(d))}
+                      className={`px-2 py-1 text-xs rounded transition-colors ${isActive ? 'bg-emerald-600/30 text-emerald-400' : 'bg-gray-700/50 text-gray-400 hover:text-white'}`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+                <input
+                  type="date"
+                  value={availabilityDateStr}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v) setAvailabilityDate(new Date(v + 'T12:00:00'));
+                  }}
+                  className="ml-1 bg-[#161B22] border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+            </div>
+            <div className={amountClass}>{totalAvailable}</div>
+            <div className={countClass}>Total available</div>
+            <div className="mt-2 space-y-1 text-sm">
+              {(['1', '2', '3', '4+'] as const).map((key) => {
+                const count = availableRoomCounts[key];
+                const label = key === '4+' ? '4+ rooms' : `${key} room${key === '1' ? '' : 's'}`;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setAvailableApartmentsModalRoom(key)}
+                    className="w-full text-left px-2 py-1 rounded hover:bg-gray-700/50 text-gray-300 hover:text-white transition-colors flex justify-between"
+                  >
+                    <span>{label}</span>
+                    <span className="tabular-nums font-medium">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {/* Booking stats tiles (existing) */}
@@ -383,6 +509,43 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
         properties={properties}
         date={statsModalDate}
       />
+
+      {/* Available Apartments by room group — list of properties */}
+      {availableApartmentsModalRoom && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-[#1C1F24] rounded-xl border border-gray-700 shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+            <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">
+                Available — {availableApartmentsModalRoom === '4+' ? '4+ rooms' : `${availableApartmentsModalRoom} room${availableApartmentsModalRoom === '1' ? '' : 's'}`} on {availabilityDateStr}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setAvailableApartmentsModalRoom(null)}
+                className="p-1.5 text-gray-400 hover:text-white rounded transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="overflow-auto p-4">
+              {availableByRoomBucket[availableApartmentsModalRoom].length === 0 ? (
+                <p className="text-gray-500 text-sm">No apartments in this category.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {availableByRoomBucket[availableApartmentsModalRoom].map((p) => (
+                    <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2 border-b border-gray-800 last:border-0">
+                      <span className="text-white font-medium">{getPropertyDisplayLabel(p)}</span>
+                      <span className="text-gray-400 text-sm">{p.rooms} room{p.rooms === 1 ? '' : 's'}</span>
+                      {(p.management?.name ?? '').trim() && (
+                        <span className="text-gray-500 text-xs w-full mt-0.5">{p.management?.name}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Paid Proformas detail modal — same shell as Kaution Liability */}
       {isPaidModalOpen && (
