@@ -4,7 +4,7 @@
  * Used by Sales Department → Dashboard only.
  */
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Booking, CalendarEvent, Property } from '../types';
+import { Booking, CalendarEvent, Property, Lead } from '../types';
 import { ReservationData, OfferData, InvoiceData, PaymentProof } from '../types';
 import BookingStatsTiles from './BookingStatsTiles';
 import BookingListModal from './BookingListModal';
@@ -20,6 +20,7 @@ export interface SalesStatsSectionProps {
   adminEvents: CalendarEvent[];
   properties: Property[];
   invoices: InvoiceData[];
+  leads?: Lead[];
   /** When user clicks View in Kaution Liability modal, switch to Payments and optionally expand proforma */
   onViewProforma?: (proformaId: string) => void;
 }
@@ -94,6 +95,37 @@ function getRoomBucket(rooms: number | undefined | null): '1' | '2' | '3' | '4+'
   return null;
 }
 
+type PeriodKind = 'monthly' | 'today' | 'yesterday' | 'date';
+
+/** Returns true if createdAt (ISO string) falls in the given period. Excludes invalid createdAt. */
+function dateInPeriod(
+  createdAt: string | undefined | null,
+  period: PeriodKind,
+  customDateStr: string | undefined,
+  context: { todayStr: string; yesterdayStr: string; currentMonthStr: string }
+): boolean {
+  const datePart = createdAt != null && typeof createdAt === 'string' ? createdAt.slice(0, 10) : '';
+  if (!datePart || datePart.length < 10) return false;
+  const monthPart = datePart.slice(0, 7);
+  if (period === 'monthly') return monthPart === context.currentMonthStr;
+  if (period === 'today') return datePart === context.todayStr;
+  if (period === 'yesterday') return datePart === context.yesterdayStr;
+  if (period === 'date') return datePart === (customDateStr || context.todayStr);
+  return false;
+}
+
+function getPeriodLabel(
+  period: PeriodKind,
+  customDate: string | undefined,
+  ctx: { todayStr: string; yesterdayStr: string; currentMonthStr: string }
+): string {
+  if (period === 'monthly') return 'This month';
+  if (period === 'today') return 'Today';
+  if (period === 'yesterday') return 'Yesterday';
+  if (period === 'date') return customDate || ctx.todayStr;
+  return '';
+}
+
 const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
   reservations,
   offers,
@@ -101,6 +133,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
   adminEvents,
   properties,
   invoices,
+  leads = [],
   onViewProforma,
 }) => {
   const { allBookings } = useSalesAllBookings({
@@ -185,6 +218,28 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
   });
   const [availableApartmentsModalRoom, setAvailableApartmentsModalRoom] = useState<'1' | '2' | '3' | '4+' | null>(null);
 
+  const [requestsPeriod, setRequestsPeriod] = useState<PeriodKind>('monthly');
+  const [requestsCustomDate, setRequestsCustomDate] = useState<string | undefined>(undefined);
+  const [offersSentPeriod, setOffersSentPeriod] = useState<PeriodKind>('monthly');
+  const [offersSentCustomDate, setOffersSentCustomDate] = useState<string | undefined>(undefined);
+  const [closedRentalsPeriod, setClosedRentalsPeriod] = useState<PeriodKind>('monthly');
+  const [closedRentalsCustomDate, setClosedRentalsCustomDate] = useState<string | undefined>(undefined);
+
+  const [isRequestsModalOpen, setIsRequestsModalOpen] = useState(false);
+  const [isSentOffersModalOpen, setIsSentOffersModalOpen] = useState(false);
+  const [isClosedRentalsModalOpen, setIsClosedRentalsModalOpen] = useState(false);
+
+  const periodDateContext = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const yesterday = new Date(d);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+    const currentMonthStr = todayStr.slice(0, 7);
+    return { todayStr, yesterdayStr, currentMonthStr };
+  }, []);
+
   const opCoMatch = useCallback(
     (opCo: string) => selectedOperatingCompany === 'All' || opCo === selectedOperatingCompany,
     [selectedOperatingCompany]
@@ -222,6 +277,26 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
     () => kautionLiabilityProformas.reduce((sum, p) => sum + p.kautionAmount, 0),
     [kautionLiabilityProformas]
   );
+
+  const incomingRequestsFiltered = useMemo(() => {
+    return leads.filter((lead) =>
+      dateInPeriod(lead.createdAt, requestsPeriod, requestsCustomDate, periodDateContext)
+    );
+  }, [leads, requestsPeriod, requestsCustomDate, periodDateContext]);
+
+  const sentOffersFiltered = useMemo(() => {
+    return offers.filter(
+      (o) =>
+        o.status === 'Sent' &&
+        dateInPeriod(o.createdAt, offersSentPeriod, offersSentCustomDate, periodDateContext)
+    );
+  }, [offers, offersSentPeriod, offersSentCustomDate, periodDateContext]);
+
+  const closedRentalsFiltered = useMemo(() => {
+    return confirmedBookings.filter((b) =>
+      dateInPeriod(b.createdAt, closedRentalsPeriod, closedRentalsCustomDate, periodDateContext)
+    );
+  }, [confirmedBookings, closedRentalsPeriod, closedRentalsCustomDate, periodDateContext]);
 
   const availabilityDateStr = useMemo(() => {
     const y = availabilityDate.getFullYear();
@@ -432,6 +507,123 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
             <div className={countClass}>{kautionLiabilityProformas.length} open deposits</div>
           </button>
 
+          {/* Incoming Requests */}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setIsRequestsModalOpen(true)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsRequestsModalOpen(true); } }}
+            className={`${tileClass} text-left hover:border-emerald-600/50 hover:bg-[#23262b] transition-colors cursor-pointer`}
+          >
+            <div className={tileTitleClass}>Incoming Requests</div>
+            <div className="flex flex-wrap items-center gap-1 mb-1" onClick={(e) => e.stopPropagation()}>
+              {(['monthly', 'today', 'yesterday', 'date'] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRequestsPeriod(p);
+                    if (p === 'date' && requestsCustomDate == null) setRequestsCustomDate(periodDateContext.todayStr);
+                  }}
+                  className={`px-2 py-1 text-xs rounded transition-colors ${requestsPeriod === p ? 'bg-emerald-600/30 text-emerald-400' : 'bg-gray-700/50 text-gray-400 hover:text-white'}`}
+                >
+                  {p === 'monthly' ? 'Monthly' : p === 'date' ? 'Date' : p === 'today' ? 'Today' : 'Yesterday'}
+                </button>
+              ))}
+              {requestsPeriod === 'date' && (
+                <input
+                  type="date"
+                  value={requestsCustomDate ?? periodDateContext.todayStr}
+                  onChange={(e) => { const v = e.target.value; if (v) setRequestsCustomDate(v); }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-[#161B22] border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500"
+                />
+              )}
+            </div>
+            <div className="text-xs text-gray-500 mb-1">{getPeriodLabel(requestsPeriod, requestsCustomDate, periodDateContext)}</div>
+            <div className={amountClass}>{incomingRequestsFiltered.length}</div>
+            <div className={countClass}>requests</div>
+          </div>
+
+          {/* Sent Offers */}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setIsSentOffersModalOpen(true)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsSentOffersModalOpen(true); } }}
+            className={`${tileClass} text-left hover:border-emerald-600/50 hover:bg-[#23262b] transition-colors cursor-pointer`}
+          >
+            <div className={tileTitleClass}>Sent Offers</div>
+            <div className="flex flex-wrap items-center gap-1 mb-1" onClick={(e) => e.stopPropagation()}>
+              {(['monthly', 'today', 'yesterday', 'date'] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOffersSentPeriod(p);
+                    if (p === 'date' && offersSentCustomDate == null) setOffersSentCustomDate(periodDateContext.todayStr);
+                  }}
+                  className={`px-2 py-1 text-xs rounded transition-colors ${offersSentPeriod === p ? 'bg-emerald-600/30 text-emerald-400' : 'bg-gray-700/50 text-gray-400 hover:text-white'}`}
+                >
+                  {p === 'monthly' ? 'Monthly' : p === 'date' ? 'Date' : p === 'today' ? 'Today' : 'Yesterday'}
+                </button>
+              ))}
+              {offersSentPeriod === 'date' && (
+                <input
+                  type="date"
+                  value={offersSentCustomDate ?? periodDateContext.todayStr}
+                  onChange={(e) => { const v = e.target.value; if (v) setOffersSentCustomDate(v); }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-[#161B22] border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500"
+                />
+              )}
+            </div>
+            <div className="text-xs text-gray-500 mb-1">{getPeriodLabel(offersSentPeriod, offersSentCustomDate, periodDateContext)}</div>
+            <div className={amountClass}>{sentOffersFiltered.length}</div>
+            <div className={countClass}>sent offers</div>
+          </div>
+
+          {/* Closed Rentals */}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setIsClosedRentalsModalOpen(true)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsClosedRentalsModalOpen(true); } }}
+            className={`${tileClass} text-left hover:border-emerald-600/50 hover:bg-[#23262b] transition-colors cursor-pointer`}
+          >
+            <div className={tileTitleClass}>Closed Rentals</div>
+            <div className="flex flex-wrap items-center gap-1 mb-1" onClick={(e) => e.stopPropagation()}>
+              {(['monthly', 'today', 'yesterday', 'date'] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setClosedRentalsPeriod(p);
+                    if (p === 'date' && closedRentalsCustomDate == null) setClosedRentalsCustomDate(periodDateContext.todayStr);
+                  }}
+                  className={`px-2 py-1 text-xs rounded transition-colors ${closedRentalsPeriod === p ? 'bg-emerald-600/30 text-emerald-400' : 'bg-gray-700/50 text-gray-400 hover:text-white'}`}
+                >
+                  {p === 'monthly' ? 'Monthly' : p === 'date' ? 'Date' : p === 'today' ? 'Today' : 'Yesterday'}
+                </button>
+              ))}
+              {closedRentalsPeriod === 'date' && (
+                <input
+                  type="date"
+                  value={closedRentalsCustomDate ?? periodDateContext.todayStr}
+                  onChange={(e) => { const v = e.target.value; if (v) setClosedRentalsCustomDate(v); }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-[#161B22] border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500"
+                />
+              )}
+            </div>
+            <div className="text-xs text-gray-500 mb-1">{getPeriodLabel(closedRentalsPeriod, closedRentalsCustomDate, periodDateContext)}</div>
+            <div className={amountClass}>{closedRentalsFiltered.length}</div>
+            <div className={countClass}>closed rentals</div>
+          </div>
+
           {/* Available Apartments by room count (only confirmed bookings block; active inventory only) */}
           <div className={tileClass}>
             <div className={tileTitleClass}>Available Apartments</div>
@@ -541,6 +733,133 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                     </li>
                   ))}
                 </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Incoming Requests list modal */}
+      {isRequestsModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-[#1C1F24] rounded-xl border border-gray-700 shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+            <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">
+                Incoming Requests — {getPeriodLabel(requestsPeriod, requestsCustomDate, periodDateContext)}
+              </h3>
+              <button type="button" onClick={() => setIsRequestsModalOpen(false)} className="p-1.5 text-gray-400 hover:text-white rounded transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="overflow-auto p-4">
+              {incomingRequestsFiltered.length === 0 ? (
+                <p className="text-gray-500 text-sm">No requests in this period.</p>
+              ) : (
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                    <tr>
+                      <th className="p-2">Name</th>
+                      <th className="p-2">Email</th>
+                      <th className="p-2">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {incomingRequestsFiltered.map((lead) => (
+                      <tr key={lead.id} className="hover:bg-[#16181D]">
+                        <td className="p-2 text-white">{lead.name}</td>
+                        <td className="p-2 text-gray-300">{lead.email}</td>
+                        <td className="p-2 tabular-nums text-gray-300">{lead.createdAt ? formatDateEU(lead.createdAt) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sent Offers list modal */}
+      {isSentOffersModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-[#1C1F24] rounded-xl border border-gray-700 shadow-xl max-w-4xl w-full max-h-[85vh] flex flex-col">
+            <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">
+                Sent Offers — {getPeriodLabel(offersSentPeriod, offersSentCustomDate, periodDateContext)}
+              </h3>
+              <button type="button" onClick={() => setIsSentOffersModalOpen(false)} className="p-1.5 text-gray-400 hover:text-white rounded transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="overflow-auto p-4">
+              {sentOffersFiltered.length === 0 ? (
+                <p className="text-gray-500 text-sm">No sent offers in this period.</p>
+              ) : (
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                    <tr>
+                      <th className="p-2">Offer No</th>
+                      <th className="p-2">Client</th>
+                      <th className="p-2">Dates</th>
+                      <th className="p-2">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {sentOffersFiltered.map((o) => (
+                      <tr key={o.id} className="hover:bg-[#16181D]">
+                        <td className="p-2 font-mono text-white">{o.offerNo ?? '—'}</td>
+                        <td className="p-2 text-gray-300">{o.clientName}</td>
+                        <td className="p-2 text-gray-300">{o.dates ?? '—'}</td>
+                        <td className="p-2 tabular-nums text-gray-300">{o.createdAt ? formatDateEU(o.createdAt) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Closed Rentals list modal */}
+      {isClosedRentalsModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-[#1C1F24] rounded-xl border border-gray-700 shadow-xl max-w-4xl w-full max-h-[85vh] flex flex-col">
+            <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">
+                Closed Rentals — {getPeriodLabel(closedRentalsPeriod, closedRentalsCustomDate, periodDateContext)}
+              </h3>
+              <button type="button" onClick={() => setIsClosedRentalsModalOpen(false)} className="p-1.5 text-gray-400 hover:text-white rounded transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="overflow-auto p-4">
+              {closedRentalsFiltered.length === 0 ? (
+                <p className="text-gray-500 text-sm">No closed rentals in this period.</p>
+              ) : (
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+                    <tr>
+                      <th className="p-2">Guest</th>
+                      <th className="p-2">Property / dates</th>
+                      <th className="p-2">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {closedRentalsFiltered.map((b) => {
+                      const prop = b.propertyId ? properties.find((p) => String(p.id) === String(b.propertyId)) : undefined;
+                      const propLabel = prop ? getPropertyDisplayLabel(prop) : (b.unit || String(b.propertyId || '—'));
+                      const datesStr = [b.start, b.end].filter(Boolean).join(' – ') || '—';
+                      return (
+                        <tr key={b.id} className="hover:bg-[#16181D]">
+                          <td className="p-2 text-white">{b.guest ?? '—'}</td>
+                          <td className="p-2 text-gray-300">{propLabel} · {datesStr}</td>
+                          <td className="p-2 tabular-nums text-gray-300">{b.createdAt ? formatDateEU(b.createdAt) : '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               )}
             </div>
           </div>

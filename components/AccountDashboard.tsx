@@ -9892,6 +9892,7 @@ ${internalCompany} Team`;
           adminEvents={adminEvents}
           properties={properties}
           invoices={invoices}
+          leads={leads}
           onViewProforma={(proformaId) => {
             setSalesTab('proformas');
             setExpandedProformaIds((prev) => new Set([...prev, proformaId]));
