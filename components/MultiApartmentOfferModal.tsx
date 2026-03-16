@@ -16,13 +16,17 @@ import {
   formatApartmentIdentificationLine,
 } from '../utils/salesOfferFlow';
 
+export type MultiApartmentOfferSubmitMode = 'draft' | 'send' | 'directBooking';
+
 interface MultiApartmentOfferModalProps {
   isOpen: boolean;
   onClose: () => void;
   apartments: SelectedApartmentData[];
   leads?: Lead[];
   prefilledRequestData?: Partial<RequestData>;
-  onSubmit: (draft: MultiApartmentOfferDraft, mode: 'draft' | 'send') => Promise<void> | void;
+  onSubmit: (draft: MultiApartmentOfferDraft, mode: MultiApartmentOfferSubmitMode) => Promise<void> | void;
+  /** When true, hide offer message section and use single "Create booking" action (calendar direct-booking flow). */
+  directBookingMode?: boolean;
   /** When 'view', show read-only content from viewData; apartments and onSubmit are unused. */
   mode?: 'create' | 'view';
   viewData?: OfferViewPayload;
@@ -54,6 +58,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
   leads = [],
   prefilledRequestData,
   onSubmit,
+  directBookingMode = false,
   mode = 'create',
   viewData,
 }) => {
@@ -72,7 +77,9 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
   const [showLeadDropdown, setShowLeadDropdown] = useState(false);
   const [messageDirty, setMessageDirty] = useState(false);
   const [includeTotalInEmail, setIncludeTotalInEmail] = useState(true);
-  const [savingMode, setSavingMode] = useState<'draft' | 'send' | null>(null);
+  const [savingMode, setSavingMode] = useState<MultiApartmentOfferSubmitMode | null>(null);
+  /** When user selects a lead from dropdown, store id for draft.shared.selectedLeadId. */
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   /** Per-apartment string values for Price/night, Tax %, Kaution. Empty string = valid during editing; never force 0 into field. */
   const [editableApartmentStrings, setEditableApartmentStrings] = useState<Record<string, { nightlyPrice?: string; taxRate?: string; kaution?: string }>>({});
 
@@ -91,6 +98,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     setLeadSearch('');
     setShowLeadDropdown(false);
     setMessageDirty(false);
+    setSelectedLeadId(null);
     setEditableApartmentStrings({});
   }, [isOpen, apartments, prefilledRequestData]);
 
@@ -166,11 +174,13 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     const q = leadSearch.trim().toLowerCase();
     if (!q) return [];
     return leads
-      .filter((lead) =>
-        lead.name.toLowerCase().includes(q) ||
-        lead.email.toLowerCase().includes(q) ||
-        lead.phone.toLowerCase().includes(q)
-      )
+      .filter((lead) => {
+        const name = (lead.name || '').toLowerCase();
+        const email = (lead.email || '').toLowerCase();
+        const phone = (lead.phone || '').toLowerCase();
+        const contactPerson = (lead.contactPerson || '').toLowerCase();
+        return name.includes(q) || email.includes(q) || phone.includes(q) || contactPerson.includes(q);
+      })
       .slice(0, 6);
   }, [leadSearch, leads]);
 
@@ -341,9 +351,10 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     setAddress(lead.address || '');
     setLeadSearch(lead.name);
     setShowLeadDropdown(false);
+    setSelectedLeadId(lead.id);
   };
 
-  const handleSubmit = async (mode: 'draft' | 'send') => {
+  const handleSubmit = async (submitMode: MultiApartmentOfferSubmitMode) => {
     if (selectedApartments.length === 0) {
       alert('Виберіть хоча б одну квартиру.');
       return;
@@ -376,6 +387,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
         clientMessage,
         checkIn,
         checkOut,
+        ...(selectedLeadId ? { selectedLeadId } : {}),
       },
       apartments: selectedApartments.map((apartment) => ({
         ...apartment,
@@ -386,8 +398,8 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     };
 
     try {
-      setSavingMode(mode);
-      await onSubmit(draft, mode);
+      setSavingMode(submitMode);
+      await onSubmit(draft, submitMode);
       onClose();
     } finally {
       setSavingMode(null);
@@ -399,7 +411,9 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
       <div className="bg-[#1C1F24] w-full max-w-6xl max-h-[92vh] overflow-hidden rounded-xl border border-gray-700 shadow-2xl flex flex-col">
         <div className="px-4 py-3 border-b border-gray-800 bg-[#23262b] flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-white">Unified Multi-Apartment Offer</h2>
+            <h2 className="text-lg font-bold text-white">
+              {directBookingMode ? 'Create booking' : 'Unified Multi-Apartment Offer'}
+            </h2>
             <p className="text-xs text-gray-400">
               {selectedApartments.length} apartment{selectedApartments.length === 1 ? '' : 's'} selected
             </p>
@@ -493,7 +507,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                     <th className="py-1.5 px-2 font-medium w-20">VAT</th>
                     <th className="py-1.5 px-2 font-medium w-20">Kaution</th>
                     <th className="py-1.5 px-2 font-medium w-20">Gross</th>
-                    <th className="py-1.5 pl-2 w-8" />
+                    {!directBookingMode && <th className="py-1.5 pl-2 w-8" />}
                   </tr>
                 </thead>
                 <tbody>
@@ -510,6 +524,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                     const displayTaxRate = strings?.taxRate ?? (apartment.taxRate === 0 ? '' : String(apartment.taxRate));
                     const displayKaution = strings?.kaution ?? ((apartment.kaution ?? 0) === 0 ? '' : String(apartment.kaution ?? 0));
                     const inputClass = 'w-full bg-[#161B22] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-emerald-500 tabular-nums';
+                    const showRemove = !directBookingMode || selectedApartments.length > 1;
                     return (
                       <tr key={apartment.propertyId} className="border-b border-gray-800/80">
                         <td className="py-1.5 pr-2 text-white truncate max-w-[200px]" title={formatApartmentIdentificationLine(apartment)}>
@@ -546,15 +561,17 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                           />
                         </td>
                         <td className="py-1.5 px-2 text-emerald-300 font-medium">{rowTotals.grossTotal.toFixed(2)}</td>
-                        <td className="py-1.5 pl-2">
-                          <button
-                            onClick={() => removeApartment(apartment.propertyId)}
-                            className="text-gray-500 hover:text-red-400 transition-colors"
-                            title="Прибрати квартиру з оферу"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
+                        {showRemove && (
+                          <td className="py-1.5 pl-2">
+                            <button
+                              onClick={() => removeApartment(apartment.propertyId)}
+                              className="text-gray-500 hover:text-red-400 transition-colors"
+                              title="Прибрати квартиру з оферу"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -569,33 +586,35 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
             </div>
           </section>
 
-          {/* Offer communication: checkbox left, message field right at full height */}
-          <section className="bg-[#111315] border border-gray-800 rounded-lg p-3">
-            <h3 className="text-xs font-semibold text-white uppercase tracking-wide mb-2">Offer communication</h3>
-            <div className="flex gap-3 items-stretch">
-              <div className="flex flex-col gap-2 min-w-[160px] shrink-0">
-                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
-                  <input
-                    type="checkbox"
-                    checked={includeTotalInEmail}
-                    onChange={(e) => setIncludeTotalInEmail(e.target.checked)}
-                    className="rounded border-gray-600 bg-[#161B22] text-emerald-500 focus:ring-emerald-500"
-                  />
-                  Show total
-                </label>
+          {/* Offer communication: hidden in direct-booking mode (calendar flow) */}
+          {!directBookingMode && (
+            <section className="bg-[#111315] border border-gray-800 rounded-lg p-3">
+              <h3 className="text-xs font-semibold text-white uppercase tracking-wide mb-2">Offer communication</h3>
+              <div className="flex gap-3 items-stretch">
+                <div className="flex flex-col gap-2 min-w-[160px] shrink-0">
+                  <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={includeTotalInEmail}
+                      onChange={(e) => setIncludeTotalInEmail(e.target.checked)}
+                      className="rounded border-gray-600 bg-[#161B22] text-emerald-500 focus:ring-emerald-500"
+                    />
+                    Show total
+                  </label>
+                </div>
+                <textarea
+                  value={clientMessage}
+                  onChange={(e) => {
+                    setClientMessage(e.target.value);
+                    setMessageDirty(true);
+                  }}
+                  rows={14}
+                  placeholder="Message to client"
+                  className="flex-1 min-h-[280px] bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500 resize-y"
+                />
               </div>
-              <textarea
-                value={clientMessage}
-                onChange={(e) => {
-                  setClientMessage(e.target.value);
-                  setMessageDirty(true);
-                }}
-                rows={14}
-                placeholder="Message to client"
-                className="flex-1 min-h-[280px] bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500 resize-y"
-              />
-            </div>
-          </section>
+            </section>
+          )}
         </div>
 
         <div className="px-4 py-3 border-t border-gray-800 bg-[#23262b] flex justify-between items-center">
@@ -609,22 +628,35 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
             >
               Cancel
             </button>
-            <button
-              onClick={() => handleSubmit('draft')}
-              disabled={savingMode !== null}
-              className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-60 inline-flex items-center gap-1.5"
-            >
-              <Save className="w-3.5 h-3.5" />
-              {savingMode === 'draft' ? 'Saving…' : 'Save as Offer'}
-            </button>
-            <button
-              onClick={() => handleSubmit('send')}
-              disabled={savingMode !== null}
-              className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors disabled:opacity-60 inline-flex items-center gap-1.5"
-            >
-              <Send className="w-3.5 h-3.5" />
-              {savingMode === 'send' ? 'Saving…' : 'Save & Send'}
-            </button>
+            {directBookingMode ? (
+              <button
+                onClick={() => handleSubmit('directBooking')}
+                disabled={savingMode !== null}
+                className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors disabled:opacity-60 inline-flex items-center gap-1.5"
+              >
+                <Save className="w-3.5 h-3.5" />
+                {savingMode === 'directBooking' ? 'Saving…' : 'Create booking'}
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => handleSubmit('draft')}
+                  disabled={savingMode !== null}
+                  className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-60 inline-flex items-center gap-1.5"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  {savingMode === 'draft' ? 'Saving…' : 'Save as Offer'}
+                </button>
+                <button
+                  onClick={() => handleSubmit('send')}
+                  disabled={savingMode !== null}
+                  className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors disabled:opacity-60 inline-flex items-center gap-1.5"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  {savingMode === 'send' ? 'Saving…' : 'Save & Send'}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

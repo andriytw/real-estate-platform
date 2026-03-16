@@ -37,6 +37,8 @@ function splitStreetAndHouseNumber(address: string | undefined) {
 interface SalesCalendarProps {
   onSaveOffer?: (offer: OfferData) => void;
   onSaveMultiApartmentOffer?: (draft: MultiApartmentOfferDraft, mode: 'draft' | 'send') => Promise<void> | void;
+  /** When calendar drag-select opens the modal in direct-booking mode, this handler runs on save (reservation then offer). */
+  onSaveDirectBooking?: (draft: MultiApartmentOfferDraft) => Promise<void>;
   onSaveReservation?: (reservation: ReservationData) => void;
   onDeleteReservation?: (id: number | string) => Promise<void> | void;
   onDeleteBooking?: (bookingId: number | string) => Promise<void> | void; // Delete confirmed booking from calendar
@@ -128,6 +130,7 @@ const getInitialFormData = () => ({
 const SalesCalendar: React.FC<SalesCalendarProps> = ({
   onSaveOffer,
   onSaveMultiApartmentOffer,
+  onSaveDirectBooking,
   onSaveReservation,
   onDeleteReservation,
   onDeleteBooking,
@@ -203,6 +206,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   // Add Booking Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isMultiOfferModalOpen, setIsMultiOfferModalOpen] = useState(false);
+  /** When set, the open MultiApartmentOfferModal is in calendar direct-booking mode (property + dates from drag). */
+  const [calendarDirectBookingPrefill, setCalendarDirectBookingPrefill] = useState<{ checkIn: string; checkOut: string } | null>(null);
   const [selectedPropertyIds, setSelectedPropertyIds] = useState<string[]>([]);
   const [leadSearchQuery, setLeadSearchQuery] = useState('');
   const [showLeadSuggestions, setShowLeadSuggestions] = useState(false);
@@ -711,14 +716,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const applyDragSelection = (start: { roomId: string; date: Date }, end: { roomId: string; date: Date }) => {
     const startD = start.date < end.date ? start.date : end.date;
     const endD = start.date > end.date ? start.date : end.date;
-    resetForm();
-    setFormData(prev => ({
-      ...prev,
-      roomId: start.roomId,
-      startDate: formatDateISO(startD),
-      endDate: formatDateISO(endD),
-    }));
-    setIsAddModalOpen(true);
+    // Open existing Create Offer modal in direct-booking mode with prefill (no old reservation modal)
+    setSelectedPropertyIds([start.roomId]);
+    setCalendarDirectBookingPrefill({ checkIn: formatDateISO(startD), checkOut: formatDateISO(endD) });
+    setIsMultiOfferModalOpen(true);
   };
 
   const handleMouseUp = () => {
@@ -1626,17 +1627,30 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         );
       })()}
 
-      {/* --- ADD BOOKING MODAL --- */}
+      {/* --- ADD BOOKING MODAL (Create Offer or calendar direct-booking) --- */}
       <MultiApartmentOfferModal
         isOpen={isMultiOfferModalOpen}
-        onClose={() => setIsMultiOfferModalOpen(false)}
+        onClose={() => {
+          setCalendarDirectBookingPrefill(null);
+          setIsMultiOfferModalOpen(false);
+        }}
         apartments={selectedApartmentPayloads}
         leads={leads}
-        prefilledRequestData={prefilledRequestData}
-        onSubmit={async (draft, mode) => {
+        prefilledRequestData={
+          calendarDirectBookingPrefill
+            ? { startDate: calendarDirectBookingPrefill.checkIn, endDate: calendarDirectBookingPrefill.checkOut }
+            : prefilledRequestData
+        }
+        directBookingMode={!!calendarDirectBookingPrefill}
+        onSubmit={async (draft, submitMode) => {
+          if (calendarDirectBookingPrefill) {
+            if (onSaveDirectBooking) await onSaveDirectBooking(draft);
+            setSelectedPropertyIds([]);
+            return;
+          }
           if (!onSaveMultiApartmentOffer) return;
-          await onSaveMultiApartmentOffer(draft, mode);
-          if (mode === 'draft') {
+          await onSaveMultiApartmentOffer(draft, submitMode);
+          if (submitMode === 'draft') {
             onShowToast?.('Офер збережено.');
           } else {
             onShowToast?.('Офер збережено та позначено як надісланий.');

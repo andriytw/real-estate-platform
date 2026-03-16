@@ -4597,6 +4597,105 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     }
   };
 
+  /** Calendar direct-booking: create technical reservation then offer (same path as Create Booking from lead). */
+  const handleSaveDirectBookingFromCalendar = async (draft: MultiApartmentOfferDraft) => {
+    if (!draft.apartments.length) {
+      alert('No apartment in draft.');
+      return;
+    }
+    const apartment = draft.apartments[0];
+    const property = properties.find((p) => String(p.id) === String(apartment.propertyId));
+    const managementName = property?.management?.name?.trim();
+    const internalCompany = managementName && managementName.length > 0 ? managementName : 'Sotiso';
+
+    const checkInDate = new Date(draft.shared.checkIn);
+    const checkOutDate = new Date(draft.shared.checkOut);
+    const diffMs = checkOutDate.getTime() - checkInDate.getTime();
+    const nights = diffMs > 0 ? Math.round(diffMs / (1000 * 60 * 60 * 24)) : 0;
+    const nightlyPrice = Number(apartment.nightlyPrice) || 0;
+    const taxRate = Number(apartment.taxRate) ?? 19;
+    const kaution = Number(apartment.kaution) || 0;
+    const netTotal = Number((nights * nightlyPrice).toFixed(2));
+    const vatAmount = Number((netTotal * (taxRate / 100)).toFixed(2));
+    const grossTotal = Number((netTotal + vatAmount + kaution).toFixed(2));
+    const leadLabel =
+      draft.shared.clientType === 'Company'
+        ? (draft.shared.companyName || '').trim() || 'Guest'
+        : `${(draft.shared.firstName || '').trim()} ${(draft.shared.lastName || '').trim()}`.trim() || 'Guest';
+
+    const reservationToSave: Omit<Reservation, 'id' | 'createdAt' | 'updatedAt'> = {
+      propertyId: String(apartment.propertyId),
+      startDate: draft.shared.checkIn,
+      endDate: draft.shared.checkOut,
+      status: 'open',
+      leadLabel,
+      clientFirstName: draft.shared.firstName || undefined,
+      clientLastName: draft.shared.lastName || undefined,
+      clientEmail: draft.shared.email || undefined,
+      clientPhone: draft.shared.phone || undefined,
+      clientAddress: draft.shared.address || undefined,
+      guestsCount: 1,
+      pricePerNightNet: nightlyPrice,
+      taxRate,
+      totalNights: nights,
+      totalGross: grossTotal,
+    };
+
+    let savedReservation: Reservation;
+    try {
+      savedReservation = await reservationsService.create(reservationToSave);
+    } catch (err) {
+      console.error('Failed to create reservation from calendar direct booking:', err);
+      alert('Failed to create reservation. Please try again.');
+      return;
+    }
+
+    const reservationId = savedReservation.id;
+    const offerNo = await offersService.getNextOfferNo();
+    const price = `${grossTotal.toFixed(2)} EUR`;
+    const dates = `${draft.shared.checkIn} to ${draft.shared.checkOut}`;
+
+    const offerToCreate: Omit<OfferData, 'id'> = {
+      offerNo,
+      clientName: leadLabel,
+      propertyId: String(apartment.propertyId),
+      internalCompany,
+      price,
+      dates,
+      status: 'Sent',
+      email: draft.shared.email || undefined,
+      phone: draft.shared.phone || undefined,
+      address: draft.shared.address || undefined,
+      checkInTime: undefined,
+      checkOutTime: undefined,
+      guests: undefined,
+      comments: undefined,
+      unit: property?.title,
+      reservationId,
+      clientMessage: undefined,
+      nightlyPrice,
+      taxRate,
+      nights,
+      netTotal,
+      vatTotal: vatAmount,
+      grossTotal,
+      kaution,
+      leadId: draft.shared.selectedLeadId ?? undefined,
+    };
+
+    try {
+      const savedOffer = await offersService.create(offerToCreate);
+      setOffers((prev) => [savedOffer, ...prev]);
+      setSalesTab('offers');
+      setToastMessage('Booking created from calendar.');
+      setCreatedOfferId(savedOffer.id);
+    } catch (err) {
+      console.error('Failed to create offer from calendar direct booking:', err);
+      alert('Failed to create offer. Please try again.');
+      return;
+    }
+  };
+
   const openManageModal = (reservation: ReservationData) => {
       setViewingOffer(false);
       setSelectedReservation({ ...reservation, isReservation: true } as ReservationData & { isReservation: true });
@@ -10649,6 +10748,7 @@ ${internalCompany} Team`;
         <SalesCalendar 
           onSaveOffer={handleSaveOffer} 
           onSaveMultiApartmentOffer={handleSaveMultiApartmentOffer}
+          onSaveDirectBooking={handleSaveDirectBookingFromCalendar}
           onSaveReservation={handleSaveReservation} 
           onDeleteReservation={handleDeleteReservation}
           onDeleteBooking={handleDeleteBooking}

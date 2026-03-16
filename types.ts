@@ -787,6 +787,8 @@ export interface MultiApartmentOfferDraft {
     clientMessage: string;
     checkIn: string;
     checkOut: string;
+    /** Set when user selected an existing lead from search; used for offer.leadId when saving direct booking. */
+    selectedLeadId?: string;
   };
   apartments: MultiApartmentOfferDraftApartment[];
 }
