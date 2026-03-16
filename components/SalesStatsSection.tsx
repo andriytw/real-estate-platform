@@ -284,11 +284,9 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
     );
   }, [leads, requestsPeriod, requestsCustomDate, periodDateContext]);
 
-  const sentOffersFiltered = useMemo(() => {
-    return offers.filter(
-      (o) =>
-        o.status === 'Sent' &&
-        dateInPeriod(o.createdAt, offersSentPeriod, offersSentCustomDate, periodDateContext)
+  const offersCreatedFiltered = useMemo(() => {
+    return offers.filter((o) =>
+      dateInPeriod(o.createdAt, offersSentPeriod, offersSentCustomDate, periodDateContext)
     );
   }, [offers, offersSentPeriod, offersSentCustomDate, periodDateContext]);
 
@@ -546,7 +544,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
             <div className={countClass}>requests</div>
           </div>
 
-          {/* Sent Offers */}
+          {/* Offers Created */}
           <div
             role="button"
             tabIndex={0}
@@ -554,7 +552,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsSentOffersModalOpen(true); } }}
             className={`${tileClass} text-left hover:border-emerald-600/50 hover:bg-[#23262b] transition-colors cursor-pointer`}
           >
-            <div className={tileTitleClass}>Sent Offers</div>
+            <div className={tileTitleClass}>Offers Created</div>
             <div className="flex flex-wrap items-center gap-1 mb-1" onClick={(e) => e.stopPropagation()}>
               {(['monthly', 'today', 'yesterday', 'date'] as const).map((p) => (
                 <button
@@ -581,8 +579,8 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
               )}
             </div>
             <div className="text-xs text-gray-500 mb-1">{getPeriodLabel(offersSentPeriod, offersSentCustomDate, periodDateContext)}</div>
-            <div className={amountClass}>{sentOffersFiltered.length}</div>
-            <div className={countClass}>sent offers</div>
+            <div className={amountClass}>{offersCreatedFiltered.length}</div>
+            <div className={countClass}>offers created</div>
           </div>
 
           {/* Closed Rentals */}
@@ -779,21 +777,21 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
         </div>
       )}
 
-      {/* Sent Offers list modal */}
+      {/* Offers Created list modal */}
       {isSentOffersModalOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="bg-[#1C1F24] rounded-xl border border-gray-700 shadow-xl max-w-4xl w-full max-h-[85vh] flex flex-col">
             <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
               <h3 className="text-lg font-bold text-white">
-                Sent Offers — {getPeriodLabel(offersSentPeriod, offersSentCustomDate, periodDateContext)}
+                Offers Created — {getPeriodLabel(offersSentPeriod, offersSentCustomDate, periodDateContext)}
               </h3>
               <button type="button" onClick={() => setIsSentOffersModalOpen(false)} className="p-1.5 text-gray-400 hover:text-white rounded transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="overflow-auto p-4">
-              {sentOffersFiltered.length === 0 ? (
-                <p className="text-gray-500 text-sm">No sent offers in this period.</p>
+              {offersCreatedFiltered.length === 0 ? (
+                <p className="text-gray-500 text-sm">No offers created in this period.</p>
               ) : (
                 <table className="w-full text-sm text-left">
                   <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
@@ -805,7 +803,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
-                    {sentOffersFiltered.map((o) => (
+                    {offersCreatedFiltered.map((o) => (
                       <tr key={o.id} className="hover:bg-[#16181D]">
                         <td className="p-2 font-mono text-white">{o.offerNo ?? '—'}</td>
                         <td className="p-2 text-gray-300">{o.clientName}</td>
