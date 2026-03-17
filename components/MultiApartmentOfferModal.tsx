@@ -397,13 +397,27 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
       })),
     };
 
+    const TIMEOUT_MS = 90_000;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('SUBMIT_TIMEOUT')), TIMEOUT_MS);
+    });
     try {
       setSavingMode(submitMode);
-      await onSubmit(draft, submitMode);
+      await Promise.race([
+        Promise.resolve(onSubmit(draft, submitMode)),
+        timeoutPromise,
+      ]);
       // When mode is 'send', parent opens channel picker and closes modal after user picks channel
       if (submitMode !== 'send') {
         onClose();
       }
+    } catch (err) {
+      if (err instanceof Error && err.message === 'SUBMIT_TIMEOUT') {
+        setSavingMode(null);
+        alert('Request is taking longer than expected. You can try again or check your connection.');
+        return;
+      }
+      throw err;
     } finally {
       setSavingMode(null);
     }

@@ -4605,6 +4605,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
 
   /** Calendar direct-booking: create technical reservation then offer (same path as Create Booking from lead). */
   const handleSaveDirectBookingFromCalendar = async (draft: MultiApartmentOfferDraft) => {
+    console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar start');
     if (!draft.apartments.length) {
       alert('No apartment in draft.');
       return;
@@ -4650,8 +4651,9 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     let savedReservation: Reservation;
     try {
       savedReservation = await reservationsService.create(reservationToSave);
+      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar after create reservation', { id: savedReservation.id });
     } catch (err) {
-      console.error('Failed to create reservation from calendar direct booking:', err);
+      console.error('[AccountDashboard] handleSaveDirectBookingFromCalendar catch (reservation)', err);
       alert('Failed to create reservation. Please try again.');
       return;
     }
@@ -4691,9 +4693,11 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
 
     try {
       const savedOffer = await offersService.create(offerToCreate);
+      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar after create offer', { id: savedOffer.id });
       setOffers((prev) => [savedOffer, ...prev]);
       setCreatedOfferId(savedOffer.id);
       const baseUrl = getMarketplaceBaseUrl();
+      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar before setSendChannelPayload');
       const messageBody = buildMultiApartmentClientMessage({
         clientLabel: leadLabel,
         internalCompany,
@@ -4716,7 +4720,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       });
       setToastMessage('Booking created from calendar.');
     } catch (err) {
-      console.error('Failed to create offer from calendar direct booking:', err);
+      console.error('[AccountDashboard] handleSaveDirectBookingFromCalendar catch (offer)', err);
       alert('Failed to create offer. Please try again.');
       return;
     }
@@ -4784,11 +4788,13 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     draft: MultiApartmentOfferDraft,
     mode: 'draft' | 'send'
   ) => {
+    console.log('[AccountDashboard] handleSaveMultiApartmentOffer start', { mode });
     try {
       const created = await offersService.createGroupFromMultiApartmentDraft(
         draft,
         mode === 'draft' ? 'Draft' : 'Sent'
       );
+      console.log('[AccountDashboard] handleSaveMultiApartmentOffer after createGroupFromMultiApartmentDraft', { count: created?.length });
 
       // Lead creation only on Save & Send (plan: offer-first flow). Not on draft.
       if (mode === 'send') {
@@ -4825,6 +4831,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       const allOffers = await offersService.getAll();
       setOffers(allOffers);
       if (mode === 'send') {
+        console.log('[AccountDashboard] handleSaveMultiApartmentOffer before setSendChannelPayload');
         const first = created[0];
         sendChannelResultPrefixRef.current = 'Offer';
         sendChannelOnCloseRef.current = () => {
@@ -4842,7 +4849,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         setSalesTab('offers');
       }
     } catch (error) {
-      console.error('Failed to save offer:', error);
+      console.error('[AccountDashboard] handleSaveMultiApartmentOffer catch', error);
       setToastMessage('Failed to save offer. Please try again.');
       throw error;
     }
@@ -5415,6 +5422,7 @@ ${internalCompany} Team`;
   };
   
   const handleSaveInvoice = async (invoice: InvoiceData, mode?: 'save' | 'send') => {
+      console.log('[AccountDashboard] handleSaveInvoice start', { mode, invoiceId: invoice.id });
       // If reservationId not set but we can find reservation by offerIdSource, set reservationId (not bookingId; booking_id only after payment confirmed)
       if (!invoice.reservationId && !invoice.bookingId && invoice.offerIdSource) {
           const reservationByOfferId = reservations.find(r => {
@@ -5510,6 +5518,7 @@ ${internalCompany} Team`;
             }
           }
         }
+        console.log('[AccountDashboard] handleSaveInvoice after offerIdSource block');
 
         const exists = invoices.some(inv => inv.id === invoice.id);
         let savedInvoice: InvoiceData;
@@ -5521,6 +5530,7 @@ ${internalCompany} Team`;
           const { id, ...invoiceWithoutId } = invoice;
           savedInvoice = await invoicesService.create(invoiceWithoutId);
         }
+        console.log('[AccountDashboard] handleSaveInvoice after create/update', { savedInvoiceId: savedInvoice.id });
         // Update local state
         if (exists) {
            setInvoices(prev => prev.map(inv => inv.id === savedInvoice.id ? savedInvoice : inv));
@@ -5559,13 +5569,27 @@ ${internalCompany} Team`;
         
         const isProformaSend = mode === 'send' && savedInvoice.documentType === 'proforma' && !invoice.proformaId;
         if (isProformaSend) {
+          console.log('[AccountDashboard] handleSaveInvoice before setSendChannelPayload (proforma send)');
           const offerId = savedInvoice.offerIdSource ?? savedInvoice.offerId;
           const linkedOffer = offerId ? offers.find(o => o.id === offerId || String(o.id) === String(offerId)) : null;
           const recipientEmail = linkedOffer?.email?.trim() || undefined;
           const recipientPhone = linkedOffer?.phone?.trim() || undefined;
           const baseUrl = getMarketplaceBaseUrl().replace(/\/+$/, '');
           const brandedLink = `${baseUrl}/p/${savedInvoice.invoiceNumber}`;
-          const messageBody = `Proforma ${savedInvoice.invoiceNumber}\nTotal: €${savedInvoice.totalGross?.toFixed(2) ?? '0.00'}`;
+          const clientName = (savedInvoice.clientName || linkedOffer?.clientName || 'Guest').trim() || 'Guest';
+          const datesLine = (() => {
+            const d = linkedOffer?.dates?.trim();
+            if (!d) return 'your stay';
+            const parts = d.split(/\s+to\s+/i).map((s) => s.trim());
+            if (parts.length < 2) return 'your stay';
+            const formatD = (iso: string) => {
+              const [y, m, day] = iso.split('-');
+              return day && m && y ? `${day}.${m}.${y}` : iso;
+            };
+            return `${formatD(parts[0])} – ${formatD(parts[1])}`;
+          })();
+          const totalStr = savedInvoice.totalGross != null ? savedInvoice.totalGross.toFixed(2) : '0.00';
+          const messageBody = `Hello ${clientName},\n\nplease find below the proforma invoice for your stay:\n${datesLine}\n\nProforma: ${savedInvoice.invoiceNumber}\nTotal: €${totalStr}\n\nOpen PDF:`;
           sendChannelResultPrefixRef.current = 'Proforma';
           sendChannelOnCloseRef.current = () => {
             setIsInvoiceModalOpen(false);
@@ -5585,6 +5609,7 @@ ${internalCompany} Team`;
             recipientPhone,
           });
         } else {
+          console.log('[AccountDashboard] handleSaveInvoice before setIsInvoiceModalOpen(false)');
           setIsInvoiceModalOpen(false);
           setSelectedOfferForInvoice(null);
           setSelectedInvoice(null);
@@ -5608,7 +5633,7 @@ ${internalCompany} Team`;
           }
         }
       } catch (error: any) {
-        console.error('Error saving invoice:', error);
+        console.error('[AccountDashboard] handleSaveInvoice catch', error);
         const errorMessage = error?.message || error?.code || 'Unknown error';
         alert(`Failed to save invoice: ${errorMessage}. Please try again.`);
       }

@@ -12,7 +12,7 @@ interface InvoiceModalProps {
   invoice?: InvoiceData | null;
   /** Parent proforma when adding an invoice under a proforma */
   proforma?: InvoiceData | null;
-  onSave: (invoice: InvoiceData, mode?: 'save' | 'send') => void;
+  onSave: (invoice: InvoiceData, mode?: 'save' | 'send') => void | Promise<void>;
   reservations?: ReservationData[];
   offers?: OfferData[];
 }
@@ -34,6 +34,8 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
   /** Blob URL for PDF preview in Add Proforma / Add Invoice */
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  /** True while awaiting parent onSave (persist/send phase). Distinct from uploading for phase-aware label. */
+  const [saving, setSaving] = useState(false);
   /** Resolved apartment/property title for the offer (Unit row) */
   const [offerPropertyTitle, setOfferPropertyTitle] = useState<string | null>(null);
   /** Add Invoice only: Net amount input (visually empty string, not 0) */
@@ -252,67 +254,84 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
 
   const handleSave = async (saveMode: 'save' | 'send' = 'save') => {
     if (!invoiceData || !senderDetails) return;
+    const needsUpload = (isAddProformaMode || isAddInvoiceToProformaMode) && !!pdfFile;
+    console.log('[InvoiceModal] handleSave start', { saveMode, needsUpload });
     let fileUrl: string | undefined;
-    if ((isAddProformaMode || isAddInvoiceToProformaMode) && pdfFile) {
-      setUploading(true);
-      try {
-        const prefix = isAddInvoiceToProformaMode && proforma ? `proforma-${proforma.id}` : 'proforma';
-        fileUrl = await invoicesService.uploadInvoicePdf(pdfFile, prefix);
-      } catch (e: any) {
-        console.error('PDF upload failed:', e);
-        const msg = e?.message || String(e);
-        alert(msg.includes('Bucket') || msg.includes('policy') || msg.includes('row-level')
-          ? `PDF upload failed: ${msg}. Create Storage bucket "invoice-pdfs" in Supabase Dashboard and add policy for uploads.`
-          : `Failed to upload PDF. ${msg || 'Please try again.'}`);
-        setUploading(false);
+    try {
+      if (needsUpload && pdfFile) {
+        setUploading(true);
+        console.log('[InvoiceModal] before upload');
+        try {
+          const prefix = isAddInvoiceToProformaMode && proforma ? `proforma-${proforma.id}` : 'proforma';
+          fileUrl = await invoicesService.uploadInvoicePdf(pdfFile, prefix);
+          console.log('[InvoiceModal] after upload success');
+        } catch (e: any) {
+          console.error('[InvoiceModal] upload catch', e);
+          const msg = e?.message || String(e);
+          alert(msg.includes('Bucket') || msg.includes('policy') || msg.includes('row-level')
+            ? `PDF upload failed: ${msg}. Create Storage bucket "invoice-pdfs" in Supabase Dashboard and add policy for uploads.`
+            : `Failed to upload PDF. ${msg || 'Please try again.'}`);
+          return;
+        } finally {
+          setUploading(false);
+        }
+      }
+      if ((isAddProformaMode || isAddInvoiceToProformaMode) && !fileUrl) {
+        alert('Please attach a PDF file before saving.');
         return;
       }
+      let totalNet: number;
+      let taxAmount: number;
+      let totalGross: number;
+      if (isAddInvoiceToProformaMode) {
+        const netNum = parseFloat(addInvoiceNetAmount);
+        if (!Number.isFinite(netNum) || netNum <= 0) {
+          alert('Please enter a valid Net amount greater than 0.');
+          return;
+        }
+        const taxRate = Number.isFinite(addInvoiceTaxRate) && addInvoiceTaxRate >= 0 ? addInvoiceTaxRate : 0;
+        totalNet = Number(netNum.toFixed(2));
+        taxAmount = Number((totalNet * (taxRate / 100)).toFixed(2));
+        totalGross = Number((totalNet + taxAmount).toFixed(2));
+      } else {
+        totalNet = invoiceData.totalNet!;
+        taxAmount = invoiceData.taxAmount!;
+        totalGross = invoiceData.totalGross!;
+      }
+      const finalInvoice: InvoiceData = {
+        id: invoiceData.id || Date.now().toString(),
+        invoiceNumber: invoiceData.invoiceNumber!,
+        date: invoiceData.date!,
+        dueDate: invoiceData.dueDate!,
+        internalCompany: invoiceData.internalCompany || 'Sotiso',
+        clientName: invoiceData.clientName!,
+        clientAddress: clientAddress,
+        items: invoiceData.items!,
+        totalNet,
+        taxAmount,
+        totalGross,
+        status: invoiceData.status || 'Unpaid',
+        offerIdSource: invoiceData.offerIdSource,
+        offerId: invoiceData.offerId,
+        reservationId: invoiceData.reservationId,
+        bookingId: invoiceData.bookingId,
+        fileUrl: fileUrl ?? invoiceData.fileUrl,
+        documentType: invoiceData.documentType,
+        proformaId: invoiceData.proformaId,
+      };
+      setSaving(true);
+      console.log('[InvoiceModal] before onSave');
+      await Promise.resolve(onSave(finalInvoice, saveMode));
+      console.log('[InvoiceModal] after onSave');
+    } catch (e) {
+      console.error('[InvoiceModal] handleSave catch', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      alert(`Failed to save: ${msg}. Please try again.`);
+    } finally {
       setUploading(false);
+      setSaving(false);
+      console.log('[InvoiceModal] handleSave finally');
     }
-    if ((isAddProformaMode || isAddInvoiceToProformaMode) && !fileUrl) {
-      alert('Please attach a PDF file before saving.');
-      return;
-    }
-    let totalNet: number;
-    let taxAmount: number;
-    let totalGross: number;
-    if (isAddInvoiceToProformaMode) {
-      const netNum = parseFloat(addInvoiceNetAmount);
-      if (!Number.isFinite(netNum) || netNum <= 0) {
-        alert('Please enter a valid Net amount greater than 0.');
-        return;
-      }
-      const taxRate = Number.isFinite(addInvoiceTaxRate) && addInvoiceTaxRate >= 0 ? addInvoiceTaxRate : 0;
-      totalNet = Number(netNum.toFixed(2));
-      taxAmount = Number((totalNet * (taxRate / 100)).toFixed(2));
-      totalGross = Number((totalNet + taxAmount).toFixed(2));
-    } else {
-      totalNet = invoiceData.totalNet!;
-      taxAmount = invoiceData.taxAmount!;
-      totalGross = invoiceData.totalGross!;
-    }
-    const finalInvoice: InvoiceData = {
-      id: invoiceData.id || Date.now().toString(),
-      invoiceNumber: invoiceData.invoiceNumber!,
-      date: invoiceData.date!,
-      dueDate: invoiceData.dueDate!,
-      internalCompany: invoiceData.internalCompany || 'Sotiso',
-      clientName: invoiceData.clientName!,
-      clientAddress: clientAddress,
-      items: invoiceData.items!,
-      totalNet,
-      taxAmount,
-      totalGross,
-      status: invoiceData.status || 'Unpaid',
-      offerIdSource: invoiceData.offerIdSource,
-      offerId: invoiceData.offerId,
-      reservationId: invoiceData.reservationId,
-      bookingId: invoiceData.bookingId,
-      fileUrl: fileUrl ?? invoiceData.fileUrl,
-      documentType: invoiceData.documentType,
-      proformaId: invoiceData.proformaId,
-    };
-    onSave(finalInvoice, saveMode);
   };
 
   const handleSimulatePdf = () => {
@@ -660,7 +679,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
                   <button
                     type="button"
                     onClick={() => handleSave('save')}
-                    disabled={(isAddProformaMode || isAddInvoiceToProformaMode) && (!pdfFile || uploading || (isAddInvoiceToProformaMode && !addInvoiceFinancialValid))}
+                    disabled={(isAddProformaMode || isAddInvoiceToProformaMode) && (!pdfFile || uploading || saving || (isAddInvoiceToProformaMode && !addInvoiceFinancialValid))}
                     className="px-4 py-2 rounded-lg text-sm font-bold bg-[#1C1F24] border border-gray-700 hover:bg-gray-700 text-gray-300 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Save className="w-4 h-4" />
@@ -670,11 +689,11 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
                 <button 
                     type="button"
                     onClick={() => handleSave((isAddProformaMode || isAddInvoiceToProformaMode) ? 'send' : 'save')}
-                    disabled={(isAddProformaMode || isAddInvoiceToProformaMode) && (!pdfFile || uploading || (isAddInvoiceToProformaMode && !addInvoiceFinancialValid))}
+                    disabled={(isAddProformaMode || isAddInvoiceToProformaMode) && (!pdfFile || uploading || saving || (isAddInvoiceToProformaMode && !addInvoiceFinancialValid))}
                     className="px-6 py-2 rounded-lg text-sm font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <Save className="w-4 h-4" />
-                    {uploading ? 'Uploading…' : (isAddProformaMode || isAddInvoiceToProformaMode) ? 'Save and Send' : 'Зберегти і відправити'}
+                    {uploading ? 'Uploading…' : saving ? 'Saving…' : (isAddProformaMode || isAddInvoiceToProformaMode) ? 'Save and Send' : 'Зберегти і відправити'}
                 </button>
               </>
             )}
