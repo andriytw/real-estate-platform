@@ -55,6 +55,8 @@ interface SalesCalendarProps {
   prefilledRequestData?: Partial<RequestData>; // Для префілу форми з Request
   properties?: Property[]; // Реальні об'єкти з Properties List
   onShowToast?: (message: string) => void;
+  /** Ref set by parent so it can close the multi-offer modal after channel picker (e.g. Save and Send). */
+  offerModalCloseRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 const INITIAL_BOOKINGS: Booking[] = [
@@ -147,6 +149,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   prefilledRequestData,
   properties = [],
   onShowToast,
+  offerModalCloseRef,
 }) => {
   // Calendar layer: only confirmed bookings (occupancy). Offers/reservations/proformas stay in their sections.
   const { allBookings } = useSalesAllBookings({
@@ -293,6 +296,20 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       onShowToast?.('Обраний обʼєкт із запиту не знайдено в календарі.');
     }
   }, [prefilledRequestData, isMultiOfferModalOpen, propertyById, onShowToast]);
+
+  // Let parent close the multi-offer modal after channel picker (Save and Send)
+  useEffect(() => {
+    if (offerModalCloseRef && isMultiOfferModalOpen) {
+      offerModalCloseRef.current = () => {
+        setCalendarDirectBookingPrefill(null);
+        setIsMultiOfferModalOpen(false);
+        setSelectedPropertyIds([]);
+      };
+    }
+    return () => {
+      if (offerModalCloseRef) offerModalCloseRef.current = null;
+    };
+  }, [isMultiOfferModalOpen, offerModalCloseRef]);
 
   // Prefetch confirmation signed URL when popover opens
   useEffect(() => {
@@ -1652,10 +1669,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
           await onSaveMultiApartmentOffer(draft, submitMode);
           if (submitMode === 'draft') {
             onShowToast?.('Офер збережено.');
-          } else {
-            onShowToast?.('Офер збережено та позначено як надісланий.');
+            setSelectedPropertyIds([]);
           }
-          setSelectedPropertyIds([]);
+          // When submitMode === 'send', parent opens channel picker and closes modal via offerModalCloseRef
         }}
       />
 

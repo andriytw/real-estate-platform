@@ -400,7 +400,10 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     try {
       setSavingMode(submitMode);
       await onSubmit(draft, submitMode);
-      onClose();
+      // When mode is 'send', parent opens channel picker and closes modal after user picks channel
+      if (submitMode !== 'send') {
+        onClose();
+      }
     } finally {
       setSavingMode(null);
     }
@@ -638,24 +641,14 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                 {savingMode === 'directBooking' ? 'Saving…' : 'Create booking'}
               </button>
             ) : (
-              <>
-                <button
-                  onClick={() => handleSubmit('draft')}
-                  disabled={savingMode !== null}
-                  className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-60 inline-flex items-center gap-1.5"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  {savingMode === 'draft' ? 'Saving…' : 'Save as Offer'}
-                </button>
-                <button
-                  onClick={() => handleSubmit('send')}
-                  disabled={savingMode !== null}
-                  className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors disabled:opacity-60 inline-flex items-center gap-1.5"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  {savingMode === 'send' ? 'Saving…' : 'Save & Send'}
-                </button>
-              </>
+              <button
+                onClick={() => handleSubmit('send')}
+                disabled={savingMode !== null}
+                className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors disabled:opacity-60 inline-flex items-center gap-1.5"
+              >
+                <Send className="w-3.5 h-3.5" />
+                {savingMode === 'send' ? 'Saving…' : 'Save and Send'}
+              </button>
             )}
           </div>
         </div>

@@ -12,6 +12,7 @@ import InvoiceModal from './InvoiceModal';
 import OfferEditModal from './OfferEditModal';
 import MultiApartmentOfferDetailsModal from './MultiApartmentOfferDetailsModal';
 import MultiApartmentOfferModal from './MultiApartmentOfferModal';
+import SendChannelModal, { type SendChannelPayload } from './SendChannelModal';
 import LeadEditModal from './LeadEditModal';
 import ClientHistoryModal from './ClientHistoryModal';
 import PropertyAddModal from './PropertyAddModal';
@@ -171,7 +172,7 @@ import {
 } from '../types';
 import { euToIso, validateEuDate } from '../utils/leaseTermDates';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
-import { formatApartmentIdentificationLine } from '../utils/salesOfferFlow';
+import { formatApartmentIdentificationLine, buildMultiApartmentClientMessage } from '../utils/salesOfferFlow';
 import { getMarketplaceBaseUrl, getMarketplaceUrlForProperty } from '../utils/marketplaceUrl';
 import { ensurePropertyHasCoords } from '../utils/ensurePropertyHasCoords';
 import { getRoomsCount } from '../utils/propertyStats';
@@ -2542,6 +2543,11 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   // --- Toast notifications ---
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [createdOfferId, setCreatedOfferId] = useState<string | null>(null);
+  // Send channel picker after Save and Send (offers/proformas)
+  const [sendChannelPayload, setSendChannelPayload] = useState<SendChannelPayload | null>(null);
+  const offerModalCloseRef = useRef<(() => void) | null>(null);
+  const sendChannelOnCloseRef = useRef<(() => void) | null>(null);
+  const sendChannelResultPrefixRef = useRef<'Offer' | 'Proforma'>('Offer');
   const [uebergabeprotokollLoading, setUebergabeprotokollLoading] = useState(false);
   const [uebergabeprotokollPdfLoading, setUebergabeprotokollPdfLoading] = useState(false);
 
@@ -4686,9 +4692,29 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     try {
       const savedOffer = await offersService.create(offerToCreate);
       setOffers((prev) => [savedOffer, ...prev]);
-      setSalesTab('offers');
-      setToastMessage('Booking created from calendar.');
       setCreatedOfferId(savedOffer.id);
+      const baseUrl = getMarketplaceBaseUrl();
+      const messageBody = buildMultiApartmentClientMessage({
+        clientLabel: leadLabel,
+        internalCompany,
+        checkIn: draft.shared.checkIn,
+        checkOut: draft.shared.checkOut,
+        apartments: draft.apartments,
+        marketplaceBaseUrl: baseUrl,
+      });
+      sendChannelResultPrefixRef.current = 'Offer';
+      sendChannelOnCloseRef.current = () => {
+        offerModalCloseRef.current?.();
+        setSalesTab('offers');
+      };
+      setSendChannelPayload({
+        messageBody,
+        documentLink: undefined,
+        subject: 'Offer',
+        recipientEmail: draft.shared.email?.trim() || undefined,
+        recipientPhone: draft.shared.phone?.trim() || undefined,
+      });
+      setToastMessage('Booking created from calendar.');
     } catch (err) {
       console.error('Failed to create offer from calendar direct booking:', err);
       alert('Failed to create offer. Please try again.');
@@ -4798,7 +4824,23 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       await loadReservations();
       const allOffers = await offersService.getAll();
       setOffers(allOffers);
-      setSalesTab('offers');
+      if (mode === 'send') {
+        const first = created[0];
+        sendChannelResultPrefixRef.current = 'Offer';
+        sendChannelOnCloseRef.current = () => {
+          offerModalCloseRef.current?.();
+          setSalesTab('offers');
+        };
+        setSendChannelPayload({
+          messageBody: first?.clientMessage ?? '',
+          documentLink: undefined,
+          subject: 'Offer',
+          recipientEmail: draft.shared.email?.trim() || undefined,
+          recipientPhone: draft.shared.phone?.trim() || undefined,
+        });
+      } else {
+        setSalesTab('offers');
+      }
     } catch (error) {
       console.error('Failed to save offer:', error);
       setToastMessage('Failed to save offer. Please try again.');
@@ -5005,19 +5047,22 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
           // Note: Reservation status uses 'offered', not BookingStatus
           await updateReservationInDB(selectedReservation.id, { status: 'offered' as any });
           
-          // Show toast notification and set created offer ID for "Open Offer" link
+          setCreatedOfferId(savedOffer.id);
           if (status === 'Sent') {
-              setToastMessage('Offer sent successfully!');
-              setCreatedOfferId(savedOffer.id);
-              setTimeout(() => {
-                  setToastMessage(null);
-              }, 5000);
-          }
-          
-          closeManageModals();
-          if (status === 'Sent') {
-              // Don't auto-redirect, let user click "Open Offer" link
+              sendChannelResultPrefixRef.current = 'Offer';
+              sendChannelOnCloseRef.current = () => {
+                  closeManageModals();
+                  setSalesTab('offers');
+              };
+              setSendChannelPayload({
+                  messageBody: savedOffer.clientMessage ?? '',
+                  documentLink: undefined,
+                  subject: 'Offer',
+                  recipientEmail: savedOffer.email ?? undefined,
+                  recipientPhone: savedOffer.phone ?? undefined,
+              });
           } else {
+              closeManageModals();
               setSalesTab('offers');
           }
       } catch (error) {
@@ -5077,18 +5122,21 @@ ${internalCompany} Team`;
           // Зберегти Offer в БД
           const savedOffer = await offersService.create(offerToCreate);
           
-          // Додати Offer в масив offers
           setOffers(prev => [savedOffer, ...prev]);
-          
-          // Оновити статус резервації на 'offered' when offer is sent
-          // Note: Reservation status uses 'offered', not BookingStatus
-          await updateReservationInDB(selectedReservation.id, { 
-            status: 'offered' as any
+          await updateReservationInDB(selectedReservation.id, { status: 'offered' as any });
+
+          sendChannelResultPrefixRef.current = 'Offer';
+          sendChannelOnCloseRef.current = () => {
+              closeManageModals();
+              setSalesTab('offers');
+          };
+          setSendChannelPayload({
+              messageBody: savedOffer.clientMessage ?? '',
+              documentLink: undefined,
+              subject: 'Offer',
+              recipientEmail: savedOffer.email ?? undefined,
+              recipientPhone: savedOffer.phone ?? undefined,
           });
-          
-          closeManageModals();
-          // Переключитись на вкладку Offers
-          setSalesTab('offers');
       } catch (error) {
           console.error('Error creating offer:', error);
           alert('Failed to save offer to database. Please try again.');
@@ -5366,7 +5414,7 @@ ${internalCompany} Team`;
     }
   };
   
-  const handleSaveInvoice = async (invoice: InvoiceData) => {
+  const handleSaveInvoice = async (invoice: InvoiceData, mode?: 'save' | 'send') => {
       // If reservationId not set but we can find reservation by offerIdSource, set reservationId (not bookingId; booking_id only after payment confirmed)
       if (!invoice.reservationId && !invoice.bookingId && invoice.offerIdSource) {
           const reservationByOfferId = reservations.find(r => {
@@ -5498,7 +5546,6 @@ ${internalCompany} Team`;
           await refreshMultiApartmentOffers();
         }
         
-        // Оновити статус резервації на invoiced та колір якщо є bookingId
         if (invoice.bookingId) {
             const bookingId = invoice.bookingId;
             const reservation = reservations.find(r => r.id === bookingId || String(r.id) === String(bookingId));
@@ -5510,26 +5557,53 @@ ${internalCompany} Team`;
             }
         }
         
-        setIsInvoiceModalOpen(false);
-        setSelectedOfferForInvoice(null);
-        setSelectedInvoice(null);
-        setSelectedProformaForInvoice(null);
-        setPendingOfferItemForInvoice(null);
-        if (invoice.documentType === 'invoice' && invoice.proformaId) {
-          setActiveDepartment('sales');
-          setSalesTab('proformas');
-          setProformaChildInvoices(prev => ({
-            ...prev,
-            [invoice.proformaId!]: [savedInvoice, ...(prev[invoice.proformaId!] ?? [])],
-          }));
-          await refreshInvoicedTotals();
-        } else if (savedInvoice.documentType === 'proforma' && !invoice.proformaId) {
-          setActiveDepartment('sales');
-          setSalesTab('proformas');
-          setProformas(prev => [savedInvoice, ...prev]);
+        const isProformaSend = mode === 'send' && savedInvoice.documentType === 'proforma' && !invoice.proformaId;
+        if (isProformaSend) {
+          const offerId = savedInvoice.offerIdSource ?? savedInvoice.offerId;
+          const linkedOffer = offerId ? offers.find(o => o.id === offerId || String(o.id) === String(offerId)) : null;
+          const recipientEmail = linkedOffer?.email?.trim() || undefined;
+          const recipientPhone = linkedOffer?.phone?.trim() || undefined;
+          const messageBody = `Proforma ${savedInvoice.invoiceNumber}\nTotal: €${savedInvoice.totalGross?.toFixed(2) ?? '0.00'}\n${savedInvoice.fileUrl ? `PDF: ${savedInvoice.fileUrl}` : ''}`.trim();
+          sendChannelResultPrefixRef.current = 'Proforma';
+          sendChannelOnCloseRef.current = () => {
+            setIsInvoiceModalOpen(false);
+            setSelectedOfferForInvoice(null);
+            setSelectedInvoice(null);
+            setSelectedProformaForInvoice(null);
+            setPendingOfferItemForInvoice(null);
+            setActiveDepartment('sales');
+            setSalesTab('proformas');
+            setProformas(prev => [savedInvoice, ...prev]);
+          };
+          setSendChannelPayload({
+            messageBody,
+            documentLink: savedInvoice.fileUrl,
+            subject: `Proforma ${savedInvoice.invoiceNumber}`,
+            recipientEmail,
+            recipientPhone,
+          });
         } else {
-          setActiveDepartment('accounting');
-          setAccountingTab('invoices');
+          setIsInvoiceModalOpen(false);
+          setSelectedOfferForInvoice(null);
+          setSelectedInvoice(null);
+          setSelectedProformaForInvoice(null);
+          setPendingOfferItemForInvoice(null);
+          if (invoice.documentType === 'invoice' && invoice.proformaId) {
+            setActiveDepartment('sales');
+            setSalesTab('proformas');
+            setProformaChildInvoices(prev => ({
+              ...prev,
+              [invoice.proformaId!]: [savedInvoice, ...(prev[invoice.proformaId!] ?? [])],
+            }));
+            await refreshInvoicedTotals();
+          } else if (savedInvoice.documentType === 'proforma' && !invoice.proformaId) {
+            setActiveDepartment('sales');
+            setSalesTab('proformas');
+            setProformas(prev => [savedInvoice, ...prev]);
+          } else {
+            setActiveDepartment('accounting');
+            setAccountingTab('invoices');
+          }
         }
       } catch (error: any) {
         console.error('Error saving invoice:', error);
@@ -10776,6 +10850,7 @@ ${internalCompany} Team`;
             propertyId: selectedRequest.propertyId,
           } : undefined}
           onShowToast={setToastMessage}
+          offerModalCloseRef={offerModalCloseRef}
         />
       );
     }
@@ -12047,6 +12122,21 @@ ${internalCompany} Team`;
         />
       )}
       <InvoiceModal isOpen={isInvoiceModalOpen} onClose={() => { setIsInvoiceModalOpen(false); setSelectedOfferForInvoice(null); setSelectedInvoice(null); setSelectedProformaForInvoice(null); setPendingOfferItemForInvoice(null); }} offer={selectedOfferForInvoice} invoice={selectedInvoice} proforma={selectedProformaForInvoice} onSave={handleSaveInvoice} reservations={reservations} offers={offers} />
+      <SendChannelModal
+        isOpen={sendChannelPayload !== null}
+        onClose={() => {
+          const fn = sendChannelOnCloseRef.current;
+          sendChannelOnCloseRef.current = null;
+          setSendChannelPayload(null);
+          fn?.();
+        }}
+        payload={sendChannelPayload}
+        onResultMessage={(msg) => {
+          const prefix = sendChannelResultPrefixRef.current || 'Offer';
+          setToastMessage(`${prefix} saved and ${msg}`);
+          setTimeout(() => setToastMessage(null), 5000);
+        }}
+      />
       <ConfirmPaymentModal
         isOpen={!!confirmPaymentModalProforma}
         onClose={() => setConfirmPaymentModalProforma(null)}

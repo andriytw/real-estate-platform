@@ -12,7 +12,7 @@ interface InvoiceModalProps {
   invoice?: InvoiceData | null;
   /** Parent proforma when adding an invoice under a proforma */
   proforma?: InvoiceData | null;
-  onSave: (invoice: InvoiceData) => void;
+  onSave: (invoice: InvoiceData, mode?: 'save' | 'send') => void;
   reservations?: ReservationData[];
   offers?: OfferData[];
 }
@@ -250,7 +250,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
     return validNet && validTaxRate && grossTotal > 0;
   })();
 
-  const handleSave = async () => {
+  const handleSave = async (saveMode: 'save' | 'send' = 'save') => {
     if (!invoiceData || !senderDetails) return;
     let fileUrl: string | undefined;
     if ((isAddProformaMode || isAddInvoiceToProformaMode) && pdfFile) {
@@ -312,7 +312,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
       documentType: invoiceData.documentType,
       proformaId: invoiceData.proformaId,
     };
-    onSave(finalInvoice);
+    onSave(finalInvoice, saveMode);
   };
 
   const handleSimulatePdf = () => {
@@ -655,14 +655,28 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
               </button>
             )}
             {((isAddProformaMode || isAddInvoiceToProformaMode) ? true : isEditing) && (
+              <>
+                {(isAddProformaMode || isAddInvoiceToProformaMode) && (
+                  <button
+                    type="button"
+                    onClick={() => handleSave('save')}
+                    disabled={(isAddProformaMode || isAddInvoiceToProformaMode) && (!pdfFile || uploading || (isAddInvoiceToProformaMode && !addInvoiceFinancialValid))}
+                    className="px-4 py-2 rounded-lg text-sm font-bold bg-[#1C1F24] border border-gray-700 hover:bg-gray-700 text-gray-300 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Save className="w-4 h-4" />
+                    Save
+                  </button>
+                )}
                 <button 
-                    onClick={handleSave}
+                    type="button"
+                    onClick={() => handleSave((isAddProformaMode || isAddInvoiceToProformaMode) ? 'send' : 'save')}
                     disabled={(isAddProformaMode || isAddInvoiceToProformaMode) && (!pdfFile || uploading || (isAddInvoiceToProformaMode && !addInvoiceFinancialValid))}
                     className="px-6 py-2 rounded-lg text-sm font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <Save className="w-4 h-4" />
-                    {uploading ? 'Uploading…' : (isAddProformaMode || isAddInvoiceToProformaMode) ? 'Save' : 'Зберегти і відправити'}
+                    {uploading ? 'Uploading…' : (isAddProformaMode || isAddInvoiceToProformaMode) ? 'Save and Send' : 'Зберегти і відправити'}
                 </button>
+              </>
             )}
         </div>
 
