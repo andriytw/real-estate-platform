@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/p/:number", "destination": "/api/proforma-redirect" },
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],

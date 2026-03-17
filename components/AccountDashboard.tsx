@@ -5563,7 +5563,9 @@ ${internalCompany} Team`;
           const linkedOffer = offerId ? offers.find(o => o.id === offerId || String(o.id) === String(offerId)) : null;
           const recipientEmail = linkedOffer?.email?.trim() || undefined;
           const recipientPhone = linkedOffer?.phone?.trim() || undefined;
-          const messageBody = `Proforma ${savedInvoice.invoiceNumber}\nTotal: €${savedInvoice.totalGross?.toFixed(2) ?? '0.00'}\n${savedInvoice.fileUrl ? `PDF: ${savedInvoice.fileUrl}` : ''}`.trim();
+          const baseUrl = getMarketplaceBaseUrl().replace(/\/+$/, '');
+          const brandedLink = `${baseUrl}/p/${savedInvoice.invoiceNumber}`;
+          const messageBody = `Proforma ${savedInvoice.invoiceNumber}\nTotal: €${savedInvoice.totalGross?.toFixed(2) ?? '0.00'}`;
           sendChannelResultPrefixRef.current = 'Proforma';
           sendChannelOnCloseRef.current = () => {
             setIsInvoiceModalOpen(false);
@@ -5577,7 +5579,7 @@ ${internalCompany} Team`;
           };
           setSendChannelPayload({
             messageBody,
-            documentLink: savedInvoice.fileUrl,
+            documentLink: brandedLink,
             subject: `Proforma ${savedInvoice.invoiceNumber}`,
             recipientEmail,
             recipientPhone,
