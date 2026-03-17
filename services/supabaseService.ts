@@ -1,4 +1,5 @@
 import { supabase } from '../utils/supabase/client';
+// Diagnosis: no shared request/timeout wrapper used across save flows; all calls use the singleton supabase client from utils/supabase/client.
 import {
   Property,
   ApartmentGroup,
@@ -52,6 +53,23 @@ import {
 } from '../types';
 import { isoToEu } from '../utils/leaseTermDates';
 import { createLeadFromRequest, type LeadOrigin } from './leadsService';
+
+/** Compact error fingerprint for catch logs (no full object dump). */
+function errorFingerprint(e: unknown): { name?: string; message?: string; code?: string; status?: number; hint?: string } {
+  if (e == null) return {};
+  if (typeof e === 'object' && 'message' in e) {
+    const err = e as { code?: string; message?: string; details?: string; hint?: string; status?: number };
+    return {
+      name: 'name' in e ? String((e as { name?: string }).name) : 'PostgrestError',
+      message: err.message != null ? String(err.message) : undefined,
+      code: err.code != null ? String(err.code) : undefined,
+      status: typeof err.status === 'number' ? err.status : undefined,
+      hint: err.hint != null ? String(err.hint) : err.details != null ? String(err.details) : undefined,
+    };
+  }
+  if (e instanceof Error) return { name: e.name, message: e.message };
+  return { message: String(e) };
+}
 
 // Lightweight type for joined stock + item for UI
 export interface WarehouseStockItem {
@@ -1616,16 +1634,34 @@ export const reservationsService = {
     return data.map(transformReservationFromDB);
   },
 
-  async create(reservation: Omit<Reservation, 'id' | 'createdAt' | 'updatedAt'>): Promise<Reservation> {
-    const dbData = transformReservationToDB(reservation);
-    const { data, error } = await supabase
-      .from('reservations')
-      .insert([dbData])
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return transformReservationFromDB(data);
+  /** No auto-retry: modal timeout does not cancel the request; retry can create duplicates. */
+  async create(reservation: Omit<Reservation, 'id' | 'createdAt' | 'updatedAt'>, traceId?: string): Promise<Reservation> {
+    const t0 = Date.now();
+    const tid = traceId ?? 'no-trace';
+    const table = 'reservations';
+    const callShape = 'insert(...).select().single()';
+    try {
+      console.log('[reservationsService.create] before query build', { traceId: tid, table, callShape });
+      const dbData = transformReservationToDB(reservation);
+      console.log('[reservationsService.create] before await supabase call', { traceId: tid, table });
+      const { data, error } = await supabase
+        .from('reservations')
+        .insert([dbData])
+        .select()
+        .single();
+      const durationMs = Date.now() - t0;
+      if (error) throw error;
+      console.log('[reservationsService.create] after success', { traceId: tid, durationMs, id: data?.id });
+      const out = transformReservationFromDB(data);
+      console.log('[reservationsService.create] before return', { traceId: tid });
+      return out;
+    } catch (e) {
+      const durationMs = Date.now() - t0;
+      console.error('[reservationsService.create] catch', { traceId: tid, durationMs, error: errorFingerprint(e) });
+      throw e;
+    } finally {
+      console.log('[reservationsService.create] finally', { traceId: tid });
+    }
   },
 
   async update(id: string, updates: Partial<Reservation>): Promise<Reservation> {
@@ -1757,24 +1793,57 @@ export const offersService = {
     return data.map(transformOfferFromDB);
   },
 
-  async getNextOfferNo(): Promise<string> {
-    const { data, error } = await supabase.rpc('get_next_offer_no');
-    if (error || data == null) {
-      throw new Error(error?.message || 'Failed to generate offer number');
+  async getNextOfferNo(traceId?: string): Promise<string> {
+    const t0 = Date.now();
+    const tid = traceId ?? 'no-trace';
+    const callShape = 'rpc("get_next_offer_no")';
+    try {
+      console.log('[offersService.getNextOfferNo] before await supabase call', { traceId: tid, callShape });
+      const { data, error } = await supabase.rpc('get_next_offer_no');
+      const durationMs = Date.now() - t0;
+      if (error || data == null) {
+        console.error('[offersService.getNextOfferNo] catch', { traceId: tid, durationMs, error: errorFingerprint(error ?? new Error('null data')) });
+        throw new Error(error?.message || 'Failed to generate offer number');
+      }
+      console.log('[offersService.getNextOfferNo] after success', { traceId: tid, durationMs });
+      return String(data);
+    } catch (e) {
+      const durationMs = Date.now() - t0;
+      console.error('[offersService.getNextOfferNo] catch', { traceId: tid, durationMs, error: errorFingerprint(e) });
+      throw e;
+    } finally {
+      console.log('[offersService.getNextOfferNo] finally', { traceId: tid });
     }
-    return String(data);
   },
 
-  async create(offer: Omit<OfferData, 'id'>): Promise<OfferData> {
-    const dbData = transformOfferToDB(offer);
-    const { data, error } = await supabase
-      .from('offers')
-      .insert([dbData])
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return transformOfferFromDB(data);
+  /** No auto-retry: modal timeout does not cancel the request; retry can create duplicates. */
+  async create(offer: Omit<OfferData, 'id'>, traceId?: string): Promise<OfferData> {
+    const t0 = Date.now();
+    const tid = traceId ?? 'no-trace';
+    const table = 'offers';
+    const callShape = 'insert(...).select().single()';
+    try {
+      console.log('[offersService.create] before query build', { traceId: tid, table, callShape });
+      const dbData = transformOfferToDB(offer);
+      console.log('[offersService.create] before await supabase call', { traceId: tid, table });
+      const { data, error } = await supabase
+        .from('offers')
+        .insert([dbData])
+        .select()
+        .single();
+      const durationMs = Date.now() - t0;
+      if (error) throw error;
+      console.log('[offersService.create] after success', { traceId: tid, durationMs, id: data?.id });
+      const out = transformOfferFromDB(data);
+      console.log('[offersService.create] before return', { traceId: tid });
+      return out;
+    } catch (e) {
+      const durationMs = Date.now() - t0;
+      console.error('[offersService.create] catch', { traceId: tid, durationMs, error: errorFingerprint(e) });
+      throw e;
+    } finally {
+      console.log('[offersService.create] finally', { traceId: tid });
+    }
   },
 
   async update(id: string, updates: Partial<OfferData>): Promise<OfferData> {
@@ -1826,11 +1895,15 @@ export const offersService = {
    * For each offer row we create a matching reservation and set offers.reservation_id so the
    * existing confirm-payment RPC (mark_invoice_paid_and_confirm_booking) continues to work.
    * 1 apartment = 1 row; downstream (Add Proforma, Confirm payment, confirmed booking) unchanged.
+   * No auto-retry: modal timeout does not cancel the request; retry can create duplicates.
    */
   async createGroupFromMultiApartmentDraft(
     draft: MultiApartmentOfferDraft,
-    headerStatus: 'Draft' | 'Sent'
+    headerStatus: 'Draft' | 'Sent',
+    traceId?: string
   ): Promise<OfferData[]> {
+    const tid = traceId ?? 'no-trace';
+    const t0 = Date.now();
     const checkIn = draft.shared.checkIn;
     const checkOut = draft.shared.checkOut;
     const nights = Math.max(
@@ -1845,11 +1918,17 @@ export const offersService = {
         : `${draft.shared.firstName} ${draft.shared.lastName}`.trim();
     const dates = `${checkIn} to ${checkOut}`;
 
+    let tStep = Date.now();
+    console.log('[createGroupFromMultiApartmentDraft] before query build: get_next_offer_no', { traceId: tid, callShape: 'rpc("get_next_offer_no")' });
+    console.log('[createGroupFromMultiApartmentDraft] before await supabase call', { traceId: tid, callShape: 'rpc("get_next_offer_no")' });
     const { data: offerNoData, error: rpcError } = await supabase.rpc('get_next_offer_no');
+    const durationRpc = Date.now() - tStep;
     if (rpcError || offerNoData == null) {
+      console.error('[createGroupFromMultiApartmentDraft] catch', { traceId: tid, durationMs: durationRpc, error: errorFingerprint(rpcError ?? new Error('null data')) });
       throw new Error(rpcError?.message || 'Failed to generate offer number');
     }
     const offerNo = String(offerNoData);
+    console.log('[createGroupFromMultiApartmentDraft] after success', { traceId: tid, durationMs: durationRpc });
     const offerGroupId = crypto.randomUUID();
 
     // 1. Create one reservation per apartment so confirm-payment flow can use offer.reservation_id
@@ -1876,12 +1955,21 @@ export const offersService = {
         total_gross: grossTotal,
       };
     });
+    tStep = Date.now();
+    const resRowCount = reservationRows.length;
+    console.log('[createGroupFromMultiApartmentDraft] before query build: insert reservations', { traceId: tid, table: 'reservations', callShape: 'insert(...).select("id")', rowCount: resRowCount });
+    console.log('[createGroupFromMultiApartmentDraft] before await supabase call', { traceId: tid, table: 'reservations' });
     const { data: insertedReservations, error: resError } = await supabase
       .from('reservations')
       .insert(reservationRows)
       .select('id');
-    if (resError) throw resError;
+    const durationRes = Date.now() - tStep;
+    if (resError) {
+      console.error('[createGroupFromMultiApartmentDraft] catch', { traceId: tid, durationMs: durationRes, error: errorFingerprint(resError) });
+      throw resError;
+    }
     const reservationIds = (insertedReservations ?? []).map((r) => r.id);
+    console.log('[createGroupFromMultiApartmentDraft] after success', { traceId: tid, durationMs: durationRes, rowCount: reservationIds.length });
 
     if (reservationIds.length !== draft.apartments.length) {
       throw new Error(
@@ -1932,9 +2020,18 @@ export const offersService = {
     });
 
     const dbRows = rows.map((row) => transformOfferToDB(row as OfferData));
+    tStep = Date.now();
+    const offerRowCount = dbRows.length;
+    console.log('[createGroupFromMultiApartmentDraft] before query build: insert offers', { traceId: tid, table: 'offers', callShape: 'insert(...).select("*")', rowCount: offerRowCount });
+    console.log('[createGroupFromMultiApartmentDraft] before await supabase call', { traceId: tid, table: 'offers' });
     const { data: inserted, error } = await supabase.from('offers').insert(dbRows).select('*');
-    if (error) throw error;
+    const durationOffers = Date.now() - tStep;
+    if (error) {
+      console.error('[createGroupFromMultiApartmentDraft] catch', { traceId: tid, durationMs: durationOffers, error: errorFingerprint(error) });
+      throw error;
+    }
     const insertedList = inserted ?? [];
+    console.log('[createGroupFromMultiApartmentDraft] after success', { traceId: tid, durationMs: durationOffers, rowCount: insertedList.length });
 
     for (const row of insertedList) {
       if (row.reservation_id == null || row.reservation_id === '') {

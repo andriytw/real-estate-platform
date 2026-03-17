@@ -397,6 +397,10 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
       })),
     };
 
+    // Timeout guard: unblocks UI after 90s so user is not stuck. IMPORTANT: this timeout does NOT
+    // cancel or reject the parent async flow (onSubmit). The underlying request may still be in
+    // flight or stuck; when the timeout wins we only clear loading state and show an alert. Retry
+    // after timeout may risk duplicate creation if the original request finishes late.
     const TIMEOUT_MS = 90_000;
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('SUBMIT_TIMEOUT')), TIMEOUT_MS);

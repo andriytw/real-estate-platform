@@ -2548,6 +2548,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const offerModalCloseRef = useRef<(() => void) | null>(null);
   const sendChannelOnCloseRef = useRef<(() => void) | null>(null);
   const sendChannelResultPrefixRef = useRef<'Offer' | 'Proforma'>('Offer');
+  /** Pending-submit guard: block duplicate submit while a save with this traceId is in progress (diagnosis). */
+  const activeSaveTraceIdRef = useRef<string | null>(null);
   const [uebergabeprotokollLoading, setUebergabeprotokollLoading] = useState(false);
   const [uebergabeprotokollPdfLoading, setUebergabeprotokollPdfLoading] = useState(false);
 
@@ -4603,9 +4605,16 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     }
   };
 
-  /** Calendar direct-booking: create technical reservation then offer (same path as Create Booking from lead). */
+  /** Calendar direct-booking: create technical reservation then offer (same path as Create Booking from lead). No auto-retry: modal timeout does not cancel the request; retry can create duplicates. */
   const handleSaveDirectBookingFromCalendar = async (draft: MultiApartmentOfferDraft) => {
-    console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar start');
+    const traceId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `db-${Date.now()}`;
+    if (activeSaveTraceIdRef.current !== null) {
+      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar save already in progress, ignoring duplicate submit', { activeTraceId: activeSaveTraceIdRef.current, traceId });
+      return;
+    }
+    activeSaveTraceIdRef.current = traceId;
+    console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar start', { traceId });
+    try {
     if (!draft.apartments.length) {
       alert('No apartment in draft.');
       return;
@@ -4650,16 +4659,21 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
 
     let savedReservation: Reservation;
     try {
-      savedReservation = await reservationsService.create(reservationToSave);
-      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar after create reservation', { id: savedReservation.id });
+      const t1 = Date.now();
+      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar before step: create reservation', { traceId });
+      savedReservation = await reservationsService.create(reservationToSave, traceId);
+      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar after step: create reservation', { traceId, durationMs: Date.now() - t1, id: savedReservation.id });
     } catch (err) {
-      console.error('[AccountDashboard] handleSaveDirectBookingFromCalendar catch (reservation)', err);
+      console.error('[AccountDashboard] handleSaveDirectBookingFromCalendar catch (reservation)', { traceId, err });
       alert('Failed to create reservation. Please try again.');
       return;
     }
 
     const reservationId = savedReservation.id;
-    const offerNo = await offersService.getNextOfferNo();
+    const t2 = Date.now();
+    console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar before step: get next offer no', { traceId });
+    const offerNo = await offersService.getNextOfferNo(traceId);
+    console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar after step: get next offer no', { traceId, durationMs: Date.now() - t2, offerNo });
     const price = `${grossTotal.toFixed(2)} EUR`;
     const dates = `${draft.shared.checkIn} to ${draft.shared.checkOut}`;
 
@@ -4692,12 +4706,14 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     };
 
     try {
-      const savedOffer = await offersService.create(offerToCreate);
-      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar after create offer', { id: savedOffer.id });
+      const t3 = Date.now();
+      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar before step: create offer', { traceId });
+      const savedOffer = await offersService.create(offerToCreate, traceId);
+      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar after step: create offer', { traceId, durationMs: Date.now() - t3, id: savedOffer.id });
       setOffers((prev) => [savedOffer, ...prev]);
       setCreatedOfferId(savedOffer.id);
       const baseUrl = getMarketplaceBaseUrl();
-      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar before setSendChannelPayload');
+      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar before setSendChannelPayload', { traceId });
       const messageBody = buildMultiApartmentClientMessage({
         clientLabel: leadLabel,
         internalCompany,
@@ -4720,9 +4736,12 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       });
       setToastMessage('Booking created from calendar.');
     } catch (err) {
-      console.error('[AccountDashboard] handleSaveDirectBookingFromCalendar catch (offer)', err);
+      console.error('[AccountDashboard] handleSaveDirectBookingFromCalendar catch (offer)', { traceId, err });
       alert('Failed to create offer. Please try again.');
       return;
+    }
+    } finally {
+      activeSaveTraceIdRef.current = null;
     }
   };
 
@@ -4784,17 +4803,27 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     setIsMultiOfferDetailsOpen(true);
   };
 
+  /** No auto-retry: modal timeout does not cancel the request; retry can create duplicates. */
   const handleSaveMultiApartmentOffer = async (
     draft: MultiApartmentOfferDraft,
     mode: 'draft' | 'send'
   ) => {
-    console.log('[AccountDashboard] handleSaveMultiApartmentOffer start', { mode });
+    const traceId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ma-${Date.now()}`;
+    if (activeSaveTraceIdRef.current !== null) {
+      console.log('[AccountDashboard] handleSaveMultiApartmentOffer save already in progress, ignoring duplicate submit', { activeTraceId: activeSaveTraceIdRef.current, traceId });
+      return;
+    }
+    activeSaveTraceIdRef.current = traceId;
+    console.log('[AccountDashboard] handleSaveMultiApartmentOffer start', { traceId, mode });
     try {
+      const t1 = Date.now();
+      console.log('[AccountDashboard] handleSaveMultiApartmentOffer before step: createGroupFromMultiApartmentDraft', { traceId });
       const created = await offersService.createGroupFromMultiApartmentDraft(
         draft,
-        mode === 'draft' ? 'Draft' : 'Sent'
+        mode === 'draft' ? 'Draft' : 'Sent',
+        traceId
       );
-      console.log('[AccountDashboard] handleSaveMultiApartmentOffer after createGroupFromMultiApartmentDraft', { count: created?.length });
+      console.log('[AccountDashboard] handleSaveMultiApartmentOffer after step: createGroupFromMultiApartmentDraft', { traceId, durationMs: Date.now() - t1, count: created?.length });
 
       // Lead creation only on Save & Send (plan: offer-first flow). Not on draft.
       if (mode === 'send') {
@@ -4816,22 +4845,34 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         };
 
         try {
+          const tLead = Date.now();
+          console.log('[AccountDashboard] handleSaveMultiApartmentOffer before step: createLeadFromRequest', { traceId });
           const lead = await createLeadFromRequest(requestPayload, { origin: 'offer' });
+          console.log('[AccountDashboard] handleSaveMultiApartmentOffer after step: createLeadFromRequest', { traceId, durationMs: Date.now() - tLead });
           if (lead) {
+            const tUpdate = Date.now();
+            console.log('[AccountDashboard] handleSaveMultiApartmentOffer before step: updateLeadIdForOffers', { traceId });
             await offersService.updateLeadIdForOffers(created.map((o) => o.id), lead.id);
+            console.log('[AccountDashboard] handleSaveMultiApartmentOffer after step: updateLeadIdForOffers', { traceId, durationMs: Date.now() - tUpdate });
             setLeads((prev) => (prev.some((l) => l.id === lead.id) ? prev : [lead, ...prev]));
           }
           // When both email and phone missing, createLeadFromRequest returns null; no lead_id set on offers.
         } catch (error) {
-          console.error('Failed to create lead for multi-apartment offer:', error);
+          console.error('[AccountDashboard] handleSaveMultiApartmentOffer catch (lead)', { traceId, error });
         }
       }
 
+      const tLoad = Date.now();
+      console.log('[AccountDashboard] handleSaveMultiApartmentOffer before step: loadReservations', { traceId });
       await loadReservations();
+      console.log('[AccountDashboard] handleSaveMultiApartmentOffer after step: loadReservations', { traceId, durationMs: Date.now() - tLoad });
+      const tGetAll = Date.now();
+      console.log('[AccountDashboard] handleSaveMultiApartmentOffer before step: getAll offers', { traceId });
       const allOffers = await offersService.getAll();
+      console.log('[AccountDashboard] handleSaveMultiApartmentOffer after step: getAll offers', { traceId, durationMs: Date.now() - tGetAll });
       setOffers(allOffers);
       if (mode === 'send') {
-        console.log('[AccountDashboard] handleSaveMultiApartmentOffer before setSendChannelPayload');
+        console.log('[AccountDashboard] handleSaveMultiApartmentOffer before setSendChannelPayload', { traceId });
         const first = created[0];
         sendChannelResultPrefixRef.current = 'Offer';
         sendChannelOnCloseRef.current = () => {
@@ -4849,9 +4890,11 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         setSalesTab('offers');
       }
     } catch (error) {
-      console.error('[AccountDashboard] handleSaveMultiApartmentOffer catch', error);
+      console.error('[AccountDashboard] handleSaveMultiApartmentOffer catch', { traceId, error });
       setToastMessage('Failed to save offer. Please try again.');
       throw error;
+    } finally {
+      activeSaveTraceIdRef.current = null;
     }
   };
 
@@ -5421,8 +5464,16 @@ ${internalCompany} Team`;
     }
   };
   
+  /** No auto-retry: modal timeout does not cancel the request; retry can create duplicates. */
   const handleSaveInvoice = async (invoice: InvoiceData, mode?: 'save' | 'send') => {
-      console.log('[AccountDashboard] handleSaveInvoice start', { mode, invoiceId: invoice.id });
+      const traceId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `inv-${Date.now()}`;
+      if (activeSaveTraceIdRef.current !== null) {
+        console.log('[AccountDashboard] handleSaveInvoice save already in progress, ignoring duplicate submit', { activeTraceId: activeSaveTraceIdRef.current, traceId });
+        return;
+      }
+      activeSaveTraceIdRef.current = traceId;
+      console.log('[AccountDashboard] handleSaveInvoice start', { traceId, mode, invoiceId: invoice.id });
+      try {
       // If reservationId not set but we can find reservation by offerIdSource, set reservationId (not bookingId; booking_id only after payment confirmed)
       if (!invoice.reservationId && !invoice.bookingId && invoice.offerIdSource) {
           const reservationByOfferId = reservations.find(r => {
@@ -5477,8 +5528,10 @@ ${internalCompany} Team`;
             if (localOffer) {
               // Save the offer to Supabase
               const { id, ...offerWithoutId } = localOffer;
-              const savedOffer = await offersService.create(offerWithoutId);
-              
+              const tOffer = Date.now();
+              console.log('[AccountDashboard] handleSaveInvoice before step: offerIdSource create offer', { traceId });
+              const savedOffer = await offersService.create(offerWithoutId, traceId);
+              console.log('[AccountDashboard] handleSaveInvoice after step: offerIdSource create offer', { traceId, durationMs: Date.now() - tOffer });
               // Update local offers state
               setOffers(prev => prev.map(o => 
                 o.id === localOffer.id ? savedOffer : o
@@ -5505,7 +5558,10 @@ ${internalCompany} Team`;
           } else {
             // Valid UUID, check if it exists in Supabase
             try {
+              const tGetAll = Date.now();
+              console.log('[AccountDashboard] handleSaveInvoice before step: offerIdSource getAll', { traceId });
               const allOffers = await offersService.getAll();
+              console.log('[AccountDashboard] handleSaveInvoice after step: offerIdSource getAll', { traceId, durationMs: Date.now() - tGetAll });
               const offerExists = allOffers.some(o => o.id === invoice.offerIdSource);
               if (!offerExists) {
                 // Offer doesn't exist in Supabase, set to null
@@ -5518,11 +5574,12 @@ ${internalCompany} Team`;
             }
           }
         }
-        console.log('[AccountDashboard] handleSaveInvoice after offerIdSource block');
+        console.log('[AccountDashboard] handleSaveInvoice after offerIdSource block', { traceId });
 
         const exists = invoices.some(inv => inv.id === invoice.id);
         let savedInvoice: InvoiceData;
-        
+        const tPersist = Date.now();
+        console.log('[AccountDashboard] handleSaveInvoice before step: invoice persist', { traceId, exists });
         if (exists) {
           savedInvoice = await invoicesService.update(String(invoice.id), invoice);
         } else {
@@ -5530,7 +5587,7 @@ ${internalCompany} Team`;
           const { id, ...invoiceWithoutId } = invoice;
           savedInvoice = await invoicesService.create(invoiceWithoutId);
         }
-        console.log('[AccountDashboard] handleSaveInvoice after create/update', { savedInvoiceId: savedInvoice.id });
+        console.log('[AccountDashboard] handleSaveInvoice after step: invoice persist', { traceId, durationMs: Date.now() - tPersist, savedInvoiceId: savedInvoice.id });
         // Update local state
         if (exists) {
            setInvoices(prev => prev.map(inv => inv.id === savedInvoice.id ? savedInvoice : inv));
@@ -5548,12 +5605,18 @@ ${internalCompany} Team`;
         }
 
         if (pendingOfferItemForInvoice && savedInvoice.documentType === 'proforma') {
+          const tItem = Date.now();
+          console.log('[AccountDashboard] handleSaveInvoice before step: offerItemsService.update', { traceId });
           await offerItemsService.update(pendingOfferItemForInvoice.id, {
             status: 'Converted',
             convertedAt: new Date().toISOString(),
             invoiceId: savedInvoice.id,
           });
+          console.log('[AccountDashboard] handleSaveInvoice after step: offerItemsService.update', { traceId, durationMs: Date.now() - tItem });
+          const tRefresh = Date.now();
+          console.log('[AccountDashboard] handleSaveInvoice before step: refreshMultiApartmentOffers', { traceId });
           await refreshMultiApartmentOffers();
+          console.log('[AccountDashboard] handleSaveInvoice after step: refreshMultiApartmentOffers', { traceId, durationMs: Date.now() - tRefresh });
         }
         
         if (invoice.bookingId) {
@@ -5569,7 +5632,7 @@ ${internalCompany} Team`;
         
         const isProformaSend = mode === 'send' && savedInvoice.documentType === 'proforma' && !invoice.proformaId;
         if (isProformaSend) {
-          console.log('[AccountDashboard] handleSaveInvoice before setSendChannelPayload (proforma send)');
+          console.log('[AccountDashboard] handleSaveInvoice before setSendChannelPayload (proforma send)', { traceId });
           const offerId = savedInvoice.offerIdSource ?? savedInvoice.offerId;
           const linkedOffer = offerId ? offers.find(o => o.id === offerId || String(o.id) === String(offerId)) : null;
           const recipientEmail = linkedOffer?.email?.trim() || undefined;
@@ -5609,7 +5672,7 @@ ${internalCompany} Team`;
             recipientPhone,
           });
         } else {
-          console.log('[AccountDashboard] handleSaveInvoice before setIsInvoiceModalOpen(false)');
+          console.log('[AccountDashboard] handleSaveInvoice before setIsInvoiceModalOpen(false)', { traceId });
           setIsInvoiceModalOpen(false);
           setSelectedOfferForInvoice(null);
           setSelectedInvoice(null);
@@ -5622,7 +5685,10 @@ ${internalCompany} Team`;
               ...prev,
               [invoice.proformaId!]: [savedInvoice, ...(prev[invoice.proformaId!] ?? [])],
             }));
+            const tRefreshTotals = Date.now();
+            console.log('[AccountDashboard] handleSaveInvoice before step: refreshInvoicedTotals', { traceId });
             await refreshInvoicedTotals();
+            console.log('[AccountDashboard] handleSaveInvoice after step: refreshInvoicedTotals', { traceId, durationMs: Date.now() - tRefreshTotals });
           } else if (savedInvoice.documentType === 'proforma' && !invoice.proformaId) {
             setActiveDepartment('sales');
             setSalesTab('proformas');
@@ -5633,9 +5699,11 @@ ${internalCompany} Team`;
           }
         }
       } catch (error: any) {
-        console.error('[AccountDashboard] handleSaveInvoice catch', error);
+        console.error('[AccountDashboard] handleSaveInvoice catch', { traceId, error });
         const errorMessage = error?.message || error?.code || 'Unknown error';
         alert(`Failed to save invoice: ${errorMessage}. Please try again.`);
+      } finally {
+        activeSaveTraceIdRef.current = null;
       }
   };
 

@@ -182,10 +182,13 @@ const AppContent: React.FC = () => {
     syncViewWithPath();
   }, [syncViewWithPath]);
 
+  // Reduce sync-path logs during save-hang diagnosis so console shows traceId/step logs clearly.
+  const SYNC_PATH_LOGS_ENABLED = false;
+
   // Handle browser back/forward navigation
   useEffect(() => {
     const handlePopState = () => {
-      console.log('🔄 App: Browser navigation detected, syncing view with path');
+      if (SYNC_PATH_LOGS_ENABLED) console.log('🔄 App: Browser navigation detected, syncing view with path');
       syncViewWithPath();
     };
 
@@ -197,7 +200,7 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('🔄 App: Tab became visible, syncing view with path');
+        if (SYNC_PATH_LOGS_ENABLED) console.log('🔄 App: Tab became visible, syncing view with path');
         syncViewWithPath();
       }
     };
@@ -210,8 +213,7 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     const handlePageShow = (e: PageTransitionEvent) => {
       if (e.persisted) {
-        // Page was restored from bfcache
-        console.log('🔄 App: Page restored from bfcache, syncing view with path');
+        if (SYNC_PATH_LOGS_ENABLED) console.log('🔄 App: Page restored from bfcache, syncing view with path');
         syncViewWithPath();
       }
     };
