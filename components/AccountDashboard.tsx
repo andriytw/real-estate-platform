@@ -5507,8 +5507,8 @@ ${internalCompany} Team`;
               }
           }
       }
-      
-      try {
+
+      {
         // Check if offerIdSource exists and needs to be saved to Supabase
         if (invoice.offerIdSource) {
           const isValidUUID = (str: string | number | undefined): boolean => {
@@ -5574,6 +5574,7 @@ ${internalCompany} Team`;
             }
           }
         }
+      }
         console.log('[AccountDashboard] handleSaveInvoice after offerIdSource block', { traceId });
 
         const exists = invoices.some(inv => inv.id === invoice.id);
@@ -5698,9 +5699,10 @@ ${internalCompany} Team`;
             setAccountingTab('invoices');
           }
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('[AccountDashboard] handleSaveInvoice catch', { traceId, error });
-        const errorMessage = error?.message || error?.code || 'Unknown error';
+        const err = error as { message?: string; code?: string };
+        const errorMessage = err?.message || err?.code || 'Unknown error';
         alert(`Failed to save invoice: ${errorMessage}. Please try again.`);
       } finally {
         activeSaveTraceIdRef.current = null;
