@@ -3,7 +3,7 @@ import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { X, Save, FileText, Download, Edit2, Check, Upload } from 'lucide-react';
 import { OfferData, InvoiceData, CompanyDetails, ReservationData } from '../types';
 import { INTERNAL_COMPANIES_DATA } from '../constants';
-import { invoicesService, propertiesService } from '../services/supabaseService';
+import { invoicesService, propertiesService, UploadTimeoutError } from '../services/supabaseService';
 import { PAGE_INSTANCE_ID } from '../utils/pageInstance';
 
 interface InvoiceModalProps {
@@ -273,6 +273,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
           console.log('[InvoiceModal] after upload success');
         } catch (e: any) {
           console.error('[InvoiceModal] upload catch', e);
+          if (e instanceof UploadTimeoutError || e?.code === 'UPLOAD_TIMEOUT') {
+            alert('Upload did not complete in time. The previous upload request may still be in progress in the background. Close this dialog and try again, or refresh the page if the problem persists.');
+            return;
+          }
           const msg = e?.message || String(e);
           alert(msg.includes('Bucket') || msg.includes('policy') || msg.includes('row-level')
             ? `PDF upload failed: ${msg}. Create Storage bucket "invoice-pdfs" in Supabase Dashboard and add policy for uploads.`

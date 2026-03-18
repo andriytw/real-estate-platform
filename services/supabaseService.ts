@@ -2260,6 +2260,26 @@ export const multiApartmentOffersService = {
   },
 };
 
+// ==================== UPLOAD TIMEOUT ERRORS ====================
+
+export class UploadTimeoutError extends Error {
+  code = 'UPLOAD_TIMEOUT' as const;
+  constructor(timeoutMs: number, pageInstanceId: string, storagePath: string) {
+    super(`Storage upload timed out after ${timeoutMs / 1000}s (pageInstanceId: ${pageInstanceId})`);
+    this.name = 'UploadTimeoutError';
+    (this as any).storagePath = storagePath;
+  }
+}
+
+export class PaymentProofUploadTimeoutError extends Error {
+  code = 'PAYMENT_PROOF_UPLOAD_TIMEOUT' as const;
+  constructor(timeoutMs: number, pageInstanceId: string, storagePath: string) {
+    super(`Payment proof upload timed out after ${timeoutMs / 1000}s (pageInstanceId: ${pageInstanceId})`);
+    this.name = 'PaymentProofUploadTimeoutError';
+    (this as any).storagePath = storagePath;
+  }
+}
+
 // ==================== INVOICES ====================
 export const invoicesService = {
   async getAll(): Promise<InvoiceData[]> {
@@ -2369,6 +2389,7 @@ export const invoicesService = {
 
   /** Upload PDF to invoice-pdfs bucket; returns public or signed URL for file_url. Keeps original filename (only / and \ sanitized for path safety). */
   async uploadInvoicePdf(file: File, pathPrefix?: string): Promise<string> {
+    const UPLOAD_TIMEOUT_MS = 90_000;
     const t0 = Date.now();
     console.log('[uploadInvoicePdf] start', { pageInstanceId: PAGE_INSTANCE_ID });
     console.log('[uploadInvoicePdf] file info', {
@@ -2378,34 +2399,40 @@ export const invoicesService = {
       type: file?.type,
     });
     const bucket = 'invoice-pdfs';
-    const originalName = (file.name || 'document.pdf').replace(/[\0/\\]/g, '_').slice(0, 200).trim() || 'document.pdf';
-    const path = pathPrefix
-      ? `${pathPrefix}/${Date.now()}-${originalName}`
-      : `${Date.now()}-${originalName}`;
+    const safeName = `${Date.now()}-${crypto.randomUUID()}.pdf`;
+    const path = pathPrefix ? `${pathPrefix}/${safeName}` : safeName;
     try {
       console.log('[uploadInvoicePdf] before supabase upload', { pageInstanceId: PAGE_INSTANCE_ID, bucket, path });
-      const { error } = await supabase.storage
+      // Timeout does not cancel the in-flight request; it only unblocks the UI.
+      const uploadPromise = supabase.storage
         .from(bucket)
         .upload(path, file, { cacheControl: '3600', upsert: false });
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new UploadTimeoutError(UPLOAD_TIMEOUT_MS, PAGE_INSTANCE_ID, path)), UPLOAD_TIMEOUT_MS);
+      });
+      const { error } = await Promise.race([uploadPromise, timeoutPromise]);
       if (error) throw new Error(error.message || 'Storage upload failed');
       console.log('[uploadInvoicePdf] after supabase upload success', { pageInstanceId: PAGE_INSTANCE_ID, durationMs: Date.now() - t0 });
       const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
       console.log('[uploadInvoicePdf] after url/sign step', { pageInstanceId: PAGE_INSTANCE_ID });
       return urlData.publicUrl;
     } catch (e: unknown) {
-      const err = e as { message?: string; name?: string };
+      const err = e as { message?: string; name?: string; code?: string };
       console.warn('[uploadInvoicePdf] catch', {
         pageInstanceId: PAGE_INSTANCE_ID,
         name: err?.name,
+        code: err?.code,
         message: err?.message,
+        durationMs: Date.now() - t0,
       });
       throw e;
     } finally {
-      console.log('[uploadInvoicePdf] finally', { pageInstanceId: PAGE_INSTANCE_ID });
+      console.log('[uploadInvoicePdf] finally', { pageInstanceId: PAGE_INSTANCE_ID, durationMs: Date.now() - t0 });
     }
   },
 
-  /** Upload payment proof PDF to payment-proofs bucket; path payments/{proformaId}/{timestamp}_{filename}.pdf. Returns public URL for payment_proof_url. (Legacy; new flow uses paymentProofsService.uploadPaymentProofFile.) */
+  // DEAD CODE — not called in production; remove in follow-up cleanup.
+  // Confirm payment uses paymentProofsService.uploadPaymentProofFile instead.
   async uploadPaymentProofPdf(file: File, proformaId: string): Promise<string> {
     const bucket = 'payment-proofs';
     const originalName = (file.name || 'document.pdf').replace(/[\0/\\]/g, '_').slice(0, 200).trim() || 'document.pdf';
@@ -2490,15 +2517,45 @@ export const paymentProofsService = {
     return transformPaymentProofFromDB(data);
   },
 
-  /** Upload to payments/{invoiceId}/{proofId}/{timestamp}_{filename}.pdf; returns storage path. */
+  /** Upload to payments/{invoiceId}/{proofId}/{timestamp}-{uuid}.pdf; returns storage path. */
   async uploadPaymentProofFile(file: File, invoiceId: string, proofId: string): Promise<string> {
-    const originalName = (file.name || 'document.pdf').replace(/[\0/\\]/g, '_').slice(0, 200).trim() || 'document.pdf';
-    const path = `payments/${invoiceId}/${proofId}/${Date.now()}_${originalName}`;
-    const { error } = await supabase.storage
-      .from(PAYMENT_PROOFS_BUCKET)
-      .upload(path, file, { cacheControl: '3600', upsert: false });
-    if (error) throw new Error(error.message || 'Storage upload failed');
-    return path;
+    const UPLOAD_TIMEOUT_MS = 90_000;
+    const t0 = Date.now();
+    console.log('[uploadPaymentProofFile] start', { pageInstanceId: PAGE_INSTANCE_ID });
+    console.log('[uploadPaymentProofFile] file info', {
+      pageInstanceId: PAGE_INSTANCE_ID,
+      name: file?.name,
+      size: file?.size,
+      type: file?.type,
+    });
+    const safeName = `${Date.now()}-${crypto.randomUUID()}.pdf`;
+    const path = `payments/${invoiceId}/${proofId}/${safeName}`;
+    try {
+      console.log('[uploadPaymentProofFile] before supabase upload', { pageInstanceId: PAGE_INSTANCE_ID, bucket: PAYMENT_PROOFS_BUCKET, path });
+      // Timeout does not cancel the in-flight request; it only unblocks the UI.
+      const uploadPromise = supabase.storage
+        .from(PAYMENT_PROOFS_BUCKET)
+        .upload(path, file, { cacheControl: '3600', upsert: false });
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new PaymentProofUploadTimeoutError(UPLOAD_TIMEOUT_MS, PAGE_INSTANCE_ID, path)), UPLOAD_TIMEOUT_MS);
+      });
+      const { error } = await Promise.race([uploadPromise, timeoutPromise]);
+      if (error) throw new Error(error.message || 'Storage upload failed');
+      console.log('[uploadPaymentProofFile] after supabase upload success', { pageInstanceId: PAGE_INSTANCE_ID, durationMs: Date.now() - t0 });
+      return path;
+    } catch (e: unknown) {
+      const err = e as { message?: string; name?: string; code?: string };
+      console.warn('[uploadPaymentProofFile] catch', {
+        pageInstanceId: PAGE_INSTANCE_ID,
+        name: err?.name,
+        code: err?.code,
+        message: err?.message,
+        durationMs: Date.now() - t0,
+      });
+      throw e;
+    } finally {
+      console.log('[uploadPaymentProofFile] finally', { pageInstanceId: PAGE_INSTANCE_ID, durationMs: Date.now() - t0 });
+    }
   },
 
   /** Get signed URL for a payment proof file (works with public or private bucket). */

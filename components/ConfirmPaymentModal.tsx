@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Upload } from 'lucide-react';
 import { InvoiceData } from '../types';
-import { paymentProofsService, markInvoicePaidAndConfirmBooking } from '../services/supabaseService';
+import { paymentProofsService, markInvoicePaidAndConfirmBooking, PaymentProofUploadTimeoutError } from '../services/supabaseService';
 import { supabase } from '../utils/supabase/client';
+import { PAGE_INSTANCE_ID } from '../utils/pageInstance';
 
 const CONFIRM_PAYMENT_PDF_INPUT_ID = 'confirm-payment-pdf-upload';
 
@@ -51,6 +52,8 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
       setError('Щоб підтвердити оплату, проформа має бути прив\'язана до оффера. Додайте проформу з розділу Оффери (Offers).');
       return;
     }
+    const traceId = `cpm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    console.log('[ConfirmPaymentModal] handleSaveAndConfirm start', { traceId, pageInstanceId: PAGE_INSTANCE_ID, proformaId: proforma.id, hasPdf: !!pdfFile });
     setError(null);
     setUploading(true);
     let proofId: string | null = null;
@@ -59,48 +62,60 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
       const { data: { session } } = await supabase.auth.getSession();
       const createdBy = session?.user?.id ?? undefined;
 
-      // 1. Always create payment_proofs row (is_current = false; do not modify previous proofs)
+      console.log('[ConfirmPaymentModal] before create proof row', { traceId, pageInstanceId: PAGE_INSTANCE_ID });
       const proof = await paymentProofsService.create({
         invoiceId: proforma.id,
         createdBy,
         documentNumber: documentNumber.trim() || undefined,
       });
       proofId = proof.id;
+      console.log('[ConfirmPaymentModal] after create proof row', { traceId, pageInstanceId: PAGE_INSTANCE_ID, proofId });
 
-      // 2. If user selected a PDF: upload and update proof row
       if (pdfFile) {
+        console.log('[ConfirmPaymentModal] before upload', { traceId, pageInstanceId: PAGE_INSTANCE_ID, fileName: pdfFile.name, fileSize: pdfFile.size });
         const filePath = await paymentProofsService.uploadPaymentProofFile(pdfFile, proforma.id, proof.id);
+        console.log('[ConfirmPaymentModal] after upload success', { traceId, pageInstanceId: PAGE_INSTANCE_ID, filePath });
         await paymentProofsService.update(proof.id, {
           filePath,
           fileName: pdfFile.name || 'document.pdf',
           fileUploadedAt: new Date().toISOString(),
         });
         proofHasFile = true;
+        console.log('[ConfirmPaymentModal] after proof row updated with file', { traceId, pageInstanceId: PAGE_INSTANCE_ID });
       }
 
-      // 3. Call RPC
+      console.log('[ConfirmPaymentModal] before RPC markInvoicePaidAndConfirmBooking', { traceId, pageInstanceId: PAGE_INSTANCE_ID });
       const newBookingId = await markInvoicePaidAndConfirmBooking(proforma.id);
+      console.log('[ConfirmPaymentModal] after RPC success', { traceId, pageInstanceId: PAGE_INSTANCE_ID, newBookingId });
 
-      // 4. On RPC success: set rpc_confirmed_at; if this proof has a file, set it current and clear previous current
       await paymentProofsService.update(proof.id, { rpcConfirmedAt: new Date().toISOString() });
       if (proofHasFile) {
         await paymentProofsService.setCurrentProof(proforma.id, proof.id);
       }
+      console.log('[ConfirmPaymentModal] before onConfirmed', { traceId, pageInstanceId: PAGE_INSTANCE_ID });
       await onConfirmed(newBookingId);
+      console.log('[ConfirmPaymentModal] after onConfirmed', { traceId, pageInstanceId: PAGE_INSTANCE_ID });
       handleClose();
     } catch (e: unknown) {
+      const err = e as any;
       const msg = e instanceof Error ? e.message : String(e);
-      const hint =
-        msg.includes('Bucket') || msg.includes('policy') || msg.includes('row-level')
-          ? ' Ensure bucket "payment-proofs" exists and allows uploads.'
-          : '';
-      const rpcFailedHint =
-        proofId != null
-          ? ' Proof was created but payment confirmation failed. Use "Retry confirmation" in the expanded row or contact support.'
-          : '';
-      setError(`Failed to confirm payment. ${msg}${hint}${rpcFailedHint}`);
+      console.warn('[ConfirmPaymentModal] catch', { traceId, pageInstanceId: PAGE_INSTANCE_ID, code: err?.code, name: err?.name, message: msg, proofId });
+      if (e instanceof PaymentProofUploadTimeoutError || err?.code === 'PAYMENT_PROOF_UPLOAD_TIMEOUT') {
+        setError('Upload did not complete in time. The previous upload request may still be in progress in the background. Close this dialog and try again, or refresh the page if the problem persists.');
+      } else {
+        const hint =
+          msg.includes('Bucket') || msg.includes('policy') || msg.includes('row-level')
+            ? ' Ensure bucket "payment-proofs" exists and allows uploads.'
+            : '';
+        const rpcFailedHint =
+          proofId != null
+            ? ' Proof was created but payment confirmation failed. Use "Retry confirmation" in the expanded row or contact support.'
+            : '';
+        setError(`Failed to confirm payment. ${msg}${hint}${rpcFailedHint}`);
+      }
     } finally {
       setUploading(false);
+      console.log('[ConfirmPaymentModal] handleSaveAndConfirm finally', { traceId, pageInstanceId: PAGE_INSTANCE_ID });
     }
   };
 
