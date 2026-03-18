@@ -25,6 +25,8 @@ interface MultiApartmentOfferModalProps {
   leads?: Lead[];
   prefilledRequestData?: Partial<RequestData>;
   onSubmit: (draft: MultiApartmentOfferDraft, mode: MultiApartmentOfferSubmitMode) => Promise<void> | void;
+  /** DEBUG/RECOVERY: after submit timeout or user closes while saving — parent clears AccountDashboard save lock (trace-safe). */
+  onStuckClearLock?: () => void;
   /** When true, hide offer message section and use single "Create booking" action (calendar direct-booking flow). */
   directBookingMode?: boolean;
   /** When 'view', show read-only content from viewData; apartments and onSubmit are unused. */
@@ -58,6 +60,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
   leads = [],
   prefilledRequestData,
   onSubmit,
+  onStuckClearLock,
   directBookingMode = false,
   mode = 'create',
   viewData,
@@ -418,6 +421,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     } catch (err) {
       if (err instanceof Error && err.message === 'SUBMIT_TIMEOUT') {
         setSavingMode(null);
+        onStuckClearLock?.();
         alert('Request is taking longer than expected. You can try again or check your connection.');
         return;
       }
@@ -425,6 +429,13 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     } finally {
       setSavingMode(null);
     }
+  };
+
+  const handleModalClose = () => {
+    if (savingMode !== null) {
+      onStuckClearLock?.();
+    }
+    onClose();
   };
 
   return (
@@ -439,7 +450,7 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
               {selectedApartments.length} apartment{selectedApartments.length === 1 ? '' : 's'} selected
             </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+          <button type="button" onClick={handleModalClose} className="text-gray-400 hover:text-white transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -644,7 +655,8 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={onClose}
+              type="button"
+              onClick={handleModalClose}
               className="px-3 py-1.5 rounded border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors text-sm"
             >
               Cancel

@@ -1,4 +1,5 @@
 import { supabase } from '../utils/supabase/client';
+import { PAGE_INSTANCE_ID } from '../utils/pageInstance';
 // Diagnosis: no shared request/timeout wrapper used across save flows; all calls use the singleton supabase client from utils/supabase/client.
 import {
   Property,
@@ -2368,17 +2369,40 @@ export const invoicesService = {
 
   /** Upload PDF to invoice-pdfs bucket; returns public or signed URL for file_url. Keeps original filename (only / and \ sanitized for path safety). */
   async uploadInvoicePdf(file: File, pathPrefix?: string): Promise<string> {
+    const t0 = Date.now();
+    console.log('[uploadInvoicePdf] start', { pageInstanceId: PAGE_INSTANCE_ID });
+    console.log('[uploadInvoicePdf] file info', {
+      pageInstanceId: PAGE_INSTANCE_ID,
+      name: file?.name,
+      size: file?.size,
+      type: file?.type,
+    });
     const bucket = 'invoice-pdfs';
     const originalName = (file.name || 'document.pdf').replace(/[\0/\\]/g, '_').slice(0, 200).trim() || 'document.pdf';
     const path = pathPrefix
       ? `${pathPrefix}/${Date.now()}-${originalName}`
       : `${Date.now()}-${originalName}`;
-    const { error } = await supabase.storage
-      .from(bucket)
-      .upload(path, file, { cacheControl: '3600', upsert: false });
-    if (error) throw new Error(error.message || 'Storage upload failed');
-    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
-    return urlData.publicUrl;
+    try {
+      console.log('[uploadInvoicePdf] before supabase upload', { pageInstanceId: PAGE_INSTANCE_ID, bucket, path });
+      const { error } = await supabase.storage
+        .from(bucket)
+        .upload(path, file, { cacheControl: '3600', upsert: false });
+      if (error) throw new Error(error.message || 'Storage upload failed');
+      console.log('[uploadInvoicePdf] after supabase upload success', { pageInstanceId: PAGE_INSTANCE_ID, durationMs: Date.now() - t0 });
+      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
+      console.log('[uploadInvoicePdf] after url/sign step', { pageInstanceId: PAGE_INSTANCE_ID });
+      return urlData.publicUrl;
+    } catch (e: unknown) {
+      const err = e as { message?: string; name?: string };
+      console.warn('[uploadInvoicePdf] catch', {
+        pageInstanceId: PAGE_INSTANCE_ID,
+        name: err?.name,
+        message: err?.message,
+      });
+      throw e;
+    } finally {
+      console.log('[uploadInvoicePdf] finally', { pageInstanceId: PAGE_INSTANCE_ID });
+    }
   },
 
   /** Upload payment proof PDF to payment-proofs bucket; path payments/{proformaId}/{timestamp}_{filename}.pdf. Returns public URL for payment_proof_url. (Legacy; new flow uses paymentProofsService.uploadPaymentProofFile.) */

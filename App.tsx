@@ -18,12 +18,16 @@ import { WorkerProvider, useWorker } from './contexts/WorkerContext';
 import { propertiesService } from './services/supabaseService';
 import { propertyMediaService } from './services/propertyMediaService';
 import { Property, FilterState, RequestData } from './types';
+import { PAGE_INSTANCE_ID } from './utils/pageInstance';
 
 // Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks view.
 const KanbanBoard = React.lazy(() => import('./components/kanban/KanbanBoard'));
 
 // Internal AppContent: only rendered when session exists (inside AuthGate)
 const AppContent: React.FC = () => {
+  useEffect(() => {
+    console.log('[App] Page instance started', { pageInstanceId: PAGE_INSTANCE_ID });
+  }, []);
   const { session, worker, loading: authLoading, profileLoadStatus, workerError, retryWorker, logout } = useWorker();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);

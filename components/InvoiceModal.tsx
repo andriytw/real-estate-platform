@@ -4,10 +4,16 @@ import { X, Save, FileText, Download, Edit2, Check, Upload } from 'lucide-react'
 import { OfferData, InvoiceData, CompanyDetails, ReservationData } from '../types';
 import { INTERNAL_COMPANIES_DATA } from '../constants';
 import { invoicesService, propertiesService } from '../services/supabaseService';
+import { PAGE_INSTANCE_ID } from '../utils/pageInstance';
 
 interface InvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /**
+   * DEBUG/RECOVERY: when user closes while upload/persist is stuck, parent remounts modal + may clear save lock.
+   * Do not call onClose when this runs — parent fully closes.
+   */
+  onAbandonStuck?: (phase: 'upload' | 'persist') => void;
   offer?: OfferData | null;
   invoice?: InvoiceData | null;
   /** Parent proforma when adding an invoice under a proforma */
@@ -17,7 +23,7 @@ interface InvoiceModalProps {
   offers?: OfferData[];
 }
 
-const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, invoice, proforma, onSave, reservations = [], offers = [] }) => {
+const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonStuck, offer, invoice, proforma, onSave, reservations = [], offers = [] }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [invoiceData, setInvoiceData] = useState<Partial<InvoiceData>>({
     invoiceNumber: '',
@@ -255,7 +261,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
   const handleSave = async (saveMode: 'save' | 'send' = 'save') => {
     if (!invoiceData || !senderDetails) return;
     const needsUpload = (isAddProformaMode || isAddInvoiceToProformaMode) && !!pdfFile;
-    console.log('[InvoiceModal] handleSave start', { saveMode, needsUpload });
+    console.log('[InvoiceModal] handleSave start', { saveMode, needsUpload, pageInstanceId: PAGE_INSTANCE_ID });
     let fileUrl: string | undefined;
     try {
       if (needsUpload && pdfFile) {
@@ -338,6 +344,21 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
       alert(`Downloading PDF for Invoice #${invoiceData.invoiceNumber}... (Simulation)`);
   };
 
+  /** Close, or DEBUG/RECOVERY abandon when stuck on upload/persist (parent remounts + closes). */
+  const handleRequestClose = () => {
+    if (uploading) {
+      if (onAbandonStuck) onAbandonStuck('upload');
+      else onClose();
+      return;
+    }
+    if (saving) {
+      if (onAbandonStuck) onAbandonStuck('persist');
+      else onClose();
+      return;
+    }
+    onClose();
+  };
+
   if (!isOpen || !senderDetails) return null;
 
   return (
@@ -365,7 +386,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
                   {isEditing ? 'Done Editing' : 'Edit'}
                </button>
              )}
-             <button onClick={onClose} className="text-gray-400 hover:text-white bg-gray-800 p-2 rounded-lg transition-colors">
+             <button type="button" onClick={handleRequestClose} className="text-gray-400 hover:text-white bg-gray-800 p-2 rounded-lg transition-colors">
                 <X className="w-5 h-5" />
              </button>
           </div>
@@ -661,7 +682,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, offer, inv
 
         {/* Footer Actions */}
         <div className="p-5 border-t border-gray-800 bg-[#161B22] flex gap-3 justify-end sticky bottom-0">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
+            <button type="button" onClick={handleRequestClose} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
                 Cancel
             </button>
             {!(isAddProformaMode || isAddInvoiceToProformaMode) && (

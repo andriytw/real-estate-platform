@@ -181,7 +181,7 @@ ${selectedInternalCompany} Team`;
                 <div className="flex flex-col md:flex-row gap-6">
                     <div className="flex-1 space-y-4">
                         <div className="flex items-center gap-3 flex-wrap">
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${booking.color.replace('bg-', 'text-').replace('600', '400')} bg-white/5 border border-white/10`}>
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${(booking.color ?? 'bg-gray-600').replace('bg-', 'text-').replace('600', '400')} bg-white/5 border border-white/10`}>
                                 {booking.status}
                             </span>
                             

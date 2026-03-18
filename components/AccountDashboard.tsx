@@ -174,6 +174,7 @@ import { euToIso, validateEuDate } from '../utils/leaseTermDates';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
 import { formatApartmentIdentificationLine, buildMultiApartmentClientMessage } from '../utils/salesOfferFlow';
 import { getMarketplaceBaseUrl, getMarketplaceUrlForProperty } from '../utils/marketplaceUrl';
+import { PAGE_INSTANCE_ID } from '../utils/pageInstance';
 import { ensurePropertyHasCoords } from '../utils/ensurePropertyHasCoords';
 import { getRoomsCount } from '../utils/propertyStats';
 import { MOCK_PROPERTIES } from '../constants';
@@ -2477,6 +2478,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const [selectedReservation, setSelectedReservation] = useState<ReservationData | null>(null);
   const [viewingOffer, setViewingOffer] = useState(false);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  /** Bump to remount InvoiceModal after DEBUG/RECOVERY abandon (fresh local state). */
+  const [invoiceModalInstanceKey, setInvoiceModalInstanceKey] = useState(0);
   const [selectedOfferForInvoice, setSelectedOfferForInvoice] = useState<OfferData | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceData | null>(null);
   const [selectedProformaForInvoice, setSelectedProformaForInvoice] = useState<InvoiceData | null>(null);
@@ -2550,6 +2553,30 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const sendChannelResultPrefixRef = useRef<'Offer' | 'Proforma'>('Offer');
   /** Pending-submit guard: block duplicate submit while a save with this traceId is in progress (diagnosis). */
   const activeSaveTraceIdRef = useRef<string | null>(null);
+  /** TraceId of the last started AccountDashboard save (direct booking / multi-apartment / invoice) — for DEBUG/RECOVERY clear only. */
+  const lastAccountDashboardSaveTraceRef = useRef<string | null>(null);
+  /** Set only while handleSaveInvoice runs (persist phase); for abandon during saving. */
+  const invoiceSaveTraceIdRef = useRef<string | null>(null);
+
+  // DEBUG/RECOVERY: escape hatch when modal times out or user abandons stuck save — not final business logic.
+  const onStuckClearAccountDashboardSaveLock = useCallback(() => {
+    const tid = lastAccountDashboardSaveTraceRef.current;
+    if (tid == null) {
+      console.warn('[DEBUG/RECOVERY] clearAccountDashboardSaveLock skipped (no last trace)', { pageInstanceId: PAGE_INSTANCE_ID });
+      return;
+    }
+    if (activeSaveTraceIdRef.current !== tid) {
+      console.warn('[DEBUG/RECOVERY] clearAccountDashboardSaveLock skipped (trace mismatch)', {
+        lastStartedTrace: tid,
+        activeSaveTraceId: activeSaveTraceIdRef.current,
+        pageInstanceId: PAGE_INSTANCE_ID,
+      });
+      return;
+    }
+    console.warn('[DEBUG/RECOVERY] clearAccountDashboardSaveLock', { traceId: tid, pageInstanceId: PAGE_INSTANCE_ID });
+    activeSaveTraceIdRef.current = null;
+  }, []);
+
   const [uebergabeprotokollLoading, setUebergabeprotokollLoading] = useState(false);
   const [uebergabeprotokollPdfLoading, setUebergabeprotokollPdfLoading] = useState(false);
 
@@ -4468,6 +4495,11 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     }
   };
 
+  /**
+   * Delete-path note (diagnosis): delete handlers do not use activeSaveTraceIdRef.
+   * If delete "stops working" after a hang, likely causes: (a) error boundary / broken tree from secondary crash,
+   * (b) a separate isDeleting-style guard (none on these paths as of audit), (c) unsafe string methods in render.
+   */
   const handleDeleteReservation = async (id: number | string) => {
       try {
         // Debug logging
@@ -4613,7 +4645,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       return;
     }
     activeSaveTraceIdRef.current = traceId;
-    console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar start', { traceId });
+    lastAccountDashboardSaveTraceRef.current = traceId;
+    console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar start', { traceId, pageInstanceId: PAGE_INSTANCE_ID });
     try {
     if (!draft.apartments.length) {
       alert('No apartment in draft.');
@@ -4814,7 +4847,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       return;
     }
     activeSaveTraceIdRef.current = traceId;
-    console.log('[AccountDashboard] handleSaveMultiApartmentOffer start', { traceId, mode });
+    lastAccountDashboardSaveTraceRef.current = traceId;
+    console.log('[AccountDashboard] handleSaveMultiApartmentOffer start', { traceId, mode, pageInstanceId: PAGE_INSTANCE_ID });
     try {
       const t1 = Date.now();
       console.log('[AccountDashboard] handleSaveMultiApartmentOffer before step: createGroupFromMultiApartmentDraft', { traceId });
@@ -5472,7 +5506,9 @@ ${internalCompany} Team`;
         return;
       }
       activeSaveTraceIdRef.current = traceId;
-      console.log('[AccountDashboard] handleSaveInvoice start', { traceId, mode, invoiceId: invoice.id });
+      lastAccountDashboardSaveTraceRef.current = traceId;
+      invoiceSaveTraceIdRef.current = traceId;
+      console.log('[AccountDashboard] handleSaveInvoice start', { traceId, mode, invoiceId: invoice.id, pageInstanceId: PAGE_INSTANCE_ID });
       try {
       // If reservationId not set but we can find reservation by offerIdSource, set reservationId (not bookingId; booking_id only after payment confirmed)
       if (!invoice.reservationId && !invoice.bookingId && invoice.offerIdSource) {
@@ -5495,7 +5531,7 @@ ${internalCompany} Team`;
               });
               
               if (linkedOffer) {
-                  const [offerStart] = linkedOffer.dates.split(' to ');
+                  const [offerStart] = String(linkedOffer.dates ?? '').split(' to ');
                   const reservationByPropertyAndDate = reservations.find(r => {
                       if (r.roomId !== linkedOffer.propertyId) return false;
                       return r.start === offerStart || String(r.start) === String(offerStart);
@@ -5706,6 +5742,7 @@ ${internalCompany} Team`;
         alert(`Failed to save invoice: ${errorMessage}. Please try again.`);
       } finally {
         activeSaveTraceIdRef.current = null;
+        invoiceSaveTraceIdRef.current = null;
       }
   };
 
@@ -5833,7 +5870,7 @@ ${internalCompany} Team`;
               });
               if (linkedOffer) {
                   // Конвертувати offer в booking для створення тасок
-                  const [start, end] = linkedOffer.dates.split(' to ');
+                  const [start, end] = String(linkedOffer.dates ?? '').split(' to ');
                   
                   // Fix: Use offer.id directly if it's a valid UUID, don't convert to number
                   const isValidUUID = (str: string | number | undefined): boolean => {
@@ -6209,18 +6246,20 @@ ${internalCompany} Team`;
       // Automatically add Tenant and Rental Agreement when 'Einzug' is Archived
       if (updatedEvent.status === 'archived' && updatedEvent.type === 'Einzug') {
           const linkedOffer = offers.find(o => {
-              const [start] = o.dates.split(' to ');
+              const [start] = String(o.dates ?? '').split(' to ');
               return o.propertyId === updatedEvent.propertyId && start === updatedEvent.date;
           });
 
           if (linkedOffer) {
               setProperties(prevProps => prevProps.map(prop => {
                   if (prop.id === updatedEvent.propertyId) {
-                      const [start, end] = linkedOffer.dates.split(' to ');
+                      const [start, end] = String(linkedOffer.dates ?? '').split(' to ');
+                      const priceStr = String(linkedOffer.price ?? '');
+                      const rentVal = parseFloat(priceStr.replace(/[^0-9.]/g, '')) || 0;
                       const newTenant = {
                           name: linkedOffer.clientName, phone: linkedOffer.phone || '-', email: linkedOffer.email || '-',
-                          rent: parseFloat(linkedOffer.price.replace(/[^0-9.]/g, '')) || 0, deposit: 0, startDate: start,
-                          km: parseFloat(linkedOffer.price.replace(/[^0-9.]/g, '')) || 0, bk: 0, hk: 0
+                          rent: rentVal, deposit: 0, startDate: start,
+                          km: rentVal, bk: 0, hk: 0
                       };
                       const newAgreement: RentalAgreement = {
                           id: `agree-${Date.now()}`, tenantName: newTenant.name, startDate: newTenant.startDate,
@@ -10948,6 +10987,7 @@ ${internalCompany} Team`;
           } : undefined}
           onShowToast={setToastMessage}
           offerModalCloseRef={offerModalCloseRef}
+          onStuckClearAccountDashboardSaveLock={onStuckClearAccountDashboardSaveLock}
         />
       );
     }
@@ -12218,7 +12258,40 @@ ${internalCompany} Team`;
           onSubmit={async () => {}}
         />
       )}
-      <InvoiceModal isOpen={isInvoiceModalOpen} onClose={() => { setIsInvoiceModalOpen(false); setSelectedOfferForInvoice(null); setSelectedInvoice(null); setSelectedProformaForInvoice(null); setPendingOfferItemForInvoice(null); }} offer={selectedOfferForInvoice} invoice={selectedInvoice} proforma={selectedProformaForInvoice} onSave={handleSaveInvoice} reservations={reservations} offers={offers} />
+      <InvoiceModal
+        key={invoiceModalInstanceKey}
+        isOpen={isInvoiceModalOpen}
+        onClose={() => {
+          setIsInvoiceModalOpen(false);
+          setSelectedOfferForInvoice(null);
+          setSelectedInvoice(null);
+          setSelectedProformaForInvoice(null);
+          setPendingOfferItemForInvoice(null);
+        }}
+        onAbandonStuck={(phase) => {
+          console.warn('[DEBUG/RECOVERY] InvoiceModal abandon stuck flow', { phase, pageInstanceId: PAGE_INSTANCE_ID });
+          if (phase === 'persist') {
+            const tid = invoiceSaveTraceIdRef.current;
+            if (tid != null && activeSaveTraceIdRef.current === tid) {
+              console.warn('[DEBUG/RECOVERY] clearAccountDashboardSaveLock (invoice persist abandon)', { traceId: tid, pageInstanceId: PAGE_INSTANCE_ID });
+              activeSaveTraceIdRef.current = null;
+            }
+            invoiceSaveTraceIdRef.current = null;
+          }
+          setInvoiceModalInstanceKey((k) => k + 1);
+          setIsInvoiceModalOpen(false);
+          setSelectedOfferForInvoice(null);
+          setSelectedInvoice(null);
+          setSelectedProformaForInvoice(null);
+          setPendingOfferItemForInvoice(null);
+        }}
+        offer={selectedOfferForInvoice}
+        invoice={selectedInvoice}
+        proforma={selectedProformaForInvoice}
+        onSave={handleSaveInvoice}
+        reservations={reservations}
+        offers={offers}
+      />
       <SendChannelModal
         isOpen={sendChannelPayload !== null}
         onClose={() => {

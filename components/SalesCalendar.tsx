@@ -57,6 +57,8 @@ interface SalesCalendarProps {
   onShowToast?: (message: string) => void;
   /** Ref set by parent so it can close the multi-offer modal after channel picker (e.g. Save and Send). */
   offerModalCloseRef?: React.MutableRefObject<(() => void) | null>;
+  /** DEBUG/RECOVERY: clear AccountDashboard save lock after multi-offer timeout or abandon. */
+  onStuckClearAccountDashboardSaveLock?: () => void;
 }
 
 const INITIAL_BOOKINGS: Booking[] = [
@@ -150,6 +152,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   properties = [],
   onShowToast,
   offerModalCloseRef,
+  onStuckClearAccountDashboardSaveLock,
 }) => {
   // Calendar layer: only confirmed bookings (occupancy). Offers/reservations/proformas stay in their sections.
   const { allBookings } = useSalesAllBookings({
@@ -1659,6 +1662,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
             : prefilledRequestData
         }
         directBookingMode={!!calendarDirectBookingPrefill}
+        onStuckClearLock={onStuckClearAccountDashboardSaveLock}
         onSubmit={async (draft, submitMode) => {
           if (calendarDirectBookingPrefill) {
             if (onSaveDirectBooking) await onSaveDirectBooking(draft);
