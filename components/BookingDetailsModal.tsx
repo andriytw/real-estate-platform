@@ -1,33 +1,74 @@
 
-import React, { useState, useEffect } from 'react';
-import { X, Briefcase, Euro, CreditCard, Mail, Phone, MapPin, User, FileText, Send, Save, Building2, ChevronDown, FilePlus2, Edit3, Trash2, Copy, Check } from 'lucide-react';
-import { Booking, OfferData, BookingStatus, ReservationData } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Briefcase, Euro, CreditCard, Mail, Phone, MapPin, User, FileText, Send, Save, Building2, ChevronDown, FilePlus2, Trash2, Copy, Check, Calendar, ExternalLink } from 'lucide-react';
+import { Booking, OfferData, BookingStatus, InvoiceData } from '../types';
 import { ROOMS } from '../constants';
-import { canSendOffer, canCreateInvoice } from '../bookingUtils';
+import { canCreateInvoice } from '../bookingUtils';
 import { getMarketplaceBaseUrl, getMarketplaceUrlForProperty } from '../utils/marketplaceUrl';
+import {
+  type StayOverviewStayContext,
+  buildCompactTimeline,
+  computeNights,
+  derivePaymentBadge,
+  formatTimelineDate,
+  getStayPhase,
+  resolveStayChain,
+} from '../utils/stayOverviewFromBooking';
+
+export type { StayOverviewStayContext } from '../utils/stayOverviewFromBooking';
 
 interface BookingDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   booking: Booking | null;
   onConvertToOffer?: (status: 'Draft' | 'Sent', company: string, email: string, phone: string, clientMessage: string) => void;
-  onCreateInvoice?: (offer: OfferData) => void; // New Callback
-  onEdit?: () => void; // New Edit Callback
-  onSendOffer?: () => void; // New callback for sending offer
-  onUpdateBookingStatus?: (bookingId: number, newStatus: BookingStatus) => void; // New callback for updating status
-  onDeleteReservation?: (id: number | string) => Promise<void> | void; // Delete reservation callback
-  onDeleteOffer?: (offerId: string) => void; // Delete offer callback
-  onDeleteBooking?: (bookingId: number | string) => Promise<void> | void; // Delete confirmed booking (from calendar)
-  isViewingOffer?: boolean; // Flag to indicate if viewing an offer
+  onCreateInvoice?: (offer: OfferData) => void;
+  onEdit?: () => void;
+  onSendOffer?: () => void;
+  onUpdateBookingStatus?: (bookingId: number, newStatus: BookingStatus) => void;
+  onDeleteReservation?: (id: number | string) => Promise<void> | void;
+  onDeleteOffer?: (offerId: string) => void;
+  onDeleteBooking?: (bookingId: number | string) => Promise<void> | void;
+  isViewingOffer?: boolean;
+  /** Optional: offers/invoices/proofs from parent (e.g. calendar). Modal works fully without it. */
+  stayContext?: StayOverviewStayContext | null;
+  onOpenOffer?: (offer: OfferData) => void;
+  onOpenProforma?: (proforma: InvoiceData) => void;
+  onOpenInvoice?: (invoice: InvoiceData) => void;
 }
 
-const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClose, booking, onConvertToOffer, onCreateInvoice, onEdit, onSendOffer, onUpdateBookingStatus, onDeleteReservation, onDeleteOffer, onDeleteBooking, isViewingOffer }) => {
+const EMPTY_CHAIN = {
+  offer: null,
+  proforma: null,
+  finalInvoice: null,
+  sourceInvoice: null,
+  currentProof: null,
+} as const;
+
+const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
+  isOpen,
+  onClose,
+  booking,
+  onConvertToOffer,
+  onCreateInvoice,
+  onEdit,
+  onSendOffer,
+  onUpdateBookingStatus,
+  onDeleteReservation,
+  onDeleteOffer,
+  onDeleteBooking,
+  isViewingOffer,
+  stayContext,
+  onOpenOffer,
+  onOpenProforma,
+  onOpenInvoice,
+}) => {
   const [selectedInternalCompany, setSelectedInternalCompany] = useState('Sotiso');
   const [clientEmail, setClientEmail] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [clientMessage, setClientMessage] = useState('');
   const [copiedBookingNo, setCopiedBookingNo] = useState(false);
-  const [copiedInternalId, setCopiedInternalId] = useState(false);
+  const [copiedTechnicalKey, setCopiedTechnicalKey] = useState<string | null>(null);
   const [copiedMarketplaceUrl, setCopiedMarketplaceUrl] = useState(false);
   const [property, setProperty] = useState<any>(null);
 
@@ -37,7 +78,6 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
   const getMarketplaceUrl = (prop: { marketplaceUrl?: string; id?: string } | null) =>
     getMarketplaceUrlForProperty(prop, marketplaceBaseUrl);
 
-  // Fetch property for marketplace URL (use propertyId or roomId so reservations show link too)
   const propertyIdToFetch = booking?.propertyId ?? booking?.roomId;
   useEffect(() => {
     if (propertyIdToFetch != null && propertyIdToFetch !== '') {
@@ -50,29 +90,72 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
     }
   }, [propertyIdToFetch]);
 
-  // Initialize form fields when booking changes
+  const ctxNormalized: StayOverviewStayContext = useMemo(
+    () => ({
+      offers: stayContext?.offers ?? [],
+      invoices: stayContext?.invoices ?? [],
+      paymentProofsByInvoiceId: stayContext?.paymentProofsByInvoiceId ?? {},
+    }),
+    [stayContext]
+  );
+
+  const resolvedChain = useMemo(() => {
+    if (!booking) return { ...EMPTY_CHAIN };
+    return resolveStayChain(booking, ctxNormalized);
+  }, [booking, ctxNormalized]);
+
+  const paymentBadge = useMemo(() => {
+    if (!booking) return null;
+    const inv = resolvedChain.sourceInvoice ?? resolvedChain.finalInvoice;
+    return derivePaymentBadge(booking, inv);
+  }, [booking, resolvedChain.sourceInvoice, resolvedChain.finalInvoice]);
+
+  const timelineRows = useMemo(() => {
+    if (!booking) return [];
+    return buildCompactTimeline(booking, resolvedChain);
+  }, [booking, resolvedChain]);
+
+  const nights = booking ? computeNights(booking.start, booking.end) : null;
+  const stayPhase = booking ? getStayPhase(booking) : 'upcoming';
+
+  const displayName = useMemo(() => {
+    if (!booking) return '';
+    if (booking.clientType === 'Company' && booking.companyName && String(booking.companyName).trim()) {
+      return String(booking.companyName).trim();
+    }
+    return booking.guest?.trim() ? booking.guest.trim() : 'Guest';
+  }, [booking]);
+
   useEffect(() => {
     if (booking) {
       setClientEmail(booking.email || '');
       setClientPhone(booking.phone || '');
-      // Generate message template with safe fallbacks
-      const guestName = (booking.firstName && booking.lastName) 
-        ? `${booking.firstName} ${booking.lastName}`.trim()
-        : (booking.guest || 'Guest');
+      const guestName =
+        booking.firstName && booking.lastName
+          ? `${booking.firstName} ${booking.lastName}`.trim()
+          : booking.guest || 'Guest';
       const propertyName = property?.title || booking.roomId || 'the apartment';
-      const checkInDate = booking.start 
+      const checkInDate = booking.start
         ? (() => {
             try {
-              return new Date(booking.start).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+              return new Date(booking.start).toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+              });
             } catch {
               return booking.start;
             }
           })()
         : '';
-      const checkOutDate = booking.end 
+      const checkOutDate = booking.end
         ? (() => {
             try {
-              return new Date(booking.end).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+              return new Date(booking.end).toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+              });
             } catch {
               return booking.end;
             }
@@ -80,11 +163,9 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({ isOpen, onClo
         : '';
       const totalPrice = booking.totalGross || booking.price || '0.00 EUR';
       const bookingNo = booking.bookingNo || '';
-      
+
       const marketplaceUrl = getMarketplaceUrl(property);
-      const marketplaceLine = marketplaceUrl
-        ? `View listing: ${marketplaceUrl}\n\n`
-        : '';
+      const marketplaceLine = marketplaceUrl ? `View listing: ${marketplaceUrl}\n\n` : '';
       const template = `Hello ${guestName},
 
 thank you for your interest in the apartment "${propertyName}".
@@ -95,12 +176,11 @@ Please find the offer attached.
 
 Best regards,
 ${selectedInternalCompany} Team`;
-      
+
       setClientMessage(template);
     }
   }, [booking, property, selectedInternalCompany]);
 
-  // Update message template when company changes
   useEffect(() => {
     if (booking && clientMessage) {
       const lines = clientMessage.split('\n');
@@ -116,39 +196,35 @@ ${selectedInternalCompany} Team`;
 
   const handleSaveDraft = () => {
     if (onConvertToOffer) {
-        onConvertToOffer('Draft', selectedInternalCompany, clientEmail, clientPhone, clientMessage);
+      onConvertToOffer('Draft', selectedInternalCompany, clientEmail, clientPhone, clientMessage);
     }
   };
 
   const handleSaveAndSend = () => {
     if (onConvertToOffer) {
-        onConvertToOffer('Sent', selectedInternalCompany, clientEmail, clientPhone, clientMessage);
+      onConvertToOffer('Sent', selectedInternalCompany, clientEmail, clientPhone, clientMessage);
     }
   };
-  
+
   const handleDeleteReservation = async () => {
     if (!onDeleteReservation || !booking) return;
-    
-    // Detect reservation mode
+
     const isReservation = (booking as any)?.isReservation === true;
-    
-    // Resolve the correct reservation id (prefer explicit reservationId field)
+
     const reservationId = (booking as any)?.reservationId ?? (booking as any)?.id ?? booking?.id;
-    
+
     if (!reservationId) {
       alert('No valid reservation to delete.');
       return;
     }
-    
-    // Debug logging
+
     console.log('[DELETE] isReservation', isReservation, 'id', reservationId, booking);
-    
-    const confirmed = window.confirm("Are you sure you want to delete this reservation? This action cannot be undone.");
-    
+
+    const confirmed = window.confirm('Are you sure you want to delete this reservation? This action cannot be undone.');
+
     if (confirmed) {
       try {
         const result = onDeleteReservation(reservationId);
-        // Handle both sync and async callbacks
         if (result instanceof Promise) {
           await result;
         }
@@ -160,427 +236,641 @@ ${selectedInternalCompany} Team`;
     }
   };
 
+  const copyTechnical = (key: string, value: string) => {
+    navigator.clipboard.writeText(value);
+    setCopiedTechnicalKey(key);
+    setTimeout(() => setCopiedTechnicalKey(null), 2000);
+  };
+
+  const statusColorRaw = booking.color ?? 'bg-gray-600';
+  const statusBadgeTone =
+    typeof statusColorRaw === 'string' && statusColorRaw.startsWith('bg-')
+      ? statusColorRaw.replace('bg-', 'text-').replace('600', '400')
+      : 'text-gray-400';
+
+  const phaseLabel =
+    stayPhase === 'upcoming' ? 'Upcoming' : stayPhase === 'in_house' ? 'In house' : 'Completed';
+
+  const invoicedBadge =
+    String(booking.status ?? '')
+      .toLowerCase()
+      .includes('invoic') ||
+    !!resolvedChain.proforma ||
+    !!resolvedChain.finalInvoice;
+
+  const balanceStr = booking.balance != null ? String(booking.balance) : '';
+  const balanceTone =
+    balanceStr && balanceStr.startsWith('-')
+      ? 'text-emerald-500'
+      : balanceStr &&
+          balanceStr.trim() !== '' &&
+          !/^0[.,]0+\s*EUR$/i.test(balanceStr.trim().replace(/\s+/g, ' ')) &&
+          !/^0\s*EUR$/i.test(balanceStr.trim().replace(/\s+/g, ' '))
+        ? 'text-red-400'
+        : 'text-gray-300';
+
+  const unitLine =
+    (booking.unit && String(booking.unit).trim()) ||
+    ROOMS.find((r) => r.id === booking.roomId)?.name ||
+    booking.roomId ||
+    '—';
+
+  const addressLine = booking.address && String(booking.address).trim() ? String(booking.address).trim() : '—';
+
+  /** Close stay modal first, then open target UI (avoids stacked modals / batched state issues). */
+  const fireThenClose = (fn: () => void) => {
+    onClose();
+    window.setTimeout(fn, 0);
+  };
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-        <div className="bg-[#1C1F24] w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl border border-gray-700 shadow-2xl flex flex-col animate-in zoom-in duration-200">
-            {/* Header */}
-            <div className="p-5 border-b border-gray-800 bg-[#23262b] flex justify-between items-center sticky top-0 z-10">
-                <div>
-                    <h3 className="text-xl font-bold text-white">Reservation Details</h3>
-                    <p className="text-xs text-gray-400">ID: #{booking.id}</p>
-                </div>
-                <button onClick={onClose} className="text-gray-400 hover:text-white bg-gray-800 p-2 rounded-full transition-colors">
-                    <X className="w-5 h-5" />
-                </button>
-            </div>
-
-            <div className="p-6 space-y-8">
-                
-                {/* Top Row: Status & Main Info */}
-                <div className="flex flex-col md:flex-row gap-6">
-                    <div className="flex-1 space-y-4">
-                        <div className="flex items-center gap-3 flex-wrap">
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${(booking.color ?? 'bg-gray-600').replace('bg-', 'text-').replace('600', '400')} bg-white/5 border border-white/10`}>
-                                {booking.status}
-                            </span>
-                            
-                            {/* Booking Number */}
-                            {booking.bookingNo && (
-                                <div className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                    <span className="font-mono">{booking.bookingNo}</span>
-                                    <button
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(booking.bookingNo || '');
-                                            setCopiedBookingNo(true);
-                                            setTimeout(() => setCopiedBookingNo(false), 2000);
-                                        }}
-                                        className="hover:text-emerald-300 transition-colors"
-                                        title="Copy booking number"
-                                    >
-                                        {copiedBookingNo ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                                    </button>
-                                </div>
-                            )}
-                            
-                            {/* Internal Company Badge */}
-                            {booking.internalCompany && (
-                                <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                                    <Building2 className="w-3 h-3" />
-                                    {booking.internalCompany}
-                                </span>
-                            )}
-
-                            <span className="text-sm text-gray-500">{booking.channel}</span>
-                        </div>
-                        <div>
-                            <h2 className="text-2xl font-bold text-white mb-1">{booking.guest}</h2>
-                            <div className="flex items-center gap-2 text-sm text-gray-400">
-                                <Briefcase className="w-4 h-4" />
-                                <span>{ROOMS.find(r => r.id === booking.roomId)?.name || booking.roomId}</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div className="flex gap-4">
-                        <div className="bg-[#111315] border border-gray-800 p-4 rounded-xl min-w-[140px]">
-                            <span className="text-xs text-gray-500 block mb-1">Check-In</span>
-                            <div className="font-bold text-white">{booking.start}</div>
-                            <div className="text-xs text-emerald-500 font-mono mt-1">{booking.checkInTime}</div>
-                        </div>
-                        <div className="bg-[#111315] border border-gray-800 p-4 rounded-xl min-w-[140px]">
-                            <span className="text-xs text-gray-500 block mb-1">Check-Out</span>
-                            <div className="font-bold text-white">{booking.end}</div>
-                            <div className="text-xs text-red-400 font-mono mt-1">{booking.checkOutTime}</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="h-px bg-gray-800"></div>
-
-                {/* Convert to Offer Section */}
-                {onConvertToOffer && (
-                    <div className="bg-[#161B22] border border-gray-800 rounded-lg p-6 mb-4">
-                        <h4 className="text-sm font-bold text-emerald-500 mb-4 flex items-center gap-2">
-                            <Send className="w-4 h-4" /> Convert to Offer
-                        </h4>
-                        
-                        <div className="space-y-4">
-                            {/* Issuing Company */}
-                            <div>
-                                <label className="block text-xs font-medium text-gray-400 mb-1.5 flex items-center gap-2">
-                                    <Building2 className="w-3 h-3 text-emerald-500" /> Issuing Company <span className="text-red-400">*</span>
-                                </label>
-                                <div className="relative">
-                                    <select 
-                                        value={selectedInternalCompany}
-                                        onChange={(e) => setSelectedInternalCompany(e.target.value)}
-                                        className="w-full appearance-none bg-[#111315] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none cursor-pointer"
-                                    >
-                                        {INTERNAL_COMPANIES.map(c => <option key={c} value={c}>{c}</option>)}
-                                    </select>
-                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
-                                </div>
-                            </div>
-
-                            {/* Recipient Email */}
-                            <div>
-                                <label className="block text-xs font-medium text-gray-400 mb-1.5 flex items-center gap-2">
-                                    <Mail className="w-3 h-3 text-emerald-500" /> Recipient Email <span className="text-red-400">*</span>
-                                </label>
-                                <input 
-                                    type="email"
-                                    value={clientEmail}
-                                    onChange={(e) => setClientEmail(e.target.value)}
-                                    className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none"
-                                    placeholder="client@example.com"
-                                />
-                            </div>
-
-                            {/* Recipient Phone */}
-                            <div>
-                                <label className="block text-xs font-medium text-gray-400 mb-1.5 flex items-center gap-2">
-                                    <Phone className="w-3 h-3 text-emerald-500" /> Recipient Phone <span className="text-gray-500 text-xs">(optional)</span>
-                                </label>
-                                <input 
-                                    type="tel"
-                                    value={clientPhone}
-                                    onChange={(e) => setClientPhone(e.target.value)}
-                                    className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none"
-                                    placeholder="+49 123 456 789"
-                                />
-                            </div>
-
-                            {/* Message to Client */}
-                            <div>
-                                <label className="block text-xs font-medium text-gray-400 mb-1.5 flex items-center gap-2">
-                                    <FileText className="w-3 h-3 text-emerald-500" /> Message to client <span className="text-red-400">*</span>
-                                </label>
-                                <textarea 
-                                    value={clientMessage}
-                                    onChange={(e) => setClientMessage(e.target.value)}
-                                    rows={10}
-                                    className="w-full bg-[#111315] border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-emerald-500 focus:outline-none resize-y font-mono"
-                                    placeholder="Enter message to client..."
-                                />
-                            </div>
-
-                        </div>
-                    </div>
-                )}
-
-                {/* Internal ID Section */}
-                <div className="bg-[#111315] border border-gray-800 rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <span className="text-xs text-gray-500 block mb-1">Internal ID</span>
-                            <span className="text-sm font-mono text-gray-400">{String(booking.id)}</span>
-                        </div>
-                        <button
-                            onClick={() => {
-                                navigator.clipboard.writeText(String(booking.id));
-                                setCopiedInternalId(true);
-                                setTimeout(() => setCopiedInternalId(false), 2000);
-                            }}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors text-xs"
-                            title="Copy Internal ID"
-                        >
-                            {copiedInternalId ? (
-                                <>
-                                    <Check className="w-3 h-3" />
-                                    <span>Copied</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Copy className="w-3 h-3" />
-                                    <span>Copy</span>
-                                </>
-                            )}
-                        </button>
-                    </div>
-                </div>
-
-                {/* Marketplace Listing Section */}
-                {getMarketplaceUrl(property) && (() => {
-                    const marketplaceUrl = getMarketplaceUrl(property)!;
-                    return (
-                    <div className="bg-[#111315] border border-gray-800 rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                            <div className="flex-1 min-w-0">
-                                <span className="text-xs text-gray-500 block mb-1">Marketplace Listing</span>
-                                <a 
-                                    href={marketplaceUrl} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="text-sm text-emerald-400 hover:text-emerald-300 truncate block"
-                                >
-                                    {marketplaceUrl}
-                                </a>
-                            </div>
-                            <div className="flex items-center gap-2 ml-3">
-                                <button
-                                    onClick={() => {
-                                        navigator.clipboard.writeText(marketplaceUrl);
-                                        setCopiedMarketplaceUrl(true);
-                                        setTimeout(() => setCopiedMarketplaceUrl(false), 2000);
-                                    }}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors text-xs"
-                                    title="Copy URL"
-                                >
-                                    {copiedMarketplaceUrl ? (
-                                        <>
-                                            <Check className="w-3 h-3" />
-                                            <span>Copied</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Copy className="w-3 h-3" />
-                                            <span>Copy</span>
-                                        </>
-                                    )}
-                                </button>
-                                <a
-                                    href={marketplaceUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors text-xs"
-                                    title="Open in new tab"
-                                >
-                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                    </svg>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                    );
-                })()}
-
-                {/* Three Column Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    
-                    {/* Column 1: Financials */}
-                    <div className="space-y-4">
-                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                            <Euro className="w-4 h-4" /> Financials
-                        </h4>
-                        <div className="bg-[#111315] rounded-lg p-4 border border-gray-800 space-y-3">
-                            <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-400">Total Price</span>
-                                <span className="text-white font-bold">{booking.price}</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-400">Balance</span>
-                                <span className={`font-bold ${booking.balance.startsWith('-') ? 'text-emerald-500' : 'text-red-400'}`}>
-                                    {booking.balance}
-                                </span>
-                            </div>
-                            <div className="h-px bg-gray-800 my-2"></div>
-                            <div className="flex items-center gap-2 text-xs text-gray-500">
-                                <CreditCard className="w-3 h-3" />
-                                <span>{booking.paymentAccount}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Column 2: Contact Info */}
-                    <div className="space-y-4">
-                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                            <User className="w-4 h-4" /> Contact
-                        </h4>
-                        <div className="space-y-3">
-                            {booking.email && (
-                                <div className="flex items-center gap-3 text-sm">
-                                    <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-gray-400">
-                                        <Mail className="w-4 h-4" />
-                                    </div>
-                                    <span className="text-white">{booking.email}</span>
-                                </div>
-                            )}
-                            {booking.phone && (
-                                <div className="flex items-center gap-3 text-sm">
-                                    <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-gray-400">
-                                        <Phone className="w-4 h-4" />
-                                    </div>
-                                    <span className="text-white">{booking.phone}</span>
-                                </div>
-                            )}
-                            {booking.address && (
-                                <div className="flex items-center gap-3 text-sm">
-                                    <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-gray-400">
-                                        <MapPin className="w-4 h-4" />
-                                    </div>
-                                    <span className="text-white truncate max-w-[200px]">{booking.address}</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Column 3: Guest List & Extra */}
-                    <div className="space-y-4">
-                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                            <User className="w-4 h-4" /> Guest List
-                        </h4>
-                        <div className="bg-[#111315] rounded-lg p-4 border border-gray-800">
-                            {booking.guestList && booking.guestList.length > 0 ? (
-                                <ul className="space-y-2">
-                                    {booking.guestList.map((g, i) => (
-                                        <li key={i} className="text-sm text-white flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-gray-600"></div>
-                                            {g.firstName} {g.lastName}
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <p className="text-xs text-gray-500 italic">No guest list provided.</p>
-                            )}
-                        </div>
-                    </div>
-
-                </div>
-
-                {/* Bottom: Comments */}
-                <div className="space-y-2">
-                    <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                        <FileText className="w-4 h-4" /> Comments & Notes
-                    </h4>
-                    <div className="bg-[#111315] p-4 rounded-lg border border-gray-800 text-sm text-gray-300">
-                        {booking.comments || "No comments."}
-                    </div>
-                </div>
-
-            </div>
-
-            <div className="p-5 border-t border-gray-800 bg-[#161B22]">
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Actions</h4>
-                <div className="flex flex-wrap items-center gap-3">
-                    {onConvertToOffer && (
-                        <>
-                            <button 
-                                onClick={onClose}
-                                className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-bold transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button 
-                                onClick={handleSaveDraft}
-                                className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
-                            >
-                                <Save className="w-4 h-4" />
-                                Save as Offer
-                            </button>
-                            <button 
-                                onClick={handleSaveAndSend}
-                                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
-                            >
-                                <Send className="w-4 h-4" />
-                                Save & Send
-                            </button>
-                        </>
-                    )}
-                    {onCreateInvoice && isViewingOffer && booking && canCreateInvoice((booking as any).status) && (
-                        <button 
-                            onClick={() => onCreateInvoice(booking as OfferData)}
-                            className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
-                        >
-                            <FilePlus2 className="w-4 h-4" />
-                            Add Proforma
-                        </button>
-                    )}
-                    {onDeleteOffer && isViewingOffer && booking && (
-                        <button 
-                            onClick={() => {
-                                if (confirm('Are you sure you want to delete this offer? This action cannot be undone.')) {
-                                    onDeleteOffer(String(booking.id));
-                                    onClose();
-                                }
-                            }}
-                            className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
-                        >
-                            <Trash2 className="w-4 h-4" />
-                            Delete Offer
-                        </button>
-                    )}
-                    {onDeleteReservation && !isViewingOffer && (() => {
-                        const isReservation = (booking as any)?.isReservation === true;
-                        return isReservation ? (
-                            <button 
-                                onClick={handleDeleteReservation}
-                                className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
-                            >
-                                <Trash2 className="w-4 h-4" />
-                                Delete Reservation
-                            </button>
-                        ) : null;
-                    })()}
-                    {onDeleteBooking && !isViewingOffer && !(booking as any)?.isReservation && (
-                        <button 
-                            onClick={async () => {
-                                if (!booking?.id) return;
-                                if (!window.confirm('Видалити підтверджене бронювання з календаря? Цю дію не можна скасувати.')) return;
-                                try {
-                                    const result = onDeleteBooking(booking.id);
-                                    if (result instanceof Promise) await result;
-                                    onClose();
-                                } catch (e) {
-                                    console.error('Error deleting booking:', e);
-                                    alert('Не вдалося видалити бронювання.');
-                                }
-                            }}
-                            className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
-                        >
-                            <Trash2 className="w-4 h-4" />
-                            Видалити бронювання
-                        </button>
-                    )}
-                    {!onConvertToOffer && (
-                        <button onClick={onClose} className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-bold transition-colors">
-                            Close
-                        </button>
-                    )}
-                </div>
-            </div>
+      <div className="bg-[#1C1F24] w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-xl border border-gray-700 shadow-2xl flex flex-col animate-in zoom-in duration-200">
+        <div className="p-4 sm:p-5 border-b border-gray-800 bg-[#23262b] flex justify-between items-start gap-3 sticky top-0 z-10">
+          <div className="min-w-0 flex-1">
+            <h3 className="text-lg sm:text-xl font-bold text-white">Stay overview</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Operational summary — technical IDs below in Technical info</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-400 hover:text-white bg-gray-800 p-2 rounded-full transition-colors shrink-0"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
+
+        <div className="p-4 sm:p-6 space-y-6">
+          {/* Hero — booking fields only; property title optional add-on */}
+          <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
+            <div className="flex-1 min-w-0 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${statusBadgeTone} bg-white/5 border border-white/10`}
+                >
+                  {String(booking.status ?? '—')}
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide text-sky-300 bg-sky-500/10 border border-sky-500/25">
+                  {phaseLabel}
+                </span>
+                {paymentBadge === 'paid' && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide text-emerald-300 bg-emerald-500/10 border border-emerald-500/20">
+                    Paid
+                  </span>
+                )}
+                {paymentBadge === 'unpaid' && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide text-amber-300 bg-amber-500/10 border border-amber-500/20">
+                    Unpaid
+                  </span>
+                )}
+                {invoicedBadge && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide text-violet-300 bg-violet-500/10 border border-violet-500/20">
+                    Invoiced
+                  </span>
+                )}
+                {booking.bookingNo && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <span className="font-mono">{booking.bookingNo}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(booking.bookingNo || '');
+                        setCopiedBookingNo(true);
+                        setTimeout(() => setCopiedBookingNo(false), 2000);
+                      }}
+                      className="hover:text-emerald-300 transition-colors"
+                      title="Copy booking number"
+                    >
+                      {copiedBookingNo ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    </button>
+                  </div>
+                )}
+                {booking.internalCompany && (
+                  <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                    <Building2 className="w-3 h-3" />
+                    {booking.internalCompany}
+                  </span>
+                )}
+                {booking.channel && (
+                  <span className="text-[10px] text-gray-500">{booking.channel}</span>
+                )}
+              </div>
+              <div>
+                <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight">{displayName}</h2>
+                {property?.title && (
+                  <p className="text-xs text-gray-500 mt-1 truncate" title={property.title}>
+                    {property.title}
+                  </p>
+                )}
+                <div className="flex items-start gap-2 text-sm text-gray-400 mt-2">
+                  <Briefcase className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span className="min-w-0">{unitLine}</span>
+                </div>
+                <div className="flex items-start gap-2 text-sm text-gray-400 mt-1">
+                  <MapPin className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span className="min-w-0">{addressLine}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 shrink-0">
+              <div className="bg-[#111315] border border-gray-800 p-3 rounded-lg min-w-[120px]">
+                <span className="text-[10px] text-gray-500 block mb-1">Check-in</span>
+                <div className="font-semibold text-white text-sm">{booking.start || '—'}</div>
+                <div className="text-[10px] text-emerald-500 font-mono mt-0.5">{booking.checkInTime || '—'}</div>
+              </div>
+              <div className="bg-[#111315] border border-gray-800 p-3 rounded-lg min-w-[120px]">
+                <span className="text-[10px] text-gray-500 block mb-1">Check-out</span>
+                <div className="font-semibold text-white text-sm">{booking.end || '—'}</div>
+                <div className="text-[10px] text-red-400 font-mono mt-0.5">{booking.checkOutTime || '—'}</div>
+              </div>
+              <div className="bg-[#111315] border border-gray-800 p-3 rounded-lg min-w-[72px] flex flex-col justify-center">
+                <span className="text-[10px] text-gray-500 block mb-1">Nights</span>
+                <div className="font-semibold text-white text-sm">{nights != null ? nights : '—'}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="h-px bg-gray-800" />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-6">
+              <section>
+                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-2">
+                  <Calendar className="w-3.5 h-3.5" /> Stay
+                </h4>
+                <div className="bg-[#111315] rounded-lg p-3 border border-gray-800 text-sm text-gray-300 space-y-1.5">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-gray-500">Guests</span>
+                    <span className="text-white text-right">{booking.guests || '—'}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-gray-500">Source</span>
+                    <span className="text-white text-right">{booking.channel || '—'}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-gray-500">Unit / code</span>
+                    <span className="text-white text-right break-all">{unitLine}</span>
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-2">
+                  <User className="w-3.5 h-3.5" /> Contact
+                </h4>
+                <div className="space-y-2">
+                  {booking.email ? (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Mail className="w-4 h-4 text-gray-500 shrink-0" />
+                      <span className="text-white break-all">{booking.email}</span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500">No email</p>
+                  )}
+                  {booking.phone ? (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Phone className="w-4 h-4 text-gray-500 shrink-0" />
+                      <span className="text-white">{booking.phone}</span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500">No phone</p>
+                  )}
+                  {booking.address && String(booking.address).trim() ? (
+                    <div className="flex items-start gap-2 text-sm">
+                      <MapPin className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
+                      <span className="text-white">{booking.address}</span>
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+
+              <section>
+                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-2">
+                  <User className="w-3.5 h-3.5" /> Guest list
+                </h4>
+                <div className="bg-[#111315] rounded-lg p-3 border border-gray-800">
+                  {booking.guestList && booking.guestList.length > 0 ? (
+                    <ul className="space-y-1">
+                      {booking.guestList.map((g, i) => (
+                        <li key={i} className="text-sm text-white flex items-center gap-2">
+                          <span className="w-1 h-1 rounded-full bg-gray-600 shrink-0" />
+                          {g.firstName} {g.lastName}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-gray-500 italic">No guest list provided.</p>
+                  )}
+                </div>
+              </section>
+            </div>
+
+            <div className="space-y-6">
+              <section>
+                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-2">
+                  <Euro className="w-3.5 h-3.5" /> Financials
+                </h4>
+                <div className="bg-[#111315] rounded-lg p-3 border border-gray-800 space-y-2">
+                  <div className="flex justify-between gap-2 text-sm">
+                    <span className="text-gray-400">Total</span>
+                    <span className="text-white font-semibold">{booking.price || booking.totalGross || '—'}</span>
+                  </div>
+                  <div className="flex justify-between gap-2 text-sm">
+                    <span className="text-gray-400">Balance</span>
+                    <span className={`font-semibold ${balanceTone}`}>{balanceStr || '—'}</span>
+                  </div>
+                  {!paymentBadge && (
+                    <p className="text-[10px] text-gray-500 pt-1 border-t border-gray-800">
+                      Payment status: use balance and linked documents — not enough data for a confident Paid/Unpaid badge.
+                    </p>
+                  )}
+                  <div className="h-px bg-gray-800 my-1" />
+                  <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                    <CreditCard className="w-3 h-3 shrink-0" />
+                    <span>{booking.paymentAccount || '—'}</span>
+                  </div>
+                  {resolvedChain.offer?.kaution != null && Number.isFinite(Number(resolvedChain.offer.kaution)) && (
+                    <div className="flex justify-between gap-2 text-sm pt-1 border-t border-gray-800">
+                      <span className="text-gray-400">Deposit (Kaution)</span>
+                      <span className="text-white">{resolvedChain.offer.kaution} EUR</span>
+                    </div>
+                  )}
+                  {resolvedChain.proforma?.kautionStatus && (
+                    <div className="flex justify-between gap-2 text-xs pt-1">
+                      <span className="text-gray-500">Deposit status</span>
+                      <span className="text-gray-300">{resolvedChain.proforma.kautionStatus.replace(/_/g, ' ')}</span>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section>
+                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-2">
+                  <FileText className="w-3.5 h-3.5" /> Documents
+                </h4>
+                <div className="bg-[#111315] rounded-lg p-3 border border-gray-800 space-y-2 text-sm">
+                  <div className="flex justify-between gap-2 items-start">
+                    <span className="text-gray-400 shrink-0">Offer</span>
+                    <span className="text-right text-gray-200">
+                      {resolvedChain.offer
+                        ? `Linked${resolvedChain.offer.offerNo ? ` · ${resolvedChain.offer.offerNo}` : ''}`
+                        : 'Missing'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2 items-start">
+                    <span className="text-gray-400 shrink-0">Proforma</span>
+                    <span className="text-right text-gray-200">
+                      {resolvedChain.proforma
+                        ? `Available${resolvedChain.proforma.invoiceNumber ? ` · ${resolvedChain.proforma.invoiceNumber}` : ''}`
+                        : 'Missing'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2 items-start">
+                    <span className="text-gray-400 shrink-0">Invoice</span>
+                    <span className="text-right text-gray-200">
+                      {resolvedChain.finalInvoice &&
+                      resolvedChain.proforma &&
+                      String(resolvedChain.finalInvoice.id) === String(resolvedChain.proforma.id)
+                        ? 'Linked (same as proforma)'
+                        : resolvedChain.finalInvoice
+                          ? `Available${resolvedChain.finalInvoice.invoiceNumber ? ` · ${resolvedChain.finalInvoice.invoiceNumber}` : ''} · ${resolvedChain.finalInvoice.status}`
+                          : 'Missing'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2 items-start">
+                    <span className="text-gray-400 shrink-0">Payment proof</span>
+                    <span className="text-right text-gray-200">
+                      {resolvedChain.currentProof?.filePath ? 'Uploaded' : 'Missing'}
+                    </span>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <section>
+            <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Activity</h4>
+            {timelineRows.length === 0 ? (
+              <p className="text-[11px] text-gray-500">No dated activity yet.</p>
+            ) : (
+              <ul className="space-y-1 border border-gray-800/80 rounded-lg bg-[#111315]/50 p-2">
+                {timelineRows.map((row, idx) => (
+                  <li key={`${row.label}-${idx}`} className="flex justify-between gap-2 text-[11px] text-gray-400">
+                    <span className="text-gray-300">{row.label}</span>
+                    <span className="text-gray-500 shrink-0 tabular-nums">{formatTimelineDate(row.at)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="space-y-1.5">
+            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+              <FileText className="w-3.5 h-3.5" /> Notes
+            </h4>
+            <div className="bg-[#111315]/80 p-3 rounded-lg border border-gray-800/80 text-xs text-gray-400">
+              {booking.comments || 'No comments.'}
+            </div>
+          </section>
+
+          <details className="group border border-gray-800 rounded-lg bg-[#111315]/40 px-3 py-2">
+            <summary className="text-[10px] font-semibold text-gray-500 cursor-pointer list-none flex items-center justify-between">
+              <span>Technical info</span>
+              <ChevronDown className="w-3 h-3 text-gray-600 group-open:rotate-180 transition-transform" />
+            </summary>
+            <div className="mt-2 space-y-1.5 text-[10px] font-mono text-gray-500 pb-1">
+              {[
+                ['Booking ID', String(booking.id)],
+                ['Source offer ID', booking.sourceOfferId ? String(booking.sourceOfferId) : ''],
+                ['Source invoice ID', booking.sourceInvoiceId ? String(booking.sourceInvoiceId) : ''],
+                ['Source reservation ID', booking.sourceReservationId ? String(booking.sourceReservationId) : ''],
+              ].map(([label, val]) =>
+                val ? (
+                  <div key={label} className="flex items-center justify-between gap-2">
+                    <span className="text-gray-600 shrink-0">{label}</span>
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className="truncate text-right" title={val}>
+                        {val}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => copyTechnical(label, val)}
+                        className="p-0.5 rounded text-gray-500 hover:text-white shrink-0"
+                        title="Copy"
+                      >
+                        {copiedTechnicalKey === label ? (
+                          <Check className="w-3 h-3 text-emerald-500" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ) : null
+              )}
+            </div>
+          </details>
+
+          {onConvertToOffer && (
+            <div className="bg-[#161B22] border border-gray-800 rounded-lg p-5">
+              <h4 className="text-sm font-bold text-emerald-500 mb-4 flex items-center gap-2">
+                <Send className="w-4 h-4" /> Convert to Offer
+              </h4>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5 flex items-center gap-2">
+                    <Building2 className="w-3 h-3 text-emerald-500" /> Issuing Company{' '}
+                    <span className="text-red-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={selectedInternalCompany}
+                      onChange={(e) => setSelectedInternalCompany(e.target.value)}
+                      className="w-full appearance-none bg-[#111315] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none cursor-pointer"
+                    >
+                      {INTERNAL_COMPANIES.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5 flex items-center gap-2">
+                    <Mail className="w-3 h-3 text-emerald-500" /> Recipient Email{' '}
+                    <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={clientEmail}
+                    onChange={(e) => setClientEmail(e.target.value)}
+                    className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                    placeholder="client@example.com"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5 flex items-center gap-2">
+                    <Phone className="w-3 h-3 text-emerald-500" /> Recipient Phone{' '}
+                    <span className="text-gray-500 text-xs">(optional)</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={clientPhone}
+                    onChange={(e) => setClientPhone(e.target.value)}
+                    className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                    placeholder="+49 123 456 789"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1.5 flex items-center gap-2">
+                    <FileText className="w-3 h-3 text-emerald-500" /> Message to client{' '}
+                    <span className="text-red-400">*</span>
+                  </label>
+                  <textarea
+                    value={clientMessage}
+                    onChange={(e) => setClientMessage(e.target.value)}
+                    rows={10}
+                    className="w-full bg-[#111315] border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-emerald-500 focus:outline-none resize-y font-mono"
+                    placeholder="Enter message to client..."
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {getMarketplaceUrl(property) && (() => {
+            const marketplaceUrl = getMarketplaceUrl(property)!;
+            return (
+              <div className="bg-[#111315] border border-gray-800 rounded-lg p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs text-gray-500 block mb-1">Marketplace Listing</span>
+                    <a
+                      href={marketplaceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-emerald-400 hover:text-emerald-300 truncate block"
+                    >
+                      {marketplaceUrl}
+                    </a>
+                  </div>
+                  <div className="flex items-center gap-2 ml-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(marketplaceUrl);
+                        setCopiedMarketplaceUrl(true);
+                        setTimeout(() => setCopiedMarketplaceUrl(false), 2000);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors text-xs"
+                      title="Copy URL"
+                    >
+                      {copiedMarketplaceUrl ? (
+                        <Check className="w-3 h-3" />
+                      ) : (
+                        <Copy className="w-3 h-3" />
+                      )}
+                    </button>
+                    <a
+                      href={marketplaceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors text-xs"
+                      title="Open in new tab"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
+        <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#161B22] space-y-3">
+          <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Actions</h4>
+          <div className="flex flex-wrap items-center gap-2">
+            {onOpenOffer && resolvedChain.offer && (
+              <button
+                type="button"
+                onClick={() => fireThenClose(() => onOpenOffer(resolvedChain.offer!))}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2"
+              >
+                Open Offer
+              </button>
+            )}
+            {onOpenProforma && resolvedChain.proforma && (
+              <button
+                type="button"
+                onClick={() => fireThenClose(() => onOpenProforma(resolvedChain.proforma!))}
+                className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2"
+              >
+                Open Proforma
+              </button>
+            )}
+            {onOpenInvoice &&
+              resolvedChain.finalInvoice &&
+              (!resolvedChain.proforma ||
+                String(resolvedChain.finalInvoice.id) !== String(resolvedChain.proforma.id)) && (
+                <button
+                  type="button"
+                  onClick={() => fireThenClose(() => onOpenInvoice(resolvedChain.finalInvoice!))}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2"
+                >
+                  Open Invoice
+                </button>
+              )}
+
+            {onConvertToOffer && (
+              <>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveDraft}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  Save as Offer
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAndSend}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2"
+                >
+                  <Send className="w-4 h-4" />
+                  Save & Send
+                </button>
+              </>
+            )}
+            {onCreateInvoice && isViewingOffer && booking && canCreateInvoice((booking as any).status) && (
+              <button
+                type="button"
+                onClick={() => onCreateInvoice(booking as OfferData)}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2"
+              >
+                <FilePlus2 className="w-4 h-4" />
+                Add Proforma
+              </button>
+            )}
+            {!onConvertToOffer && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-semibold transition-colors"
+              >
+                Close
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-red-900/25">
+            {onDeleteOffer && isViewingOffer && booking && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm('Are you sure you want to delete this offer? This action cannot be undone.')) {
+                    onDeleteOffer(String(booking.id));
+                    onClose();
+                  }
+                }}
+                className="px-4 py-2 bg-red-600/90 hover:bg-red-500 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete Offer
+              </button>
+            )}
+            {onDeleteReservation &&
+              !isViewingOffer &&
+              (() => {
+                const isReservation = (booking as any)?.isReservation === true;
+                return isReservation ? (
+                  <button
+                    type="button"
+                    onClick={handleDeleteReservation}
+                    className="px-4 py-2 bg-red-600/90 hover:bg-red-500 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete Reservation
+                  </button>
+                ) : null;
+              })()}
+            {onDeleteBooking && !isViewingOffer && !(booking as any)?.isReservation && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!booking?.id) return;
+                  if (!window.confirm('Видалити підтверджене бронювання з календаря? Цю дію не можна скасувати.'))
+                    return;
+                  try {
+                    const result = onDeleteBooking(booking.id);
+                    if (result instanceof Promise) await result;
+                    onClose();
+                  } catch (e) {
+                    console.error('Error deleting booking:', e);
+                    alert('Не вдалося видалити бронювання.');
+                  }
+                }}
+                className="px-4 py-2 bg-red-600/90 hover:bg-red-500 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Видалити бронювання
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

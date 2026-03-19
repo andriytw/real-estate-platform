@@ -5,6 +5,7 @@ import { RequestData, Property } from '../types';
 import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar, Search, Ruler, LayoutGrid, Bed } from 'lucide-react';
 import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus, Lead, MultiApartmentOfferDraft, PaymentProof, SelectedApartmentData } from '../types';
 import BookingDetailsModal from './BookingDetailsModal';
+import type { StayOverviewStayContext } from '../utils/stayOverviewFromBooking';
 import MultiApartmentOfferModal from './MultiApartmentOfferModal';
 import { getBookingColor, getBookingBorderStyle, getBookingStyle } from '../bookingUtils';
 import { useSalesAllBookings } from '../hooks/useSalesAllBookings';
@@ -59,6 +60,11 @@ interface SalesCalendarProps {
   offerModalCloseRef?: React.MutableRefObject<(() => void) | null>;
   /** DEBUG/RECOVERY: clear AccountDashboard save lock after multi-offer timeout or abandon. */
   onStuckClearAccountDashboardSaveLock?: () => void;
+  /** Optional: enrich stay overview modal (calendar); modal works without it. */
+  stayContext?: StayOverviewStayContext | null;
+  onOpenOfferFromCalendar?: (offer: OfferData) => void;
+  onOpenProformaFromCalendar?: (proforma: InvoiceData) => void;
+  onOpenInvoiceFromCalendar?: (invoice: InvoiceData) => void;
 }
 
 const INITIAL_BOOKINGS: Booking[] = [
@@ -153,6 +159,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   onShowToast,
   offerModalCloseRef,
   onStuckClearAccountDashboardSaveLock,
+  stayContext,
+  onOpenOfferFromCalendar,
+  onOpenProformaFromCalendar,
+  onOpenInvoiceFromCalendar,
 }) => {
   // Calendar layer: only confirmed bookings (occupancy). Offers/reservations/proformas stay in their sections.
   const { allBookings } = useSalesAllBookings({
@@ -1918,6 +1928,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         isOpen={!!selectedBooking}
         onClose={() => setSelectedBooking(null)}
         booking={selectedBooking}
+        stayContext={stayContext ?? undefined}
+        onOpenOffer={onOpenOfferFromCalendar}
+        onOpenProforma={onOpenProformaFromCalendar}
+        onOpenInvoice={onOpenInvoiceFromCalendar}
         onDeleteReservation={onDeleteReservation ? async (id: number | string) => {
           const result = onDeleteReservation(id);
           if (result instanceof Promise) {

@@ -10988,6 +10988,14 @@ ${internalCompany} Team`;
           onShowToast={setToastMessage}
           offerModalCloseRef={offerModalCloseRef}
           onStuckClearAccountDashboardSaveLock={onStuckClearAccountDashboardSaveLock}
+          stayContext={{
+            offers,
+            invoices,
+            paymentProofsByInvoiceId,
+          }}
+          onOpenOfferFromCalendar={handleViewOffer}
+          onOpenProformaFromCalendar={handleAddInvoiceToProforma}
+          onOpenInvoiceFromCalendar={handleViewInvoice}
         />
       );
     }
