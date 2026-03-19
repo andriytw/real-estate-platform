@@ -150,7 +150,7 @@ export interface TimelineRow {
   sortKey: number;
 }
 
-/** Max 8 rows; neutral labels for business dates; technical wording only with evidence. */
+/** Max 6 rows (compact stay modal); neutral labels; technical wording only with evidence. */
 export function buildCompactTimeline(booking: Booking, chain: ResolvedStayChain): TimelineRow[] {
   const rows: TimelineRow[] = [];
 
@@ -206,7 +206,7 @@ export function buildCompactTimeline(booking: Booking, chain: ResolvedStayChain)
   }
 
   rows.sort((a, b) => a.sortKey - b.sortKey);
-  return rows.slice(0, 8);
+  return rows.slice(0, 6);
 }
 
 export function formatTimelineDate(iso: string | undefined): string {

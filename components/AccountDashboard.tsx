@@ -12249,6 +12249,7 @@ ${internalCompany} Team`;
         />
       )}
 
+      {/* Stay overview Documents: proforma opens via fileUrl or onOpenInvoice only; onOpenProforma is the add/upload flow and is ignored there. */}
       <BookingDetailsModal
           isOpen={isManageModalOpen}
           onClose={closeManageModals}

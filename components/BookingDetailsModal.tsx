@@ -50,6 +50,38 @@ const EMPTY_CHAIN = {
   currentProof: null,
 } as const;
 
+/** Dot-leader document row: clickable value only (Stay overview Documents tile). */
+function StayDocRow(props: {
+  label: string;
+  value: string;
+  interactive: boolean;
+  loading?: boolean;
+  onActivate?: () => void;
+}) {
+  const { label, value, interactive, loading, onActivate } = props;
+  const show = loading ? '…' : value;
+  return (
+    <div className="flex items-center gap-1.5 text-[11px] min-h-[1.375rem] py-0.5 border-b border-gray-800/50 last:border-b-0">
+      <span className="text-gray-500 shrink-0 w-[6.75rem]">{label}</span>
+      <span className="flex-1 self-end mb-0.5 min-w-[4px] border-b border-dotted border-gray-700/80" aria-hidden />
+      <div className="shrink-0 min-w-0 max-w-[55%] text-right">
+        {interactive && onActivate ? (
+          <button
+            type="button"
+            onClick={onActivate}
+            disabled={loading}
+            className="text-sky-400 hover:text-sky-300 hover:underline disabled:opacity-50 font-mono truncate max-w-full text-right"
+          >
+            {show}
+          </button>
+        ) : (
+          <span className="text-gray-600 font-mono truncate block max-w-full text-right">{show}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
   isOpen,
   onClose,
@@ -66,9 +98,10 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
   stayContext,
   onShowToast,
   onOpenOffer,
-  onOpenProforma,
+  onOpenProforma: _onOpenProformaCreate,
   onOpenInvoice,
 }) => {
+  void _onOpenProformaCreate;
   const [selectedInternalCompany, setSelectedInternalCompany] = useState('Sotiso');
   const [clientEmail, setClientEmail] = useState('');
   const [clientPhone, setClientPhone] = useState('');
@@ -286,10 +319,10 @@ ${selectedInternalCompany} Team`;
 
   const addressLine = booking.address && String(booking.address).trim() ? String(booking.address).trim() : '—';
 
-  /** Close stay modal first, then open target UI (avoids stacked modals / batched state issues). */
-  const fireThenClose = (fn: () => void) => {
-    onClose();
-    window.setTimeout(fn, 0);
+  const trimFileUrl = (inv: InvoiceData | null | undefined): string | null => {
+    const u = inv?.fileUrl;
+    if (u != null && String(u).trim()) return String(u).trim();
+    return null;
   };
 
   const showUserError = (message: string) => {
@@ -303,33 +336,38 @@ ${selectedInternalCompany} Team`;
     isBookingConfirmedForProtocol(booking, ctxNormalized) &&
     !isViewingOffer;
 
+  const finalInv = resolvedChain.finalInvoice;
+  const invoiceSameAsProforma = Boolean(
+    finalInv && resolvedChain.proforma && String(finalInv.id) === String(resolvedChain.proforma.id)
+  );
+
   const openOfferDocument = () => {
-    if (!resolvedChain.offer || !onOpenOffer) return;
-    fireThenClose(() => onOpenOffer(resolvedChain.offer!));
+    const o = resolvedChain.offer;
+    if (!o || !onOpenOffer) return;
+    onOpenOffer(o);
   };
 
   const openProformaDocument = () => {
     const p = resolvedChain.proforma;
     if (!p) return;
-    if (onOpenProforma) fireThenClose(() => onOpenProforma(p));
-    else if (p.fileUrl && String(p.fileUrl).trim())
-      window.open(String(p.fileUrl).trim(), '_blank', 'noopener,noreferrer');
+    const url = trimFileUrl(p);
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (onOpenInvoice) onOpenInvoice(p);
   };
 
   const openInvoiceDocument = () => {
     const inv = resolvedChain.finalInvoice;
     if (!inv) return;
-    const sameAsProforma =
-      resolvedChain.proforma && String(inv.id) === String(resolvedChain.proforma.id);
-    if (sameAsProforma) {
-      if (onOpenProforma && resolvedChain.proforma) fireThenClose(() => onOpenProforma(resolvedChain.proforma!));
-      else if (inv.fileUrl && String(inv.fileUrl).trim())
-        window.open(String(inv.fileUrl).trim(), '_blank', 'noopener,noreferrer');
+    if (invoiceSameAsProforma) return;
+    const url = trimFileUrl(inv);
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
-    if (onOpenInvoice) fireThenClose(() => onOpenInvoice(inv));
-    else if (inv.fileUrl && String(inv.fileUrl).trim())
-      window.open(String(inv.fileUrl).trim(), '_blank', 'noopener,noreferrer');
+    if (onOpenInvoice) onOpenInvoice(inv);
   };
 
   const openProtocolDocument = () => {
@@ -375,16 +413,10 @@ ${selectedInternalCompany} Team`;
 
   const offerOpenable = Boolean(resolvedChain.offer && onOpenOffer);
   const proformaOpenable = Boolean(
-    resolvedChain.proforma && (onOpenProforma || (resolvedChain.proforma.fileUrl && String(resolvedChain.proforma.fileUrl).trim()))
+    resolvedChain.proforma && (trimFileUrl(resolvedChain.proforma) || onOpenInvoice)
   );
-  const finalInv = resolvedChain.finalInvoice;
-  const invoiceSameAsProforma =
-    finalInv && resolvedChain.proforma && String(finalInv.id) === String(resolvedChain.proforma.id);
   const invoiceOpenable = Boolean(
-    finalInv &&
-      (invoiceSameAsProforma
-        ? onOpenProforma || (finalInv.fileUrl && String(finalInv.fileUrl).trim())
-        : onOpenInvoice || (finalInv.fileUrl && String(finalInv.fileUrl).trim()))
+    finalInv && !invoiceSameAsProforma && (trimFileUrl(finalInv) || onOpenInvoice)
   );
   const proofOpenable = Boolean(
     resolvedChain.currentProof?.filePath &&
@@ -392,360 +424,305 @@ ${selectedInternalCompany} Team`;
       ctxNormalized.getPaymentProofSignedUrl
   );
 
+  const docRef = (prefix: string, raw: string | undefined | null) => {
+    const t = raw?.trim();
+    if (!t) return '—';
+    const u = t.toUpperCase();
+    if (u.startsWith(prefix)) return t;
+    return `${prefix}${t}`;
+  };
+
+  const offerDocLabel = resolvedChain.offer
+    ? resolvedChain.offer.offerNo?.trim()
+      ? docRef('OFF-', resolvedChain.offer.offerNo)
+      : 'OFF'
+    : '—';
+  const proformaDocLabel = resolvedChain.proforma
+    ? resolvedChain.proforma.invoiceNumber?.trim()
+      ? docRef('PRO-', resolvedChain.proforma.invoiceNumber)
+      : 'PRO'
+    : '—';
+  const invoiceDocLabel = invoiceSameAsProforma ? '—' : finalInv?.invoiceNumber?.trim() ? docRef('INV-', finalInv.invoiceNumber) : '—';
+  const proofDocLabel =
+    resolvedChain.currentProof?.filePath && String(resolvedChain.currentProof.filePath).trim()
+      ? ctxNormalized.getPaymentProofSignedUrl
+        ? resolvedChain.currentProof.documentNumber?.trim()
+          ? docRef('PAY-', resolvedChain.currentProof.documentNumber)
+          : 'PAY-PDF'
+        : '—'
+      : '—';
+
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="bg-[#1C1F24] w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-xl border border-gray-700 shadow-2xl flex flex-col animate-in zoom-in duration-200">
-        <div className="p-4 sm:p-5 border-b border-gray-800 bg-[#23262b] flex justify-between items-start gap-3 sticky top-0 z-10">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-2">
+      <div className="bg-[#1C1F24] w-full max-w-4xl max-h-[90vh] min-h-0 flex flex-col rounded-xl border border-gray-700 shadow-2xl animate-in zoom-in duration-200">
+        <div className="px-3 py-2 border-b border-gray-800 bg-[#23262b] flex justify-between items-center gap-2 shrink-0 z-10">
           <div className="min-w-0 flex-1">
-            <h3 className="text-lg sm:text-xl font-bold text-white">Stay overview</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Operational summary — technical IDs below in Technical info</p>
+            <h3 className="text-base font-bold text-white leading-tight">Stay overview</h3>
+            <p className="text-[10px] text-gray-500 mt-0.5">Technical IDs in Technical info</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-white bg-gray-800 p-2 rounded-full transition-colors shrink-0"
+            className="text-gray-400 hover:text-white bg-gray-800 p-1.5 rounded-full transition-colors shrink-0"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-4 sm:p-5 space-y-4">
-          {/* Hero — booking fields only; property title optional add-on */}
-          <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
-            <div className="flex-1 min-w-0 space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${statusBadgeTone} bg-white/5 border border-white/10`}
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-2">
+          {/* Status strip */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span
+              className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide ${statusBadgeTone} bg-white/5 border border-white/10`}
+            >
+              {String(booking.status ?? '—')}
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide text-sky-300 bg-sky-500/10 border border-sky-500/25">
+              {phaseLabel}
+            </span>
+            {paymentBadge === 'paid' && (
+              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide text-emerald-300 bg-emerald-500/10 border border-emerald-500/20">
+                Paid
+              </span>
+            )}
+            {paymentBadge === 'unpaid' && (
+              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide text-amber-300 bg-amber-500/10 border border-amber-500/20">
+                Unpaid
+              </span>
+            )}
+            {invoicedBadge && (
+              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide text-violet-300 bg-violet-500/10 border border-violet-500/20">
+                Invoiced
+              </span>
+            )}
+            {booking.bookingNo && (
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <span className="font-mono">{booking.bookingNo}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(booking.bookingNo || '');
+                    setCopiedBookingNo(true);
+                    setTimeout(() => setCopiedBookingNo(false), 2000);
+                  }}
+                  className="hover:text-emerald-300 transition-colors"
+                  title="Copy booking number"
                 >
-                  {String(booking.status ?? '—')}
-                </span>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide text-sky-300 bg-sky-500/10 border border-sky-500/25">
-                  {phaseLabel}
-                </span>
-                {paymentBadge === 'paid' && (
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide text-emerald-300 bg-emerald-500/10 border border-emerald-500/20">
-                    Paid
-                  </span>
-                )}
-                {paymentBadge === 'unpaid' && (
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide text-amber-300 bg-amber-500/10 border border-amber-500/20">
-                    Unpaid
-                  </span>
-                )}
-                {invoicedBadge && (
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide text-violet-300 bg-violet-500/10 border border-violet-500/20">
-                    Invoiced
-                  </span>
-                )}
-                {booking.bookingNo && (
-                  <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    <span className="font-mono">{booking.bookingNo}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(booking.bookingNo || '');
-                        setCopiedBookingNo(true);
-                        setTimeout(() => setCopiedBookingNo(false), 2000);
-                      }}
-                      className="hover:text-emerald-300 transition-colors"
-                      title="Copy booking number"
-                    >
-                      {copiedBookingNo ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                    </button>
-                  </div>
-                )}
-                {booking.internalCompany && (
-                  <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                    <Building2 className="w-3 h-3" />
-                    {booking.internalCompany}
-                  </span>
-                )}
-                {booking.channel && (
-                  <span className="text-[10px] text-gray-500">{booking.channel}</span>
-                )}
+                  {copiedBookingNo ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
+                </button>
               </div>
-              <div>
-                <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight">{displayName}</h2>
-                {property?.title && (
-                  <p className="text-xs text-gray-500 mt-1 truncate" title={property.title}>
-                    {property.title}
-                  </p>
-                )}
-                <div className="flex items-start gap-2 text-sm text-gray-400 mt-2">
-                  <Briefcase className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span className="min-w-0">{unitLine}</span>
-                </div>
-                <div className="flex items-start gap-2 text-sm text-gray-400 mt-1">
-                  <MapPin className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span className="min-w-0">{addressLine}</span>
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-3 shrink-0">
-              <div className="bg-[#111315] border border-gray-800 p-3 rounded-lg min-w-[120px]">
-                <span className="text-[10px] text-gray-500 block mb-1">Check-in</span>
-                <div className="font-semibold text-white text-sm">{booking.start || '—'}</div>
-                <div className="text-[10px] text-emerald-500 font-mono mt-0.5">{booking.checkInTime || '—'}</div>
-              </div>
-              <div className="bg-[#111315] border border-gray-800 p-3 rounded-lg min-w-[120px]">
-                <span className="text-[10px] text-gray-500 block mb-1">Check-out</span>
-                <div className="font-semibold text-white text-sm">{booking.end || '—'}</div>
-                <div className="text-[10px] text-red-400 font-mono mt-0.5">{booking.checkOutTime || '—'}</div>
-              </div>
-              <div className="bg-[#111315] border border-gray-800 p-3 rounded-lg min-w-[72px] flex flex-col justify-center">
-                <span className="text-[10px] text-gray-500 block mb-1">Nights</span>
-                <div className="font-semibold text-white text-sm">{nights != null ? nights : '—'}</div>
-              </div>
-            </div>
+            )}
+            {booking.internalCompany && (
+              <span className="flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                <Building2 className="w-2.5 h-2.5" />
+                {booking.internalCompany}
+              </span>
+            )}
           </div>
 
-          <div className="h-px bg-gray-800" />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-4">
-              <section>
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-2">
-                  <Calendar className="w-3.5 h-3.5" /> Stay
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="flex flex-col gap-2 min-w-0">
+              <div className="bg-[#111315] rounded-lg border border-gray-800 p-2">
+                <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+                  <Briefcase className="w-3 h-3" /> Tenant / Stay
                 </h4>
-                <div className="bg-[#111315] rounded-lg p-3 border border-gray-800 text-sm text-gray-300 space-y-1.5">
-                  <div className="flex justify-between gap-2">
-                    <span className="text-gray-500">Guests</span>
-                    <span className="text-white text-right">{booking.guests || '—'}</span>
+                <div className="text-[11px] space-y-1">
+                  <div className="font-semibold text-white text-sm leading-tight">{displayName}</div>
+                  {property?.title && (
+                    <div className="text-[10px] text-gray-500 truncate" title={property.title}>
+                      {property.title}
+                    </div>
+                  )}
+                  <div className="flex gap-1.5 text-gray-400 items-start">
+                    <Briefcase className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span className="min-w-0 break-all">{unitLine}</span>
                   </div>
-                  <div className="flex justify-between gap-2">
-                    <span className="text-gray-500">Source</span>
-                    <span className="text-white text-right">{booking.channel || '—'}</span>
+                  <div className="flex gap-1.5 text-gray-400 items-start">
+                    <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span className="min-w-0 break-all">{addressLine}</span>
                   </div>
-                  <div className="flex justify-between gap-2">
-                    <span className="text-gray-500">Unit / code</span>
-                    <span className="text-white text-right break-all">{unitLine}</span>
-                  </div>
+                  <dl className="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-0.5 text-[11px] pt-1 mt-1 border-t border-gray-800/80">
+                    <dt className="text-gray-500">Check-in</dt>
+                    <dd className="text-white tabular-nums">
+                      {booking.start || '—'}
+                      {booking.checkInTime ? (
+                        <span className="text-emerald-500/90 ml-1 font-mono text-[10px]">{booking.checkInTime}</span>
+                      ) : null}
+                    </dd>
+                    <dt className="text-gray-500">Check-out</dt>
+                    <dd className="text-white tabular-nums">
+                      {booking.end || '—'}
+                      {booking.checkOutTime ? (
+                        <span className="text-red-400/90 ml-1 font-mono text-[10px]">{booking.checkOutTime}</span>
+                      ) : null}
+                    </dd>
+                    <dt className="text-gray-500">Nights</dt>
+                    <dd className="text-white">{nights != null ? nights : '—'}</dd>
+                    <dt className="text-gray-500">Guests</dt>
+                    <dd className="text-white text-right">{booking.guests || '—'}</dd>
+                    <dt className="text-gray-500">Source</dt>
+                    <dd className="text-white text-right break-all">{booking.channel || '—'}</dd>
+                  </dl>
                 </div>
-              </section>
+              </div>
 
-              <section>
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-2">
-                  <User className="w-3.5 h-3.5" /> Contact
+              <div className="bg-[#111315] rounded-lg border border-gray-800 p-2">
+                <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+                  <User className="w-3 h-3" /> Contact
                 </h4>
-                <div className="space-y-2">
+                <div className="text-[11px] space-y-1">
                   {booking.email ? (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Mail className="w-4 h-4 text-gray-500 shrink-0" />
+                    <div className="flex items-start gap-1.5">
+                      <Mail className="w-3.5 h-3.5 text-gray-500 shrink-0 mt-0.5" />
                       <span className="text-white break-all">{booking.email}</span>
                     </div>
                   ) : (
-                    <p className="text-xs text-gray-500">No email</p>
+                    <p className="text-gray-600">No email</p>
                   )}
                   {booking.phone ? (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Phone className="w-4 h-4 text-gray-500 shrink-0" />
+                    <div className="flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                       <span className="text-white">{booking.phone}</span>
                     </div>
                   ) : (
-                    <p className="text-xs text-gray-500">No phone</p>
+                    <p className="text-gray-600">No phone</p>
                   )}
                   {booking.address && String(booking.address).trim() ? (
-                    <div className="flex items-start gap-2 text-sm">
-                      <MapPin className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
-                      <span className="text-white">{booking.address}</span>
+                    <div className="flex items-start gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-gray-500 shrink-0 mt-0.5" />
+                      <span className="text-white break-words">{booking.address}</span>
                     </div>
                   ) : null}
                 </div>
-              </section>
+              </div>
 
-              <section>
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-2">
-                  <User className="w-3.5 h-3.5" /> Guest list
+              <div className="bg-[#111315] rounded-lg border border-gray-800 p-2">
+                <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+                  <User className="w-3 h-3" /> Guests & notes
                 </h4>
-                <div className="bg-[#111315] rounded-lg p-3 border border-gray-800">
-                  {booking.guestList && booking.guestList.length > 0 ? (
-                    <ul className="space-y-1">
-                      {booking.guestList.map((g, i) => (
-                        <li key={i} className="text-sm text-white flex items-center gap-2">
-                          <span className="w-1 h-1 rounded-full bg-gray-600 shrink-0" />
-                          {g.firstName} {g.lastName}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-xs text-gray-500 italic">No guest list provided.</p>
-                  )}
+                <div className="text-[11px] space-y-1.5">
+                  <div>
+                    <div className="text-[9px] text-gray-600 uppercase tracking-wide mb-0.5">Guest list</div>
+                    {booking.guestList && booking.guestList.length > 0 ? (
+                      <ul className="space-y-0.5">
+                        {booking.guestList.map((g, i) => (
+                          <li key={i} className="text-gray-200 flex items-center gap-1.5">
+                            <span className="w-1 h-1 rounded-full bg-gray-600 shrink-0" />
+                            {g.firstName} {g.lastName}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-gray-600">No guest list.</p>
+                    )}
+                  </div>
+                  <div className="pt-1.5 border-t border-gray-800/60">
+                    <div className="text-[9px] text-gray-600 uppercase tracking-wide mb-0.5">Notes</div>
+                    <p className="text-gray-400 leading-snug text-[11px] whitespace-pre-wrap">{booking.comments || '—'}</p>
+                  </div>
                 </div>
-              </section>
+              </div>
             </div>
 
-            <div className="space-y-4">
-              <section>
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-2">
-                  <Euro className="w-3.5 h-3.5" /> Financials
+            <div className="flex flex-col gap-2 min-w-0">
+              <div className="bg-[#111315] rounded-lg border border-gray-800 p-2">
+                <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+                  <Euro className="w-3 h-3" /> Financials
                 </h4>
-                <div className="bg-[#111315] rounded-lg p-3 border border-gray-800 space-y-2">
-                  <div className="flex justify-between gap-2 text-sm">
-                    <span className="text-gray-400">Total</span>
-                    <span className="text-white font-semibold">{booking.price || booking.totalGross || '—'}</span>
+                <div className="space-y-1 text-[11px]">
+                  <div className="flex justify-between gap-2">
+                    <span className="text-gray-500">Total</span>
+                    <span className="text-white font-semibold text-right">{booking.price || booking.totalGross || '—'}</span>
                   </div>
-                  <div className="flex justify-between gap-2 text-sm">
-                    <span className="text-gray-400">Balance</span>
-                    <span className={`font-semibold ${balanceTone}`}>{balanceStr || '—'}</span>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-gray-500">Balance</span>
+                    <span className={`font-semibold text-right ${balanceTone}`}>{balanceStr || '—'}</span>
                   </div>
                   {!paymentBadge && (
-                    <p className="text-[10px] text-gray-500 pt-1 border-t border-gray-800">
-                      Payment status: use balance and linked documents — not enough data for a confident Paid/Unpaid badge.
+                    <p className="text-[9px] text-gray-600 leading-tight pt-0.5 border-t border-gray-800/60">
+                      Payment badge not shown — insufficient data.
                     </p>
                   )}
-                  <div className="h-px bg-gray-800 my-1" />
-                  <div className="flex items-center gap-2 text-[11px] text-gray-500">
+                  <div className="flex items-center gap-1.5 text-[10px] text-gray-500 pt-0.5 border-t border-gray-800/60">
                     <CreditCard className="w-3 h-3 shrink-0" />
-                    <span>{booking.paymentAccount || '—'}</span>
+                    <span className="truncate">{booking.paymentAccount || '—'}</span>
                   </div>
                   {resolvedChain.offer?.kaution != null && Number.isFinite(Number(resolvedChain.offer.kaution)) && (
-                    <div className="flex justify-between gap-2 text-sm pt-1 border-t border-gray-800">
-                      <span className="text-gray-400">Deposit (Kaution)</span>
+                    <div className="flex justify-between gap-2 text-[11px] pt-0.5 border-t border-gray-800/60">
+                      <span className="text-gray-500">Deposit</span>
                       <span className="text-white">{resolvedChain.offer.kaution} EUR</span>
                     </div>
                   )}
                   {resolvedChain.proforma?.kautionStatus && (
-                    <div className="flex justify-between gap-2 text-xs pt-1">
-                      <span className="text-gray-500">Deposit status</span>
+                    <div className="flex justify-between gap-2 text-[10px]">
+                      <span className="text-gray-600">Deposit status</span>
                       <span className="text-gray-300">{resolvedChain.proforma.kautionStatus.replace(/_/g, ' ')}</span>
                     </div>
                   )}
                 </div>
-              </section>
+              </div>
 
-              <section>
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-2">
-                  <FileText className="w-3.5 h-3.5" /> Documents
+              <div className="bg-[#111315] rounded-lg border border-gray-800 p-2">
+                <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+                  <FileText className="w-3 h-3" /> Documents
                 </h4>
-                <div className="bg-[#111315] rounded-lg p-3 border border-gray-800 space-y-2 text-sm">
-                  <div className="flex justify-between gap-2 items-center">
-                    <span className="text-gray-400 shrink-0">Offer</span>
-                    <div className="flex items-center gap-2 min-w-0 justify-end">
-                      <span className="text-right text-gray-200 truncate text-xs">
-                        {resolvedChain.offer
-                          ? `Linked${resolvedChain.offer.offerNo ? ` · ${resolvedChain.offer.offerNo}` : ''}`
-                          : '—'}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={!offerOpenable}
-                        onClick={openOfferDocument}
-                        className="shrink-0 px-2 py-1 rounded-md text-[11px] font-semibold bg-blue-600/80 hover:bg-blue-500 disabled:opacity-40 disabled:pointer-events-none text-white inline-flex items-center gap-1"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        Open
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex justify-between gap-2 items-center">
-                    <span className="text-gray-400 shrink-0">Proforma</span>
-                    <div className="flex items-center gap-2 min-w-0 justify-end">
-                      <span className="text-right text-gray-200 truncate text-xs">
-                        {resolvedChain.proforma
-                          ? `${resolvedChain.proforma.invoiceNumber ?? 'Proforma'}`
-                          : '—'}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={!proformaOpenable}
-                        onClick={openProformaDocument}
-                        className="shrink-0 px-2 py-1 rounded-md text-[11px] font-semibold bg-violet-600/80 hover:bg-violet-500 disabled:opacity-40 disabled:pointer-events-none text-white inline-flex items-center gap-1"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        Open
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex justify-between gap-2 items-center">
-                    <span className="text-gray-400 shrink-0">Invoice</span>
-                    <div className="flex items-center gap-2 min-w-0 justify-end">
-                      <span className="text-right text-gray-200 truncate text-xs">
-                        {invoiceSameAsProforma
-                          ? 'Same as proforma'
-                          : finalInv
-                            ? `${finalInv.invoiceNumber ?? 'Invoice'} · ${finalInv.status}`
-                            : '—'}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={!invoiceOpenable}
-                        onClick={openInvoiceDocument}
-                        className="shrink-0 px-2 py-1 rounded-md text-[11px] font-semibold bg-indigo-600/80 hover:bg-indigo-500 disabled:opacity-40 disabled:pointer-events-none text-white inline-flex items-center gap-1"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        Open
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex justify-between gap-2 items-center">
-                    <span className="text-gray-400 shrink-0">Payment proof</span>
-                    <div className="flex items-center gap-2 min-w-0 justify-end">
-                      <span className="text-right text-gray-200 truncate text-xs">
-                        {resolvedChain.currentProof?.filePath
-                          ? ctxNormalized.getPaymentProofSignedUrl
-                            ? resolvedChain.currentProof.documentNumber ?? 'PDF'
-                            : 'File on record — open from calendar for link'
-                          : '—'}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={!proofOpenable || docActionLoading === 'proof'}
-                        onClick={openPaymentProofDocument}
-                        className="shrink-0 px-2 py-1 rounded-md text-[11px] font-semibold bg-sky-600/80 hover:bg-sky-500 disabled:opacity-40 disabled:pointer-events-none text-white inline-flex items-center gap-1"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        {docActionLoading === 'proof' ? '…' : 'Open'}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex justify-between gap-2 items-center">
-                    <span className="text-gray-400 shrink-0">Handover protocol (ÜGP)</span>
-                    <div className="flex items-center gap-2 min-w-0 justify-end">
-                      <span className="text-right text-gray-200 truncate text-xs">
-                        {protocolRowEnabled ? 'DOCX' : '—'}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={!protocolRowEnabled || docActionLoading === 'protocol'}
-                        onClick={openProtocolDocument}
-                        className="shrink-0 px-2 py-1 rounded-md text-[11px] font-semibold bg-emerald-700/80 hover:bg-emerald-600 disabled:opacity-40 disabled:pointer-events-none text-white inline-flex items-center gap-1"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        {docActionLoading === 'protocol' ? '…' : 'Open'}
-                      </button>
-                    </div>
-                  </div>
+                <div>
+                  <StayDocRow
+                    label="Offer"
+                    value={offerDocLabel}
+                    interactive={offerOpenable}
+                    onActivate={openOfferDocument}
+                  />
+                  <StayDocRow
+                    label="Proforma"
+                    value={proformaDocLabel}
+                    interactive={proformaOpenable}
+                    onActivate={openProformaDocument}
+                  />
+                  <StayDocRow
+                    label="Invoice"
+                    value={invoiceDocLabel}
+                    interactive={invoiceOpenable}
+                    onActivate={openInvoiceDocument}
+                  />
+                  <StayDocRow
+                    label="Payment proof"
+                    value={proofDocLabel}
+                    interactive={proofOpenable}
+                    loading={docActionLoading === 'proof'}
+                    onActivate={openPaymentProofDocument}
+                  />
+                  <StayDocRow
+                    label="Handover"
+                    value={protocolRowEnabled ? 'DOCX' : '—'}
+                    interactive={protocolRowEnabled}
+                    loading={docActionLoading === 'protocol'}
+                    onActivate={openProtocolDocument}
+                  />
                 </div>
-              </section>
+              </div>
+
+              <div className="bg-[#111315] rounded-lg border border-gray-800 p-2">
+                <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> Activity
+                </h4>
+                {timelineRows.length === 0 ? (
+                  <p className="text-[10px] text-gray-600">No activity yet.</p>
+                ) : (
+                  <ul className="space-y-0.5">
+                    {timelineRows.map((row, idx) => (
+                      <li key={`${row.label}-${idx}`} className="flex justify-between gap-2 text-[10px] text-gray-400">
+                        <span className="text-gray-300 truncate min-w-0">{row.label}</span>
+                        <span className="text-gray-500 shrink-0 tabular-nums text-right">
+                          {row.at ? formatTimelineDate(row.at) : '—'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           </div>
-
-          <section>
-            <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Activity</h4>
-            {timelineRows.length === 0 ? (
-              <p className="text-[11px] text-gray-500">No dated activity yet.</p>
-            ) : (
-              <ul className="space-y-1 border border-gray-800/80 rounded-lg bg-[#111315]/50 p-2">
-                {timelineRows.map((row, idx) => (
-                  <li key={`${row.label}-${idx}`} className="flex justify-between gap-2 text-[11px] text-gray-400">
-                    <span className="text-gray-300">{row.label}</span>
-                    <span className="text-gray-500 shrink-0 tabular-nums">
-                      {row.at ? formatTimelineDate(row.at) : '—'}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="space-y-1.5">
-            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-              <FileText className="w-3.5 h-3.5" /> Notes
-            </h4>
-            <div className="bg-[#111315]/80 p-3 rounded-lg border border-gray-800/80 text-xs text-gray-400">
-              {booking.comments || 'No comments.'}
-            </div>
-          </section>
 
           <details className="group border border-gray-800 rounded-lg bg-[#111315]/40 px-3 py-2">
             <summary className="text-[10px] font-semibold text-gray-500 cursor-pointer list-none flex items-center justify-between">
