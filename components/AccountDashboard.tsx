@@ -4519,14 +4519,15 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     setIsCreateLeadModalOpen(false);
     try {
       await loadLeads();
-      setToastMessage('Lead created successfully.');
     } catch (reloadErr) {
       console.error('loadLeads after manual create:', reloadErr);
       setLeads((prev) => (prev.some((l) => l.id === created.id) ? prev : [created, ...prev]));
       setToastMessage(
-        'Lead created successfully. Could not reload the list from the server; the new lead was added locally.'
+        'Lead created. List refresh failed — the new lead was added locally; try reloading the page if needed.'
       );
+      return;
     }
+    setToastMessage('Lead created successfully.');
   };
 
   /**

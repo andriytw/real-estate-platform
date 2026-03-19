@@ -3891,22 +3891,6 @@ function createLeadInputToInsertRow(input: CreateLeadInput): Record<string, unkn
   if (notes) {
     row.notes = notes;
   }
-  if (input.preferredDates?.length) {
-    const cleaned = input.preferredDates
-      .map((p) => ({
-        start: String(p.start ?? '').trim(),
-        end: String(p.end ?? '').trim(),
-        peopleCount:
-          typeof p.peopleCount === 'number' && p.peopleCount > 0 ? Math.floor(p.peopleCount) : 1,
-      }))
-      .filter((p) => p.start && p.end);
-    if (cleaned.length > 0) {
-      row.preferred_dates = cleaned;
-    }
-  }
-  if (input.propertyId) {
-    row.property_id = input.propertyId;
-  }
   return row;
 }
 

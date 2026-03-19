@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, Save, User, Mail, Phone, MapPin, Building2, Calendar, Users, FileText } from 'lucide-react';
+import { X, Save, User, Mail, Phone, MapPin, Building2, FileText } from 'lucide-react';
 import type { CreateLeadInput, Lead } from '../types';
 
 export interface LeadCreateModalProps {
@@ -11,6 +11,7 @@ export interface LeadCreateModalProps {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** companyName → first+last → first → last → email → phone → 'Manual lead' */
 function buildLeadDisplayName(
   companyName: string,
   firstName: string,
@@ -31,45 +32,6 @@ function buildLeadDisplayName(
   return 'Manual lead';
 }
 
-function bothDatesValidForPreferred(start: string, end: string): boolean {
-  const a = start.trim();
-  const b = end.trim();
-  if (!a || !b) return false;
-  return /^\d{4}-\d{2}-\d{2}$/.test(a) && /^\d{4}-\d{2}-\d{2}$/.test(b);
-}
-
-function peopleCountFromGuests(raw: string): number {
-  const n = Number(String(raw).trim());
-  if (Number.isFinite(n) && n > 0) return Math.floor(n);
-  return 1;
-}
-
-/** Fixed-order notes; only non-empty lines; no Preferred stay / Guests when structured preferred_dates is used. */
-function buildManualNotes(params: {
-  interestedProperty: string;
-  budget: string;
-  preferredStayText: string;
-  guestsText: string;
-  internalNotes: string;
-  omitPreferredStayAndGuests: boolean;
-}): string | undefined {
-  const lines: string[] = [];
-  const ip = params.interestedProperty.trim();
-  if (ip) lines.push(`Interested property: ${ip}`);
-  const bud = params.budget.trim();
-  if (bud) lines.push(`Budget: ${bud}`);
-  if (!params.omitPreferredStayAndGuests) {
-    const ps = params.preferredStayText.trim();
-    if (ps) lines.push(`Preferred stay: ${ps}`);
-    const g = params.guestsText.trim();
-    if (g) lines.push(`Guests: ${g}`);
-  }
-  const internal = params.internalNotes.trim();
-  if (internal) lines.push(`Internal notes: ${internal}`);
-  if (lines.length === 0) return undefined;
-  return lines.join('\n');
-}
-
 const LeadCreateModal: React.FC<LeadCreateModalProps> = ({ isOpen, onClose, onCreate }) => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -78,11 +40,6 @@ const LeadCreateModal: React.FC<LeadCreateModalProps> = ({ isOpen, onClose, onCr
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [status, setStatus] = useState<Lead['status']>('Active');
-  const [interestedProperty, setInterestedProperty] = useState('');
-  const [budget, setBudget] = useState('');
-  const [checkIn, setCheckIn] = useState('');
-  const [checkOut, setCheckOut] = useState('');
-  const [guests, setGuests] = useState('');
   const [internalNotes, setInternalNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -94,11 +51,6 @@ const LeadCreateModal: React.FC<LeadCreateModalProps> = ({ isOpen, onClose, onCr
     setPhone('');
     setAddress('');
     setStatus('Active');
-    setInterestedProperty('');
-    setBudget('');
-    setCheckIn('');
-    setCheckOut('');
-    setGuests('');
     setInternalNotes('');
     setSaving(false);
   }, []);
@@ -130,37 +82,6 @@ const LeadCreateModal: React.FC<LeadCreateModalProps> = ({ isOpen, onClose, onCr
     const type: Lead['type'] = isCompany ? 'Company' : 'Private';
     const name = buildLeadDisplayName(co, fn, ln, em, ph);
 
-    const structuredPreferred = bothDatesValidForPreferred(checkIn, checkOut);
-    let preferredDates: CreateLeadInput['preferredDates'];
-    let preferredStayForNotes = '';
-    let guestsForNotes = '';
-
-    if (structuredPreferred) {
-      preferredDates = [
-        {
-          start: checkIn.trim(),
-          end: checkOut.trim(),
-          peopleCount: peopleCountFromGuests(guests),
-        },
-      ];
-    } else {
-      if (checkIn.trim() || checkOut.trim()) {
-        preferredStayForNotes = [checkIn.trim(), checkOut.trim()].filter(Boolean).join(' → ');
-      }
-      if (guests.trim()) {
-        guestsForNotes = guests.trim();
-      }
-    }
-
-    const notes = buildManualNotes({
-      interestedProperty,
-      budget,
-      preferredStayText: preferredStayForNotes,
-      guestsText: guestsForNotes,
-      internalNotes,
-      omitPreferredStayAndGuests: structuredPreferred,
-    });
-
     const input: CreateLeadInput = {
       name,
       type,
@@ -178,11 +99,9 @@ const LeadCreateModal: React.FC<LeadCreateModalProps> = ({ isOpen, onClose, onCr
       }
     }
 
-    if (notes) {
-      input.notes = notes;
-    }
-    if (preferredDates?.length) {
-      input.preferredDates = preferredDates;
+    const notesTrimmed = internalNotes.trim();
+    if (notesTrimmed) {
+      input.notes = notesTrimmed;
     }
 
     setSaving(true);
@@ -198,22 +117,22 @@ const LeadCreateModal: React.FC<LeadCreateModalProps> = ({ isOpen, onClose, onCr
 
   return (
     <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-[#1C1F24] w-full max-w-lg max-h-[90vh] rounded-xl border border-gray-700 shadow-2xl flex flex-col">
-        <div className="p-5 border-b border-gray-800 bg-[#23262b] flex justify-between items-center shrink-0">
-          <h3 className="text-xl font-bold text-white">Create lead</h3>
+      <div className="bg-[#1C1F24] w-full max-w-md rounded-xl border border-gray-700 shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="p-4 border-b border-gray-800 bg-[#23262b] flex justify-between items-center shrink-0">
+          <h3 className="text-lg font-bold text-white">Create lead</h3>
           <button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="text-gray-400 hover:text-white bg-gray-800 p-2 rounded-full transition-colors disabled:opacity-50"
+            className="text-gray-400 hover:text-white bg-gray-800 p-1.5 rounded-full transition-colors disabled:opacity-50"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="p-6 space-y-3 overflow-y-auto flex-1 min-h-0 text-sm">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="p-4 space-y-2.5 overflow-y-auto flex-1 min-h-0 text-sm">
+          <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
+              <label className="block text-[11px] font-medium text-gray-400 mb-0.5 flex items-center gap-1">
                 <User className="w-3 h-3" /> First name
               </label>
               <input
@@ -223,7 +142,7 @@ const LeadCreateModal: React.FC<LeadCreateModalProps> = ({ isOpen, onClose, onCr
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Last name</label>
+              <label className="block text-[11px] font-medium text-gray-400 mb-0.5">Last name</label>
               <input
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
@@ -232,18 +151,18 @@ const LeadCreateModal: React.FC<LeadCreateModalProps> = ({ isOpen, onClose, onCr
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
+            <label className="block text-[11px] font-medium text-gray-400 mb-0.5 flex items-center gap-1">
               <Building2 className="w-3 h-3" /> Company name
             </label>
             <input
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
               className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none"
-              placeholder="Optional — if set, lead type is Company"
+              placeholder="Optional"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
+            <label className="block text-[11px] font-medium text-gray-400 mb-0.5 flex items-center gap-1">
               <Mail className="w-3 h-3" /> Email
             </label>
             <input
@@ -254,7 +173,7 @@ const LeadCreateModal: React.FC<LeadCreateModalProps> = ({ isOpen, onClose, onCr
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
+            <label className="block text-[11px] font-medium text-gray-400 mb-0.5 flex items-center gap-1">
               <Phone className="w-3 h-3" /> Phone
             </label>
             <input
@@ -264,8 +183,8 @@ const LeadCreateModal: React.FC<LeadCreateModalProps> = ({ isOpen, onClose, onCr
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
-              <MapPin className="w-3 h-3" /> Address
+            <label className="block text-[11px] font-medium text-gray-400 mb-0.5 flex items-center gap-1">
+              <MapPin className="w-3 h-3" /> Address <span className="text-gray-500 font-normal">(optional)</span>
             </label>
             <input
               value={address}
@@ -274,7 +193,7 @@ const LeadCreateModal: React.FC<LeadCreateModalProps> = ({ isOpen, onClose, onCr
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Status</label>
+            <label className="block text-[11px] font-medium text-gray-400 mb-0.5">Status</label>
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as Lead['status'])}
@@ -286,60 +205,7 @@ const LeadCreateModal: React.FC<LeadCreateModalProps> = ({ isOpen, onClose, onCr
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Interested property</label>
-            <input
-              value={interestedProperty}
-              onChange={(e) => setInterestedProperty(e.target.value)}
-              className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Budget / price note</label>
-            <input
-              value={budget}
-              onChange={(e) => setBudget(e.target.value)}
-              className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
-                <Calendar className="w-3 h-3" /> Check-in
-              </label>
-              <input
-                type="date"
-                value={checkIn}
-                onChange={(e) => setCheckIn(e.target.value)}
-                className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
-                <Calendar className="w-3 h-3" /> Check-out
-              </label>
-              <input
-                type="date"
-                value={checkOut}
-                onChange={(e) => setCheckOut(e.target.value)}
-                className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
-              <Users className="w-3 h-3" /> Number of guests
-            </label>
-            <input
-              type="number"
-              min={1}
-              value={guests}
-              onChange={(e) => setGuests(e.target.value)}
-              className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none"
-              placeholder="Used when both dates are set (default 1)"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1 flex items-center gap-2">
+            <label className="block text-[11px] font-medium text-gray-400 mb-0.5 flex items-center gap-1">
               <FileText className="w-3 h-3" /> Internal notes
             </label>
             <textarea
@@ -347,16 +213,16 @@ const LeadCreateModal: React.FC<LeadCreateModalProps> = ({ isOpen, onClose, onCr
               onChange={(e) => setInternalNotes(e.target.value)}
               rows={3}
               className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 outline-none resize-y"
+              placeholder="Plain text only"
             />
           </div>
-          <p className="text-[10px] text-gray-500">Source is set to manual. Both check-in and check-out dates must be set to store preferred dates in structured form.</p>
         </div>
-        <div className="p-5 border-t border-gray-800 flex justify-end gap-3 shrink-0">
+        <div className="p-4 border-t border-gray-800 flex justify-end gap-2 shrink-0">
           <button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-bold transition-colors disabled:opacity-50"
+            className="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
@@ -364,7 +230,7 @@ const LeadCreateModal: React.FC<LeadCreateModalProps> = ({ isOpen, onClose, onCr
             type="button"
             onClick={() => void handleSubmit()}
             disabled={saving}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold transition-colors flex items-center gap-2 disabled:opacity-50"
+            className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
             {saving ? 'Saving…' : 'Create lead'}
