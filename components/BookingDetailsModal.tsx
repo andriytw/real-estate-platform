@@ -12,8 +12,11 @@ import {
   derivePaymentBadge,
   formatTimelineDate,
   getStayPhase,
+  isBookingConfirmedForProtocol,
   resolveStayChain,
 } from '../utils/stayOverviewFromBooking';
+import { openUebergabeProtocolFromBooking } from '../utils/openUebergabeProtocolFromBooking';
+import { openUrlInPreOpenedWindow } from '../utils/openUrlInPreOpenedWindow';
 
 export type { StayOverviewStayContext } from '../utils/stayOverviewFromBooking';
 
@@ -32,6 +35,8 @@ interface BookingDetailsModalProps {
   isViewingOffer?: boolean;
   /** Optional: offers/invoices/proofs from parent (e.g. calendar). Modal works fully without it. */
   stayContext?: StayOverviewStayContext | null;
+  /** Toasts for async document errors (popups blocked, network, etc.). Falls back to alert if omitted. */
+  onShowToast?: (message: string) => void;
   onOpenOffer?: (offer: OfferData) => void;
   onOpenProforma?: (proforma: InvoiceData) => void;
   onOpenInvoice?: (invoice: InvoiceData) => void;
@@ -59,6 +64,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
   onDeleteBooking,
   isViewingOffer,
   stayContext,
+  onShowToast,
   onOpenOffer,
   onOpenProforma,
   onOpenInvoice,
@@ -71,6 +77,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
   const [copiedTechnicalKey, setCopiedTechnicalKey] = useState<string | null>(null);
   const [copiedMarketplaceUrl, setCopiedMarketplaceUrl] = useState(false);
   const [property, setProperty] = useState<any>(null);
+  const [docActionLoading, setDocActionLoading] = useState<'protocol' | 'proof' | null>(null);
 
   const INTERNAL_COMPANIES = ['Sotiso', 'Wonowo', 'NowFlats'];
 
@@ -95,6 +102,8 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
       offers: stayContext?.offers ?? [],
       invoices: stayContext?.invoices ?? [],
       paymentProofsByInvoiceId: stayContext?.paymentProofsByInvoiceId ?? {},
+      confirmedBookingIds: stayContext?.confirmedBookingIds,
+      getPaymentProofSignedUrl: stayContext?.getPaymentProofSignedUrl,
     }),
     [stayContext]
   );
@@ -283,6 +292,106 @@ ${selectedInternalCompany} Team`;
     window.setTimeout(fn, 0);
   };
 
+  const showUserError = (message: string) => {
+    if (onShowToast) onShowToast(message);
+    else window.alert(message);
+  };
+
+  const propertyIdForProtocol = booking.propertyId ?? booking.roomId ?? '';
+  const protocolRowEnabled =
+    Boolean(propertyIdForProtocol) &&
+    isBookingConfirmedForProtocol(booking, ctxNormalized) &&
+    !isViewingOffer;
+
+  const openOfferDocument = () => {
+    if (!resolvedChain.offer || !onOpenOffer) return;
+    fireThenClose(() => onOpenOffer(resolvedChain.offer!));
+  };
+
+  const openProformaDocument = () => {
+    const p = resolvedChain.proforma;
+    if (!p) return;
+    if (onOpenProforma) fireThenClose(() => onOpenProforma(p));
+    else if (p.fileUrl && String(p.fileUrl).trim())
+      window.open(String(p.fileUrl).trim(), '_blank', 'noopener,noreferrer');
+  };
+
+  const openInvoiceDocument = () => {
+    const inv = resolvedChain.finalInvoice;
+    if (!inv) return;
+    const sameAsProforma =
+      resolvedChain.proforma && String(inv.id) === String(resolvedChain.proforma.id);
+    if (sameAsProforma) {
+      if (onOpenProforma && resolvedChain.proforma) fireThenClose(() => onOpenProforma(resolvedChain.proforma!));
+      else if (inv.fileUrl && String(inv.fileUrl).trim())
+        window.open(String(inv.fileUrl).trim(), '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (onOpenInvoice) fireThenClose(() => onOpenInvoice(inv));
+    else if (inv.fileUrl && String(inv.fileUrl).trim())
+      window.open(String(inv.fileUrl).trim(), '_blank', 'noopener,noreferrer');
+  };
+
+  const openProtocolDocument = () => {
+    if (!propertyIdForProtocol) {
+      showUserError('Property is not set for this stay — cannot open protocol.');
+      return;
+    }
+    if (!protocolRowEnabled) {
+      showUserError('Handover protocol is only available for confirmed stays from the rent calendar.');
+      return;
+    }
+    const preOpened = window.open('', '_blank');
+    setDocActionLoading('protocol');
+    void openUebergabeProtocolFromBooking({
+      bookingId: booking.id,
+      propertyId: propertyIdForProtocol,
+      preOpenedWindow: preOpened,
+      showError: showUserError,
+    }).finally(() => setDocActionLoading(null));
+  };
+
+  const openPaymentProofDocument = () => {
+    const proof = resolvedChain.currentProof;
+    const path = proof?.filePath;
+    const getSigned = ctxNormalized.getPaymentProofSignedUrl;
+    if (!path || !String(path).trim()) {
+      showUserError('No payment proof file on record.');
+      return;
+    }
+    if (!getSigned) {
+      showUserError('Payment proof links are not available in this view. Open the stay from the Sales calendar.');
+      return;
+    }
+    const preOpened = window.open('', '_blank');
+    setDocActionLoading('proof');
+    void openUrlInPreOpenedWindow(
+      preOpened,
+      () => getSigned(String(path).trim()),
+      showUserError,
+      'Could not get a link to the payment proof.'
+    ).finally(() => setDocActionLoading(null));
+  };
+
+  const offerOpenable = Boolean(resolvedChain.offer && onOpenOffer);
+  const proformaOpenable = Boolean(
+    resolvedChain.proforma && (onOpenProforma || (resolvedChain.proforma.fileUrl && String(resolvedChain.proforma.fileUrl).trim()))
+  );
+  const finalInv = resolvedChain.finalInvoice;
+  const invoiceSameAsProforma =
+    finalInv && resolvedChain.proforma && String(finalInv.id) === String(resolvedChain.proforma.id);
+  const invoiceOpenable = Boolean(
+    finalInv &&
+      (invoiceSameAsProforma
+        ? onOpenProforma || (finalInv.fileUrl && String(finalInv.fileUrl).trim())
+        : onOpenInvoice || (finalInv.fileUrl && String(finalInv.fileUrl).trim()))
+  );
+  const proofOpenable = Boolean(
+    resolvedChain.currentProof?.filePath &&
+      String(resolvedChain.currentProof.filePath).trim() &&
+      ctxNormalized.getPaymentProofSignedUrl
+  );
+
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm">
       <div className="bg-[#1C1F24] w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-xl border border-gray-700 shadow-2xl flex flex-col animate-in zoom-in duration-200">
@@ -300,7 +409,7 @@ ${selectedInternalCompany} Team`;
           </button>
         </div>
 
-        <div className="p-4 sm:p-6 space-y-6">
+        <div className="p-4 sm:p-5 space-y-4">
           {/* Hero — booking fields only; property title optional add-on */}
           <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
             <div className="flex-1 min-w-0 space-y-3">
@@ -392,8 +501,8 @@ ${selectedInternalCompany} Team`;
 
           <div className="h-px bg-gray-800" />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-4">
               <section>
                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-2">
                   <Calendar className="w-3.5 h-3.5" /> Stay
@@ -465,7 +574,7 @@ ${selectedInternalCompany} Team`;
               </section>
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-4">
               <section>
                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 mb-2">
                   <Euro className="w-3.5 h-3.5" /> Financials
@@ -509,39 +618,102 @@ ${selectedInternalCompany} Team`;
                   <FileText className="w-3.5 h-3.5" /> Documents
                 </h4>
                 <div className="bg-[#111315] rounded-lg p-3 border border-gray-800 space-y-2 text-sm">
-                  <div className="flex justify-between gap-2 items-start">
+                  <div className="flex justify-between gap-2 items-center">
                     <span className="text-gray-400 shrink-0">Offer</span>
-                    <span className="text-right text-gray-200">
-                      {resolvedChain.offer
-                        ? `Linked${resolvedChain.offer.offerNo ? ` · ${resolvedChain.offer.offerNo}` : ''}`
-                        : 'Missing'}
-                    </span>
+                    <div className="flex items-center gap-2 min-w-0 justify-end">
+                      <span className="text-right text-gray-200 truncate text-xs">
+                        {resolvedChain.offer
+                          ? `Linked${resolvedChain.offer.offerNo ? ` · ${resolvedChain.offer.offerNo}` : ''}`
+                          : '—'}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!offerOpenable}
+                        onClick={openOfferDocument}
+                        className="shrink-0 px-2 py-1 rounded-md text-[11px] font-semibold bg-blue-600/80 hover:bg-blue-500 disabled:opacity-40 disabled:pointer-events-none text-white inline-flex items-center gap-1"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Open
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex justify-between gap-2 items-start">
+                  <div className="flex justify-between gap-2 items-center">
                     <span className="text-gray-400 shrink-0">Proforma</span>
-                    <span className="text-right text-gray-200">
-                      {resolvedChain.proforma
-                        ? `Available${resolvedChain.proforma.invoiceNumber ? ` · ${resolvedChain.proforma.invoiceNumber}` : ''}`
-                        : 'Missing'}
-                    </span>
+                    <div className="flex items-center gap-2 min-w-0 justify-end">
+                      <span className="text-right text-gray-200 truncate text-xs">
+                        {resolvedChain.proforma
+                          ? `${resolvedChain.proforma.invoiceNumber ?? 'Proforma'}`
+                          : '—'}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!proformaOpenable}
+                        onClick={openProformaDocument}
+                        className="shrink-0 px-2 py-1 rounded-md text-[11px] font-semibold bg-violet-600/80 hover:bg-violet-500 disabled:opacity-40 disabled:pointer-events-none text-white inline-flex items-center gap-1"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Open
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex justify-between gap-2 items-start">
+                  <div className="flex justify-between gap-2 items-center">
                     <span className="text-gray-400 shrink-0">Invoice</span>
-                    <span className="text-right text-gray-200">
-                      {resolvedChain.finalInvoice &&
-                      resolvedChain.proforma &&
-                      String(resolvedChain.finalInvoice.id) === String(resolvedChain.proforma.id)
-                        ? 'Linked (same as proforma)'
-                        : resolvedChain.finalInvoice
-                          ? `Available${resolvedChain.finalInvoice.invoiceNumber ? ` · ${resolvedChain.finalInvoice.invoiceNumber}` : ''} · ${resolvedChain.finalInvoice.status}`
-                          : 'Missing'}
-                    </span>
+                    <div className="flex items-center gap-2 min-w-0 justify-end">
+                      <span className="text-right text-gray-200 truncate text-xs">
+                        {invoiceSameAsProforma
+                          ? 'Same as proforma'
+                          : finalInv
+                            ? `${finalInv.invoiceNumber ?? 'Invoice'} · ${finalInv.status}`
+                            : '—'}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!invoiceOpenable}
+                        onClick={openInvoiceDocument}
+                        className="shrink-0 px-2 py-1 rounded-md text-[11px] font-semibold bg-indigo-600/80 hover:bg-indigo-500 disabled:opacity-40 disabled:pointer-events-none text-white inline-flex items-center gap-1"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Open
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex justify-between gap-2 items-start">
+                  <div className="flex justify-between gap-2 items-center">
                     <span className="text-gray-400 shrink-0">Payment proof</span>
-                    <span className="text-right text-gray-200">
-                      {resolvedChain.currentProof?.filePath ? 'Uploaded' : 'Missing'}
-                    </span>
+                    <div className="flex items-center gap-2 min-w-0 justify-end">
+                      <span className="text-right text-gray-200 truncate text-xs">
+                        {resolvedChain.currentProof?.filePath
+                          ? ctxNormalized.getPaymentProofSignedUrl
+                            ? resolvedChain.currentProof.documentNumber ?? 'PDF'
+                            : 'File on record — open from calendar for link'
+                          : '—'}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!proofOpenable || docActionLoading === 'proof'}
+                        onClick={openPaymentProofDocument}
+                        className="shrink-0 px-2 py-1 rounded-md text-[11px] font-semibold bg-sky-600/80 hover:bg-sky-500 disabled:opacity-40 disabled:pointer-events-none text-white inline-flex items-center gap-1"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        {docActionLoading === 'proof' ? '…' : 'Open'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex justify-between gap-2 items-center">
+                    <span className="text-gray-400 shrink-0">Handover protocol (ÜGP)</span>
+                    <div className="flex items-center gap-2 min-w-0 justify-end">
+                      <span className="text-right text-gray-200 truncate text-xs">
+                        {protocolRowEnabled ? 'DOCX' : '—'}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!protocolRowEnabled || docActionLoading === 'protocol'}
+                        onClick={openProtocolDocument}
+                        className="shrink-0 px-2 py-1 rounded-md text-[11px] font-semibold bg-emerald-700/80 hover:bg-emerald-600 disabled:opacity-40 disabled:pointer-events-none text-white inline-flex items-center gap-1"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        {docActionLoading === 'protocol' ? '…' : 'Open'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -557,7 +729,9 @@ ${selectedInternalCompany} Team`;
                 {timelineRows.map((row, idx) => (
                   <li key={`${row.label}-${idx}`} className="flex justify-between gap-2 text-[11px] text-gray-400">
                     <span className="text-gray-300">{row.label}</span>
-                    <span className="text-gray-500 shrink-0 tabular-nums">{formatTimelineDate(row.at)}</span>
+                    <span className="text-gray-500 shrink-0 tabular-nums">
+                      {row.at ? formatTimelineDate(row.at) : '—'}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -736,37 +910,6 @@ ${selectedInternalCompany} Team`;
         <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#161B22] space-y-3">
           <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Actions</h4>
           <div className="flex flex-wrap items-center gap-2">
-            {onOpenOffer && resolvedChain.offer && (
-              <button
-                type="button"
-                onClick={() => fireThenClose(() => onOpenOffer(resolvedChain.offer!))}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2"
-              >
-                Open Offer
-              </button>
-            )}
-            {onOpenProforma && resolvedChain.proforma && (
-              <button
-                type="button"
-                onClick={() => fireThenClose(() => onOpenProforma(resolvedChain.proforma!))}
-                className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2"
-              >
-                Open Proforma
-              </button>
-            )}
-            {onOpenInvoice &&
-              resolvedChain.finalInvoice &&
-              (!resolvedChain.proforma ||
-                String(resolvedChain.finalInvoice.id) !== String(resolvedChain.proforma.id)) && (
-                <button
-                  type="button"
-                  onClick={() => fireThenClose(() => onOpenInvoice(resolvedChain.finalInvoice!))}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-semibold transition-colors inline-flex items-center gap-2"
-                >
-                  Open Invoice
-                </button>
-              )}
-
             {onConvertToOffer && (
               <>
                 <button

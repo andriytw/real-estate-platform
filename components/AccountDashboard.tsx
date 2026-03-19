@@ -8,6 +8,7 @@ import SalesCalendar from './SalesCalendar';
 import SalesStatsSection from './SalesStatsSection';
 import SalesChat from './SalesChat';
 import BookingDetailsModal from './BookingDetailsModal';
+import type { StayOverviewStayContext } from '../utils/stayOverviewFromBooking';
 import InvoiceModal from './InvoiceModal';
 import OfferEditModal from './OfferEditModal';
 import MultiApartmentOfferDetailsModal from './MultiApartmentOfferDetailsModal';
@@ -3965,6 +3966,23 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   // Load reservations from database on mount
   // Separate state for confirmed bookings (from bookings table)
   const [confirmedBookings, setConfirmedBookings] = useState<Booking[]>([]);
+
+  const stayOverviewContext = useMemo<StayOverviewStayContext>(
+    () => ({
+      offers,
+      invoices,
+      paymentProofsByInvoiceId,
+      confirmedBookingIds: new Set(confirmedBookings.map((b) => String(b.id))),
+      getPaymentProofSignedUrl: async (filePath: string) => {
+        try {
+          return await paymentProofsService.getPaymentProofSignedUrl(filePath);
+        } catch {
+          return null;
+        }
+      },
+    }),
+    [offers, invoices, paymentProofsByInvoiceId, confirmedBookings]
+  );
 
   // Tile 7: property-scoped payments (same data as Payments page, filtered by selectedPropertyId)
   const propertyPayments = useMemo(() => {
@@ -10988,11 +11006,7 @@ ${internalCompany} Team`;
           onShowToast={setToastMessage}
           offerModalCloseRef={offerModalCloseRef}
           onStuckClearAccountDashboardSaveLock={onStuckClearAccountDashboardSaveLock}
-          stayContext={{
-            offers,
-            invoices,
-            paymentProofsByInvoiceId,
-          }}
+          stayContext={stayOverviewContext}
           onOpenOfferFromCalendar={handleViewOffer}
           onOpenProformaFromCalendar={handleAddInvoiceToProforma}
           onOpenInvoiceFromCalendar={handleViewInvoice}
@@ -12239,6 +12253,11 @@ ${internalCompany} Team`;
           isOpen={isManageModalOpen}
           onClose={closeManageModals}
           booking={selectedReservation}
+          stayContext={stayOverviewContext}
+          onShowToast={(msg) => setToastMessage(msg)}
+          onOpenOffer={handleViewOffer}
+          onOpenProforma={handleAddInvoiceToProforma}
+          onOpenInvoice={handleViewInvoice}
           onConvertToOffer={!viewingOffer ? handleConvertToOffer : undefined}
           onCreateInvoice={handleCreateInvoiceClick}
           onEdit={viewingOffer ? handleEditOfferClick : undefined}

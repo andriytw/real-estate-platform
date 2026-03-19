@@ -8,6 +8,10 @@ export interface StayOverviewStayContext {
   offers?: OfferData[];
   invoices?: InvoiceData[];
   paymentProofsByInvoiceId?: Record<string, PaymentProof[]>;
+  /** Confirmed booking IDs (calendar occupancy). Used to gate Übergabeprotokoll row. */
+  confirmedBookingIds?: ReadonlySet<string> | string[];
+  /** Storage-backed payment proof PDFs — same service as calendar hover prefetch. */
+  getPaymentProofSignedUrl?: (filePath: string) => Promise<string | null>;
 }
 
 export type StayPhase = 'upcoming' | 'in_house' | 'completed';
@@ -105,6 +109,14 @@ export function resolveStayChain(booking: Booking, ctx: StayOverviewStayContext)
   return { offer, proforma, finalInvoice, sourceInvoice, currentProof };
 }
 
+/** When context omits confirmed IDs, protocol row stays disabled (safe fallback). */
+export function isBookingConfirmedForProtocol(booking: Booking, ctx: StayOverviewStayContext): boolean {
+  const raw = ctx.confirmedBookingIds;
+  if (raw == null) return false;
+  const set = raw instanceof Set ? raw : new Set(raw.map(String));
+  return set.has(String(booking.id));
+}
+
 /**
  * Paid / Unpaid only when confident from invoice status or clear booking settlement signal.
  * Otherwise returns null — UI should omit badge or use neutral copy.
@@ -138,7 +150,7 @@ export interface TimelineRow {
   sortKey: number;
 }
 
-/** Max 5 rows, compact labels, real timestamps only */
+/** Max 8 rows; neutral labels for business dates; technical wording only with evidence. */
 export function buildCompactTimeline(booking: Booking, chain: ResolvedStayChain): TimelineRow[] {
   const rows: TimelineRow[] = [];
 
@@ -149,11 +161,24 @@ export function buildCompactTimeline(booking: Booking, chain: ResolvedStayChain)
     }
   }
 
+  if (chain.offer?.createdAt) {
+    const t = Date.parse(chain.offer.createdAt);
+    if (!Number.isNaN(t)) {
+      rows.push({ label: 'Offer linked', at: chain.offer.createdAt, sortKey: t });
+    }
+  }
+
   if (chain.proforma?.date) {
     const t = Date.parse(chain.proforma.date);
     if (!Number.isNaN(t)) {
-      rows.push({ label: 'Proforma (linked)', at: chain.proforma.date, sortKey: t });
+      rows.push({ label: 'Proforma dated', at: chain.proforma.date, sortKey: t });
     }
+  } else if (chain.proforma) {
+    const base =
+      booking.createdAt && !Number.isNaN(Date.parse(booking.createdAt))
+        ? Date.parse(booking.createdAt)
+        : 0;
+    rows.push({ label: 'Proforma linked', sortKey: base + 0.5 });
   }
 
   if (
@@ -162,7 +187,7 @@ export function buildCompactTimeline(booking: Booking, chain: ResolvedStayChain)
   ) {
     const t = Date.parse(chain.finalInvoice.date);
     if (!Number.isNaN(t)) {
-      rows.push({ label: 'Invoice (linked)', at: chain.finalInvoice.date, sortKey: t });
+      rows.push({ label: 'Invoice dated', at: chain.finalInvoice.date, sortKey: t });
     }
   }
 
@@ -170,11 +195,6 @@ export function buildCompactTimeline(booking: Booking, chain: ResolvedStayChain)
     const t = Date.parse(chain.currentProof.fileUploadedAt);
     if (!Number.isNaN(t)) {
       rows.push({ label: 'Payment proof uploaded', at: chain.currentProof.fileUploadedAt, sortKey: t });
-    }
-  } else if (chain.currentProof?.createdAt) {
-    const t = Date.parse(chain.currentProof.createdAt);
-    if (!Number.isNaN(t)) {
-      rows.push({ label: 'Payment proof available', at: chain.currentProof.createdAt, sortKey: t });
     }
   }
 
@@ -186,7 +206,7 @@ export function buildCompactTimeline(booking: Booking, chain: ResolvedStayChain)
   }
 
   rows.sort((a, b) => a.sortKey - b.sortKey);
-  return rows.slice(0, 5);
+  return rows.slice(0, 8);
 }
 
 export function formatTimelineDate(iso: string | undefined): string {

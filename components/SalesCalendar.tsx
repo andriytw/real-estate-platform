@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User
 import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus, Lead, MultiApartmentOfferDraft, PaymentProof, SelectedApartmentData } from '../types';
 import BookingDetailsModal from './BookingDetailsModal';
 import type { StayOverviewStayContext } from '../utils/stayOverviewFromBooking';
+import { openUebergabeProtocolFromBooking } from '../utils/openUebergabeProtocolFromBooking';
 import MultiApartmentOfferModal from './MultiApartmentOfferModal';
 import { getBookingColor, getBookingBorderStyle, getBookingStyle } from '../bookingUtils';
 import { useSalesAllBookings } from '../hooks/useSalesAllBookings';
@@ -1622,30 +1623,22 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                     type="button"
                     disabled={ugpLoadingBookingId === booking.id}
                     className={linkClass + ' text-left'}
-                    onClick={async () => {
+                    onClick={() => {
                       const bookingId = booking.id;
                       const propertyId = (booking as { propertyId?: string }).propertyId ?? booking.roomId;
                       if (!propertyId) {
                         onShowToast?.('Property not set');
                         return;
                       }
+                      const preOpened = window.open('', '_blank');
+                      const showErr = (msg: string) => (onShowToast ? onShowToast(msg) : console.error(msg));
                       setUgpLoadingBookingId(bookingId);
-                      try {
-                        const res = await fetch('/api/protocols/uebergabeprotokoll/get-url', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ bookingId, propertyId, format: 'docx' }),
-                        });
-                        const json = await res.json().catch(() => ({}));
-                        if (!res.ok) {
-                          const msg = (json?.error ?? 'Помилка') + (json?.stage ? ` (${json.stage})` : '');
-                          onShowToast ? onShowToast(msg) : console.error(msg);
-                          return;
-                        }
-                        if (json?.url) window.open(json.url, '_blank');
-                      } finally {
-                        setUgpLoadingBookingId(null);
-                      }
+                      void openUebergabeProtocolFromBooking({
+                        bookingId,
+                        propertyId,
+                        preOpenedWindow: preOpened,
+                        showError: showErr,
+                      }).finally(() => setUgpLoadingBookingId(null));
                     }}
                   >
                     {ugpLoadingBookingId === booking.id ? '…' : 'DOCX'}
@@ -1929,6 +1922,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         onClose={() => setSelectedBooking(null)}
         booking={selectedBooking}
         stayContext={stayContext ?? undefined}
+        onShowToast={onShowToast}
         onOpenOffer={onOpenOfferFromCalendar}
         onOpenProforma={onOpenProformaFromCalendar}
         onOpenInvoice={onOpenInvoiceFromCalendar}
