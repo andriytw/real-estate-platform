@@ -15,6 +15,7 @@ import {
   MultiApartmentOfferDraft,
   PaymentProof,
   Lead,
+  CreateLeadInput,
   RequestData,
   CalendarEvent,
   Room,
@@ -2604,8 +2605,8 @@ export const leadsService = {
     return data ? transformLeadFromDB(data) : null;
   },
 
-  async create(lead: Omit<Lead, 'id'>): Promise<Lead> {
-    const dbData = transformLeadToDB(lead as Lead);
+  async create(input: CreateLeadInput): Promise<Lead> {
+    const dbData = createLeadInputToInsertRow(input);
     const { data, error } = await supabase
       .from('leads')
       .insert([dbData])
@@ -2626,6 +2627,13 @@ export const leadsService = {
     if (updates.address !== undefined) dbData.address = updates.address;
     if (updates.status !== undefined) dbData.status = updates.status;
     if (updates.source !== undefined) dbData.source = updates.source;
+    if (updates.notes !== undefined) dbData.notes = updates.notes;
+    if (updates.preferredDates !== undefined && updates.preferredDates.length > 0) {
+      dbData.preferred_dates = updates.preferredDates;
+    }
+    if (updates.propertyId !== undefined && updates.propertyId) {
+      dbData.property_id = updates.propertyId;
+    }
     if (Object.keys(dbData).length === 0) {
       const existing = await this.getById(id);
       if (!existing) throw new Error('Lead not found');
@@ -3811,31 +3819,95 @@ function transformPaymentProofToDB(proof: Partial<PaymentProof>): Record<string,
 }
 
 function transformLeadFromDB(db: any): Lead {
-  return {
+  const preferredRaw = db.preferred_dates;
+  let preferredDates: Lead['preferredDates'];
+  if (Array.isArray(preferredRaw) && preferredRaw.length > 0) {
+    preferredDates = preferredRaw
+      .map((row: any) => ({
+        start: String(row?.start ?? '').trim(),
+        end: String(row?.end ?? '').trim(),
+        peopleCount: typeof row?.peopleCount === 'number' && row.peopleCount > 0 ? row.peopleCount : 1,
+      }))
+      .filter((row) => row.start && row.end);
+    if (preferredDates.length === 0) preferredDates = undefined;
+  }
+
+  const lead: Lead = {
     id: db.id,
     name: db.name,
     type: db.type,
-    contactPerson: db.contact_person,
-    email: db.email,
-    phone: db.phone,
-    address: db.address,
+    email: db.email ?? '',
+    phone: db.phone ?? '',
+    address: db.address ?? '',
     status: db.status,
     createdAt: db.created_at,
-    source: db.source,
   };
+  if (db.contact_person != null && String(db.contact_person).trim() !== '') {
+    lead.contactPerson = String(db.contact_person).trim();
+  }
+  if (db.source != null && String(db.source).trim() !== '') {
+    lead.source = String(db.source).trim();
+  }
+  if (db.notes != null && String(db.notes).trim() !== '') {
+    lead.notes = String(db.notes);
+  }
+  if (preferredDates?.length) {
+    lead.preferredDates = preferredDates;
+  }
+  if (db.property_id) {
+    lead.propertyId = db.property_id;
+  }
+  if (db.client_id) {
+    lead.clientId = db.client_id;
+  }
+  if (db.last_contact_at) {
+    lead.lastContactAt = db.last_contact_at;
+  }
+  if (typeof db.interaction_count === 'number') {
+    lead.interactionCount = db.interaction_count;
+  }
+  return lead;
 }
 
-function transformLeadToDB(lead: Lead): any {
-  return {
-    name: lead.name,
-    type: lead.type,
-    contact_person: lead.contactPerson,
-    email: lead.email,
-    phone: lead.phone,
-    address: lead.address,
-    status: lead.status,
-    source: lead.source,
+/** Insert row: only include optional columns when set (no null/empty placeholders). */
+function createLeadInputToInsertRow(input: CreateLeadInput): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    name: input.name,
+    type: input.type,
+    email: input.email,
+    phone: input.phone,
+    address: input.address,
+    status: input.status,
   };
+  const cp = input.contactPerson?.trim();
+  if (cp) {
+    row.contact_person = cp;
+  }
+  const src = input.source?.trim();
+  if (src) {
+    row.source = src;
+  }
+  const notes = input.notes?.trim();
+  if (notes) {
+    row.notes = notes;
+  }
+  if (input.preferredDates?.length) {
+    const cleaned = input.preferredDates
+      .map((p) => ({
+        start: String(p.start ?? '').trim(),
+        end: String(p.end ?? '').trim(),
+        peopleCount:
+          typeof p.peopleCount === 'number' && p.peopleCount > 0 ? Math.floor(p.peopleCount) : 1,
+      }))
+      .filter((p) => p.start && p.end);
+    if (cleaned.length > 0) {
+      row.preferred_dates = cleaned;
+    }
+  }
+  if (input.propertyId) {
+    row.property_id = input.propertyId;
+  }
+  return row;
 }
 
 function transformRequestFromDB(db: any): RequestData {

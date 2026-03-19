@@ -15,6 +15,7 @@ import MultiApartmentOfferDetailsModal from './MultiApartmentOfferDetailsModal';
 import MultiApartmentOfferModal from './MultiApartmentOfferModal';
 import SendChannelModal, { type SendChannelPayload } from './SendChannelModal';
 import LeadEditModal from './LeadEditModal';
+import LeadCreateModal from './LeadCreateModal';
 import ClientHistoryModal from './ClientHistoryModal';
 import PropertyAddModal from './PropertyAddModal';
 import RequestModal from './RequestModal';
@@ -170,6 +171,7 @@ import {
   PaymentChain,
   PaymentChainFile,
   CreateBookingFormData,
+  CreateLeadInput,
 } from '../types';
 import { euToIso, validateEuDate } from '../utils/leaseTermDates';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
@@ -2505,6 +2507,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const [paymentProofModal, setPaymentProofModal] = useState<{ mode: 'add' | 'replace'; proof: PaymentProof } | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [clientHistoryLead, setClientHistoryLead] = useState<Lead | null>(null);
+  const [isCreateLeadModalOpen, setIsCreateLeadModalOpen] = useState(false);
 
   /** Load payment proofs for given invoice ids and signed URLs for current proofs. */
   const loadPaymentProofsForInvoiceIds = async (invoiceIds: string[]) => {
@@ -4326,7 +4329,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
               phone: reservation.phone || '',
               address: reservation.address || '',
               status: 'Active',
-              createdAt: new Date().toISOString().split('T')[0],
               source: `reservation-${savedReservation.id}`
             });
             setLeads(prev => [...prev, newLead].sort((a, b) => a.name.localeCompare(b.name)));
@@ -4482,7 +4484,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         phone: bookingData.phone || '',
         address: bookingData.address || '',
         status: 'Active',
-        createdAt: new Date().toISOString().split('T')[0],
         source: bookingData.source || `booking-${bookingData.id || Date.now()}`
       });
       setLeads(prev => [...prev, newLead].sort((a, b) => a.name.localeCompare(b.name)));
@@ -4510,6 +4511,21 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     } catch (e) {
       console.error('Error updating lead:', e);
       alert('Не вдалося зберегти зміни.');
+    }
+  };
+
+  const handleManualLeadCreate = async (input: CreateLeadInput) => {
+    const created = await leadsService.create(input);
+    setIsCreateLeadModalOpen(false);
+    try {
+      await loadLeads();
+      setToastMessage('Lead created successfully.');
+    } catch (reloadErr) {
+      console.error('loadLeads after manual create:', reloadErr);
+      setLeads((prev) => (prev.some((l) => l.id === created.id) ? prev : [created, ...prev]));
+      setToastMessage(
+        'Lead created successfully. Could not reload the list from the server; the new lead was added locally.'
+      );
     }
   };
 
@@ -10262,7 +10278,17 @@ ${internalCompany} Team`;
     if (salesTab === 'leads') {
         return (
             <div className="p-8 bg-[#0D1117] text-white">
-                <h2 className="text-2xl font-bold mb-6">Leads List</h2>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                  <h2 className="text-2xl font-bold">Leads List</h2>
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateLeadModalOpen(true)}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Create Lead
+                  </button>
+                </div>
                 <div className="bg-[#1C1F24] border border-gray-800 rounded-lg overflow-hidden">
                     <table className="w-full text-sm text-left">
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
@@ -12371,6 +12397,11 @@ ${internalCompany} Team`;
         items={selectedMultiOfferItems}
         onSelectItem={handleSelectMultiOfferItem}
         onAddProforma={handleAddProformaFromMultiOfferItem}
+      />
+      <LeadCreateModal
+        isOpen={isCreateLeadModalOpen}
+        onClose={() => setIsCreateLeadModalOpen(false)}
+        onCreate={handleManualLeadCreate}
       />
       {editingLead && (
         <LeadEditModal

@@ -905,6 +905,9 @@ export interface Lead {
   interactionCount?: number; // Скільки разів звертався
 }
 
+/** Payload for inserting a lead; no client-fabricated id or createdAt (DB sets timestamps). */
+export type CreateLeadInput = Omit<Lead, 'id' | 'createdAt'>;
+
 export interface RequestData {
   id: string;
   firstName: string;
