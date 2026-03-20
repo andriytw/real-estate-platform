@@ -7,6 +7,7 @@ import { updateBookingStatusFromTask } from '../bookingUtils';
 import { workersService, tasksService, getTaskChatMessages, insertTaskChatMessage, getTaskAttachmentSignedUrl, type TaskChatAttachment } from '../services/supabaseService';
 import { supabase } from '../utils/supabase/client';
 import { ACCOUNTING_TASK_TYPES, getTaskColor } from '../utils/taskColors';
+import { filterAssignableWorkers } from './kanban/assigneeUtils';
 
 type ViewMode = 'month' | 'week' | 'day';
 
@@ -653,6 +654,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
   const openAddModal = (e: React.MouseEvent, day: number) => {
     e.stopPropagation();
+    if (loadingWorkers) return;
     setDayToAdd(day);
     setNewTaskProperty(propertyList[0]?.id || '');
     setNewTaskType('Arbeit nach plan');
@@ -1517,7 +1519,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                            disabled={loadingWorkers}
                          >
                            <option value="">Unassigned</option>
-                           {workers
+                           {filterAssignableWorkers(workers)
                              .filter(w => 
                                isAccountingCalendar 
                                  ? (w.department === 'accounting' || w.role === 'super_manager' || w.role === 'manager')
@@ -2013,7 +2015,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                   className="w-full appearance-none bg-[#0D1117] border border-gray-700 hover:border-gray-500 rounded-lg py-2 pl-10 pr-8 text-sm text-white focus:border-emerald-500 focus:outline-none cursor-pointer transition-colors"
                               >
                                   <option value="">Unassigned</option>
-                                  {workers
+                                  {filterAssignableWorkers(workers)
                                     .filter(w => 
                                       isAccountingCalendar 
                                         ? (w.department === 'accounting' || w.role === 'super_manager' || w.role === 'manager')
