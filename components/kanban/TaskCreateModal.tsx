@@ -252,8 +252,10 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
 
             {/* Title */}
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Task Title *</label>
+              <label htmlFor="task-create-title" className="block text-xs font-medium text-gray-400 mb-1">Task Title *</label>
               <input
+                id="task-create-title"
+                name="task-create-title"
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -266,11 +268,15 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
             {/* Type & Priority Row */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Type *</label>
+                <label htmlFor="task-create-type-trigger" className="block text-xs font-medium text-gray-400 mb-1">Type *</label>
                 <div className="relative" ref={typeDropdownRef}>
                   <button
+                    id="task-create-type-trigger"
                     type="button"
                     onClick={() => setIsTypeDropdownOpen(!isTypeDropdownOpen)}
+                    aria-haspopup="listbox"
+                    aria-expanded={isTypeDropdownOpen}
+                    aria-label="Task type"
                     className={`w-full bg-[#0D0F11] border border-gray-700 rounded-lg px-3 py-2 text-left flex items-center justify-between focus:border-blue-500 focus:outline-none ${
                       type 
                         ? (FACILITY_TASK_TYPES.includes(type) ? getTaskTextColor(type) : 'text-gray-300')
@@ -325,8 +331,10 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
               </div>
               
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Priority</label>
+                <label htmlFor="task-create-priority" className="block text-xs font-medium text-gray-400 mb-1">Priority</label>
                 <select
+                  id="task-create-priority"
+                  name="task-create-priority"
                   value={priority}
                   onChange={(e) => setPriority(e.target.value as TaskPriority)}
                   className="w-full bg-[#0D0F11] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
@@ -342,8 +350,10 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
             {/* Property & Assignee Row */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Property</label>
+                <label htmlFor="task-create-property" className="block text-xs font-medium text-gray-400 mb-1">Property</label>
                 <select
+                  id="task-create-property"
+                  name="task-create-property"
                   value={propertyId}
                   onChange={(e) => setPropertyId(e.target.value)}
                   className="w-full bg-[#0D0F11] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
@@ -356,8 +366,10 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Assignee</label>
+                <label htmlFor="task-create-assignee" className="block text-xs font-medium text-gray-400 mb-1">Assignee</label>
                 <select
+                  id="task-create-assignee"
+                  name="task-create-assignee"
                   value={workerId}
                   onChange={(e) => setWorkerId(e.target.value)}
                   className="w-full bg-[#0D0F11] border border-gray-700 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none"
@@ -373,10 +385,12 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
             {/* Date & Time (Optional) */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Date (Optional)</label>
+                <label htmlFor="task-create-date" className="block text-xs font-medium text-gray-400 mb-1">Date (Optional)</label>
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" aria-hidden />
                   <input
+                    id="task-create-date"
+                    name="task-create-date"
                     type="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
@@ -387,10 +401,12 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Time (Optional)</label>
+                <label htmlFor="task-create-time" className="block text-xs font-medium text-gray-400 mb-1">Time (Optional)</label>
                 <div className="relative">
-                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" aria-hidden />
                   <input
+                    id="task-create-time"
+                    name="task-create-time"
                     type="time"
                     value={time}
                     onChange={(e) => setTime(e.target.value)}
@@ -402,8 +418,10 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
 
             {/* Description */}
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Description</label>
+              <label htmlFor="task-create-description" className="block text-xs font-medium text-gray-400 mb-1">Description</label>
               <textarea
+                id="task-create-description"
+                name="task-create-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}

@@ -59,6 +59,11 @@ import {
   requestsService,
   type RequestWithProperty,
 } from '../services/supabaseService';
+import {
+  commandPostFormData,
+  commandPostJson,
+  CommandClientError,
+} from '../services/commandClient';
 import { createLeadFromRequest } from '../services/leadsService';
 import { AMENITY_GROUPS } from '../utils/amenityGroups';
 import { propertyInventoryService, type PropertyInventoryItemRow, type PropertyInventoryItemWithDocument } from '../services/propertyInventoryService';
@@ -2555,30 +2560,21 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const offerModalCloseRef = useRef<(() => void) | null>(null);
   const sendChannelOnCloseRef = useRef<(() => void) | null>(null);
   const sendChannelResultPrefixRef = useRef<'Offer' | 'Proforma'>('Offer');
-  /** Pending-submit guard: block duplicate submit while a save with this traceId is in progress (diagnosis). */
-  const activeSaveTraceIdRef = useRef<string | null>(null);
-  /** TraceId of the last started AccountDashboard save (direct booking / multi-apartment / invoice) — for DEBUG/RECOVERY clear only. */
-  const lastAccountDashboardSaveTraceRef = useRef<string | null>(null);
-  /** Set only while handleSaveInvoice runs (persist phase); for abandon during saving. */
-  const invoiceSaveTraceIdRef = useRef<string | null>(null);
+  /** Per-flow save guards (independent; no cross-blocking between offer / invoice / booking). */
+  const multiOfferSaveInProgressRef = useRef(false);
+  const directBookingSaveInProgressRef = useRef(false);
+  const invoiceSaveInProgressRef = useRef(false);
+  /** Stable idempotency keys — reused on retry within the same logical action. Reset on success or modal close. */
+  const multiOfferIdempotencyKeyRef = useRef<string | null>(null);
+  const directBookingIdempotencyKeyRef = useRef<string | null>(null);
+  const invoiceIdempotencyKeyRef = useRef<string | null>(null);
 
   // DEBUG/RECOVERY: escape hatch when modal times out or user abandons stuck save — not final business logic.
   const onStuckClearAccountDashboardSaveLock = useCallback(() => {
-    const tid = lastAccountDashboardSaveTraceRef.current;
-    if (tid == null) {
-      console.warn('[DEBUG/RECOVERY] clearAccountDashboardSaveLock skipped (no last trace)', { pageInstanceId: PAGE_INSTANCE_ID });
-      return;
-    }
-    if (activeSaveTraceIdRef.current !== tid) {
-      console.warn('[DEBUG/RECOVERY] clearAccountDashboardSaveLock skipped (trace mismatch)', {
-        lastStartedTrace: tid,
-        activeSaveTraceId: activeSaveTraceIdRef.current,
-        pageInstanceId: PAGE_INSTANCE_ID,
-      });
-      return;
-    }
-    console.warn('[DEBUG/RECOVERY] clearAccountDashboardSaveLock', { traceId: tid, pageInstanceId: PAGE_INSTANCE_ID });
-    activeSaveTraceIdRef.current = null;
+    console.warn('[DEBUG/RECOVERY] clearAccountDashboardSaveLock (all per-flow flags)', { pageInstanceId: PAGE_INSTANCE_ID });
+    multiOfferSaveInProgressRef.current = false;
+    directBookingSaveInProgressRef.current = false;
+    invoiceSaveInProgressRef.current = false;
   }, []);
 
   const [uebergabeprotokollLoading, setUebergabeprotokollLoading] = useState(false);
@@ -4531,7 +4527,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   };
 
   /**
-   * Delete-path note (diagnosis): delete handlers do not use activeSaveTraceIdRef.
+   * Delete-path note (diagnosis): delete handlers do not use per-flow save locks.
    * If delete "stops working" after a hang, likely causes: (a) error boundary / broken tree from secondary crash,
    * (b) a separate isDeleting-style guard (none on these paths as of audit), (c) unsafe string methods in render.
    */
@@ -4672,116 +4668,44 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     }
   };
 
-  /** Calendar direct-booking: create technical reservation then offer (same path as Create Booking from lead). No auto-retry: modal timeout does not cancel the request; retry can create duplicates. */
+  /** Calendar direct-booking: server command creates reservation + offer (auth + idempotency on API). */
   const handleSaveDirectBookingFromCalendar = async (draft: MultiApartmentOfferDraft) => {
-    const traceId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `db-${Date.now()}`;
-    if (activeSaveTraceIdRef.current !== null) {
-      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar save already in progress, ignoring duplicate submit', { activeTraceId: activeSaveTraceIdRef.current, traceId });
+    if (directBookingSaveInProgressRef.current) {
+      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar ignored (already in progress)');
       return;
     }
-    activeSaveTraceIdRef.current = traceId;
-    lastAccountDashboardSaveTraceRef.current = traceId;
+    directBookingSaveInProgressRef.current = true;
+    const traceId = directBookingIdempotencyKeyRef.current || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `db-${Date.now()}`);
+    if (!directBookingIdempotencyKeyRef.current) directBookingIdempotencyKeyRef.current = traceId;
     console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar start', { traceId, pageInstanceId: PAGE_INSTANCE_ID });
     try {
-    if (!draft.apartments.length) {
-      alert('No apartment in draft.');
-      return;
-    }
-    const apartment = draft.apartments[0];
-    const property = properties.find((p) => String(p.id) === String(apartment.propertyId));
-    const managementName = property?.management?.name?.trim();
-    const internalCompany = managementName && managementName.length > 0 ? managementName : 'Sotiso';
+      if (!draft.apartments.length) {
+        alert('No apartment in draft.');
+        return;
+      }
+      const apartment = draft.apartments[0];
+      const property = properties.find((p) => String(p.id) === String(apartment.propertyId));
+      const managementName = property?.management?.name?.trim();
+      const internalCompany = managementName && managementName.length > 0 ? managementName : 'Sotiso';
+      const leadLabel =
+        draft.shared.clientType === 'Company'
+          ? (draft.shared.companyName || '').trim() || 'Guest'
+          : `${(draft.shared.firstName || '').trim()} ${(draft.shared.lastName || '').trim()}`.trim() || 'Guest';
 
-    const checkInDate = new Date(draft.shared.checkIn);
-    const checkOutDate = new Date(draft.shared.checkOut);
-    const diffMs = checkOutDate.getTime() - checkInDate.getTime();
-    const nights = diffMs > 0 ? Math.round(diffMs / (1000 * 60 * 60 * 24)) : 0;
-    const nightlyPrice = Number(apartment.nightlyPrice) || 0;
-    const taxRate = Number(apartment.taxRate) ?? 19;
-    const kaution = Number(apartment.kaution) || 0;
-    const netTotal = Number((nights * nightlyPrice).toFixed(2));
-    const vatAmount = Number((netTotal * (taxRate / 100)).toFixed(2));
-    const grossTotal = Number((netTotal + vatAmount + kaution).toFixed(2));
-    const leadLabel =
-      draft.shared.clientType === 'Company'
-        ? (draft.shared.companyName || '').trim() || 'Guest'
-        : `${(draft.shared.firstName || '').trim()} ${(draft.shared.lastName || '').trim()}`.trim() || 'Guest';
+      const { offer: savedOffer } = await commandPostJson<{ offer: OfferData; reservationId: string }>(
+        '/api/commands/create-direct-booking',
+        {
+          draft,
+          propertyTitle: property?.title,
+          internalCompanyFallback: internalCompany,
+        },
+        { idempotencyKey: traceId }
+      );
 
-    const reservationToSave: Omit<Reservation, 'id' | 'createdAt' | 'updatedAt'> = {
-      propertyId: String(apartment.propertyId),
-      startDate: draft.shared.checkIn,
-      endDate: draft.shared.checkOut,
-      status: 'open',
-      leadLabel,
-      clientFirstName: draft.shared.firstName || undefined,
-      clientLastName: draft.shared.lastName || undefined,
-      clientEmail: draft.shared.email || undefined,
-      clientPhone: draft.shared.phone || undefined,
-      clientAddress: draft.shared.address || undefined,
-      guestsCount: 1,
-      pricePerNightNet: nightlyPrice,
-      taxRate,
-      totalNights: nights,
-      totalGross: grossTotal,
-    };
-
-    let savedReservation: Reservation;
-    try {
-      const t1 = Date.now();
-      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar before step: create reservation', { traceId });
-      savedReservation = await reservationsService.create(reservationToSave, traceId);
-      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar after step: create reservation', { traceId, durationMs: Date.now() - t1, id: savedReservation.id });
-    } catch (err) {
-      console.error('[AccountDashboard] handleSaveDirectBookingFromCalendar catch (reservation)', { traceId, err });
-      alert('Failed to create reservation. Please try again.');
-      return;
-    }
-
-    const reservationId = savedReservation.id;
-    const t2 = Date.now();
-    console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar before step: get next offer no', { traceId });
-    const offerNo = await offersService.getNextOfferNo(traceId);
-    console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar after step: get next offer no', { traceId, durationMs: Date.now() - t2, offerNo });
-    const price = `${grossTotal.toFixed(2)} EUR`;
-    const dates = `${draft.shared.checkIn} to ${draft.shared.checkOut}`;
-
-    const offerToCreate: Omit<OfferData, 'id'> = {
-      offerNo,
-      clientName: leadLabel,
-      propertyId: String(apartment.propertyId),
-      internalCompany,
-      price,
-      dates,
-      status: 'Sent',
-      email: draft.shared.email || undefined,
-      phone: draft.shared.phone || undefined,
-      address: draft.shared.address || undefined,
-      checkInTime: undefined,
-      checkOutTime: undefined,
-      guests: undefined,
-      comments: undefined,
-      unit: property?.title,
-      reservationId,
-      clientMessage: undefined,
-      nightlyPrice,
-      taxRate,
-      nights,
-      netTotal,
-      vatTotal: vatAmount,
-      grossTotal,
-      kaution,
-      leadId: draft.shared.selectedLeadId ?? undefined,
-    };
-
-    try {
-      const t3 = Date.now();
-      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar before step: create offer', { traceId });
-      const savedOffer = await offersService.create(offerToCreate, traceId);
-      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar after step: create offer', { traceId, durationMs: Date.now() - t3, id: savedOffer.id });
+      directBookingIdempotencyKeyRef.current = null;
       setOffers((prev) => [savedOffer, ...prev]);
       setCreatedOfferId(savedOffer.id);
       const baseUrl = getMarketplaceBaseUrl();
-      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar before setSendChannelPayload', { traceId });
       const messageBody = buildMultiApartmentClientMessage({
         clientLabel: leadLabel,
         internalCompany,
@@ -4803,13 +4727,16 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         recipientPhone: draft.shared.phone?.trim() || undefined,
       });
       setToastMessage('Booking created from calendar.');
+      setTimeout(() => {
+        loadReservations().catch((e) => console.error('[AccountDashboard] loadReservations after direct booking', e));
+      }, 0);
     } catch (err) {
-      console.error('[AccountDashboard] handleSaveDirectBookingFromCalendar catch (offer)', { traceId, err });
-      alert('Failed to create offer. Please try again.');
-      return;
-    }
+      console.error('[AccountDashboard] handleSaveDirectBookingFromCalendar', err);
+      const msg =
+        err instanceof CommandClientError ? err.message : err instanceof Error ? err.message : String(err);
+      alert(`Failed to create booking: ${msg}`);
     } finally {
-      activeSaveTraceIdRef.current = null;
+      directBookingSaveInProgressRef.current = false;
     }
   };
 
@@ -4871,75 +4798,42 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     setIsMultiOfferDetailsOpen(true);
   };
 
-  /** No auto-retry: modal timeout does not cancel the request; retry can create duplicates. */
+  /** Multi-apartment offer group: server command (auth + idempotency). Lead follow-up stays client-side. */
   const handleSaveMultiApartmentOffer = async (
     draft: MultiApartmentOfferDraft,
     mode: 'draft' | 'send'
   ) => {
-    const traceId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ma-${Date.now()}`;
-    if (activeSaveTraceIdRef.current !== null) {
-      console.log('[AccountDashboard] handleSaveMultiApartmentOffer save already in progress, ignoring duplicate submit', { activeTraceId: activeSaveTraceIdRef.current, traceId });
+    if (multiOfferSaveInProgressRef.current) {
+      console.log('[AccountDashboard] handleSaveMultiApartmentOffer ignored (already in progress)');
       return;
     }
-    activeSaveTraceIdRef.current = traceId;
-    lastAccountDashboardSaveTraceRef.current = traceId;
+    multiOfferSaveInProgressRef.current = true;
+    const traceId = multiOfferIdempotencyKeyRef.current || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ma-${Date.now()}`);
+    if (!multiOfferIdempotencyKeyRef.current) multiOfferIdempotencyKeyRef.current = traceId;
     console.log('[AccountDashboard] handleSaveMultiApartmentOffer start', { traceId, mode, pageInstanceId: PAGE_INSTANCE_ID });
     try {
-      const t1 = Date.now();
-      console.log('[AccountDashboard] handleSaveMultiApartmentOffer before step: createGroupFromMultiApartmentDraft', { traceId });
-      const created = await offersService.createGroupFromMultiApartmentDraft(
-        draft,
-        mode === 'draft' ? 'Draft' : 'Sent',
-        traceId
+      const { offers: created, leadId } = await commandPostJson<{ offers: OfferData[]; reservationIds: string[]; leadId: string | null }>(
+        '/api/commands/create-multi-offer',
+        { draft, mode },
+        { idempotencyKey: traceId }
       );
-      console.log('[AccountDashboard] handleSaveMultiApartmentOffer after step: createGroupFromMultiApartmentDraft', { traceId, durationMs: Date.now() - t1, count: created?.length });
 
-      // Lead creation only on Save & Send (plan: offer-first flow). Not on draft.
-      if (mode === 'send') {
-        const requestPayload: RequestData = {
-          id: `multi-offer-${Date.now()}`,
-          firstName: draft.shared.firstName,
-          lastName: draft.shared.lastName,
-          email: draft.shared.email,
-          phone: draft.shared.phone,
-          companyName: draft.shared.companyName || undefined,
-          address: draft.shared.address,
-          peopleCount: 1,
-          startDate: draft.shared.checkIn,
-          endDate: draft.shared.checkOut,
-          message: draft.shared.clientMessage,
-          propertyId: draft.apartments[0]?.propertyId,
-          status: 'processed',
-          createdAt: new Date().toISOString(),
-        };
+      multiOfferIdempotencyKeyRef.current = null;
 
-        try {
-          const tLead = Date.now();
-          console.log('[AccountDashboard] handleSaveMultiApartmentOffer before step: createLeadFromRequest', { traceId });
-          const lead = await createLeadFromRequest(requestPayload, { origin: 'offer' });
-          console.log('[AccountDashboard] handleSaveMultiApartmentOffer after step: createLeadFromRequest', { traceId, durationMs: Date.now() - tLead });
-          if (lead) {
-            const tUpdate = Date.now();
-            console.log('[AccountDashboard] handleSaveMultiApartmentOffer before step: updateLeadIdForOffers', { traceId });
-            await offersService.updateLeadIdForOffers(created.map((o) => o.id), lead.id);
-            console.log('[AccountDashboard] handleSaveMultiApartmentOffer after step: updateLeadIdForOffers', { traceId, durationMs: Date.now() - tUpdate });
-            setLeads((prev) => (prev.some((l) => l.id === lead.id) ? prev : [lead, ...prev]));
-          }
-          // When both email and phone missing, createLeadFromRequest returns null; no lead_id set on offers.
-        } catch (error) {
-          console.error('[AccountDashboard] handleSaveMultiApartmentOffer catch (lead)', { traceId, error });
-        }
+      if (leadId) {
+        setTimeout(() => {
+          leadsService.getAll().then(setLeads).catch((e) => console.error('[AccountDashboard] refresh leads after multi-offer', e));
+        }, 0);
       }
 
-      const tLoad = Date.now();
-      console.log('[AccountDashboard] handleSaveMultiApartmentOffer before step: loadReservations', { traceId });
-      await loadReservations();
-      console.log('[AccountDashboard] handleSaveMultiApartmentOffer after step: loadReservations', { traceId, durationMs: Date.now() - tLoad });
-      const tGetAll = Date.now();
-      console.log('[AccountDashboard] handleSaveMultiApartmentOffer before step: getAll offers', { traceId });
-      const allOffers = await offersService.getAll();
-      console.log('[AccountDashboard] handleSaveMultiApartmentOffer after step: getAll offers', { traceId, durationMs: Date.now() - tGetAll });
-      setOffers(allOffers);
+      setOffers((prev) => {
+        const ids = new Set(created.map((o) => o.id));
+        return [...created, ...prev.filter((o) => !ids.has(o.id))];
+      });
+      setTimeout(() => {
+        loadReservations().catch((e) => console.error('[AccountDashboard] loadReservations after multi-offer', e));
+        offersService.getAll().then(setOffers).catch((e) => console.error('[AccountDashboard] getAll offers after multi-offer', e));
+      }, 0);
       if (mode === 'send') {
         console.log('[AccountDashboard] handleSaveMultiApartmentOffer before setSendChannelPayload', { traceId });
         const first = created[0];
@@ -4960,10 +4854,16 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       }
     } catch (error) {
       console.error('[AccountDashboard] handleSaveMultiApartmentOffer catch', { traceId, error });
-      setToastMessage('Failed to save offer. Please try again.');
+      const msg =
+        error instanceof CommandClientError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : String(error);
+      setToastMessage(`Failed to save offer: ${msg}`);
       throw error;
     } finally {
-      activeSaveTraceIdRef.current = null;
+      multiOfferSaveInProgressRef.current = false;
     }
   };
 
@@ -5533,141 +5433,48 @@ ${internalCompany} Team`;
     }
   };
   
-  /** No auto-retry: modal timeout does not cancel the request; retry can create duplicates. */
-  const handleSaveInvoice = async (invoice: InvoiceData, mode?: 'save' | 'send') => {
-      const traceId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `inv-${Date.now()}`;
-      if (activeSaveTraceIdRef.current !== null) {
-        console.log('[AccountDashboard] handleSaveInvoice save already in progress, ignoring duplicate submit', { activeTraceId: activeSaveTraceIdRef.current, traceId });
+  /** Invoice/proforma persist + PDF upload via server command (per-flow lock, idempotent). */
+  const handleSaveInvoice = async (invoice: InvoiceData, mode?: 'save' | 'send', pdfFile?: File | null) => {
+      if (invoiceSaveInProgressRef.current) {
+        console.log('[AccountDashboard] handleSaveInvoice ignored (already in progress)');
         return;
       }
-      activeSaveTraceIdRef.current = traceId;
-      lastAccountDashboardSaveTraceRef.current = traceId;
-      invoiceSaveTraceIdRef.current = traceId;
+      invoiceSaveInProgressRef.current = true;
+      const traceId = invoiceIdempotencyKeyRef.current || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `inv-${Date.now()}`);
+      if (!invoiceIdempotencyKeyRef.current) invoiceIdempotencyKeyRef.current = traceId;
       console.log('[AccountDashboard] handleSaveInvoice start', { traceId, mode, invoiceId: invoice.id, pageInstanceId: PAGE_INSTANCE_ID });
       try {
-      // If reservationId not set but we can find reservation by offerIdSource, set reservationId (not bookingId; booking_id only after payment confirmed)
-      if (!invoice.reservationId && !invoice.bookingId && invoice.offerIdSource) {
-          const reservationByOfferId = reservations.find(r => {
-              if (String(r.id) === String(invoice.offerIdSource)) return true;
-              const rIdStr = String(r.id);
-              const offerIdStr = String(invoice.offerIdSource);
-              return rIdStr.toLowerCase() === offerIdStr.toLowerCase();
-          });
-          
-          if (reservationByOfferId) {
-              invoice.reservationId = String(reservationByOfferId.id);
-          } else {
-              const linkedOffer = offers.find(o => {
-                  if (o.id === invoice.offerIdSource) return true;
-                  if (String(o.id) === String(invoice.offerIdSource)) return true;
-                  const oIdStr = String(o.id);
-                  const offerIdStr = String(invoice.offerIdSource);
-                  return oIdStr.toLowerCase() === offerIdStr.toLowerCase();
-              });
-              
-              if (linkedOffer) {
-                  const [offerStart] = String(linkedOffer.dates ?? '').split(' to ');
-                  const reservationByPropertyAndDate = reservations.find(r => {
-                      if (r.roomId !== linkedOffer.propertyId) return false;
-                      return r.start === offerStart || String(r.start) === String(offerStart);
-                  });
-                  
-                  if (reservationByPropertyAndDate) {
-                      invoice.reservationId = reservationByPropertyAndDate.id;
-                  }
-              }
-          }
-      }
-
-      {
-        // Check if offerIdSource exists and needs to be saved to Supabase
-        if (invoice.offerIdSource) {
-          const isValidUUID = (str: string | number | undefined): boolean => {
-            if (!str) return false;
-            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-            return uuidRegex.test(String(str));
-          };
-
-          // Check if offerIdSource is a valid UUID (exists in database)
-          if (!isValidUUID(invoice.offerIdSource)) {
-            // Find the offer in local state
-            const localOffer = offers.find(o => 
-              o.id === invoice.offerIdSource || 
-              String(o.id) === String(invoice.offerIdSource)
-            );
-
-            if (localOffer) {
-              // Save the offer to Supabase
-              const { id, ...offerWithoutId } = localOffer;
-              const tOffer = Date.now();
-              console.log('[AccountDashboard] handleSaveInvoice before step: offerIdSource create offer', { traceId });
-              const savedOffer = await offersService.create(offerWithoutId, traceId);
-              console.log('[AccountDashboard] handleSaveInvoice after step: offerIdSource create offer', { traceId, durationMs: Date.now() - tOffer });
-              // Update local offers state
-              setOffers(prev => prev.map(o => 
-                o.id === localOffer.id ? savedOffer : o
-              ));
-              
-              // Update invoice.offerIdSource with the new UUID
-              invoice.offerIdSource = String(savedOffer.id);
-              // Link invoice to reservation (not booking; booking_id only after payment confirmed)
-              if (!invoice.reservationId && (!invoice.bookingId || invoice.bookingId === localOffer.id || String(invoice.bookingId) === String(localOffer.id))) {
-                const relatedReservation = reservations.find(r => {
-                  if (r.roomId !== localOffer.propertyId) return false;
-                  const [offerStart] = localOffer.dates.split(' to ');
-                  return r.start === offerStart || String(r.start) === String(offerStart);
-                });
-                
-                if (relatedReservation) {
-                  invoice.reservationId = String(relatedReservation.id);
-                }
-              }
-            } else {
-              // Offer not found in local state, set to null to avoid foreign key error
-              invoice.offerIdSource = undefined;
-            }
-          } else {
-            // Valid UUID, check if it exists in Supabase
-            try {
-              const tGetAll = Date.now();
-              console.log('[AccountDashboard] handleSaveInvoice before step: offerIdSource getAll', { traceId });
-              const allOffers = await offersService.getAll();
-              console.log('[AccountDashboard] handleSaveInvoice after step: offerIdSource getAll', { traceId, durationMs: Date.now() - tGetAll });
-              const offerExists = allOffers.some(o => o.id === invoice.offerIdSource);
-              if (!offerExists) {
-                // Offer doesn't exist in Supabase, set to null
-                invoice.offerIdSource = undefined;
-              }
-            } catch (error) {
-              console.error('Error checking offer existence:', error);
-              // On error, set to null to avoid foreign key error
-              invoice.offerIdSource = undefined;
-            }
-          }
-        }
-      }
-        console.log('[AccountDashboard] handleSaveInvoice after offerIdSource block', { traceId });
-
-        const exists = invoices.some(inv => inv.id === invoice.id);
+        const offerItemId = pendingOfferItemForInvoice?.id;
         let savedInvoice: InvoiceData;
-        const tPersist = Date.now();
-        console.log('[AccountDashboard] handleSaveInvoice before step: invoice persist', { traceId, exists });
-        if (exists) {
-          savedInvoice = await invoicesService.update(String(invoice.id), invoice);
+        if (pdfFile) {
+          const fd = new FormData();
+          fd.append('invoice', JSON.stringify(invoice));
+          fd.append('mode', mode || 'save');
+          if (offerItemId) fd.append('offerItemId', offerItemId);
+          fd.append('file', pdfFile, pdfFile.name);
+          const res = await commandPostFormData<{ savedInvoice: InvoiceData }>(
+            '/api/commands/save-invoice',
+            fd,
+            { idempotencyKey: traceId }
+          );
+          savedInvoice = res.savedInvoice;
         } else {
-          // Remove id before creating (database will generate UUID)
-          const { id, ...invoiceWithoutId } = invoice;
-          savedInvoice = await invoicesService.create(invoiceWithoutId);
+          const res = await commandPostJson<{ savedInvoice: InvoiceData }>(
+            '/api/commands/save-invoice',
+            { invoice, mode: mode || 'save', offerItemId },
+            { idempotencyKey: traceId }
+          );
+          savedInvoice = res.savedInvoice;
         }
-        console.log('[AccountDashboard] handleSaveInvoice after step: invoice persist', { traceId, durationMs: Date.now() - tPersist, savedInvoiceId: savedInvoice.id });
-        // Update local state
-        if (exists) {
-           setInvoices(prev => prev.map(inv => inv.id === savedInvoice.id ? savedInvoice : inv));
+        invoiceIdempotencyKeyRef.current = null;
+
+        const priorListed = invoices.some((inv) => inv.id === savedInvoice.id);
+        if (priorListed) {
+          setInvoices((prev) => prev.map((inv) => (inv.id === savedInvoice.id ? savedInvoice : inv)));
         } else {
-           setInvoices(prev => [savedInvoice, ...prev]);
+          setInvoices((prev) => [savedInvoice, ...prev]);
         }
         
-        // Оновити статус Offer на 'Invoiced' замість видалення (для збереження історії)
         if (invoice.offerIdSource) {
             setOffers(prev => prev.map(o => 
                 o.id === invoice.offerIdSource || String(o.id) === String(invoice.offerIdSource)
@@ -5677,18 +5484,9 @@ ${internalCompany} Team`;
         }
 
         if (pendingOfferItemForInvoice && savedInvoice.documentType === 'proforma') {
-          const tItem = Date.now();
-          console.log('[AccountDashboard] handleSaveInvoice before step: offerItemsService.update', { traceId });
-          await offerItemsService.update(pendingOfferItemForInvoice.id, {
-            status: 'Converted',
-            convertedAt: new Date().toISOString(),
-            invoiceId: savedInvoice.id,
-          });
-          console.log('[AccountDashboard] handleSaveInvoice after step: offerItemsService.update', { traceId, durationMs: Date.now() - tItem });
-          const tRefresh = Date.now();
-          console.log('[AccountDashboard] handleSaveInvoice before step: refreshMultiApartmentOffers', { traceId });
-          await refreshMultiApartmentOffers();
-          console.log('[AccountDashboard] handleSaveInvoice after step: refreshMultiApartmentOffers', { traceId, durationMs: Date.now() - tRefresh });
+          setTimeout(() => {
+            refreshMultiApartmentOffers().catch((e) => console.error('[AccountDashboard] refresh multi-offers after invoice', e));
+          }, 0);
         }
         
         if (invoice.bookingId) {
@@ -5757,10 +5555,9 @@ ${internalCompany} Team`;
               ...prev,
               [invoice.proformaId!]: [savedInvoice, ...(prev[invoice.proformaId!] ?? [])],
             }));
-            const tRefreshTotals = Date.now();
-            console.log('[AccountDashboard] handleSaveInvoice before step: refreshInvoicedTotals', { traceId });
-            await refreshInvoicedTotals();
-            console.log('[AccountDashboard] handleSaveInvoice after step: refreshInvoicedTotals', { traceId, durationMs: Date.now() - tRefreshTotals });
+            setTimeout(() => {
+              refreshInvoicedTotals().catch((e) => console.error('[AccountDashboard] refreshInvoicedTotals', e));
+            }, 0);
           } else if (savedInvoice.documentType === 'proforma' && !invoice.proformaId) {
             setActiveDepartment('sales');
             setSalesTab('proformas');
@@ -5772,12 +5569,15 @@ ${internalCompany} Team`;
         }
       } catch (error: unknown) {
         console.error('[AccountDashboard] handleSaveInvoice catch', { traceId, error });
-        const err = error as { message?: string; code?: string };
-        const errorMessage = err?.message || err?.code || 'Unknown error';
+        const errorMessage =
+          error instanceof CommandClientError
+            ? error.message
+            : (error as { message?: string; code?: string })?.message ||
+              (error as { code?: string })?.code ||
+              'Unknown error';
         alert(`Failed to save invoice: ${errorMessage}. Please try again.`);
       } finally {
-        activeSaveTraceIdRef.current = null;
-        invoiceSaveTraceIdRef.current = null;
+        invoiceSaveInProgressRef.current = false;
       }
   };
 
@@ -6564,7 +6364,16 @@ ${internalCompany} Team`;
             </div>
             <div className="relative mb-4">
                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-               <input type="text" value={propertySearch} onChange={(e) => setPropertySearch(e.target.value)} placeholder="Search by street..." className="w-full bg-[#0D1117] border border-gray-700 rounded-lg py-2 pl-9 text-sm text-white focus:border-emerald-500 outline-none" />
+               <input
+                 id="property-search"
+                 name="property-search"
+                 type="text"
+                 value={propertySearch}
+                 onChange={(e) => setPropertySearch(e.target.value)}
+                 placeholder="Search by street..."
+                 aria-label="Search properties by street"
+                 className="w-full bg-[#0D1117] border border-gray-700 rounded-lg py-2 pl-9 text-sm text-white focus:border-emerald-500 outline-none"
+               />
             </div>
             <div className="flex rounded-lg border border-gray-700 p-0.5 mb-4 bg-[#0D1117]">
                <button type="button" onClick={() => setArchiveFilter('active')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${archiveFilter === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'text-gray-500 hover:text-gray-300'}`}>Active</button>
@@ -9243,9 +9052,7 @@ ${internalCompany} Team`;
                               <>
                                 <div className="rounded-lg border border-gray-700 overflow-hidden bg-gray-900 min-h-[200px] max-h-[320px] flex items-center justify-center">
                                   {isPdf ? (
-                                    <object data={mediaPreviewUrl} type="application/pdf" className="w-full h-[300px]" title="PDF preview">
-                                      <p className="text-gray-500 text-sm p-2">Preview not available. <a href={mediaPreviewUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-400 underline">Open</a></p>
-                                    </object>
+                                    <embed src={mediaPreviewUrl} type="application/pdf" className="w-full h-[300px]" title="PDF preview" />
                                   ) : isImage ? (
                                     <img src={mediaPreviewUrl} alt="" className="max-w-full max-h-[300px] object-contain" />
                                   ) : (
@@ -11604,8 +11411,9 @@ ${internalCompany} Team`;
                         </button>
                       </div>
                       {uploadedInventoryFile?.type === 'application/pdf' ? (
-                        <iframe
+                        <embed
                           src={uploadedInventoryPreviewUrl}
+                          type="application/pdf"
                           className="w-full h-full"
                           title="Invoice preview"
                         />
@@ -11896,7 +11704,7 @@ ${internalCompany} Team`;
                         <button type="button" onClick={() => propertyOcrFileInputRef.current?.click()} className="px-2 py-1 rounded-md bg-black/70 text-[10px] text-gray-200 border border-gray-600 hover:bg-black/90">Change file</button>
                       </div>
                       {propertyOcrFile.type === 'application/pdf' ? (
-                        <iframe src={propertyOcrPreviewUrl} className="w-full h-full min-h-[200px]" title="PDF preview" />
+                        <embed src={propertyOcrPreviewUrl} type="application/pdf" className="w-full h-full min-h-[200px]" title="PDF preview" />
                       ) : (
                         <img src={propertyOcrPreviewUrl} alt="Preview" className="w-full h-auto max-h-full object-contain" />
                       )}
@@ -12097,7 +11905,7 @@ ${internalCompany} Team`;
                         <button type="button" onClick={() => expenseOcrFileInputRef.current?.click()} className="px-2 py-1 rounded-md bg-black/70 text-[10px] text-gray-200 border border-gray-600 hover:bg-black/90">Змінити</button>
                       </div>
                       {expenseOcrFile.type === 'application/pdf' ? (
-                        <iframe src={expenseOcrPreviewUrl} className="w-full h-full min-h-[200px]" title="PDF preview" />
+                        <embed src={expenseOcrPreviewUrl} type="application/pdf" className="w-full h-full min-h-[200px]" title="PDF preview" />
                       ) : (
                         <img src={expenseOcrPreviewUrl} alt="Preview" className="w-full h-auto max-h-full object-contain" />
                       )}
@@ -12328,12 +12136,7 @@ ${internalCompany} Team`;
         onAbandonStuck={(phase) => {
           console.warn('[DEBUG/RECOVERY] InvoiceModal abandon stuck flow', { phase, pageInstanceId: PAGE_INSTANCE_ID });
           if (phase === 'persist') {
-            const tid = invoiceSaveTraceIdRef.current;
-            if (tid != null && activeSaveTraceIdRef.current === tid) {
-              console.warn('[DEBUG/RECOVERY] clearAccountDashboardSaveLock (invoice persist abandon)', { traceId: tid, pageInstanceId: PAGE_INSTANCE_ID });
-              activeSaveTraceIdRef.current = null;
-            }
-            invoiceSaveTraceIdRef.current = null;
+            invoiceSaveInProgressRef.current = false;
           }
           setInvoiceModalInstanceKey((k) => k + 1);
           setIsInvoiceModalOpen(false);

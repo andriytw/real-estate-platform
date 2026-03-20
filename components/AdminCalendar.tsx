@@ -1184,8 +1184,10 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
               {/* Manual Date Range Picker */}
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-2">
-                   <span className="text-xs text-gray-400">From:</span>
+                   <label htmlFor="admin-cal-filter-date-from" className="text-xs text-gray-400">From:</label>
                    <input 
+                     id="admin-cal-filter-date-from"
+                     name="admin-cal-filter-date-from"
                      type="date" 
                      value={dateFilterStart}
                      onChange={(e) => setDateFilterStart(e.target.value)}
@@ -1193,8 +1195,10 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                    />
                 </div>
                 <div className="flex items-center gap-2">
-                   <span className="text-xs text-gray-400">To:</span>
+                   <label htmlFor="admin-cal-filter-date-to" className="text-xs text-gray-400">To:</label>
                    <input 
+                     id="admin-cal-filter-date-to"
+                     name="admin-cal-filter-date-to"
                      type="date" 
                      value={dateFilterEnd}
                      onChange={(e) => setDateFilterEnd(e.target.value)}
@@ -1435,11 +1439,13 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                 <div className="p-6 space-y-5 overflow-y-auto">
                    {/* Property Selection */}
                    <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">
+                      <label htmlFor="admin-cal-new-task-property" className="block text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">
                          <Building className="w-3 h-3" /> Property
                       </label>
                       <div className="relative">
                          <select 
+                           id="admin-cal-new-task-property"
+                           name="admin-cal-new-task-property"
                            value={newTaskProperty}
                            onChange={(e) => setNewTaskProperty(e.target.value)}
                            className="w-full appearance-none bg-[#111315] border border-gray-700 rounded-lg p-3 pl-3 pr-8 text-sm text-white focus:border-emerald-500 focus:outline-none"
@@ -1455,19 +1461,24 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                    <div className="grid grid-cols-2 gap-4">
                       {/* Task Type Custom Dropdown */}
                       <div ref={dropdownRef}>
-                         <label className="block text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">
+                         <label htmlFor="admin-cal-new-task-type-trigger" className="block text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">
                             <Tag className="w-3 h-3" /> Task Type
                          </label>
                          <div className="relative">
-                            <div 
+                            <button
+                               type="button"
+                               id="admin-cal-new-task-type-trigger"
                                onClick={() => setIsTaskTypeDropdownOpen(!isTaskTypeDropdownOpen)}
-                               className="w-full bg-[#111315] border border-gray-700 rounded-lg p-3 pr-8 text-sm cursor-pointer flex items-center justify-between focus:border-emerald-500"
+                               aria-haspopup="listbox"
+                               aria-expanded={isTaskTypeDropdownOpen}
+                               aria-label="Task type"
+                               className="w-full bg-[#111315] border border-gray-700 rounded-lg p-3 pr-8 text-sm cursor-pointer flex items-center justify-between focus:border-emerald-500 text-left"
                             >
                                <span className={`font-bold ${getTaskTextColor(newTaskType)}`}>
                                  {newTaskType}
                                </span>
                                <ChevronDown className="w-4 h-4 text-gray-500" />
-                            </div>
+                            </button>
                             
                             {/* Dropdown Options */}
                             {isTaskTypeDropdownOpen && (
@@ -1494,10 +1505,12 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
                       {/* Time Selection */}
                       <div>
-                         <label className="block text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">
+                         <label htmlFor="admin-cal-new-task-time" className="block text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">
                             <Clock className="w-3 h-3" /> Time
                          </label>
                          <input 
+                           id="admin-cal-new-task-time"
+                           name="admin-cal-new-task-time"
                            type="time" 
                            value={newTaskTime}
                            onChange={(e) => setNewTaskTime(e.target.value)}
@@ -1508,11 +1521,13 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
                    {/* Assign Employee Dropdown */}
                    <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">
+                      <label htmlFor="admin-cal-new-task-assignee" className="block text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">
                          <User className="w-3 h-3" /> Assign Employee
                       </label>
                       <div className="relative">
                          <select 
+                           id="admin-cal-new-task-assignee"
+                           name="admin-cal-new-task-assignee"
                            value={newTaskAssignee}
                            onChange={(e) => setNewTaskAssignee(e.target.value)}
                            className="w-full appearance-none bg-[#111315] border border-gray-700 rounded-lg p-3 pr-8 text-sm text-white focus:border-emerald-500 focus:outline-none"
@@ -1537,10 +1552,12 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
                    {/* Comments / Description */}
                    <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">
+                      <label htmlFor="admin-cal-new-task-comment" className="block text-xs font-medium text-gray-400 mb-2 flex items-center gap-2">
                          <AlignLeft className="w-3 h-3" /> Comments / Notes
                       </label>
                       <textarea 
+                         id="admin-cal-new-task-comment"
+                         name="admin-cal-new-task-comment"
                          rows={3}
                          value={newTaskComment}
                          onChange={(e) => setNewTaskComment(e.target.value)}
@@ -1857,12 +1874,14 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                         </div>
 
                         <div>
-                           <label className="text-xs text-gray-500 font-medium block mb-1">Assignee</label>
+                           <label htmlFor="admin-cal-detail-assignee" className="text-xs text-gray-500 font-medium block mb-1">Assignee</label>
                            <div className="relative group">
                               <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                                  <User className="w-4 h-4 text-blue-500" />
+                                  <User className="w-4 h-4 text-blue-500" aria-hidden />
                               </div>
                               <select 
+                                  id="admin-cal-detail-assignee"
+                                  name="admin-cal-detail-assignee"
                                   value={viewEvent.workerId || ''}
                                   onChange={async (e) => {
                                       const val = e.target.value;
@@ -2159,11 +2178,14 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                         ) : (
                            <div className="flex items-center gap-2">
                               <button 
+                                 type="button"
                                  onClick={() => chatFileInputRef.current?.click()}
                                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-full transition-colors"
+                                 aria-label="Attach file to task chat"
                               >
                                  <Paperclip className="w-5 h-5" />
                                  <input 
+                                    id="admin-cal-chat-file"
                                     type="file" 
                                     ref={chatFileInputRef} 
                                     className="hidden" 
@@ -2171,11 +2193,14 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                  />
                               </button>
                               <input 
+                                 id="admin-cal-chat-message"
+                                 name="admin-cal-chat-message"
                                  type="text" 
                                  value={chatInputValue}
                                  onChange={(e) => setChatInputValue(e.target.value)}
                                  onKeyDown={(e) => e.key === 'Enter' && handleChatSend()}
                                  placeholder="Type a message to the worker..."
+                                 aria-label="Task chat message"
                                  className="flex-1 bg-[#0D1117] border border-gray-700 rounded-lg px-4 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
                               />
                               <button 

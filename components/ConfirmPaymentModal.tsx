@@ -1,11 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { X, Upload } from 'lucide-react';
 import { InvoiceData } from '../types';
-import { paymentProofsService, markInvoicePaidAndConfirmBooking, PaymentProofUploadTimeoutError } from '../services/supabaseService';
-import { supabase } from '../utils/supabase/client';
-import { PAGE_INSTANCE_ID } from '../utils/pageInstance';
+import { commandPostFormData, CommandClientError } from '../services/commandClient';
 
 const CONFIRM_PAYMENT_PDF_INPUT_ID = 'confirm-payment-pdf-upload';
+const CONFIRM_PAYMENT_DOC_NUMBER_ID = 'confirm-payment-document-number';
 
 interface ConfirmPaymentModalProps {
   isOpen: boolean;
@@ -25,19 +24,23 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const idempotencyKeyRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    if (isOpen && proforma) {
-      paymentProofsService.getNextDocumentNumber()
-        .then((next) => setDocumentNumber(next))
-        .catch(() => setDocumentNumber(''));
+  const getOrCreateIdempotencyKey = useCallback(() => {
+    if (!idempotencyKeyRef.current) {
+      idempotencyKeyRef.current =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `cpm-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     }
-  }, [isOpen, proforma]);
+    return idempotencyKeyRef.current;
+  }, []);
 
   const resetForm = () => {
     setPdfFile(null);
     setDocumentNumber('');
     setError(null);
+    idempotencyKeyRef.current = null;
   };
 
   const handleClose = () => {
@@ -52,70 +55,39 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
       setError('Щоб підтвердити оплату, проформа має бути прив\'язана до оффера. Додайте проформу з розділу Оффери (Offers).');
       return;
     }
-    const traceId = `cpm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    console.log('[ConfirmPaymentModal] handleSaveAndConfirm start', { traceId, pageInstanceId: PAGE_INSTANCE_ID, proformaId: proforma.id, hasPdf: !!pdfFile });
     setError(null);
     setUploading(true);
-    let proofId: string | null = null;
-    let proofHasFile = false;
+    const idemKey = getOrCreateIdempotencyKey();
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const createdBy = session?.user?.id ?? undefined;
-
-      console.log('[ConfirmPaymentModal] before create proof row', { traceId, pageInstanceId: PAGE_INSTANCE_ID });
-      const proof = await paymentProofsService.create({
-        invoiceId: proforma.id,
-        createdBy,
-        documentNumber: documentNumber.trim() || undefined,
-      });
-      proofId = proof.id;
-      console.log('[ConfirmPaymentModal] after create proof row', { traceId, pageInstanceId: PAGE_INSTANCE_ID, proofId });
-
+      const fd = new FormData();
+      fd.append('proformaId', proforma.id);
+      fd.append('documentNumber', documentNumber.trim());
       if (pdfFile) {
-        console.log('[ConfirmPaymentModal] before upload', { traceId, pageInstanceId: PAGE_INSTANCE_ID, fileName: pdfFile.name, fileSize: pdfFile.size });
-        const filePath = await paymentProofsService.uploadPaymentProofFile(pdfFile, proforma.id, proof.id);
-        console.log('[ConfirmPaymentModal] after upload success', { traceId, pageInstanceId: PAGE_INSTANCE_ID, filePath });
-        await paymentProofsService.update(proof.id, {
-          filePath,
-          fileName: pdfFile.name || 'document.pdf',
-          fileUploadedAt: new Date().toISOString(),
-        });
-        proofHasFile = true;
-        console.log('[ConfirmPaymentModal] after proof row updated with file', { traceId, pageInstanceId: PAGE_INSTANCE_ID });
+        fd.append('file', pdfFile, pdfFile.name);
       }
-
-      console.log('[ConfirmPaymentModal] before RPC markInvoicePaidAndConfirmBooking', { traceId, pageInstanceId: PAGE_INSTANCE_ID });
-      const newBookingId = await markInvoicePaidAndConfirmBooking(proforma.id);
-      console.log('[ConfirmPaymentModal] after RPC success', { traceId, pageInstanceId: PAGE_INSTANCE_ID, newBookingId });
-
-      await paymentProofsService.update(proof.id, { rpcConfirmedAt: new Date().toISOString() });
-      if (proofHasFile) {
-        await paymentProofsService.setCurrentProof(proforma.id, proof.id);
-      }
-      console.log('[ConfirmPaymentModal] before onConfirmed', { traceId, pageInstanceId: PAGE_INSTANCE_ID });
-      await onConfirmed(newBookingId);
-      console.log('[ConfirmPaymentModal] after onConfirmed', { traceId, pageInstanceId: PAGE_INSTANCE_ID });
+      const { bookingId } = await commandPostFormData<{ bookingId: string; proofId: string }>(
+        '/api/commands/confirm-payment',
+        fd,
+        { idempotencyKey: idemKey }
+      );
+      idempotencyKeyRef.current = null;
+      await onConfirmed(bookingId);
       handleClose();
     } catch (e: unknown) {
-      const err = e as any;
       const msg = e instanceof Error ? e.message : String(e);
-      console.warn('[ConfirmPaymentModal] catch', { traceId, pageInstanceId: PAGE_INSTANCE_ID, code: err?.code, name: err?.name, message: msg, proofId });
-      if (e instanceof PaymentProofUploadTimeoutError || err?.code === 'PAYMENT_PROOF_UPLOAD_TIMEOUT') {
-        setError('Upload did not complete in time. The previous upload request may still be in progress in the background. Close this dialog and try again, or refresh the page if the problem persists.');
-      } else {
-        const hint =
-          msg.includes('Bucket') || msg.includes('policy') || msg.includes('row-level')
-            ? ' Ensure bucket "payment-proofs" exists and allows uploads.'
-            : '';
-        const rpcFailedHint =
-          proofId != null
-            ? ' Proof was created but payment confirmation failed. Use "Retry confirmation" in the expanded row or contact support.'
-            : '';
-        setError(`Failed to confirm payment. ${msg}${hint}${rpcFailedHint}`);
+      if (e instanceof CommandClientError) {
+        if (e.kind === 'conflict') {
+          setError(msg);
+          return;
+        }
+        if (e.kind === 'timeout') {
+          setError('Request timed out. You can safely retry — the same operation will not be duplicated.');
+          return;
+        }
       }
+      setError(`Failed to confirm payment. ${msg}`);
     } finally {
       setUploading(false);
-      console.log('[ConfirmPaymentModal] handleSaveAndConfirm finally', { traceId, pageInstanceId: PAGE_INSTANCE_ID });
     }
   };
 
@@ -137,7 +109,6 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
   return (
     <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
       <div className="bg-[#1C1F24] w-full max-w-lg overflow-y-auto rounded-xl border border-gray-700 shadow-2xl flex flex-col">
-        {/* Header */}
         <div className="p-5 border-b border-gray-800 bg-[#23262b] flex justify-between items-center">
           <h3 className="text-lg font-bold text-white">Підтвердити оплату</h3>
           <button
@@ -150,27 +121,29 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
           </button>
         </div>
 
-        {/* Body */}
         <div className="p-5 flex flex-col gap-4">
           <p className="text-sm text-gray-400">
             Проформа: <span className="font-mono text-white">{proforma.invoiceNumber}</span> — {proforma.clientName}
           </p>
 
           <div>
-            <label className="text-xs font-medium text-gray-400 block mb-2">
+            <label htmlFor={CONFIRM_PAYMENT_DOC_NUMBER_ID} className="text-xs font-medium text-gray-400 block mb-2">
               Confirmation number
             </label>
             <input
+              id={CONFIRM_PAYMENT_DOC_NUMBER_ID}
+              name="confirm-payment-document-number"
               type="text"
               value={documentNumber}
               onChange={(e) => setDocumentNumber(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-gray-700 bg-[#111315] text-white text-sm font-mono placeholder-gray-500 focus:outline-none focus:border-gray-500"
               placeholder="PAY-2026-000001"
+              autoComplete="off"
             />
           </div>
 
           <div>
-            <label className="text-xs font-medium text-gray-400 block mb-2">
+            <label htmlFor={CONFIRM_PAYMENT_PDF_INPUT_ID} className="text-xs font-medium text-gray-400 block mb-2">
               Payment proof PDF (optional)
             </label>
             {!pdfFile ? (
@@ -235,7 +208,6 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
           )}
         </div>
 
-        {/* Footer */}
         <div className="p-5 border-t border-gray-800 flex justify-end gap-2">
           <button
             type="button"

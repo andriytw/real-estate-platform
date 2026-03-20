@@ -3,8 +3,14 @@ import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { X, Save, FileText, Download, Edit2, Check, Upload } from 'lucide-react';
 import { OfferData, InvoiceData, CompanyDetails, ReservationData } from '../types';
 import { INTERNAL_COMPANIES_DATA } from '../constants';
-import { invoicesService, propertiesService, UploadTimeoutError } from '../services/supabaseService';
+import { propertiesService } from '../services/supabaseService';
 import { PAGE_INSTANCE_ID } from '../utils/pageInstance';
+
+const IM_COMPACT_NUMBER = 'invoice-modal-compact-number';
+const IM_ADD_NET = 'invoice-modal-add-net';
+const IM_ADD_TAX = 'invoice-modal-add-tax-rate';
+const IM_PDF_UPLOAD = 'invoice-modal-pdf-upload';
+const IM_PDF_REPLACE = 'invoice-modal-pdf-replace';
 
 interface InvoiceModalProps {
   isOpen: boolean;
@@ -18,7 +24,8 @@ interface InvoiceModalProps {
   invoice?: InvoiceData | null;
   /** Parent proforma when adding an invoice under a proforma */
   proforma?: InvoiceData | null;
-  onSave: (invoice: InvoiceData, mode?: 'save' | 'send') => void | Promise<void>;
+  /** pdfFile: sent to server command route for new proforma/invoice-with-PDF flows (no client-side upload). */
+  onSave: (invoice: InvoiceData, mode?: 'save' | 'send', pdfFile?: File | null) => void | Promise<void>;
   reservations?: ReservationData[];
   offers?: OfferData[];
 }
@@ -39,6 +46,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   /** Blob URL for PDF preview in Add Proforma / Add Invoice */
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  /** PDF selected locally; upload runs on server via AccountDashboard command route */
   const [uploading, setUploading] = useState(false);
   /** True while awaiting parent onSave (persist/send phase). Distinct from uploading for phase-aware label. */
   const [saving, setSaving] = useState(false);
@@ -262,32 +270,13 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
     if (!invoiceData || !senderDetails) return;
     const needsUpload = (isAddProformaMode || isAddInvoiceToProformaMode) && !!pdfFile;
     console.log('[InvoiceModal] handleSave start', { saveMode, needsUpload, pageInstanceId: PAGE_INSTANCE_ID });
-    let fileUrl: string | undefined;
     try {
       if (needsUpload && pdfFile) {
         setUploading(true);
-        console.log('[InvoiceModal] before upload');
-        try {
-          const prefix = isAddInvoiceToProformaMode && proforma ? `proforma-${proforma.id}` : 'proforma';
-          fileUrl = await invoicesService.uploadInvoicePdf(pdfFile, prefix);
-          console.log('[InvoiceModal] after upload success');
-        } catch (e: any) {
-          console.error('[InvoiceModal] upload catch', e);
-          if (e instanceof UploadTimeoutError || e?.code === 'UPLOAD_TIMEOUT') {
-            alert('Upload did not complete in time. The previous upload request may still be in progress in the background. Close this dialog and try again, or refresh the page if the problem persists.');
-            return;
-          }
-          const msg = e?.message || String(e);
-          alert(msg.includes('Bucket') || msg.includes('policy') || msg.includes('row-level')
-            ? `PDF upload failed: ${msg}. Create Storage bucket "invoice-pdfs" in Supabase Dashboard and add policy for uploads.`
-            : `Failed to upload PDF. ${msg || 'Please try again.'}`);
-          return;
-        } finally {
-          setUploading(false);
-        }
       }
-      if ((isAddProformaMode || isAddInvoiceToProformaMode) && !fileUrl) {
+      if ((isAddProformaMode || isAddInvoiceToProformaMode) && !pdfFile) {
         alert('Please attach a PDF file before saving.');
+        setUploading(false);
         return;
       }
       let totalNet: number;
@@ -325,13 +314,15 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
         offerId: invoiceData.offerId,
         reservationId: invoiceData.reservationId,
         bookingId: invoiceData.bookingId,
-        fileUrl: fileUrl ?? invoiceData.fileUrl,
+        fileUrl: invoiceData.fileUrl,
         documentType: invoiceData.documentType,
         proformaId: invoiceData.proformaId,
       };
       setSaving(true);
       console.log('[InvoiceModal] before onSave');
-      await Promise.resolve(onSave(finalInvoice, saveMode));
+      const pdfForServer =
+        (isAddProformaMode || isAddInvoiceToProformaMode) && pdfFile ? pdfFile : undefined;
+      await Promise.resolve(onSave(finalInvoice, saveMode, pdfForServer));
       console.log('[InvoiceModal] after onSave');
     } catch (e) {
       console.error('[InvoiceModal] handleSave catch', e);
@@ -401,10 +392,12 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
           <div className="p-4 bg-[#1C1F24] text-white flex gap-4 min-h-[600px] h-[70vh]">
             {/* Left: compact fields */}
             <div className="flex-shrink-0 w-[280px] flex flex-col gap-2 overflow-y-auto">
-              <label className="text-[10px] font-medium text-gray-400">
+              <label htmlFor={IM_COMPACT_NUMBER} className="text-[10px] font-medium text-gray-400">
                 {isAddProformaMode ? 'Proforma number' : 'Invoice number'}
               </label>
               <input
+                id={IM_COMPACT_NUMBER}
+                name={IM_COMPACT_NUMBER}
                 value={invoiceData.invoiceNumber}
                 onChange={e => setInvoiceData({ ...invoiceData, invoiceNumber: e.target.value })}
                 className="w-full bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-xs text-white font-mono"
@@ -412,8 +405,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
               />
               {isAddInvoiceToProformaMode && (
                 <>
-                  <label className="text-[10px] font-medium text-gray-400 mt-2">Net amount <span className="text-red-400">*</span></label>
+                  <label htmlFor={IM_ADD_NET} className="text-[10px] font-medium text-gray-400 mt-2">Net amount <span className="text-red-400">*</span></label>
                   <input
+                    id={IM_ADD_NET}
+                    name={IM_ADD_NET}
                     type="text"
                     inputMode="decimal"
                     value={addInvoiceNetAmount}
@@ -421,8 +416,10 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
                     placeholder=""
                     className="w-full bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-xs text-white font-mono"
                   />
-                  <label className="text-[10px] font-medium text-gray-400">Tax rate % <span className="text-red-400">*</span></label>
+                  <label htmlFor={IM_ADD_TAX} className="text-[10px] font-medium text-gray-400">Tax rate % <span className="text-red-400">*</span></label>
                   <input
+                    id={IM_ADD_TAX}
+                    name={IM_ADD_TAX}
                     type="number"
                     min={0}
                     step={0.01}
@@ -498,7 +495,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
             </div>
             {/* Right: PDF upload + preview */}
             <div className="flex-1 min-w-0 flex flex-col min-h-0 border border-gray-700 rounded-lg overflow-hidden bg-[#111315]">
-              <label className="text-[10px] font-medium text-gray-400 px-2 pt-2 flex-shrink-0">PDF file <span className="text-red-400">*</span></label>
+              <label htmlFor={IM_PDF_UPLOAD} className="text-[10px] font-medium text-gray-400 px-2 pt-2 flex-shrink-0">PDF file <span className="text-red-400">*</span></label>
               {!pdfFile ? (
                 <div
                   onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-purple-500'); }}
@@ -515,10 +512,11 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
                     type="file"
                     accept="application/pdf"
                     className="hidden"
-                    id="invoice-pdf-upload"
+                    id={IM_PDF_UPLOAD}
+                    name={IM_PDF_UPLOAD}
                     onChange={e => { const f = e.target.files?.[0]; if (f && f.type === 'application/pdf') setPdfFile(f); }}
                   />
-                  <label htmlFor="invoice-pdf-upload" className="cursor-pointer flex flex-col items-center gap-2">
+                  <label htmlFor={IM_PDF_UPLOAD} className="cursor-pointer flex flex-col items-center gap-2">
                     <Upload className="w-8 h-8 text-gray-500" />
                     <span className="text-xs text-gray-400">Drop PDF or click</span>
                   </label>
@@ -527,19 +525,21 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
                 <>
                   <div className="px-2 pb-1 flex items-center gap-2 flex-shrink-0">
                     <span className="text-emerald-400 text-xs truncate flex-1">{pdfFile.name}</span>
-                    <label className="text-[10px] text-gray-400 cursor-pointer hover:text-white" htmlFor="invoice-pdf-upload">Change</label>
+                    <label className="text-[10px] text-gray-400 cursor-pointer hover:text-white" htmlFor={IM_PDF_REPLACE}>Change</label>
                     <input
                       type="file"
                       accept="application/pdf"
                       className="hidden"
-                      id="invoice-pdf-upload"
+                      id={IM_PDF_REPLACE}
+                      name={IM_PDF_REPLACE}
                       onChange={e => { const f = e.target.files?.[0]; if (f && f.type === 'application/pdf') setPdfFile(f); }}
                     />
                   </div>
                   <div className="flex-1 min-h-[320px] relative bg-[#0d0f11]">
                     {pdfPreviewUrl && (
-                      <iframe
+                      <embed
                         src={pdfPreviewUrl}
+                        type="application/pdf"
                         title="PDF preview"
                         className="absolute inset-0 w-full h-full border-0 rounded"
                       />

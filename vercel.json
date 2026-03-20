@@ -8,6 +8,10 @@
     "api/protocols/uebergabeprotokoll/generate-pdf.ts": {
       "maxDuration": 60,
       "memory": 1024
-    }
+    },
+    "api/commands/create-multi-offer.ts": { "maxDuration": 30 },
+    "api/commands/create-direct-booking.ts": { "maxDuration": 30 },
+    "api/commands/save-invoice.ts": { "maxDuration": 60 },
+    "api/commands/confirm-payment.ts": { "maxDuration": 60 }
   }
 }
