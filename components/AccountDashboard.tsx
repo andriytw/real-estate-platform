@@ -6097,6 +6097,8 @@ ${internalCompany} Team`;
         return updated;
       });
       
+      const taskBeforeUpdate = adminEvents.find(ev => ev.id === updatedEvent.id);
+
       try {
           // Minimal PATCH: assignee always; status/date/day only when changed (bulletproof, no accidental overwrites)
           const patchPayload: Partial<CalendarEvent> = {
