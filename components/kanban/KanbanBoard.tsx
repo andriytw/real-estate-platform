@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { tasksService, workersService } from '../../services/supabaseService';
 import { CalendarEvent, Worker, KanbanColumn as IKanbanColumn, TaskStatus, CustomColumn } from '../../types';
@@ -119,14 +119,16 @@ const KanbanBoard: React.FC = () => {
     setIsTaskDetailModalOpen(true);
   };
 
-  // Generate Columns - ТІЛЬКИ Inbox + колонки з customColumns (створені вручну Super Admin)
-  const columns = useMemo(() => {
-    const cols: IKanbanColumn[] = [];
+  // Session-level dedup for unresolved workerId warnings
+  const loggedUnresolvedRef = useRef<Set<string>>(new Set());
 
-    // 1. Super Admin / Inbox Column (тільки для завдань без департаменту або призначених Super Admin)
+  // Generate Columns - Inbox + custom columns
+  const { columns, unresolvedWorkerIds } = useMemo(() => {
+    const cols: IKanbanColumn[] = [];
+    const unresolved: string[] = [];
+
     const adminWorker = workers.find(w => w.role === 'super_manager');
     
-    // Розділити непризначені завдання по департаментах
     const unassignedTasks = tasks.filter(t => !t.workerId);
     const facilityUnassigned = unassignedTasks.filter(t => t.department === 'facility');
     const accountingUnassigned = unassignedTasks.filter(t => t.department === 'accounting');
@@ -134,8 +136,6 @@ const KanbanBoard: React.FC = () => {
       !t.department || (t.department !== 'facility' && t.department !== 'accounting')
     );
     
-    // Super Admin Inbox: тільки призначені Super Admin АБО непризначені без департаменту
-    // НЕ включати завдання, призначені іншим працівникам (навіть виконані)
     const adminTasks = [
       ...tasks.filter(t => adminWorker && t.workerId === adminWorker.id),
       ...otherUnassigned
@@ -149,41 +149,40 @@ const KanbanBoard: React.FC = () => {
       tasks: adminTasks
     });
 
-    // 2. Створені вручну колонки (з customColumns)
     customColumns.forEach(customCol => {
       if (!customCol.workerId) {
-        // Empty column - show placeholder
         cols.push({
           id: customCol.id,
           title: 'Виберіть працівника',
           type: 'backlog',
           workerId: undefined,
-          tasks: [] // No tasks until worker is assigned
+          tasks: []
         });
         return;
       }
 
-      // Find worker by ID
       const worker = workers.find(w => w.id === customCol.workerId);
       if (!worker) {
-        // Worker not found - skip this column
-        console.warn('⚠️ Worker not found for column:', customCol.id, customCol.workerId);
+        const suffix = String(customCol.workerId).slice(-8);
+        unresolved.push(customCol.workerId);
+        cols.push({
+          id: customCol.id,
+          title: `Missing profile · ${suffix}`,
+          type: 'worker',
+          workerId: customCol.workerId,
+          tasks: tasks.filter(t => t.workerId === customCol.workerId)
+        });
         return;
       }
 
-      // Фільтр по департаменту
       if (departmentFilter !== 'all' && worker.department !== departmentFilter) {
-        return; // Пропустити, якщо не відповідає фільтру
+        return;
       }
 
-      // Визначити тип колонки
       const columnType = worker.role === 'manager' ? 'manager' : 'worker';
       
-      // Для менеджера: показати призначені йому + непризначені його департаменту
-      // Для працівника: показати ВСІ призначені йому (включно з виконаними)
       let columnTasks: CalendarEvent[] = [];
       if (worker.role === 'manager') {
-        // Менеджер бачить: призначені йому + непризначені його департаменту
         const assignedToManager = tasks.filter(t => t.workerId === worker.id);
         const unassignedInDepartment = worker.department === 'facility' 
           ? facilityUnassigned 
@@ -192,8 +191,6 @@ const KanbanBoard: React.FC = () => {
           : [];
         columnTasks = [...assignedToManager, ...unassignedInDepartment];
       } else {
-        // Працівник бачить ВСІ призначені йому завдання (включно з виконаними)
-        // Це важливо - виконані завдання мають залишатися в колонці працівника
         columnTasks = tasks.filter(t => t.workerId === worker.id);
       }
       
@@ -206,8 +203,17 @@ const KanbanBoard: React.FC = () => {
       });
     });
 
-    return cols;
+    return { columns: cols, unresolvedWorkerIds: unresolved };
   }, [tasks, workers, departmentFilter, customColumns]);
+
+  // Log unresolved workerIds once per id per session, after column derivation
+  useEffect(() => {
+    if (unresolvedWorkerIds.length === 0) return;
+    const newIds = unresolvedWorkerIds.filter(id => !loggedUnresolvedRef.current.has(id));
+    if (newIds.length === 0) return;
+    newIds.forEach(id => loggedUnresolvedRef.current.add(id));
+    console.warn('[FacilityKanban] unresolved refs', { ids: newIds });
+  }, [unresolvedWorkerIds]);
 
   // Handle Drag End
   const onDragEnd = async (result: DropResult) => {

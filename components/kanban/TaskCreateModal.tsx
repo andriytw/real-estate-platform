@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Calendar, Clock, User, AlertCircle, Check, Building2, Wallet, ChevronDown, Sparkles, ArrowRight, ArrowLeft, FileText, FileCheck } from 'lucide-react';
 import { tasksService, workersService, propertiesService } from '../../services/supabaseService';
 import { Worker, CalendarEvent, TaskType, TaskPriority, Property } from '../../types';
+import { isAssignableOperationalUser } from './assigneeUtils';
 import { FACILITY_TASK_TYPES, ACCOUNTING_TASK_TYPES, getTaskTextColor } from '../../utils/taskColors';
 import { useWorker } from '../../contexts/WorkerContext';
 
@@ -197,9 +198,9 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
   const isSuperAdmin = currentUser?.role === 'super_manager';
   const availableTaskTypes = department === 'facility' ? FACILITY_TASK_TYPES : ACCOUNTING_TASK_TYPES;
 
-  // Filter workers by department if needed, or show all for admin
-  const filteredWorkers = workers.filter(w => 
-    isSuperAdmin ? true : w.department === department || w.role === 'super_manager'
+  const filteredWorkers = workers.filter(w =>
+    isAssignableOperationalUser(w) &&
+    (isSuperAdmin ? true : w.department === department || w.role === 'super_manager')
   );
 
   return (
