@@ -1,12 +1,12 @@
-import { getSupabaseAdmin } from '../_lib/supabase-admin';
-import { withTimeout } from '../_lib/with-timeout';
+import { getSupabaseAdmin } from '../_lib/supabase-admin.js';
+import { withTimeout } from '../_lib/with-timeout.js';
 import {
   requireCommandProfile,
   assertCanCreateOffers,
   CommandAuthError,
-} from '../_lib/command-auth';
-import { resolveIdempotency, completeIdempotency, failIdempotency } from '../_lib/idempotency';
-import { transformOfferFromDB, transformOfferToDB, transformReservationToDB } from '../_lib/commandDb';
+} from '../_lib/command-auth.js';
+import { resolveIdempotency, completeIdempotency, failIdempotency } from '../_lib/idempotency.js';
+import { transformOfferFromDB, transformOfferToDB, transformReservationToDB } from '../_lib/commandDb.js';
 
 const RPC_TIMEOUT_MS = 25_000;
 const DB_TIMEOUT_MS = 25_000;
@@ -106,7 +106,11 @@ export async function POST(request: Request) {
         'get_next_offer_no'
       );
       if (rpcError || offerNoData == null) {
-        await admin.from('reservations').delete().eq('id', reservationId);
+        await withTimeout(
+          admin.from('reservations').delete().eq('id', reservationId),
+          DB_TIMEOUT_MS,
+          'rollback reservation after offer_no RPC error'
+        );
         throw new Error(rpcError?.message || 'Failed to generate offer number');
       }
       const offerNo = String(offerNoData);
@@ -148,7 +152,11 @@ export async function POST(request: Request) {
         'create offer'
       );
       if (offErr || !offerRow) {
-        await admin.from('reservations').delete().eq('id', reservationId);
+        await withTimeout(
+          admin.from('reservations').delete().eq('id', reservationId),
+          DB_TIMEOUT_MS,
+          'rollback reservation after offer insert error'
+        );
         throw offErr || new Error('Offer insert failed');
       }
 

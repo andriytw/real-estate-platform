@@ -1,12 +1,12 @@
-import { getSupabaseAdmin } from '../_lib/supabase-admin';
-import { withTimeout } from '../_lib/with-timeout';
+import { getSupabaseAdmin } from '../_lib/supabase-admin.js';
+import { withTimeout } from '../_lib/with-timeout.js';
 import {
   requireCommandProfile,
   assertCanSaveInvoice,
   CommandAuthError,
-} from '../_lib/command-auth';
-import { resolveIdempotency, completeIdempotency, failIdempotency } from '../_lib/idempotency';
-import { transformInvoiceFromDB, transformInvoiceToDB } from '../_lib/commandDb';
+} from '../_lib/command-auth.js';
+import { resolveIdempotency, completeIdempotency, failIdempotency } from '../_lib/idempotency.js';
+import { transformInvoiceFromDB, transformInvoiceToDB } from '../_lib/commandDb.js';
 
 const BUCKET = 'invoice-pdfs';
 const UPLOAD_TIMEOUT_MS = 90_000;
@@ -44,7 +44,33 @@ async function uploadPdf(
 
 async function removeStoragePaths(admin: ReturnType<typeof getSupabaseAdmin>, paths: string[]): Promise<void> {
   if (!paths.length) return;
-  await admin.storage.from(BUCKET).remove(paths);
+  await withTimeout(
+    admin.storage.from(BUCKET).remove(paths),
+    UPLOAD_TIMEOUT_MS,
+    'invoice pdf storage remove'
+  );
+}
+
+/** When invoice is tied to a reservation (client uses bookingId for reservation id), mark reservation invoiced on server. */
+async function markLinkedReservationInvoiced(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  invoice: Record<string, unknown>
+): Promise<void> {
+  const resIdRaw = invoice.reservationId ?? invoice.reservation_id;
+  const bookRaw = invoice.bookingId ?? invoice.booking_id;
+  const resId =
+    resIdRaw && UUID_RE.test(String(resIdRaw))
+      ? String(resIdRaw)
+      : bookRaw && UUID_RE.test(String(bookRaw))
+        ? String(bookRaw)
+        : null;
+  if (!resId) return;
+  const { error } = await withTimeout(
+    admin.from('reservations').update({ status: 'invoiced' }).eq('id', resId),
+    DB_TIMEOUT_MS,
+    'mark reservation invoiced after invoice save'
+  );
+  if (error) throw error;
 }
 
 async function resolveOfferIdSource(
@@ -232,13 +258,16 @@ export async function POST(request: Request) {
         ).catch(() => {});
         throw finErr;
       }
-      pendingInvoiceId = null;
+
+      await markLinkedReservationInvoiced(admin, invoice);
 
       if (offerItemId && docType === 'proforma') {
         await updateOfferItemOnProformaSave(admin, offerItemId, savedId).catch((e) =>
           console.error('[save-invoice] offer_item update failed (non-fatal)', e)
         );
       }
+
+      pendingInvoiceId = null;
 
       const payload = {
         savedInvoice: transformInvoiceFromDB(finalRow as Record<string, unknown>),
@@ -254,7 +283,11 @@ export async function POST(request: Request) {
         }
       }
       if (pendingInvoiceId) {
-        await admin.from('invoices').update({ orchestration_status: 'failed' }).eq('id', pendingInvoiceId).then(null, () => {});
+        await withTimeout(
+          admin.from('invoices').update({ orchestration_status: 'failed' }).eq('id', pendingInvoiceId),
+          DB_TIMEOUT_MS,
+          'mark invoice failed in catch'
+        ).catch(() => {});
       }
       await failIdempotency(admin, idem.rowId, msg);
       return json({ error: msg }, 500);

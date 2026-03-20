@@ -1,12 +1,12 @@
-import { getSupabaseAdmin } from '../_lib/supabase-admin';
-import { withTimeout } from '../_lib/with-timeout';
+import { getSupabaseAdmin } from '../_lib/supabase-admin.js';
+import { withTimeout } from '../_lib/with-timeout.js';
 import {
   requireCommandProfile,
   assertCanConfirmPayment,
   assertInvoiceExistsForConfirm,
   CommandAuthError,
-} from '../_lib/command-auth';
-import { resolveIdempotency, completeIdempotency, failIdempotency } from '../_lib/idempotency';
+} from '../_lib/command-auth.js';
+import { resolveIdempotency, completeIdempotency, failIdempotency } from '../_lib/idempotency.js';
 
 const PAYMENT_PROOFS_BUCKET = 'payment-proofs';
 const UPLOAD_TIMEOUT_MS = 90_000;
@@ -83,8 +83,11 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const proformaId = String(form.get('proformaId') || '').trim();
     const documentNumberRaw = String(form.get('documentNumber') || '').trim();
+    const existingProofIdRaw = String(form.get('existingProofId') || '').trim();
     const fileEntry = form.get('file');
     const pdfFile = fileEntry instanceof File && fileEntry.size > 0 ? fileEntry : null;
+
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
     if (!proformaId) {
       return json({ error: 'Missing proformaId' }, 400);
@@ -105,40 +108,60 @@ export async function POST(request: Request) {
       let proofId: string;
       let proofHasFile = false;
 
-      const { data: existingProof } = await withTimeout(
-        admin.from('payment_proofs').select('id, file_path, rpc_confirmed_at').eq('invoice_id', proformaId).eq('idempotency_key', idemKey).maybeSingle(),
-        DB_TIMEOUT_MS, 'check existing proof'
-      );
-
-      if (existingProof?.id) {
-        proofId = existingProof.id as string;
-        proofHasFile = !!existingProof.file_path;
-      } else {
-        let docNum = documentNumberRaw || (await nextPayDocumentNumber(admin));
-        const insertRow = {
-          invoice_id: proformaId,
-          created_by: profile.id,
-          document_number: docNum,
-          is_current: false,
-          state: 'active',
-          idempotency_key: idemKey,
-        };
-        const { data: ins, error: insErr } = await withTimeout(
-          admin.from('payment_proofs').insert([insertRow]).select('id').single(),
-          DB_TIMEOUT_MS, 'insert proof row'
+      if (UUID_RE.test(existingProofIdRaw)) {
+        const { data: retryRow, error: retryErr } = await withTimeout(
+          admin
+            .from('payment_proofs')
+            .select('id, file_path, rpc_confirmed_at, invoice_id')
+            .eq('id', existingProofIdRaw)
+            .maybeSingle(),
+          DB_TIMEOUT_MS,
+          'load existing proof for retry'
         );
-        if (insErr?.code === '23505') {
-          const { data: again } = await withTimeout(
-            admin.from('payment_proofs').select('id, file_path').eq('invoice_id', proformaId).eq('idempotency_key', idemKey).maybeSingle(),
-            DB_TIMEOUT_MS, 'recheck proof after conflict'
-          );
-          if (!again?.id) throw insErr;
-          proofId = again.id as string;
-          proofHasFile = !!again.file_path;
-        } else if (insErr || !ins?.id) {
-          throw insErr || new Error('Failed to create payment proof');
+        if (retryErr || !retryRow?.id) {
+          throw retryErr || new Error('Payment proof not found');
+        }
+        if (String(retryRow.invoice_id) !== proformaId) {
+          throw new Error('Payment proof does not belong to this invoice');
+        }
+        proofId = retryRow.id as string;
+        proofHasFile = !!retryRow.file_path;
+      } else {
+        const { data: existingProof } = await withTimeout(
+          admin.from('payment_proofs').select('id, file_path, rpc_confirmed_at').eq('invoice_id', proformaId).eq('idempotency_key', idemKey).maybeSingle(),
+          DB_TIMEOUT_MS, 'check existing proof'
+        );
+
+        if (existingProof?.id) {
+          proofId = existingProof.id as string;
+          proofHasFile = !!existingProof.file_path;
         } else {
-          proofId = ins.id as string;
+          let docNum = documentNumberRaw || (await nextPayDocumentNumber(admin));
+          const insertRow = {
+            invoice_id: proformaId,
+            created_by: profile.id,
+            document_number: docNum,
+            is_current: false,
+            state: 'active',
+            idempotency_key: idemKey,
+          };
+          const { data: ins, error: insErr } = await withTimeout(
+            admin.from('payment_proofs').insert([insertRow]).select('id').single(),
+            DB_TIMEOUT_MS, 'insert proof row'
+          );
+          if (insErr?.code === '23505') {
+            const { data: again } = await withTimeout(
+              admin.from('payment_proofs').select('id, file_path').eq('invoice_id', proformaId).eq('idempotency_key', idemKey).maybeSingle(),
+              DB_TIMEOUT_MS, 'recheck proof after conflict'
+            );
+            if (!again?.id) throw insErr;
+            proofId = again.id as string;
+            proofHasFile = !!again.file_path;
+          } else if (insErr || !ins?.id) {
+            throw insErr || new Error('Failed to create payment proof');
+          } else {
+            proofId = ins.id as string;
+          }
         }
       }
 
@@ -173,7 +196,11 @@ export async function POST(request: Request) {
           'update proof file metadata'
         );
         if (upRowErr) {
-          await admin.storage.from(PAYMENT_PROOFS_BUCKET).remove([path]);
+          await withTimeout(
+            admin.storage.from(PAYMENT_PROOFS_BUCKET).remove([path]),
+            UPLOAD_TIMEOUT_MS,
+            'remove proof file after metadata failure'
+          ).catch(() => {});
           uploadedStoragePath = null;
           throw upRowErr;
         }
@@ -237,7 +264,11 @@ export async function POST(request: Request) {
       const msg = e instanceof Error ? e.message : String(e);
       if (uploadedStoragePath) {
         try {
-          await admin.storage.from(PAYMENT_PROOFS_BUCKET).remove([uploadedStoragePath]);
+          await withTimeout(
+            admin.storage.from(PAYMENT_PROOFS_BUCKET).remove([uploadedStoragePath]),
+            UPLOAD_TIMEOUT_MS,
+            'confirm-payment storage cleanup'
+          );
         } catch (re) {
           console.error('[confirm-payment] storage cleanup failed', re);
         }

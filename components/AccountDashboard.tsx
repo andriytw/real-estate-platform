@@ -48,7 +48,6 @@ import {
   propertyDepositProofsService,
   unitLeaseTermsService,
   checkBookingOverlap,
-  markInvoicePaidAndConfirmBooking,
   WarehouseStockItem,
   UnitLeaseTermUi,
   addressBookPartiesService,
@@ -5299,6 +5298,27 @@ ${internalCompany} Team`;
     }
   };
 
+  /** Single server path for confirming proforma payment (no client-side RPC). */
+  const confirmProformaPaymentViaCommand = async (
+    proformaId: string,
+    options?: { existingProofId?: string; documentNumber?: string }
+  ): Promise<string> => {
+    const idemKey =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `cp-dash-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const fd = new FormData();
+    fd.append('proformaId', proformaId);
+    if (options?.documentNumber?.trim()) fd.append('documentNumber', options.documentNumber.trim());
+    if (options?.existingProofId) fd.append('existingProofId', options.existingProofId);
+    const { bookingId } = await commandPostFormData<{ bookingId: string; proofId: string }>(
+      '/api/commands/confirm-payment',
+      fd,
+      { idempotencyKey: idemKey }
+    );
+    return bookingId;
+  };
+
   const refreshDataAfterPaymentConfirmed = async (newBookingId: string) => {
     const reservationsData = await reservationsService.getAll();
     const transformedReservations: ReservationData[] = reservationsData.map(res => ({
@@ -5406,8 +5426,7 @@ ${internalCompany} Team`;
     if (proforma.status === 'Paid') return;
     if (proof.rpcConfirmedAt) return;
     try {
-      await markInvoicePaidAndConfirmBooking(proforma.id);
-      await paymentProofsService.update(proof.id, { rpcConfirmedAt: new Date().toISOString() });
+      await confirmProformaPaymentViaCommand(proforma.id, { existingProofId: proof.id });
       await loadPaymentProofsForInvoiceIds([proforma.id]);
     } catch (e) {
       console.error('Retry confirmation failed:', e);
@@ -5424,7 +5443,7 @@ ${internalCompany} Team`;
     }
     if (!window.confirm(`Підтвердити оплату проформи ${proforma.invoiceNumber}? Буде створено підтверджене бронювання.`)) return;
     try {
-      const newBookingId = await markInvoicePaidAndConfirmBooking(proforma.id);
+      const newBookingId = await confirmProformaPaymentViaCommand(proforma.id);
       await refreshDataAfterPaymentConfirmed(newBookingId);
       alert('Оплату підтверджено. Створено підтверджене бронювання.');
     } catch (e: any) {
@@ -5488,16 +5507,11 @@ ${internalCompany} Team`;
             refreshMultiApartmentOffers().catch((e) => console.error('[AccountDashboard] refresh multi-offers after invoice', e));
           }, 0);
         }
-        
+
         if (invoice.bookingId) {
-            const bookingId = invoice.bookingId;
-            const reservation = reservations.find(r => r.id === bookingId || String(r.id) === String(bookingId));
-            if (reservation) {
-                updateReservationInDB(reservation.id, { 
-                    status: BookingStatus.INVOICED, 
-                    color: getBookingStyle(BookingStatus.INVOICED) 
-                });
-            }
+          setTimeout(() => {
+            loadReservations().catch((e) => console.error('[AccountDashboard] loadReservations after invoice save', e));
+          }, 0);
         }
         
         const isProformaSend = mode === 'send' && savedInvoice.documentType === 'proforma' && !invoice.proformaId;
@@ -5589,80 +5603,23 @@ ${internalCompany} Team`;
     
     const newStatus = invoice.status === 'Paid' ? 'Unpaid' : 'Paid';
     try {
-      // If marking as Paid, call RPC to confirm booking and mark competing reservations as lost
+      // Mark paid: single server command (same path as ConfirmPaymentModal / quick confirm)
       if (newStatus === 'Paid' && invoice.status !== 'Paid') {
-        // Check if invoice has offerId (required for RPC)
         const offerId = invoice.offerId || invoice.offerIdSource;
         if (!offerId) {
           alert('Invoice must be linked to an offer to mark as paid. Please create invoice from an offer.');
           return;
         }
-        
         try {
-          // Call RPC: marks invoice as paid, creates confirmed booking, marks competing reservations/offers as lost
-          const bookingId = await markInvoicePaidAndConfirmBooking(invoiceId);
-          console.log('✅ Invoice marked as paid and booking confirmed:', { invoiceId, bookingId });
-          
-          // Refresh all data after RPC
-          // Reload reservations (some may be marked as lost)
-          const reservationsData = await reservationsService.getAll();
-          const transformedReservations: ReservationData[] = reservationsData.map(res => ({
-            id: res.id as any,
-            reservationNo: res.reservationNo,
-            roomId: res.propertyId,
-            propertyId: res.propertyId,
-            start: res.startDate,
-            end: res.endDate,
-            guest: res.leadLabel || `${res.clientFirstName || ''} ${res.clientLastName || ''}`.trim() || 'Guest',
-            color: getBookingStyle(res.status as any),
-            checkInTime: '15:00',
-            checkOutTime: '11:00',
-            status: res.status as any,
-            price: res.totalGross ? `${res.totalGross} EUR` : '0.00 EUR',
-            balance: '0.00 EUR',
-            guests: res.guestsCount ? `${res.guestsCount} Guests` : '1 Guest',
-            unit: 'AUTO-UNIT',
-            comments: 'Reservation',
-            paymentAccount: 'Pending',
-            company: 'N/A',
-            ratePlan: 'Standard',
-            guarantee: 'None',
-            cancellationPolicy: 'Standard',
-            noShowPolicy: 'Standard',
-            channel: 'Manual',
-            type: 'GUEST',
-            address: res.clientAddress,
-            phone: res.clientPhone,
-            email: res.clientEmail,
-            pricePerNight: res.pricePerNightNet,
-            taxRate: res.taxRate,
-            totalGross: res.totalGross?.toString(),
-            guestList: [],
-            clientType: 'Private',
-            firstName: res.clientFirstName,
-            lastName: res.clientLastName,
-            createdAt: res.createdAt,
-          })) as ReservationData[];
-          setReservations(transformedReservations);
-          
-          // Reload confirmed bookings (new one was created)
-          const bookings = await bookingsService.getAll();
-          setConfirmedBookings(bookings);
-          
-          // Reload offers (some may be marked as lost)
-          const offersData = await offersService.getAll();
-          setOffers(offersData);
-          await refreshMultiApartmentOffers();
-          
-          // Reload invoices (status updated to Paid)
-          const invoicesData = await invoicesService.getAll();
-          setInvoices(invoicesData);
-          
+          const bookingId = await confirmProformaPaymentViaCommand(invoiceId);
+          await refreshDataAfterPaymentConfirmed(bookingId);
           alert('Invoice marked as paid. Confirmed booking created. Competing reservations marked as lost.');
-        } catch (rpcError: any) {
-          console.error('Error in RPC mark_invoice_paid_and_confirm_booking:', rpcError);
-          alert(`Failed to confirm booking: ${rpcError.message || 'Unknown error'}`);
-          return; // Don't update status if RPC failed
+          return;
+        } catch (rpcError: unknown) {
+          const msg = rpcError instanceof Error ? rpcError.message : String(rpcError);
+          console.error('Error confirming payment via command:', rpcError);
+          alert(`Failed to confirm booking: ${msg || 'Unknown error'}`);
+          return;
         }
       } else {
         // For Unpaid or other status changes, just update normally
@@ -12127,6 +12084,7 @@ ${internalCompany} Team`;
         key={invoiceModalInstanceKey}
         isOpen={isInvoiceModalOpen}
         onClose={() => {
+          invoiceIdempotencyKeyRef.current = null;
           setIsInvoiceModalOpen(false);
           setSelectedOfferForInvoice(null);
           setSelectedInvoice(null);
@@ -12138,6 +12096,7 @@ ${internalCompany} Team`;
           if (phase === 'persist') {
             invoiceSaveInProgressRef.current = false;
           }
+          invoiceIdempotencyKeyRef.current = null;
           setInvoiceModalInstanceKey((k) => k + 1);
           setIsInvoiceModalOpen(false);
           setSelectedOfferForInvoice(null);

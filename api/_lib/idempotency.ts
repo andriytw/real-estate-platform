@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { withTimeout } from './with-timeout.js';
 
 const STALE_IN_PROGRESS_MS = 120_000;
+const IDEM_DB_TIMEOUT_MS = 25_000;
 
 export type IdempotencyOutcome =
   | { kind: 'proceed'; rowId: string }
@@ -21,17 +23,21 @@ export async function resolveIdempotency(
   idempotencyKey: string
 ): Promise<IdempotencyOutcome> {
   const now = new Date().toISOString();
-  const { data: inserted, error: insErr } = await admin
-    .from('command_idempotency')
-    .insert({
-      user_id: userId,
-      command,
-      idempotency_key: idempotencyKey,
-      status: 'in_progress',
-      updated_at: now,
-    })
-    .select('id')
-    .maybeSingle();
+  const { data: inserted, error: insErr } = await withTimeout(
+    admin
+      .from('command_idempotency')
+      .insert({
+        user_id: userId,
+        command,
+        idempotency_key: idempotencyKey,
+        status: 'in_progress',
+        updated_at: now,
+      })
+      .select('id')
+      .maybeSingle(),
+    IDEM_DB_TIMEOUT_MS,
+    'idempotency insert claim'
+  );
 
   if (!insErr && inserted?.id) {
     return { kind: 'proceed', rowId: inserted.id };
@@ -43,13 +49,17 @@ export async function resolveIdempotency(
     throw insErr;
   }
 
-  const { data: existing, error: selErr } = await admin
-    .from('command_idempotency')
-    .select('id, status, result_json, updated_at')
-    .eq('user_id', userId)
-    .eq('command', command)
-    .eq('idempotency_key', idempotencyKey)
-    .maybeSingle();
+  const { data: existing, error: selErr } = await withTimeout(
+    admin
+      .from('command_idempotency')
+      .select('id, status, result_json, updated_at')
+      .eq('user_id', userId)
+      .eq('command', command)
+      .eq('idempotency_key', idempotencyKey)
+      .maybeSingle(),
+    IDEM_DB_TIMEOUT_MS,
+    'idempotency select existing'
+  );
 
   if (selErr || !existing) {
     throw selErr || new Error('Idempotency row missing after conflict');
@@ -64,18 +74,23 @@ export async function resolveIdempotency(
     if (Number.isFinite(updated) && Date.now() - updated < STALE_IN_PROGRESS_MS) {
       return { kind: 'conflict', message: 'Same operation is already in progress; retry shortly.' };
     }
-    await admin
-      .from('command_idempotency')
-      .update({ status: 'in_progress', updated_at: now })
-      .eq('id', existing.id);
+    await withTimeout(
+      admin.from('command_idempotency').update({ status: 'in_progress', updated_at: now }).eq('id', existing.id),
+      IDEM_DB_TIMEOUT_MS,
+      'idempotency reclaim in_progress'
+    );
     return { kind: 'proceed', rowId: existing.id };
   }
 
   if (existing.status === 'failed') {
-    await admin
-      .from('command_idempotency')
-      .update({ status: 'in_progress', result_json: null, updated_at: now })
-      .eq('id', existing.id);
+    await withTimeout(
+      admin
+        .from('command_idempotency')
+        .update({ status: 'in_progress', result_json: null, updated_at: now })
+        .eq('id', existing.id),
+      IDEM_DB_TIMEOUT_MS,
+      'idempotency reclaim failed'
+    );
     return { kind: 'proceed', rowId: existing.id };
   }
 
@@ -87,23 +102,31 @@ export async function completeIdempotency(
   rowId: string,
   result: unknown
 ): Promise<void> {
-  await admin
-    .from('command_idempotency')
-    .update({
-      status: 'completed',
-      result_json: result,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', rowId);
+  await withTimeout(
+    admin
+      .from('command_idempotency')
+      .update({
+        status: 'completed',
+        result_json: result,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', rowId),
+    IDEM_DB_TIMEOUT_MS,
+    'idempotency complete'
+  );
 }
 
 export async function failIdempotency(admin: SupabaseClient, rowId: string, errorMessage: string): Promise<void> {
-  await admin
-    .from('command_idempotency')
-    .update({
-      status: 'failed',
-      error_message: errorMessage.slice(0, 2000),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', rowId);
+  await withTimeout(
+    admin
+      .from('command_idempotency')
+      .update({
+        status: 'failed',
+        error_message: errorMessage.slice(0, 2000),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', rowId),
+    IDEM_DB_TIMEOUT_MS,
+    'idempotency fail'
+  );
 }

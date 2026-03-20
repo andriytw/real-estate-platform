@@ -1,12 +1,12 @@
-import { getSupabaseAdmin } from '../_lib/supabase-admin';
-import { withTimeout } from '../_lib/with-timeout';
+import { getSupabaseAdmin } from '../_lib/supabase-admin.js';
+import { withTimeout } from '../_lib/with-timeout.js';
 import {
   requireCommandProfile,
   assertCanCreateOffers,
   CommandAuthError,
-} from '../_lib/command-auth';
-import { resolveIdempotency, completeIdempotency, failIdempotency } from '../_lib/idempotency';
-import { transformOfferFromDB, transformOfferToDB } from '../_lib/commandDb';
+} from '../_lib/command-auth.js';
+import { resolveIdempotency, completeIdempotency, failIdempotency } from '../_lib/idempotency.js';
+import { transformOfferFromDB, transformOfferToDB } from '../_lib/commandDb.js';
 
 const RPC_TIMEOUT_MS = 25_000;
 const DB_TIMEOUT_MS = 25_000;
@@ -198,14 +198,22 @@ async function executeCreateMultiOffer(
   );
 
   if (offerErr) {
-    await admin.from('reservations').delete().in('id', reservationIds);
+    await withTimeout(
+      admin.from('reservations').delete().in('id', reservationIds),
+      DB_TIMEOUT_MS,
+      'rollback reservations after offer insert error'
+    );
     throw offerErr;
   }
 
   const insertedList = inserted ?? [];
   for (const row of insertedList) {
     if (row.reservation_id == null || row.reservation_id === '') {
-      await admin.from('reservations').delete().in('id', reservationIds);
+      await withTimeout(
+        admin.from('reservations').delete().in('id', reservationIds),
+        DB_TIMEOUT_MS,
+        'rollback reservations after missing reservation_id'
+      );
       throw new Error('Offer row missing reservation_id after insert');
     }
   }

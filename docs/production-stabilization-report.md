@@ -8,8 +8,8 @@ Four Vercel server handlers orchestrate writes previously done as long client-si
 |-------|---------|
 | `POST /api/commands/create-multi-offer` | Multi-apartment offer + reservations + lead creation/linking (send mode) |
 | `POST /api/commands/create-direct-booking` | Direct booking: reservation + offer |
-| `POST /api/commands/save-invoice` | Proforma/invoice save, optional PDF upload, offerIdSource verification, offer_items status update |
-| `POST /api/commands/confirm-payment` | Payment proof + optional file + RPC + current proof |
+| `POST /api/commands/save-invoice` | Proforma/invoice save, optional PDF, offerIdSource verification, linked **reservation → invoiced**, offer_items update |
+| `POST /api/commands/confirm-payment` | Payment proof + optional file + RPC + current proof; optional **`existingProofId`** for retry without duplicate proof rows |
 
 Shared client: `services/commandClient.ts` (Bearer JWT, `X-Idempotency-Key`, timeouts). Shared server: `api/_lib/supabase-admin.ts`, `with-timeout.ts`, `command-auth.ts`, `idempotency.ts`, `commandDb.ts`.
 
@@ -19,24 +19,26 @@ Shared client: `services/commandClient.ts` (Bearer JWT, `X-Idempotency-Key`, tim
 
 ## 2. Authorization (per route)
 
-**Common:** `requireCommandProfile(request)` reads `Authorization: Bearer <access_token>`, validates via `admin.auth.getUser(token)`, loads `profiles` (id, role, department, is_active, category_access). Inactive users → 403. No anonymous command execution.
+**Common:** `requireCommandProfile(request)` reads `Authorization: Bearer <access_token>`, validates via `admin.auth.getUser(token)` (bounded by `withTimeout`), loads `profiles` (same). Inactive users → 403.
 
 | Route | Assertion |
 |-------|-----------|
-| create-multi-offer | `assertCanCreateOffers` — `super_manager`, `department === 'sales'`, or `category_access` includes `sales` |
-| create-direct-booking | same as offers |
-| save-invoice | `assertCanSaveInvoice` — `super_manager`, `department` sales/accounting, `role === 'manager'`, or sales category_access |
-| confirm-payment | `assertCanConfirmPayment` — `super_manager`, sales/accounting dept, or sales category_access; plus `assertInvoiceExistsForConfirm` (proforma, exists) |
+| create-multi-offer | `assertCanCreateOffers` |
+| create-direct-booking | same |
+| save-invoice | `assertCanSaveInvoice` |
+| confirm-payment | `assertCanConfirmPayment` + `assertInvoiceExistsForConfirm` (unpaid invoice; document_type `proforma`, `invoice`, or null — not arbitrary types) |
 
-Service role is used **only after** these checks, for orchestration (RLS bypass where needed).
+Service role is used **only after** these checks.
 
 ---
 
 ## 3. Idempotency
 
-- **Ledger:** `command_idempotency` with `UNIQUE (user_id, command, idempotency_key)`. `resolveIdempotency` claims row, replays completed `result_json`, or returns conflict if key reused with different in-flight semantics. Failed rows allow retry with the same key.
-- **Payment proofs:** partial unique index on `(invoice_id, idempotency_key)` where `idempotency_key IS NOT NULL` for confirm-payment row-level dedup.
-- **Client-side stable keys:** Each critical flow (multi-offer, direct booking, invoice save, confirm payment) uses a `useRef<string | null>` that persists the idempotency key across retries within the same logical action. The key is only reset on success or when the modal/form is closed and reopened (new action). This means a retry after timeout reuses the same key, so the server either replays the completed result or re-claims a failed/stale row — preventing duplicate business objects.
+- **Ledger:** `command_idempotency` with `UNIQUE (user_id, command, idempotency_key)`. All ledger **insert/select/update** paths use `withTimeout` ([`api/_lib/idempotency.ts`](api/_lib/idempotency.ts)).
+- **Payment proofs:** partial unique index on `(invoice_id, idempotency_key)` when set.
+- **Invoice save (`AccountDashboard`):** `invoiceIdempotencyKeyRef` holds the key for the current modal session. It is **cleared on successful save** and **cleared when `InvoiceModal` closes or abandons** (`onClose` / `onAbandonStuck`), so a **new modal session gets a new key** while **retry after error/timeout without closing** reuses the same key.
+- **Confirm payment (modal):** stable ref per open session; reset on close/success.
+- **Dashboard quick actions (toggle paid, confirm proforma, retry proof):** each invocation uses a **new** random idempotency key (each click is a distinct logical action). Retry proof uses form field **`existingProofId`** so the server reuses the existing proof row instead of inserting another.
 
 ---
 
@@ -44,143 +46,96 @@ Service role is used **only after** these checks, for orchestration (RLS bypass 
 
 ### Invoice orchestration_status
 
-The `invoices.orchestration_status` column implements a real state machine:
+Same as before: `pending` → `uploaded` (if new PDF in this request) → `finalized` / `failed`. If finalize or post-finalize steps fail while `pendingInvoiceId` is still set, catch marks `failed`.
 
-- **pending** — row inserted/updated, no file uploaded yet
-- **uploaded** — PDF uploaded to storage, file_url written to row
-- **finalized** — all steps complete, invoice is authoritative
-- **failed** — a step after row creation failed; set on catch
+### Linked reservation after invoice save
 
-On failure after storage upload, storage object removal is attempted (`removeStoragePaths`). On failure after row creation, `orchestration_status` is set to `failed` so the partial state is visible and deterministic. Legacy rows (before migration) have `NULL` orchestration_status.
+After invoice finalize, `save-invoice` updates `reservations.status` to **`invoiced`** when the payload has a UUID `reservationId` or `bookingId` (client historically uses `bookingId` for reservation id). The client no longer calls `updateReservationInDB` in the save-invoice success path; it may **`loadReservations`** read-only refresh.
 
-### Confirm payment proof handling
+### Confirm payment
 
-- Proof row created → file uploaded → file_path written → RPC called → rpc_confirmed_at stamped → current proof set.
-- If upload fails: proof row exists but has no file_path (visible partial state).
-- If RPC fails after upload: proof row has file_path but no rpc_confirmed_at (visible partial state, retryable with same idempotency key).
-- If upload succeeds but file_path DB update fails: storage object is removed, error propagated.
-- Idempotency ledger records failure for observability.
+- Optional **`existingProofId`** (multipart field): load proof by id, verify `invoice_id`, then run upload (if any) + RPC path without inserting a second proof for the same retry.
+- Storage cleanup steps use bounded `withTimeout` where added.
 
 ---
 
 ## 5. Save lock + reload
 
-- Account dashboard uses **per-flow** saving flags/refs (multi-offer, direct booking, invoice, payment) so one hung flow does not block others.
-- Post-save `loadReservations` / `offersService.getAll` / related refreshes are **deferred** (`setTimeout(..., 0)`) so they do not extend the critical write await.
+- Per-flow flags: multi-offer, direct booking, invoice save. Confirm-payment modal uses local `uploading` state (no separate Dashboard ref).
+- Post-save / post-command reloads remain deferred (`setTimeout(..., 0)`).
 
 ---
 
-## 6. End-to-end flow coverage
+## 6. Unified payment confirmation (no AccountDashboard RPC bypass)
 
-### ConfirmPaymentModal
+**Single authoritative write path** for “mark paid / confirm booking” via server: `POST /api/commands/confirm-payment`.
 
-Fully migrated. The modal now:
-1. Gathers form data (proformaId, documentNumber, optional PDF)
-2. Sends a single `commandPostFormData` request to `/api/commands/confirm-payment`
-3. Handles success/error UI
-4. Triggers non-blocking `onConfirmed` callback
+| UI entry | Implementation |
+|----------|------------------|
+| `ConfirmPaymentModal` | `commandPostFormData` → confirm-payment |
+| Quick confirm proforma (`handleConfirmProformaPayment`) | `confirmProformaPaymentViaCommand` → same route |
+| Accounting **toggle status to Paid** (`toggleInvoiceStatus`) | same helper + `refreshDataAfterPaymentConfirmed` |
+| **Retry proof RPC** (`handleRetryProofConfirmation`) | same route + `existingProofId: proof.id` |
 
-The old browser-side chain (`paymentProofsService.create` → `uploadPaymentProofFile` → `update` → `markInvoicePaidAndConfirmBooking` → `setCurrentProof`) has been completely removed. The `supabase` and `markInvoicePaidAndConfirmBooking` dead references are gone.
-
-### Invoice save (handleSaveInvoice)
-
-Fully migrated. The client wrapper now:
-1. Gathers the invoice payload + optional PDF + optional offerItemId
-2. Sends a single command request to `/api/commands/save-invoice`
-3. Updates local state
-4. Schedules non-blocking refresh
-
-The old browser-side offerIdSource resolution (which did `offersService.getAll()`, `offersService.create()`, reservation matching) has been removed. The server route now handles offerIdSource verification and offer_items status update.
-
-### Multi-offer (handleSaveMultiApartmentOffer)
-
-Fully migrated. For send mode, lead creation and lead_id linking to offers is now handled server-side in `create-multi-offer`. The client no longer calls `createLeadFromRequest` or `offersService.updateLeadIdForOffers` for this flow.
-
-### Direct booking (handleSaveDirectBookingFromCalendar)
-
-Was already end-to-end. No changes needed beyond stable idempotency key.
+`AccountDashboard` **does not** import or call `markInvoicePaidAndConfirmBooking`. The function may still exist in [`services/supabaseService.ts`](services/supabaseService.ts) for legacy or tooling; production UI for these flows goes through the command route.
 
 ---
 
-## 7. Timeout coverage
+## 7. Invoice save — fully authoritative command
 
-All DB/RPC/storage operations in all four command routes are wrapped with `withTimeout`:
-- `create-multi-offer`: RPC, reservation insert, offer insert, lead dedup/insert, lead linking
-- `create-direct-booking`: reservation insert, RPC, offer insert
-- `save-invoice`: existing check, offerIdSource verify, insert/update pending, upload, mark uploaded, finalize, mark failed, offer_items update
-- `confirm-payment`: next doc number, existing proof check, proof insert, proof conflict recheck, upload, file metadata update, proof state check, booking lookup, RPC, rpc_confirmed_at stamp, current proof set/unset
+Client `handleSaveInvoice`: one `commandPostJson` / `commandPostFormData` to `save-invoice` only (no post-success reservation writes). Server owns offer_items update, reservation `invoiced` when applicable, PDF, orchestration_status.
 
 ---
 
-## 8. Forms / accessibility
+## 8. Timeout coverage (command stack)
 
-Touched components: `InvoiceModal`, `ConfirmPaymentModal`, `TaskCreateModal`, `AdminCalendar` (filters, new-task modal, task-detail assignee, chat message/file), `AccountDashboard` property search (`id="property-search"`, `name`, `aria-label`).
-
-Pattern: stable `id` + `htmlFor` on labels, or `aria-label` where no visible label; `name` where appropriate; task "type" pickers use accessible buttons with `aria-expanded` / `aria-haspopup` where implemented.
-
----
-
-## 9. Blank-tab / history
-
-**Preserved (popup-safe async):**
-
-- `BookingDetailsModal` — protocol + payment proof: `window.open('', '_blank')` then `openUebergabeProtocolFromBooking` / `openUrlInPreOpenedWindow`.
-- `SalesCalendar` — same protocol pattern.
-
-**Rationale:** Opening a real URL only after async work can be blocked by the popup blocker without a synchronous `window.open` in the click handler. Existing helpers already show an error if the auxiliary window is null.
-
-**Unchanged:** Flows that already have a URL at click time continue to use `window.open(url, '_blank', 'noopener,noreferrer')`.
+- **`requireCommandProfile` / `assertInvoiceExistsForConfirm`:** `withTimeout` on `getUser` and DB reads ([`api/_lib/command-auth.ts`](api/_lib/command-auth.ts)).
+- **`idempotency.ts`:** all operations wrapped ([`api/_lib/idempotency.ts`](api/_lib/idempotency.ts)).
+- **Routes:** DB/RPC/upload as before; **rollback `reservations.delete`** in `create-multi-offer` and `create-direct-booking` wrapped; **`save-invoice`** `removeStoragePaths` and catch-path invoice update wrapped; **confirm-payment** storage remove paths wrapped.
 
 ---
 
-## 10. Blob URL / PDF preview
+## 9. Forms / accessibility
 
-**Change:** Local blob PDF previews that used `<iframe src={blobUrl}>` or `<object data={blobUrl}>` were switched to **`<embed src={...} type="application/pdf">`** where applicable:
-
-- `InvoiceModal`
-- `AccountDashboard` — inventory invoice preview, property OCR, expense OCR, floor-plan/media staged PDF
-
-**Not changed:** Previews that use **remote/signed** URLs in iframes (e.g. document viewer tiles) — not blob-partitioning targets.
-
-**Verification:** `npm run build` passes. **Manual:** confirm PDF rendering, scroll/pagination, and console in Chrome (and ideally one other browser) after deploy.
+Unchanged from prior pass (InvoiceModal, ConfirmPaymentModal, TaskCreateModal, AdminCalendar, property search).
 
 ---
 
-## 11. Chrome Problems rollup
+## 10. Blank-tab / history
 
-- Blob partitioned-URL warnings: **hypothesis** mitigated via `<embed>` on blob PDF surfaces; measure in production DevTools.
-- Blank-tab "skippable history": **intentionally retained** for async protocol/proof opens to protect popup reliability.
-
----
-
-## 12. Build / deploy
-
-- `npm run build` passes.
-- `npx tsc --noEmit` shows zero errors in stabilization-related files. Pre-existing errors in unrelated files remain.
-- Apply migration `supabase/migrations/20260319120000_command_idempotency_and_doc_flow.sql` to the target Supabase project.
-- Ensure Vercel env has service role + anon/publishable keys as used by `api/_lib/supabase-admin.ts`.
+Unchanged — popup-safe patterns retained in `BookingDetailsModal` / `SalesCalendar`.
 
 ---
 
-## 13. Remaining risks / deferred items
+## 11. Blob URL / PDF preview
 
-- **Manual verification required:** PDF embeds, blank-tab flows, and all critical flows listed in the manual checklist (Section 14) must be tested in a browser after deploy.
-- **Pre-existing TypeScript errors:** ~60 pre-existing TS errors in `AccountDashboard.tsx`, `App.tsx`, `BookingDetailsModal.tsx`, `ChatModal.tsx`, and `api/protocols/*` are unrelated to stabilization work and were not introduced by this pass.
-- **Other browser-side Supabase writes:** Flows outside the four critical paths (e.g. `handleAddRequest` lead creation, offer select/deselect in multi-apartment UI, reservation status updates) remain client-side. These are lower-risk read-modify-write patterns, not multi-step orchestration chains.
+Unchanged — local blob PDFs use `<embed>` where applied; remote URLs may remain in `<iframe>`.
+
+---
+
+## 12. Build / typecheck
+
+- **`npm run build`:** passes (run after changes).
+- **`npx tsc --noEmit`:** **fails globally** due to large pre-existing debt (hundreds of errors across `AccountDashboard.tsx`, `App.tsx`, Next utils, protocols, etc.). **Stabilization-specific files** (`api/commands/*`, `api/_lib/command-auth.ts`, `api/_lib/idempotency.ts`, `api/commands/confirm-payment.ts`, `api/commands/save-invoice.ts`) do not introduce new errors in isolation; `AccountDashboard` still participates in global failures from unrelated lines.
+
+---
+
+## 13. Remaining caveats
+
+- **`offer_items` update** after proforma save: still **non-fatal** on the server (logged); invoice row is still finalized — rare inconsistency if DB update fails.
+- **Global `tsc`:** not green until broader repo typing is fixed.
+- **Manual QA:** required — see §14.
 
 ---
 
 ## 14. Manual verification checklist
 
-After deploy, verify each flow in a browser:
-
-- [ ] Create multi-apartment offer (draft mode)
-- [ ] Create multi-apartment offer (send mode — verify lead created and linked)
-- [ ] Add proforma with PDF
-- [ ] Add final invoice with PDF
-- [ ] Confirm payment with proof PDF
-- [ ] Confirm payment without proof file
-- [ ] Direct booking create from calendar
-- [ ] Retry after timeout/failure for each critical flow (verify same idempotency key reused, no duplicate rows)
-- [ ] Verify PDF embeds render correctly in Chrome
-- [ ] Verify blank-tab protocol/proof opens still work
+- [ ] Confirm payment from **ConfirmPaymentModal** (with / without PDF)
+- [ ] **Quick confirm** proforma (`handleConfirmProformaPayment`)
+- [ ] **Accounting invoices table:** toggle row to **Paid** (uses command route; proforma or final invoice with `offer_id`)
+- [ ] **Retry confirmation** on existing proof row (`existingProofId` path)
+- [ ] Save invoice / proforma end-to-end; reservation shows **invoiced** after save when `bookingId`/reservation link present
+- [ ] Retry invoice save after failure/timeout **without closing modal** → same idempotency key
+- [ ] Close invoice modal **without success**, reopen, save → **new** idempotency key
+- [ ] Multi-offer, direct booking, idempotent retries (no duplicate rows where ledger applies)
+- [ ] PDF embeds + blank-tab protocol flows (regression smoke)

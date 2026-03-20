@@ -1,5 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { getSupabaseAdmin } from './supabase-admin';
+import { getSupabaseAdmin } from './supabase-admin.js';
+import { withTimeout } from './with-timeout.js';
+
+const AUTH_DB_TIMEOUT_MS = 25_000;
 
 export type CommandProfile = {
   id: string;
@@ -35,17 +38,25 @@ export async function requireCommandProfile(request: Request): Promise<CommandPr
   }
 
   const admin = getSupabaseAdmin();
-  const { data: userData, error: userErr } = await admin.auth.getUser(token);
+  const { data: userData, error: userErr } = await withTimeout(
+    admin.auth.getUser(token),
+    AUTH_DB_TIMEOUT_MS,
+    'auth getUser'
+  );
   if (userErr || !userData?.user?.id) {
     throw new CommandAuthError(401, userErr?.message || 'Invalid or expired session');
   }
   const userId = userData.user.id;
 
-  const { data: profile, error: profErr } = await admin
-    .from('profiles')
-    .select('id, role, department, is_active, category_access')
-    .eq('id', userId)
-    .maybeSingle();
+  const { data: profile, error: profErr } = await withTimeout(
+    admin
+      .from('profiles')
+      .select('id, role, department, is_active, category_access')
+      .eq('id', userId)
+      .maybeSingle(),
+    AUTH_DB_TIMEOUT_MS,
+    'load profiles for command'
+  );
 
   if (profErr) {
     console.error('[command-auth] profiles load error', profErr.message);
@@ -101,22 +112,23 @@ export function assertCanConfirmPayment(profile: CommandProfile): void {
   throw new CommandAuthError(403, 'Access denied: cannot confirm payment for this invoice');
 }
 
-/** Optional: verify invoice row is proforma and unpaid before confirm — done in route. */
+/** Verify invoice exists, unpaid, and is a payable document type (proforma or final invoice). */
 
 export async function assertInvoiceExistsForConfirm(
   admin: SupabaseClient,
   proformaId: string
 ): Promise<{ id: string; status: string; document_type: string | null }> {
-  const { data, error } = await admin
-    .from('invoices')
-    .select('id, status, document_type')
-    .eq('id', proformaId)
-    .maybeSingle();
+  const { data, error } = await withTimeout(
+    admin.from('invoices').select('id, status, document_type').eq('id', proformaId).maybeSingle(),
+    AUTH_DB_TIMEOUT_MS,
+    'assertInvoiceExistsForConfirm'
+  );
   if (error || !data) {
     throw new CommandAuthError(404, 'Invoice not found');
   }
-  if (data.document_type !== 'proforma') {
-    throw new CommandAuthError(400, 'Only proforma invoices can be confirmed this way');
+  const dt = data.document_type;
+  if (dt != null && dt !== 'proforma' && dt !== 'invoice') {
+    throw new CommandAuthError(400, 'This document type cannot be confirmed via payment confirmation');
   }
   if (data.status === 'Paid') {
     throw new CommandAuthError(400, 'Invoice is already paid');

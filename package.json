@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "npm run check:api-esm",
     "build": "vite build",
+    "check:api-esm": "node scripts/check-api-esm-imports.mjs",
     "preview": "vite preview",
     "postinstall": "node scripts/copy-web-ifc-assets.js",
     "backfill:geocode-properties": "node scripts/geocode-missing-properties.js"
