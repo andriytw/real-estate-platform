@@ -1,7 +1,22 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { X, Upload } from 'lucide-react';
 import { InvoiceData } from '../types';
-import { commandPostFormData, CommandClientError } from '../services/commandClient';
+import {
+  commandPostFormData,
+  CommandClientError,
+  parseCommandApiErrorMessage,
+} from '../services/commandClient';
+
+function formatConfirmPaymentFailure(e: CommandClientError): string {
+  const base = parseCommandApiErrorMessage(e.body) || e.message;
+  if (!e.body || typeof e.body !== 'object') return base;
+  const o = e.body as Record<string, unknown>;
+  const bits: string[] = [base];
+  if (typeof o.step === 'string' && o.step) bits.push(`step: ${o.step}`);
+  if (typeof o.code === 'string' && o.code) bits.push(`code: ${o.code}`);
+  if (typeof o.details === 'string' && o.details && !base.includes(o.details)) bits.push(o.details);
+  return bits.join(' · ');
+}
 
 const CONFIRM_PAYMENT_PDF_INPUT_ID = 'confirm-payment-pdf-upload';
 const CONFIRM_PAYMENT_DOC_NUMBER_ID = 'confirm-payment-document-number';
@@ -74,17 +89,19 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
       await onConfirmed(bookingId);
       handleClose();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
       if (e instanceof CommandClientError) {
         if (e.kind === 'conflict') {
-          setError(msg);
+          setError(formatConfirmPaymentFailure(e));
           return;
         }
         if (e.kind === 'timeout') {
           setError('Request timed out. You can safely retry — the same operation will not be duplicated.');
           return;
         }
+        setError(`Failed to confirm payment. ${formatConfirmPaymentFailure(e)}`);
+        return;
       }
+      const msg = e instanceof Error ? e.message : String(e);
       setError(`Failed to confirm payment. ${msg}`);
     } finally {
       setUploading(false);

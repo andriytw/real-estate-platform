@@ -18,6 +18,20 @@ export class CommandClientError extends Error {
 const DEFAULT_TIMEOUT_MS = 90_000;
 const UPLOAD_TIMEOUT_MS = 120_000;
 
+/** Parse JSON error body from command routes (error may be string or wrongly-shaped). */
+export function parseCommandApiErrorMessage(parsed: unknown): string {
+  if (!parsed || typeof parsed !== 'object') return 'Request failed';
+  const p = parsed as Record<string, unknown>;
+  const err = p.error;
+  if (typeof err === 'string' && err.trim()) return err.trim();
+  if (err !== null && typeof err === 'object') {
+    const em = (err as { message?: unknown }).message;
+    if (typeof em === 'string' && em.trim()) return em.trim();
+  }
+  if (typeof p.details === 'string' && p.details.trim()) return p.details.trim();
+  return 'Request failed';
+}
+
 function classifyFetchError(e: unknown): CommandClientError {
   if (e instanceof CommandClientError) return e;
   const err = e as { name?: string; message?: string };
@@ -75,13 +89,13 @@ export async function commandPostJson<T = unknown>(
     if (res.status === 409) {
       throw new CommandClientError(
         'conflict',
-        (parsed as { error?: string })?.error || 'Conflict',
+        parseCommandApiErrorMessage(parsed) || 'Conflict',
         409,
         parsed
       );
     }
     if (!res.ok) {
-      const msg = (parsed as { error?: string })?.error || res.statusText || 'Request failed';
+      const msg = parseCommandApiErrorMessage(parsed) || res.statusText || 'Request failed';
       throw new CommandClientError('server', msg, res.status, parsed);
     }
     return parsed as T;
@@ -139,13 +153,13 @@ export async function commandPostFormData<T = unknown>(
     if (res.status === 409) {
       throw new CommandClientError(
         'conflict',
-        (parsed as { error?: string })?.error || 'Conflict',
+        parseCommandApiErrorMessage(parsed) || 'Conflict',
         409,
         parsed
       );
     }
     if (!res.ok) {
-      const msg = (parsed as { error?: string })?.error || res.statusText || 'Request failed';
+      const msg = parseCommandApiErrorMessage(parsed) || res.statusText || 'Request failed';
       throw new CommandClientError('server', msg, res.status, parsed);
     }
     return parsed as T;
