@@ -53,6 +53,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const isFacilityTask = task?.department === 'facility';
   const [chatMessages, setChatMessages] = useState<TaskChatMessageRow[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [chatLoadNonce, setChatLoadNonce] = useState(0);
   const [chatInput, setChatInput] = useState('');
   const [chatSending, setChatSending] = useState(false);
   const [chatUploading, setChatUploading] = useState(false);
@@ -86,10 +88,16 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     if (!isOpen || !task?.id || !isFacilityTask) {
       setChatMessages([]);
       setChatMyUserId(null);
+      setChatLoading(false);
+      setChatError(null);
       return;
     }
     let cancelled = false;
     setChatLoading(true);
+    setChatError(null);
+    if (import.meta.env.DEV) {
+      console.log('[TaskDetailModal] chat load:start', { taskId: task.id });
+    }
     (async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -98,13 +106,26 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         const rows = await getTaskChatMessages(task.id);
         if (cancelled) return;
         setChatMessages(rows);
+        if (import.meta.env.DEV) {
+          console.log('[TaskDetailModal] chat load:ok', { taskId: task.id, count: rows.length });
+        }
+        if (rows.length === 0 && !cancelled) {
+          if (import.meta.env.DEV) console.log('[TaskDetailModal] chat load:empty', { taskId: task.id });
+        }
       } catch (e) {
-        if (!cancelled) console.warn('Task chat fetch failed', e);
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!cancelled) {
+          console.error('[TaskDetailModal] chat load:error', { taskId: task.id, error: e });
+          setChatError(msg || 'Could not load messages');
+          setChatMessages([]);
+        }
       } finally {
-        if (!cancelled) setChatLoading(false);
+        setChatLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, task?.id, isFacilityTask]);
 
   useEffect(() => {
@@ -773,6 +794,21 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
                 {chatLoading && (
                   <div className="text-center text-gray-500 text-sm py-2">Loading messages…</div>
+                )}
+                {!chatLoading && chatError && (
+                  <div className="text-center text-red-400 text-sm py-3 px-2 border border-red-900/40 rounded-lg bg-red-950/20 space-y-2">
+                    <p>{chatError}</p>
+                    <button
+                      type="button"
+                      onClick={() => setChatLoadNonce((n) => n + 1)}
+                      className="text-xs font-medium text-emerald-400 hover:text-emerald-300 underline"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+                {!chatLoading && !chatError && chatMessages.length === 0 && (
+                  <div className="text-center text-gray-500 text-sm py-2">No messages yet.</div>
                 )}
                 {chatMessages.map((msg, idx) => {
                   const isMe = !!chatMyUserId && msg.senderId === chatMyUserId;

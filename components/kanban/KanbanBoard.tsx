@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { tasksService, workersService } from '../../services/supabaseService';
 import { CalendarEvent, Worker, KanbanColumn as IKanbanColumn, TaskStatus, CustomColumn } from '../../types';
@@ -10,7 +10,17 @@ import { Filter, Plus } from 'lucide-react';
 
 type DepartmentFilter = 'all' | 'facility' | 'accounting';
 
-const loggedUnresolvedIds = new Set<string>();
+/** Safety net if Supabase client hangs (not the primary fix). */
+const BOARD_FETCH_TIMEOUT_MS = 45_000;
+
+function withFetchTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`[KanbanBoard] ${label} timed out after ${BOARD_FETCH_TIMEOUT_MS}ms`)), BOARD_FETCH_TIMEOUT_MS)
+    ),
+  ]);
+}
 
 const KanbanBoard: React.FC = () => {
   const { worker: currentUser } = useWorker();
@@ -53,11 +63,89 @@ const KanbanBoard: React.FC = () => {
   const [isColumnCreateModalOpen, setIsColumnCreateModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<CalendarEvent | null>(null);
   const [isTaskDetailModalOpen, setIsTaskDetailModalOpen] = useState(false);
+  const [loadIssues, setLoadIssues] = useState<{ tasks?: string; workers?: string }>({});
+
+  const loadBoardData = useCallback(async () => {
+    setLoading(true);
+    setLoadIssues({});
+    console.log('[KanbanBoard] loadBoardData:start', { departmentFilter });
+
+    let tasksData: CalendarEvent[] = [];
+    let workersData: Worker[] = [];
+
+    try {
+      console.log('[KanbanBoard] tasks fetch:start');
+      try {
+        tasksData = await withFetchTimeout(tasksService.getAll(), 'tasks fetch');
+        console.log('[KanbanBoard] tasks fetch:ok', { count: tasksData.length });
+      } catch (e) {
+        console.error('[KanbanBoard] tasks fetch:error', e);
+        const msg = e instanceof Error ? e.message : String(e);
+        setLoadIssues((prev) => ({ ...prev, tasks: msg || 'Failed to load tasks' }));
+        tasksData = [];
+      }
+
+      console.log('[KanbanBoard] workers fetch:start');
+      try {
+        workersData = await withFetchTimeout(workersService.getAll(), 'workers fetch');
+        console.log('[KanbanBoard] workers fetch:ok', { count: workersData.length });
+      } catch (e) {
+        console.error('[KanbanBoard] workers fetch:error', e);
+        const msg = e instanceof Error ? e.message : String(e);
+        setLoadIssues((prev) => ({ ...prev, workers: msg || 'Failed to load workers' }));
+        workersData = [];
+      }
+
+      console.log('[KanbanBoard] transform:start');
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      let validTasks: CalendarEvent[] = [];
+      try {
+        validTasks = tasksData.filter((t) => uuidRegex.test(t.id));
+        console.log('[KanbanBoard] transform:ok', {
+          valid: validTasks.length,
+          dropped: tasksData.length - validTasks.length,
+        });
+      } catch (e) {
+        console.error('[KanbanBoard] transform:error', e);
+        validTasks = [];
+      }
+
+      setTasks(validTasks);
+      setWorkers(workersData);
+
+      if (workersData.length > 0) {
+        const validWorkerIds = new Set(workersData.map((w) => w.id));
+        setCustomColumns((prev) => {
+          console.log('[KanbanBoard] customColumns sanitize:start', { prevCount: prev.length });
+          const removedEntries = prev.filter(
+            (col) => col.workerId && !validWorkerIds.has(col.workerId)
+          );
+          const next = prev.filter((col) => !col.workerId || validWorkerIds.has(col.workerId));
+          const removed = prev.length - next.length;
+          console.log('[KanbanBoard] customColumns sanitize:ok', { removed, remaining: next.length });
+          if (removed > 0) {
+            console.info('[KanbanBoard] customColumns pruned stale workerIds', {
+              removedWorkerIds: removedEntries.map((c) => c.workerId).filter(Boolean),
+              removedColumnIds: removedEntries.map((c) => c.id),
+            });
+          }
+          return next;
+        });
+      } else {
+        console.log('[KanbanBoard] customColumns sanitize:skip', { reason: 'no workers loaded' });
+      }
+    } catch (error) {
+      console.error('[KanbanBoard] loadBoardData:unexpected', error);
+    } finally {
+      setLoading(false);
+      console.log('[KanbanBoard] loadBoardData:end');
+    }
+  }, [departmentFilter]);
 
   // Load Data
   useEffect(() => {
     loadBoardData();
-  }, [departmentFilter]); // Reload when filter changes (optional, could filter locally)
+  }, [loadBoardData]);
 
   // Listen for workers update event (when new user is created/updated)
   useEffect(() => {
@@ -70,7 +158,7 @@ const KanbanBoard: React.FC = () => {
     return () => {
       window.removeEventListener('workersUpdated', handleWorkersUpdated);
     };
-  }, []);
+  }, [loadBoardData]);
 
   // Listen for task updates from calendar
   useEffect(() => {
@@ -83,36 +171,27 @@ const KanbanBoard: React.FC = () => {
     return () => {
       window.removeEventListener('taskUpdated', handleTaskUpdated);
     };
-  }, []);
+  }, [loadBoardData]);
 
   // Save custom columns to localStorage
   useEffect(() => {
     localStorage.setItem('kanban_custom_columns', JSON.stringify(customColumns));
   }, [customColumns]);
 
-  const loadBoardData = async () => {
-    try {
-      const [tasksData, workersData] = await Promise.all([
-        tasksService.getAll(), // Fetch all tasks, then filter locally for columns
-        workersService.getAll()
-      ]);
-      
-      // Filter out tasks with invalid UUID format (temporary IDs)
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const validTasks = tasksData.filter(t => uuidRegex.test(t.id));
-      
-      if (validTasks.length !== tasksData.length) {
-        console.warn(`⚠️ Filtered out ${tasksData.length - validTasks.length} tasks with invalid IDs from Kanban board`);
-      }
-      
-      setTasks(validTasks);
-      setWorkers(workersData);
-    } catch (error) {
-      console.error('Error loading board:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  /** Derived columns: matches sanitized state after workers load; avoids rendering columns for unknown worker IDs. */
+  const effectiveCustomColumns = useMemo(() => {
+    if (workers.length === 0) return customColumns;
+    const valid = new Set(workers.map((w) => w.id));
+    return customColumns.filter((c) => !c.workerId || valid.has(c.workerId));
+  }, [customColumns, workers]);
+
+  const knownWorkerIds = useMemo(() => new Set(workers.map((w) => w.id)), [workers]);
+
+  const orphanAssignedTaskCount = useMemo(
+    () =>
+      tasks.filter((t) => t.workerId && !knownWorkerIds.has(t.workerId)).length,
+    [tasks, knownWorkerIds]
+  );
 
   // Open task detail modal when card is clicked
   const handleTaskClick = (task: CalendarEvent) => {
@@ -121,9 +200,8 @@ const KanbanBoard: React.FC = () => {
   };
 
   // Generate Columns - Inbox + custom columns
-  const { columns, unresolvedWorkerIds } = useMemo(() => {
+  const columns = useMemo(() => {
     const cols: IKanbanColumn[] = [];
-    const unresolved: string[] = [];
 
     const adminWorker = workers.find(w => w.role === 'super_manager');
     
@@ -147,7 +225,7 @@ const KanbanBoard: React.FC = () => {
       tasks: adminTasks
     });
 
-    customColumns.forEach(customCol => {
+    effectiveCustomColumns.forEach(customCol => {
       if (!customCol.workerId) {
         cols.push({
           id: customCol.id,
@@ -161,15 +239,12 @@ const KanbanBoard: React.FC = () => {
 
       const worker = workers.find(w => w.id === customCol.workerId);
       if (!worker) {
-        const suffix = String(customCol.workerId).slice(-8);
-        unresolved.push(customCol.workerId);
-        cols.push({
-          id: customCol.id,
-          title: `Missing profile · ${suffix}`,
-          type: 'worker',
-          workerId: customCol.workerId,
-          tasks: tasks.filter(t => t.workerId === customCol.workerId)
-        });
+        if (workers.length > 0 && customCol.workerId) {
+          console.warn(
+            '[KanbanBoard] Custom column references worker not in loaded list (data mismatch or race)',
+            { columnId: customCol.id, workerId: customCol.workerId }
+          );
+        }
         return;
       }
 
@@ -201,17 +276,8 @@ const KanbanBoard: React.FC = () => {
       });
     });
 
-    return { columns: cols, unresolvedWorkerIds: unresolved };
-  }, [tasks, workers, departmentFilter, customColumns]);
-
-  // Log unresolved workerIds once per id per session, after column derivation
-  useEffect(() => {
-    if (unresolvedWorkerIds.length === 0) return;
-    const newIds = unresolvedWorkerIds.filter(id => !loggedUnresolvedIds.has(id));
-    if (newIds.length === 0) return;
-    newIds.forEach(id => loggedUnresolvedIds.add(id));
-    console.warn('[FacilityKanban] unresolved refs', { ids: newIds });
-  }, [unresolvedWorkerIds]);
+    return cols;
+  }, [tasks, workers, departmentFilter, effectiveCustomColumns]);
 
   // Handle Drag End
   const onDragEnd = async (result: DropResult) => {
@@ -461,6 +527,32 @@ const KanbanBoard: React.FC = () => {
         </div>
       </div>
 
+      {(loadIssues.tasks || loadIssues.workers) && (
+        <div
+          className="border-b border-amber-900/50 bg-amber-950/30 px-4 py-2 text-amber-100 text-sm"
+          role="status"
+        >
+          <p className="font-medium text-amber-200">Board data could not be loaded completely</p>
+          <ul className="mt-1 list-disc list-inside text-xs text-amber-100/90 space-y-0.5">
+            {loadIssues.tasks && <li>Tasks: {loadIssues.tasks}</li>}
+            {loadIssues.workers && <li>Workers: {loadIssues.workers}</li>}
+          </ul>
+          <p className="mt-1 text-[11px] text-amber-200/70">
+            Fix connectivity or permissions and refresh. Empty sections below reflect missing data, not an idle board.
+          </p>
+        </div>
+      )}
+
+      {orphanAssignedTaskCount > 0 && (
+        <div
+          className="border-b border-amber-900/40 bg-amber-950/20 px-4 py-2 text-amber-100/95 text-xs"
+          role="status"
+        >
+          {orphanAssignedTaskCount} task(s) are assigned to a worker ID that is not in the current worker list. They are
+          shown in <span className="font-semibold">Inbox</span> so they are not lost — reassign or restore the worker.
+        </div>
+      )}
+
       {/* Board Area */}
       <DragDropContext onDragEnd={onDragEnd}>
         <div className="flex-1 overflow-x-auto overflow-y-hidden">
@@ -516,7 +608,7 @@ const KanbanBoard: React.FC = () => {
         onClose={() => setIsColumnCreateModalOpen(false)}
         onColumnCreated={handleColumnCreated}
         workers={workers}
-        existingColumnIds={customColumns}
+        existingColumnIds={effectiveCustomColumns}
       />
 
       {/* Task Detail Modal */}

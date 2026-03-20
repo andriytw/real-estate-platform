@@ -7,11 +7,20 @@ import { updateBookingStatusFromTask } from '../bookingUtils';
 import { workersService, tasksService, getTaskChatMessages, insertTaskChatMessage, getTaskAttachmentSignedUrl, type TaskChatAttachment } from '../services/supabaseService';
 import { supabase } from '../utils/supabase/client';
 import { ACCOUNTING_TASK_TYPES, getTaskColor } from '../utils/taskColors';
-import { filterAssignableWorkers } from './kanban/assigneeUtils';
+import { filterAssignableWorkers, isWorkerAssignableByTaskDepartment } from './kanban/assigneeUtils';
 
 type ViewMode = 'month' | 'week' | 'day';
 
 const TASK_TYPES: TaskType[] = ['Einzug', 'Auszug', 'Putzen', 'Reklamation', 'Arbeit nach plan', 'Zeit Abgabe von wohnung', 'Zählerstand'];
+
+function resolveAssigneeTaskDepartment(
+  taskDepartment: CalendarEvent['department'] | undefined,
+  isAccountingCalendar: boolean
+): 'facility' | 'accounting' {
+  if (taskDepartment === 'facility') return 'facility';
+  if (taskDepartment === 'accounting') return 'accounting';
+  return isAccountingCalendar ? 'accounting' : 'facility';
+}
 
 const FACILITY_SIGNED_URL_EXPIRY_SEC = 300;
 const FACILITY_CACHE_REFRESH_BEFORE_MS = 5000;
@@ -130,6 +139,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   const [taskMessages, setTaskMessages] = useState<TaskMessage[]>([]);
   const [chatInputValue, setChatInputValue] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
   const [chatMyUserId, setChatMyUserId] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
@@ -189,6 +199,45 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     isAccountingCalendar
       ? (event.status === 'completed' || event.status === 'verified' || event.status === 'archived')
       : getTaskBucket(event) === 'completed';
+
+  const newTaskInferredDepartment = useMemo((): CalendarEvent['department'] | undefined => {
+    if (isAccountingCalendar) return 'accounting';
+    return TASK_TYPES.includes(newTaskType) ? 'facility' : 'accounting';
+  }, [isAccountingCalendar, newTaskType]);
+
+  const newTaskAssigneeOptions = useMemo(() => {
+    const base = filterAssignableWorkers(workers);
+    const dept = resolveAssigneeTaskDepartment(newTaskInferredDepartment, isAccountingCalendar);
+    return base.filter((w) => isWorkerAssignableByTaskDepartment(w, dept));
+  }, [workers, newTaskInferredDepartment, isAccountingCalendar]);
+
+  const viewEventResolvedAssigneeDept = useMemo(() => {
+    if (!viewEvent) return null;
+    return resolveAssigneeTaskDepartment(viewEvent.department, isAccountingCalendar);
+  }, [viewEvent, isAccountingCalendar]);
+
+  const viewEventAssigneeOptions = useMemo(() => {
+    if (!viewEvent || viewEventResolvedAssigneeDept == null) return [];
+    const base = filterAssignableWorkers(workers);
+    return base.filter((w) => isWorkerAssignableByTaskDepartment(w, viewEventResolvedAssigneeDept));
+  }, [workers, viewEvent, viewEventResolvedAssigneeDept]);
+
+  const viewEventAssigneeUsesFallbackDept =
+    !!viewEvent &&
+    viewEvent.department !== 'facility' &&
+    viewEvent.department !== 'accounting';
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !viewEvent || viewEventResolvedAssigneeDept == null) return;
+    const base = filterAssignableWorkers(workers);
+    console.info('[AdminCalendar][assignee] worker options (detail)', {
+      eventId: viewEvent.id,
+      taskDepartment: viewEvent.department,
+      resolvedDept: viewEventResolvedAssigneeDept,
+      rawAssignable: base.length,
+      afterFilter: viewEventAssigneeOptions.length,
+    });
+  }, [viewEvent?.id, viewEvent?.department, workers, viewEventResolvedAssigneeDept, viewEventAssigneeOptions.length]);
 
   // Single source of truth for Facility list panel and CSV export (Open and Completed use same logic)
   const getVisibleFacilityTasks = useMemo(() => {
@@ -405,24 +454,37 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     if (!viewEvent) {
       setTaskMessages([]);
       setChatMyUserId(null);
+      setChatLoading(false);
+      setChatError(null);
       return;
     }
     if (isAccountingCalendar) {
+      setChatLoading(false);
+      setChatError(null);
       setTaskMessages([
         { id: '1', sender: 'worker', senderId: '', text: 'Task received. I will be there on time.', timestamp: '08:30' },
         ...(viewEvent.hasUnreadMessage ? [{ id: '2', sender: 'worker', senderId: '', text: 'Urgent update: I need access to the basement key.', timestamp: '09:15' } as TaskMessage] : [])
       ]);
       return;
     }
-    if (!viewEvent.id) return;
+    if (!viewEvent.id) {
+      setTaskMessages([]);
+      setChatLoading(false);
+      setChatError(null);
+      return;
+    }
     let cancelled = false;
     setChatLoading(true);
+    setChatError(null);
+    if (import.meta.env.DEV) {
+      console.log('[AdminCalendar] chat load:start', { taskId: viewEvent.id });
+    }
     (async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (cancelled) return;
         if (user?.id) setChatMyUserId(user.id);
-        const rows = await getTaskChatMessages(viewEvent!.id);
+        const rows = await getTaskChatMessages(viewEvent.id);
         if (cancelled) return;
         const myUid = user?.id ?? null;
         const mapped: TaskMessage[] = rows.map((r) => ({
@@ -434,10 +496,18 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
           attachments: r.attachments ?? [],
         }));
         setTaskMessages(mapped);
+        if (import.meta.env.DEV) {
+          console.log('[AdminCalendar] chat load:ok', { taskId: viewEvent.id, count: mapped.length });
+        }
       } catch (e) {
-        if (!cancelled) console.warn('Task chat fetch failed', e);
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!cancelled) {
+          console.error('[AdminCalendar] chat load:error', { taskId: viewEvent.id, error: e });
+          setChatError(msg || 'Could not load messages');
+          setTaskMessages([]);
+        }
       } finally {
-        if (!cancelled) setChatLoading(false);
+        setChatLoading(false);
       }
     })();
     return () => { cancelled = true; };
@@ -1534,13 +1604,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                            disabled={loadingWorkers}
                          >
                            <option value="">Unassigned</option>
-                           {filterAssignableWorkers(workers)
-                             .filter(w => 
-                               isAccountingCalendar 
-                                 ? (w.department === 'accounting' || w.role === 'super_manager' || w.role === 'manager')
-                                 : (w.department === 'facility' || w.role === 'super_manager' || w.role === 'manager')
-                             )
-                             .map(worker => (
+                           {newTaskAssigneeOptions.map(worker => (
                               <option key={worker.id} value={worker.id}>
                                 {worker.name} {worker.role === 'manager' ? '(Manager)' : worker.role === 'super_manager' ? '(Super Admin)' : ''}
                               </option>
@@ -2034,13 +2098,16 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                   className="w-full appearance-none bg-[#0D1117] border border-gray-700 hover:border-gray-500 rounded-lg py-2 pl-10 pr-8 text-sm text-white focus:border-emerald-500 focus:outline-none cursor-pointer transition-colors"
                               >
                                   <option value="">Unassigned</option>
-                                  {filterAssignableWorkers(workers)
-                                    .filter(w => 
-                                      isAccountingCalendar 
-                                        ? (w.department === 'accounting' || w.role === 'super_manager' || w.role === 'manager')
-                                        : (w.department === 'facility' || w.role === 'super_manager' || w.role === 'manager')
-                                    )
-                                    .map(worker => (
+                                  {viewEvent.workerId &&
+                                    !viewEventAssigneeOptions.some((w) => w.id === viewEvent.workerId) && (
+                                      <option value={viewEvent.workerId}>
+                                        {workers.find((w) => w.id === viewEvent.workerId)?.name ??
+                                          viewEvent.assignee ??
+                                          viewEvent.workerId}{' '}
+                                        (current — outside filtered list)
+                                      </option>
+                                    )}
+                                  {viewEventAssigneeOptions.map(worker => (
                                       <option key={worker.id} value={worker.id}>
                                         {worker.name} {worker.role === 'manager' ? '(Manager)' : worker.role === 'super_manager' ? '(Super Admin)' : ''}
                                       </option>
@@ -2048,6 +2115,20 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                               </select>
                               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none group-hover:text-white transition-colors" />
                            </div>
+                           {viewEventAssigneeUsesFallbackDept && viewEventResolvedAssigneeDept != null && (
+                             <p className="mt-1.5 text-[11px] text-amber-400/90 leading-snug">
+                               Task has no <span className="font-semibold">facility</span> or{' '}
+                               <span className="font-semibold">accounting</span> department on record. Assignee list uses this
+                               calendar&apos;s default ({viewEventResolvedAssigneeDept}).
+                             </p>
+                           )}
+                           {viewEvent.workerId &&
+                             !viewEventAssigneeOptions.some((w) => w.id === viewEvent.workerId) && (
+                               <p className="mt-1.5 text-[11px] text-amber-400/90 leading-snug">
+                                 Current assignee is not in the filtered list (department rules). Save a new assignee to align
+                                 with policy, or fix the task&apos;s department in data.
+                               </p>
+                             )}
                         </div>
 
                         <div>
@@ -2079,6 +2160,14 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                      <div className="flex-1 overflow-y-auto p-4 space-y-4">
                         {!isAccountingCalendar && chatLoading && (
                            <div className="flex justify-center py-4 text-gray-500 text-sm">Loading messages…</div>
+                        )}
+                        {!isAccountingCalendar && !chatLoading && chatError && (
+                           <div className="text-center text-red-400 text-sm py-4 px-2 border border-red-900/40 rounded-lg bg-red-950/20">
+                              {chatError}
+                           </div>
+                        )}
+                        {!isAccountingCalendar && !chatLoading && !chatError && taskMessages.length === 0 && (
+                           <div className="flex justify-center py-4 text-gray-500 text-sm">No messages yet.</div>
                         )}
                         {taskMessages.map((msg, idx) => {
                            const isMe = !!chatMyUserId && msg.senderId === chatMyUserId;
