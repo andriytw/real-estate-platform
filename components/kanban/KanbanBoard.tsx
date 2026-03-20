@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { tasksService, workersService } from '../../services/supabaseService';
 import { CalendarEvent, Worker, KanbanColumn as IKanbanColumn, TaskStatus, CustomColumn } from '../../types';
@@ -9,6 +9,8 @@ import { useWorker } from '../../contexts/WorkerContext';
 import { Filter, Plus } from 'lucide-react';
 
 type DepartmentFilter = 'all' | 'facility' | 'accounting';
+
+const loggedUnresolvedIds = new Set<string>();
 
 const KanbanBoard: React.FC = () => {
   const { worker: currentUser } = useWorker();
@@ -90,7 +92,6 @@ const KanbanBoard: React.FC = () => {
 
   const loadBoardData = async () => {
     try {
-      setLoading(true);
       const [tasksData, workersData] = await Promise.all([
         tasksService.getAll(), // Fetch all tasks, then filter locally for columns
         workersService.getAll()
@@ -118,9 +119,6 @@ const KanbanBoard: React.FC = () => {
     setSelectedTask(task);
     setIsTaskDetailModalOpen(true);
   };
-
-  // Session-level dedup for unresolved workerId warnings
-  const loggedUnresolvedRef = useRef<Set<string>>(new Set());
 
   // Generate Columns - Inbox + custom columns
   const { columns, unresolvedWorkerIds } = useMemo(() => {
@@ -209,9 +207,9 @@ const KanbanBoard: React.FC = () => {
   // Log unresolved workerIds once per id per session, after column derivation
   useEffect(() => {
     if (unresolvedWorkerIds.length === 0) return;
-    const newIds = unresolvedWorkerIds.filter(id => !loggedUnresolvedRef.current.has(id));
+    const newIds = unresolvedWorkerIds.filter(id => !loggedUnresolvedIds.has(id));
     if (newIds.length === 0) return;
-    newIds.forEach(id => loggedUnresolvedRef.current.add(id));
+    newIds.forEach(id => loggedUnresolvedIds.add(id));
     console.warn('[FacilityKanban] unresolved refs', { ids: newIds });
   }, [unresolvedWorkerIds]);
 
