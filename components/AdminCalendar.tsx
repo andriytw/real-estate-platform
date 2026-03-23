@@ -7,8 +7,10 @@ import { updateBookingStatusFromTask } from '../bookingUtils';
 import { workersService, tasksService, getTaskChatMessages, insertTaskChatMessage, getTaskAttachmentSignedUrl, type TaskChatAttachment } from '../services/supabaseService';
 import { supabase } from '../utils/supabase/client';
 import { ACCOUNTING_TASK_TYPES, getTaskColor } from '../utils/taskColors';
-import { filterAssignableWorkers } from './kanban/assigneeUtils';
+import { filterAssignableWorkers, getCalendarEventAssigneeId } from './kanban/assigneeUtils';
 import { workerRoleParenUk } from '../lib/workerRoleLabels';
+import { useWorker } from '../contexts/WorkerContext';
+import { effectiveDepartmentScope } from '../lib/permissions';
 
 type ViewMode = 'month' | 'week' | 'day';
 
@@ -73,6 +75,7 @@ function formatPropertyLabelAddressFirst(prop: Property): string {
 }
 
 const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpdateEvent, showLegend = true, properties, categories, onUpdateBookingStatus }) => {
+  const { worker: currentWorker } = useWorker();
   // Initialize with current date
   const now = new Date();
   const [currentMonthIdx, setCurrentMonthIdx] = useState(now.getMonth());
@@ -199,15 +202,42 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     return filterAssignableWorkers(workers);
   }, [workers, viewEvent]);
 
+  const detailAssigneeId = useMemo(
+    () => (viewEvent ? getCalendarEventAssigneeId(viewEvent) : ''),
+    [viewEvent?.id, viewEvent?.workerId, viewEvent?.assignedWorkerId]
+  );
+
   useEffect(() => {
     if (!import.meta.env.DEV || !viewEvent) return;
-    const base = filterAssignableWorkers(workers);
-    console.info('[AdminCalendar][assignee] worker options (detail)', {
+    const eligible = filterAssignableWorkers(workers);
+    const inPool = detailAssigneeId !== '' && eligible.some((w) => w.id === detailAssigneeId);
+    const fallbackInjected = detailAssigneeId !== '' && !inPool;
+    const disabledBecauseDone = isDoneTask(viewEvent);
+    const disabledBecauseLoading = loadingWorkers;
+    console.info('[AdminCalendar][assignee][detail]', {
+      role: currentWorker?.role,
+      departmentScope: currentWorker?.departmentScope,
+      effectiveScope: currentWorker ? effectiveDepartmentScope(currentWorker) : null,
       eventId: viewEvent.id,
-      taskDepartment: viewEvent.department,
-      eligibleCount: base.length,
+      workerId: viewEvent.workerId,
+      assignedWorkerId: viewEvent.assignedWorkerId,
+      detailAssigneeId,
+      workersLoadedCount: workers.length,
+      filteredAssigneeOptionsCount: eligible.length,
+      fallbackInjected,
+      selectDisabled: disabledBecauseDone || disabledBecauseLoading,
+      disabledBecauseDone,
+      disabledBecauseLoadingWorkers: disabledBecauseLoading,
     });
-  }, [viewEvent?.id, viewEvent?.department, workers, viewEventAssigneeOptions.length]);
+  }, [
+    viewEvent,
+    workers,
+    detailAssigneeId,
+    viewEventAssigneeOptions.length,
+    currentWorker?.role,
+    currentWorker?.departmentScope,
+    loadingWorkers,
+  ]);
 
   // Single source of truth for Facility list panel and CSV export (Open and Completed use same logic)
   const getVisibleFacilityTasks = useMemo(() => {
@@ -1916,7 +1946,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                               <select 
                                   id="admin-cal-detail-assignee"
                                   name="admin-cal-detail-assignee"
-                                  value={viewEvent.workerId || ''}
+                                  value={detailAssigneeId}
                                   onChange={async (e) => {
                                       const val = e.target.value;
                                       const newWorkerId = val === '' ? undefined : val;
@@ -2068,12 +2098,12 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                   className="w-full appearance-none bg-[#0D1117] border border-gray-700 hover:border-gray-500 rounded-lg py-2 pl-10 pr-8 text-sm text-white focus:border-emerald-500 focus:outline-none cursor-pointer transition-colors"
                               >
                                   <option value="">Unassigned</option>
-                                  {viewEvent.workerId &&
-                                    !viewEventAssigneeOptions.some((w) => w.id === viewEvent.workerId) && (
-                                      <option value={viewEvent.workerId}>
-                                        {workers.find((w) => w.id === viewEvent.workerId)?.name ??
+                                  {detailAssigneeId &&
+                                    !viewEventAssigneeOptions.some((w) => w.id === detailAssigneeId) && (
+                                      <option value={detailAssigneeId}>
+                                        {workers.find((w) => w.id === detailAssigneeId)?.name ??
                                           viewEvent.assignee ??
-                                          viewEvent.workerId}{' '}
+                                          detailAssigneeId}{' '}
                                         (current — not in assignee pool)
                                       </option>
                                     )}
@@ -2085,8 +2115,8 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                               </select>
                               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none group-hover:text-white transition-colors" />
                            </div>
-                           {viewEvent.workerId &&
-                             !viewEventAssigneeOptions.some((w) => w.id === viewEvent.workerId) && (
+                           {detailAssigneeId &&
+                             !viewEventAssigneeOptions.some((w) => w.id === detailAssigneeId) && (
                                <p className="mt-1.5 text-[11px] text-amber-400/90 leading-snug">
                                  Current assignee is outside the global assignee pool (inactive or task-assignee flag off). Pick
                                  another assignee or update the user&apos;s profile.
