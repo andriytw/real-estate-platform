@@ -705,7 +705,67 @@ export const usersService = {
     return workersService.getAll();
   },
 
-  // Create new user without sending invitation
+  // Main admin create flow: create auth user with explicit password + profile.
+  async createUserWithPassword(userData: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    phone?: string;
+    role: 'super_manager' | 'manager' | 'worker';
+    departmentScope: DepartmentScope;
+    canManageUsers?: boolean;
+    canBeTaskAssignee?: boolean;
+    isActive?: boolean;
+    password: string;
+  }): Promise<Worker> {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const authToken = session?.access_token;
+    if (!authToken) {
+      throw new Error('Потрібна авторизація адміністратора');
+    }
+
+    const functionsUrl = `${supabaseUrl}/functions/v1/admin-create-user`;
+    const response = await fetch(functionsUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`,
+        'apikey': anonKey,
+      },
+      body: JSON.stringify({
+        email: userData.email,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        phone: userData.phone ?? null,
+        role: userData.role,
+        departmentScope: userData.departmentScope,
+        canManageUsers: userData.canManageUsers ?? false,
+        canBeTaskAssignee: userData.canBeTaskAssignee !== false,
+        isActive: userData.isActive !== false,
+        password: userData.password,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `Failed to create user: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    if (!result.success || !result.user?.id) {
+      throw new Error('Failed to create user: Invalid response from server');
+    }
+
+    const refetched = await workersService.getById(result.user.id);
+    if (refetched) return refetched;
+    throw new Error('User created but profile could not be loaded');
+  },
+
+  /** @deprecated Legacy transitional path. UserManagement create flow now uses createUserWithPassword(). */
   async createWithoutInvite(userData: {
     email: string;
     firstName: string;

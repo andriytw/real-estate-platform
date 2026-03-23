@@ -163,6 +163,8 @@ serve(async (req) => {
         const adminApiUrl = `${baseUrl}/auth/v1/admin/users`;
         
         if (skipInvite) {
+          // LEGACY / TRANSITIONAL: random-password create without invite email.
+          // Main admin UI now uses the dedicated `admin-create-user` edge function with explicit password + JWT authz.
           // Create user without sending invitation using JS SDK (works with both new sb_secret and legacy JWT keys)
           console.log('👤 Creating user without invitation:', email);
           console.log('📝 User metadata:', userMetadata);

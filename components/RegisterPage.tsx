@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { UserPlus, Mail, Lock, User, Building, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../utils/supabase/client';
 import { useWorker } from '../contexts/WorkerContext';
+import { workerRoleLabelUk } from '../lib/workerRoleLabels';
 
 interface RegisterPageProps {
   onRegisterSuccess?: () => void;
@@ -184,7 +185,7 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onRegisterSuccess }) => {
             {invitation && (
               <div className="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
                 <p className="text-sm text-emerald-400">
-                  Запрошення: {invitation.department} - {invitation.role}
+                  Запрошення: {invitation.department} — {workerRoleLabelUk(invitation.role)}
                 </p>
               </div>
             )}

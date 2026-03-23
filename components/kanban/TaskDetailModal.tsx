@@ -5,6 +5,7 @@ import { CalendarEvent, TaskStatus, Property, Worker } from '../../types';
 import { getTaskColor } from '../../utils/taskColors';
 import { supabase } from '../../utils/supabase/client';
 import { useWorker } from '../../contexts/WorkerContext';
+import { workerRoleParenUk } from '../../lib/workerRoleLabels';
 
 const TASK_MEDIA_BUCKET = 'task-media';
 const SIGNED_URL_EXPIRY_SEC = 300;
@@ -591,7 +592,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               <User className="w-4 h-4" />
               <span>{assignee?.name || task.assignee || ((task.workerId ?? task.assignedWorkerId) ? '—' : 'Unassigned')}</span>
               {assignee?.role && (
-                <span className="text-xs text-gray-500">({assignee.role})</span>
+                <span className="text-xs text-gray-500">{workerRoleParenUk(assignee.role)}</span>
               )}
             </div>
 

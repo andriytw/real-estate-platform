@@ -8,6 +8,7 @@ import { workersService, tasksService, getTaskChatMessages, insertTaskChatMessag
 import { supabase } from '../utils/supabase/client';
 import { ACCOUNTING_TASK_TYPES, getTaskColor } from '../utils/taskColors';
 import { filterAssignableWorkers, isEligibleTaskAssignee } from './kanban/assigneeUtils';
+import { workerRoleParenUk } from '../lib/workerRoleLabels';
 
 type ViewMode = 'month' | 'week' | 'day';
 
@@ -1578,7 +1579,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                            <option value="">Unassigned</option>
                            {newTaskAssigneeOptions.map(worker => (
                               <option key={worker.id} value={worker.id}>
-                                {worker.name} {worker.role === 'manager' ? '(Manager)' : worker.role === 'super_manager' ? '(Super Admin)' : ''}
+                                {worker.name} {workerRoleParenUk(worker.role)}
                               </option>
                            ))}
                          </select>
@@ -2081,7 +2082,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                     )}
                                   {viewEventAssigneeOptions.map(worker => (
                                       <option key={worker.id} value={worker.id}>
-                                        {worker.name} {worker.role === 'manager' ? '(Manager)' : worker.role === 'super_manager' ? '(Super Admin)' : ''}
+                                        {worker.name} {workerRoleParenUk(worker.role)}
                                       </option>
                                   ))}
                               </select>

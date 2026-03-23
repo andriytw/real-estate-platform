@@ -94,7 +94,7 @@ const WorkerSelectDropdown: React.FC<WorkerSelectDropdownProps> = ({
           {leadership.length > 0 && (
             <div className="p-2">
               <div className="px-2 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Managers
+                Менеджери
               </div>
               {leadership.map(renderOption)}
             </div>
@@ -103,7 +103,7 @@ const WorkerSelectDropdown: React.FC<WorkerSelectDropdownProps> = ({
           {team.length > 0 && (
             <div className={`p-2 ${leadership.length > 0 ? 'border-t border-gray-700' : ''}`}>
               <div className="px-2 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Workers
+                Працівники
               </div>
               {team.map(renderOption)}
             </div>

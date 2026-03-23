@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { usersService } from '../../services/supabaseService';
 import type { Worker, DepartmentScope } from '../../types';
+import { workerRoleLabelUk } from '../../lib/workerRoleLabels';
+import { useWorker } from '../../contexts/WorkerContext';
+import { canManageUsers } from '../../lib/permissions';
 import { Plus, Trash2, Save, X, User, Edit, Send, Loader2, CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react';
 
 const DEPARTMENT_SCOPE_OPTIONS: { value: DepartmentScope; label: string }[] = [
@@ -21,6 +24,7 @@ function formatScopeDisplay(w: Worker): string {
 }
 
 const UserManagement: React.FC = () => {
+  const { worker: currentUser } = useWorker();
   const [users, setUsers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<string | null>(null);
@@ -34,10 +38,14 @@ const UserManagement: React.FC = () => {
     firstName: '',
     lastName: '',
     email: '',
+    phone: '',
     role: 'worker' as 'super_manager' | 'manager' | 'worker',
     departmentScope: 'facility' as DepartmentScope,
     canManageUsers: false,
     canBeTaskAssignee: true,
+    isActive: true,
+    password: '',
+    confirmPassword: '',
   });
 
   useEffect(() => {
@@ -188,16 +196,35 @@ const UserManagement: React.FC = () => {
       setTimeout(() => setMessage(null), 3000);
       return;
     }
+    if (!newUser.password) {
+      setMessage({ type: 'error', text: 'Вкажіть пароль' });
+      setTimeout(() => setMessage(null), 3000);
+      return;
+    }
+    if (newUser.password !== newUser.confirmPassword) {
+      setMessage({ type: 'error', text: 'Підтвердження пароля не співпадає' });
+      setTimeout(() => setMessage(null), 3000);
+      return;
+    }
+    // Reasonable minimum rule for admin-created initial passwords.
+    if (newUser.password.length < 8 || !/[A-Za-z]/.test(newUser.password) || !/\d/.test(newUser.password)) {
+      setMessage({ type: 'error', text: 'Пароль: мінімум 8 символів, хоча б 1 літера та 1 цифра' });
+      setTimeout(() => setMessage(null), 3000);
+      return;
+    }
 
     try {
-      await usersService.createWithoutInvite({
+      await usersService.createUserWithPassword({
         email: newUser.email,
         firstName: newUser.firstName,
         lastName: newUser.lastName,
+        phone: newUser.phone || undefined,
         role: newUser.role,
         departmentScope: newUser.departmentScope,
         canManageUsers: newUser.canManageUsers,
         canBeTaskAssignee: newUser.canBeTaskAssignee,
+        isActive: newUser.isActive,
+        password: newUser.password,
       });
       await loadUsers();
       setIsCreateModalOpen(false);
@@ -205,14 +232,18 @@ const UserManagement: React.FC = () => {
         firstName: '',
         lastName: '',
         email: '',
+        phone: '',
         role: 'worker',
         departmentScope: 'facility',
         canManageUsers: false,
         canBeTaskAssignee: true,
+        isActive: true,
+        password: '',
+        confirmPassword: '',
       });
       setMessage({
         type: 'success',
-        text: 'Користувача створено. Можна надіслати запрошення зі списку.',
+        text: 'Користувача створено. Вхід доступний одразу через email + пароль.',
       });
       setTimeout(() => setMessage(null), 5000);
     } catch (error: unknown) {
@@ -228,6 +259,16 @@ const UserManagement: React.FC = () => {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-gray-400">Завантаження користувачів...</div>
+      </div>
+    );
+  }
+
+  if (!currentUser || !canManageUsers(currentUser)) {
+    return (
+      <div className="p-6">
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-300 text-sm">
+          Недостатньо прав для управління користувачами.
+        </div>
       </div>
     );
   }
@@ -308,11 +349,11 @@ const UserManagement: React.FC = () => {
                       >
                         <option value="worker">Працівник</option>
                         <option value="manager">Менеджер</option>
-                        <option value="super_manager">Адмін</option>
+                        <option value="super_manager">Супер-менеджер</option>
                       </select>
                     ) : (
                       <span className="text-sm text-gray-300">
-                        {u.role === 'super_manager' ? 'Адмін' : u.role === 'manager' ? 'Менеджер' : 'Працівник'}
+                        {workerRoleLabelUk(u.role)}
                       </span>
                     )}
                   </td>
@@ -411,7 +452,7 @@ const UserManagement: React.FC = () => {
                               onClick={() => handleResendInvite(u.id, u.email)}
                               disabled={resendingInvite.has(u.id)}
                               className="p-1.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 disabled:opacity-50"
-                              title="Запрошення"
+                              title="Надіслати запрошення (за потреби)"
                             >
                               {resendingInvite.has(u.id) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                             </button>
@@ -492,6 +533,15 @@ const UserManagement: React.FC = () => {
                 />
               </div>
               <div>
+                <label className="block text-xs font-medium text-gray-400 mb-2">Телефон (опційно)</label>
+                <input
+                  type="text"
+                  value={newUser.phone}
+                  onChange={(e) => setNewUser((p) => ({ ...p, phone: e.target.value }))}
+                  className="w-full bg-[#0D0F11] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                />
+              </div>
+              <div>
                 <label className="block text-xs font-medium text-gray-400 mb-2">Роль</label>
                 <select
                   value={newUser.role}
@@ -500,7 +550,7 @@ const UserManagement: React.FC = () => {
                 >
                   <option value="worker">Працівник</option>
                   <option value="manager">Менеджер</option>
-                  <option value="super_manager">Адмін</option>
+                  <option value="super_manager">Супер-менеджер</option>
                 </select>
               </div>
               <div>
@@ -535,6 +585,36 @@ const UserManagement: React.FC = () => {
                 />
                 Може бути assignee задач
               </label>
+              <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newUser.isActive}
+                  onChange={(e) => setNewUser((p) => ({ ...p, isActive: e.target.checked }))}
+                  className="w-4 h-4 rounded border-gray-600"
+                />
+                Активний
+              </label>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-2">Пароль *</label>
+                <input
+                  type="password"
+                  value={newUser.password}
+                  onChange={(e) => setNewUser((p) => ({ ...p, password: e.target.value }))}
+                  className="w-full bg-[#0D0F11] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  autoComplete="new-password"
+                />
+                <p className="mt-1 text-[11px] text-gray-500">Мінімум 8 символів, хоча б 1 літера та 1 цифра.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-2">Підтвердження пароля *</label>
+                <input
+                  type="password"
+                  value={newUser.confirmPassword}
+                  onChange={(e) => setNewUser((p) => ({ ...p, confirmPassword: e.target.value }))}
+                  className="w-full bg-[#0D0F11] border border-gray-700 rounded-lg px-3 py-2 text-white"
+                  autoComplete="new-password"
+                />
+              </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-800">
                 <button type="button" onClick={() => setIsCreateModalOpen(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white">

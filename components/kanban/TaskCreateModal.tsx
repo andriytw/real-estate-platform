@@ -5,6 +5,7 @@ import { Worker, CalendarEvent, TaskType, TaskPriority, Property } from '../../t
 import { isAssignableOperationalUser, isWorkerAssignableByTaskDepartment } from './assigneeUtils';
 import { FACILITY_TASK_TYPES, ACCOUNTING_TASK_TYPES, getTaskTextColor } from '../../utils/taskColors';
 import { useWorker } from '../../contexts/WorkerContext';
+import { workerRoleLabelUk } from '../../lib/workerRoleLabels';
 
 interface TaskCreateModalProps {
   isOpen: boolean;
@@ -376,7 +377,7 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
                 >
                   <option value="">Unassigned</option>
                   {filteredWorkers.map(w => (
-                    <option key={w.id} value={w.id}>{w.name} ({w.role})</option>
+                    <option key={w.id} value={w.id}>{w.name} ({workerRoleLabelUk(w.role)})</option>
                   ))}
                 </select>
               </div>

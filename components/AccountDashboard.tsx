@@ -26,6 +26,7 @@ import ExpenseCategoriesModal from './ExpenseCategoriesModal';
 import BankingDashboard from './BankingDashboard';
 import UserManagement from './admin/UserManagement';
 import { canViewModule, canManageUsers } from '../lib/permissions';
+import { workerRoleLabelUk } from '../lib/workerRoleLabels';
 
 // Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks tab.
 // This avoids "X is not a constructor" on /account (CJS/ESM + esbuild minification issue with dnd).
@@ -11105,7 +11106,7 @@ ${internalCompany} Team`;
                 </div>
                 <div className="text-xs text-gray-500 ml-5 truncate">{worker.email}</div>
                 <div className="text-xs text-gray-500 ml-5 capitalize">
-                  {worker.role.replace('_', ' ')} • scope: {worker.departmentScope ?? `legacy (${worker.department})`}
+                  {workerRoleLabelUk(worker.role)} • scope: {worker.departmentScope ?? `legacy (${worker.department})`}
                 </div>
               </div>
             )}
