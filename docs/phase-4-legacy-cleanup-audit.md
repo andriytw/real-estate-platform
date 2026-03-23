@@ -107,13 +107,14 @@ Each block uses: **Item** | **Where found** | **Why it still exists** | **Curren
 
 ---
 
-**Item:** `workersService.getAll()` — `profiles.select('*')`
+**Item:** `workersService.getAllProfilesFull()` — `profiles.select('*')` (admin only)
 
-- **Where found:** [services/supabaseService.ts](services/supabaseService.ts) — `workersService.getAll` uses `.select('*').order('name', ...)`.
-- **Why it still exists:** Assignee dropdowns, CSV, and admin views need many profile fields (`can_be_task_assignee`, names, scope, etc.) in one call.
-- **Current risk:** Same as broad SELECT: any future RLS or column removal on `profiles` affects every assignee list. Payload size and accidental reliance on unused columns.
-- **Cleanup recommendation:** Split “assignee picker” vs “full admin user list” selects if needed; document required columns per use case.
-- **Preconditions:** Map all callers of `getAll()`; verify assignee filtering still matches [filterAssignableWorkers](components/kanban/assigneeUtils.ts) after any column change.
+- **Where found:** [services/supabaseService.ts](services/supabaseService.ts) — `getAllProfilesFull` uses `.select('*').order('name', ...)`. Used by [usersService.getAll](services/supabaseService.ts) → User Management.
+- **Phase 4C:** Operational lists use `getWorkerDirectory()` / `getAssignableWorkers()` with explicit columns ([SESSION_PROFILE_SELECT_COLUMNS](lib/sessionProfileSelect.ts)) and `transformWorkerFromDB`. Transitional `workersService.getAll()` was removed; admin path is `getAllProfilesFull()` only.
+- **Why full row:** Admin user editing and invite flows need the full profile shape in one call for UserManagement.
+- **Current risk:** Same as broad SELECT for this admin list path. Payload size.
+- **Cleanup recommendation:** If UserManagement can be served by a narrower explicit column list aligned with every edited field, narrow `getAllProfilesFull` in a later phase.
+- **Preconditions:** Inventory admin form fields; verify assignee filtering still matches [filterAssignableWorkers](components/kanban/assigneeUtils.ts) after any column change.
 
 ---
 
@@ -199,7 +200,8 @@ Legend: **A** = actively used, **T** = transitional but necessary, **L** = likel
 | `can_manage_users` | A | [lib/permissions.ts](lib/permissions.ts); command auth; UserManagement. |
 | `transformWorkerFromDB` super_manager bridge for `canManageUsers` | T | [services/supabaseService.ts](services/supabaseService.ts) — true if DB null and role super_manager. |
 | `WorkerContext` `profiles.select('*')` | A | [contexts/WorkerContext.tsx](contexts/WorkerContext.tsx). |
-| `workersService.getAll` `select('*')` | A | [services/supabaseService.ts](services/supabaseService.ts). |
+| `workersService.getAllProfilesFull` `select('*')` | A | [services/supabaseService.ts](services/supabaseService.ts); UserManagement via `usersService.getAll`. |
+| `workersService.getWorkerDirectory` / `getAssignableWorkers` explicit columns | A | Operational lists: calendar, kanban, tasks (`getAssignableWorkers`); warehouse worker list (`getWorkerDirectory` only — same implementation). |
 | `worker_id` + `assigned_worker_id` + `assignee` | A | Transforms and [AccountDashboard](components/AccountDashboard.tsx) patch patterns. |
 | `getCalendarEventAssigneeId` | A | Assignee UI alignment post–Phase 3 fix. |
 | Kanban `localStorage` columns | A | [components/kanban/KanbanBoard.tsx](components/kanban/KanbanBoard.tsx). |
@@ -212,7 +214,7 @@ Legend: **A** = actively used, **T** = transitional but necessary, **L** = likel
 
 ## 4. Highest-risk cleanup targets
 
-1. **Narrowing `profiles` SELECT in the browser** ([contexts/WorkerContext.tsx](contexts/WorkerContext.tsx), [workersService.getAll](services/supabaseService.ts)) without updating [transformWorkerFromDB](services/supabaseService.ts) and every consumer — **breaks** defaults for `categoryAccess`, invite flows, and admin UIs.
+1. **Narrowing `profiles` SELECT in the browser** ([contexts/WorkerContext.tsx](contexts/WorkerContext.tsx), [workersService.getWorkerDirectory](services/supabaseService.ts) / [getAssignableWorkers](services/supabaseService.ts), [workersService.getAllProfilesFull](services/supabaseService.ts)) without updating [transformWorkerFromDB](services/supabaseService.ts) and every consumer — **breaks** defaults for `categoryAccess`, invite flows, and admin UIs.
 
 2. **Removing `category_access` from DB or server helpers** before all users have resolvable `department_scope` — **breaks** sales/accounting access for edge profiles currently relying on LEGACY branches ([api/_lib/server-permissions.ts](api/_lib/server-permissions.ts), [20260330100000_phase3b_step1_helpers_rpc_scope_first.sql](supabase/migrations/20260330100000_phase3b_step1_helpers_rpc_scope_first.sql)).
 

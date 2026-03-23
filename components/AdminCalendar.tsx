@@ -363,7 +363,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       try {
         setLoadingWorkers(true);
         console.log('🔄 Loading workers for AdminCalendar...');
-        const workersData = await workersService.getAll();
+        const workersData = await workersService.getAssignableWorkers();
         console.log('✅ Loaded workers:', workersData.length);
         setWorkers(workersData);
       } catch (error) {

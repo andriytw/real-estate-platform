@@ -1289,7 +1289,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   useEffect(() => {
     const loadWorkers = async () => {
       try {
-        const all = await workersService.getAll();
+        const all = await workersService.getWorkerDirectory();
         // Prefer facility department workers for warehouse transfers
         const facilityWorkers = all.filter((w) => w.department === 'facility');
         setWorkers(facilityWorkers.length ? facilityWorkers : all);

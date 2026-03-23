@@ -111,7 +111,7 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
   const loadData = async () => {
     try {
       const [workersData, propertiesData] = await Promise.all([
-        workersService.getAll(),
+        workersService.getAssignableWorkers(),
         propertiesService.getAll()
       ]);
       setWorkers(workersData);

@@ -132,7 +132,7 @@ const KanbanBoard: React.FC = () => {
 
       console.log('[KanbanBoard] workers fetch:start');
       try {
-        workersData = await withFetchTimeout(workersService.getAll(), 'workers fetch');
+        workersData = await withFetchTimeout(workersService.getAssignableWorkers(), 'workers fetch');
         console.log('[KanbanBoard] workers fetch:ok', { count: workersData.length });
       } catch (e) {
         console.error('[KanbanBoard] workers fetch:error', e);

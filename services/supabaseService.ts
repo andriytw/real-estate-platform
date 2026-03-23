@@ -1,4 +1,5 @@
 import { mirrorLegacyDepartmentFromScope } from '../lib/profileDepartmentSync';
+import { SESSION_PROFILE_SELECT_COLUMNS } from '../lib/sessionProfileSelect';
 import { supabase } from '../utils/supabase/client';
 import { PAGE_INSTANCE_ID } from '../utils/pageInstance';
 // Diagnosis: no shared request/timeout wrapper used across save flows; all calls use the singleton supabase client from utils/supabase/client.
@@ -99,22 +100,59 @@ export interface WarehouseStockItem {
 
 // ==================== WORKERS ====================
 export const workersService = {
-  async getAll(): Promise<Worker[]> {
+  /**
+   * Full profile rows (`select('*')`) for admin / user-management screens that need every column.
+   * Operational lists should use {@link workersService.getWorkerDirectory} or
+   * {@link workersService.getAssignableWorkers} instead.
+   */
+  async getAllProfilesFull(): Promise<Worker[]> {
     console.log('🔄 Fetching all workers from database...');
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .order('name', { ascending: true });
-    
+
     if (error) {
       console.error('❌ Error fetching workers:', error);
       throw error;
     }
-    
-    console.log('✅ Raw workers data from DB:', data.map(w => ({ id: w.id, email: w.email, role: w.role, department: w.department })));
+
+    console.log(
+      '✅ Raw workers data from DB:',
+      data.map((w) => ({ id: w.id, email: w.email, role: w.role, department: w.department }))
+    );
     const transformed = data.map(transformWorkerFromDB);
-    console.log('✅ Transformed workers:', transformed.map(w => ({ id: w.id, email: w.email, role: w.role, department: w.department })));
+    console.log(
+      '✅ Transformed workers:',
+      transformed.map((w) => ({ id: w.id, email: w.email, role: w.role, department: w.department }))
+    );
     return transformed;
+  },
+
+  /**
+   * Narrow `profiles` read (explicit columns aligned with `transformWorkerFromDB` / session profile).
+   * Same global row set as full fetch under current RLS. Use for calendars, kanban, warehouse worker
+   * lists, assignee pickers, and similar operational UIs — not only assignment.
+   */
+  async getWorkerDirectory(): Promise<Worker[]> {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select(SESSION_PROFILE_SELECT_COLUMNS)
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.error('❌ Error fetching worker directory:', error);
+      throw error;
+    }
+
+    return (data ?? []).map(transformWorkerFromDB);
+  },
+
+  /**
+   * Same as {@link getWorkerDirectory} — Phase 4C name for assignee-focused documentation and callers.
+   */
+  async getAssignableWorkers(): Promise<Worker[]> {
+    return workersService.getWorkerDirectory();
   },
 
   async getById(id: string): Promise<Worker | null> {
@@ -700,9 +738,9 @@ export const warehouseService = {
 
 // ==================== USER MANAGEMENT ====================
 export const usersService = {
-  // Get all users (same as workersService.getAll but with more context)
+  /** Full profile rows for User Management (admin forms, invites). */
   async getAll(): Promise<Worker[]> {
-    return workersService.getAll();
+    return workersService.getAllProfilesFull();
   },
 
   // Main admin create flow: create auth user with explicit password + profile.
