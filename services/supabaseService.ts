@@ -1,3 +1,4 @@
+import { mirrorLegacyDepartmentFromScope } from '../lib/profileDepartmentSync';
 import { supabase } from '../utils/supabase/client';
 import { PAGE_INSTANCE_ID } from '../utils/pageInstance';
 // Diagnosis: no shared request/timeout wrapper used across save flows; all calls use the singleton supabase client from utils/supabase/client.
@@ -21,6 +22,7 @@ import {
   Room,
   CompanyDetails,
   Worker,
+  DepartmentScope,
   TaskWorkflow,
   TaskComment,
   CategoryAccess,
@@ -709,8 +711,9 @@ export const usersService = {
     firstName: string;
     lastName: string;
     role: 'super_manager' | 'manager' | 'worker';
-    department: 'facility' | 'accounting' | 'sales' | 'general';
-    categoryAccess?: CategoryAccess[];
+    departmentScope: DepartmentScope;
+    canManageUsers?: boolean;
+    canBeTaskAssignee?: boolean;
   }): Promise<Worker> {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -731,8 +734,9 @@ export const usersService = {
         firstName: userData.firstName,
         lastName: userData.lastName,
         role: userData.role,
-        department: userData.department,
-        categoryAccess: userData.categoryAccess || ['properties', 'facility', 'accounting', 'sales', 'tasks'],
+        departmentScope: userData.departmentScope,
+        canManageUsers: userData.canManageUsers ?? false,
+        canBeTaskAssignee: userData.canBeTaskAssignee !== false,
         skipInvite: true, // Don't send invitation
       }),
     });
@@ -749,23 +753,10 @@ export const usersService = {
     }
 
     console.log('✅ User created without invitation:', result.user.email);
-    
-    // Transform to Worker format
-    return {
-      id: result.user.id,
-      name: result.user.name,
-      firstName: result.user.firstName,
-      lastName: result.user.lastName,
-      email: result.user.email,
-      phone: undefined,
-      department: result.user.department,
-      role: result.user.role,
-      managerId: undefined,
-      isActive: true,
-      categoryAccess: result.user.categoryAccess,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+
+    const refetched = await workersService.getById(result.user.id);
+    if (refetched) return refetched;
+    throw new Error('User created but profile could not be loaded');
   },
 
   // Create new user and send invite link via Edge Function
@@ -774,8 +765,9 @@ export const usersService = {
     firstName: string;
     lastName: string;
     role: 'super_manager' | 'manager' | 'worker';
-    department: 'facility' | 'accounting' | 'sales' | 'general';
-    categoryAccess?: CategoryAccess[];
+    departmentScope: DepartmentScope;
+    canManageUsers?: boolean;
+    canBeTaskAssignee?: boolean;
   }): Promise<Worker> {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -802,8 +794,9 @@ export const usersService = {
         firstName: userData.firstName,
         lastName: userData.lastName,
         role: userData.role,
-        department: userData.department,
-        categoryAccess: userData.categoryAccess || ['properties', 'facility', 'accounting', 'sales', 'tasks'],
+        departmentScope: userData.departmentScope,
+        canManageUsers: userData.canManageUsers ?? false,
+        canBeTaskAssignee: userData.canBeTaskAssignee !== false,
         emailRedirectTo: `${window.location.origin}/login`
       }),
     });
@@ -820,23 +813,10 @@ export const usersService = {
     }
 
     console.log('✅ User created and invitation sent:', result.user.email);
-    
-    // Transform to Worker format
-    return {
-      id: result.user.id,
-      name: result.user.name,
-      firstName: result.user.firstName,
-      lastName: result.user.lastName,
-      email: result.user.email,
-      phone: undefined,
-      department: result.user.department,
-      role: result.user.role,
-      managerId: undefined,
-      isActive: true,
-      categoryAccess: result.user.categoryAccess,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+
+    const refetched = await workersService.getById(result.user.id);
+    if (refetched) return refetched;
+    throw new Error('User created but profile could not be loaded');
   },
 
   // Resend invitation email for existing user
@@ -882,11 +862,13 @@ export const usersService = {
     console.log('✅ Invitation resent to:', email);
   },
 
-  // Update user (role, department, category access)
+  // Update user (role, department_scope + mirrored department, flags, name)
   async update(id: string, updates: {
     role?: 'super_manager' | 'manager' | 'worker';
-    department?: 'facility' | 'accounting' | 'sales' | 'general';
-    categoryAccess?: CategoryAccess[];
+    departmentScope?: DepartmentScope;
+    canManageUsers?: boolean;
+    canBeTaskAssignee?: boolean;
+    isActive?: boolean;
     firstName?: string;
     lastName?: string;
   }): Promise<Worker> {
@@ -909,15 +891,19 @@ export const usersService = {
       updateData.role = updates.role;
       console.log('📝 Setting role in updateData:', updates.role);
     }
-    if (updates.department !== undefined) {
-      updateData.department = updates.department;
-      console.log('📝 Setting department in updateData:', updates.department);
+    if (updates.departmentScope !== undefined) {
+      updateData.department_scope = updates.departmentScope;
+      updateData.department = mirrorLegacyDepartmentFromScope(updates.departmentScope);
+      console.log('📝 Setting department_scope + mirrored department:', updates.departmentScope, updateData.department);
     }
-    if (updates.categoryAccess) {
-      // Ensure categoryAccess is properly formatted as JSONB array
-      updateData.category_access = Array.isArray(updates.categoryAccess) 
-        ? updates.categoryAccess 
-        : [];
+    if (updates.canManageUsers !== undefined) {
+      updateData.can_manage_users = updates.canManageUsers;
+    }
+    if (updates.canBeTaskAssignee !== undefined) {
+      updateData.can_be_task_assignee = updates.canBeTaskAssignee;
+    }
+    if (updates.isActive !== undefined) {
+      updateData.is_active = updates.isActive;
     }
     
     const newFirstName = updates.firstName !== undefined ? updates.firstName : existing?.first_name;
@@ -962,7 +948,7 @@ export const usersService = {
     }
 
     // Update the user
-    console.log('📝 Updating user in database:', { id, updateData, role: updates.role, department: updates.department });
+    console.log('📝 Updating user in database:', { id, updateData, role: updates.role, departmentScope: updates.departmentScope });
     
     // First, try UPDATE with SELECT to get immediate result
     const { error: updateError, data: updateResult } = await supabase
@@ -1009,10 +995,8 @@ export const usersService = {
     
     console.log('✅ Updated user data from DB:', { id: updatedData.id, role: updatedData.role, department: updatedData.department });
     const transformed = transformWorkerFromDB(updatedData);
-    console.log('✅ Transformed user data:', { id: transformed.id, role: transformed.role, department: transformed.department });
+    console.log('✅ Transformed user data:', { id: transformed.id, role: transformed.role, departmentScope: transformed.departmentScope });
     return transformed;
-    
-    return transformWorkerFromDB(data);
   },
 
   // Deactivate user (set is_active = false)
@@ -3151,14 +3135,37 @@ export async function listTaskChatThreadsForFacilityInbox(): Promise<TaskChatThr
 
 // ==================== TRANSFORMERS ====================
 
-function transformWorkerFromDB(db: any): Worker {
+const VALID_DEPARTMENT_SCOPES = new Set(['facility', 'accounting', 'sales', 'properties', 'all']);
+
+function resolveDepartmentScopeFromDb(db: any): DepartmentScope | null {
+  const raw = typeof db.department_scope === 'string' ? db.department_scope.trim() : '';
+  if (raw && VALID_DEPARTMENT_SCOPES.has(raw)) {
+    return raw as DepartmentScope;
+  }
+  const d = db.department;
+  if (d === 'facility' || d === 'accounting' || d === 'sales') {
+    return d;
+  }
+  return null;
+}
+
+export function transformWorkerFromDB(db: any): Worker {
   // Build full name from first_name + last_name or fallback to name
   const firstName = db.first_name || '';
   const lastName = db.last_name || '';
   const fullName = (firstName && lastName) 
     ? `${firstName} ${lastName}` 
     : (db.name || 'Unknown');
-  
+
+  const departmentScope = resolveDepartmentScopeFromDb(db);
+  const legacyDept = db.department != null && String(db.department) !== '' ? String(db.department) : 'facility';
+
+  const canManageUsers =
+    db.can_manage_users === true ||
+    (db.can_manage_users == null && String(db.role || '') === 'super_manager');
+
+  const canBeTaskAssignee = db.can_be_task_assignee !== false;
+
   return {
     id: db.id,
     name: fullName,
@@ -3166,11 +3173,16 @@ function transformWorkerFromDB(db: any): Worker {
     lastName: db.last_name || undefined,
     email: db.email || '',
     phone: db.phone,
-    department: db.department || 'facility',
+    department: legacyDept,
+    departmentScope,
     role: db.role || 'worker',
     managerId: db.manager_id,
     isActive: db.is_active !== false,
-    categoryAccess: db.category_access || ['properties', 'facility', 'accounting', 'sales', 'tasks'],
+    categoryAccess: Array.isArray(db.category_access)
+      ? db.category_access
+      : ['properties', 'facility', 'accounting', 'sales', 'tasks'],
+    canManageUsers,
+    canBeTaskAssignee,
     lastInviteSentAt: db.last_invite_sent_at || undefined,
     createdAt: db.created_at,
     updatedAt: db.updated_at,

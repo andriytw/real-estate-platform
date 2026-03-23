@@ -1,19 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase, getSupabaseRestUrl } from '../utils/supabase/client';
-
-export interface Worker {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  department: 'facility' | 'accounting' | 'sales';
-  role: 'worker' | 'manager' | 'super_manager';
-  managerId?: string;
-  isActive: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-}
+import type { Worker } from '../types';
+import { transformWorkerFromDB } from '../services/supabaseService';
 
 export type ProfileLoadStatus = 'idle' | 'loading' | 'timed_out' | 'error' | 'ready';
 
@@ -132,18 +121,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
         return { worker: null, error: `${msg}${codeStr}` };
       }
       return {
-        worker: {
-          id: profile.id,
-          name: profile.name || user.email || 'Unknown',
-          email: user.email || '',
-          phone: profile.phone || undefined,
-          department: profile.department || 'facility',
-          role: profile.role || 'worker',
-          managerId: profile.manager_id || undefined,
-          isActive: profile.is_active !== false,
-          createdAt: profile.created_at,
-          updatedAt: profile.updated_at,
-        },
+        worker: transformWorkerFromDB(profile),
         error: null,
       };
     } catch (e: unknown) {

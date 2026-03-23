@@ -1,4 +1,8 @@
 import { Worker } from '../../types';
+import { isEligibleTaskAssignee as isEligibleTaskAssigneeFromPermissions } from '../../lib/permissions';
+
+/** Re-export for task assignee lists (global pool: flag + active). */
+export const isEligibleTaskAssignee = isEligibleTaskAssigneeFromPermissions;
 
 export const ASSIGNABLE_OPERATIONAL_ROLES: ReadonlySet<Worker['role']> = new Set([
   'worker',

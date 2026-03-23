@@ -25,6 +25,7 @@ import PaymentProofPdfModal from './PaymentProofPdfModal';
 import ExpenseCategoriesModal from './ExpenseCategoriesModal';
 import BankingDashboard from './BankingDashboard';
 import UserManagement from './admin/UserManagement';
+import { canViewModule, canManageUsers } from '../lib/permissions';
 
 // Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks tab.
 // This avoids "X is not a constructor" on /account (CJS/ESM + esbuild minification issue with dnd).
@@ -10837,8 +10838,8 @@ ${internalCompany} Team`;
           <h1 className="text-xl font-bold text-white flex items-center gap-2"><Building2 className="w-6 h-6 text-emerald-500" /> HeroRooms</h1>
         </div>
         <div className="flex-1 overflow-y-auto py-4 space-y-1 px-3">
-          {/* Admin Section - Only visible to super_manager */}
-          {worker?.role === 'super_manager' && (
+          {/* Admin Section — can_manage_users capability */}
+          {worker && canManageUsers(worker) && (
             <>
               <button onClick={() => { toggleSection('admin'); setActiveDepartment('admin'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
                 <span className="flex items-center gap-3"><Users className="w-4 h-4" /> Адмін</span>
@@ -10857,12 +10858,13 @@ ${internalCompany} Team`;
             </>
           )}
 
-          {/* Properties */}
+          {/* Properties — scope-based (not universal for all managers) */}
+          {worker && canViewModule(worker, 'properties') && (
+            <>
           <button onClick={() => { toggleSection('properties'); setActiveDepartment('properties'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
               <span className="flex items-center gap-3"><Home className="w-4 h-4" /> Properties</span><ChevronDown className="w-3 h-3" />
           </button>
           
-          {/* Subcategories for Properties */}
           {expandedSections.properties && (
               <div className="ml-4 space-y-1 border-l border-gray-700 pl-3 my-1">
                 <button 
@@ -10879,14 +10881,15 @@ ${internalCompany} Team`;
                 </button>
               </div>
           )}
+            </>
+          )}
           
           {/* Facility */}
-          {/* Facility - Only show if user has access */}
-          {(!worker?.categoryAccess || worker.categoryAccess.includes('facility')) && (
+          {worker && canViewModule(worker, 'facility') && (
+            <>
           <button onClick={() => { toggleSection('facility'); setActiveDepartment('facility'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
               <span className="flex items-center gap-3"><Settings className="w-4 h-4" /> Facility</span><ChevronDown className="w-3 h-3" />
           </button>
-          )}
           {expandedSections.facility && (
               <div className="ml-4 space-y-1 border-l border-gray-700 pl-3 my-1">
                 <button
@@ -10931,15 +10934,16 @@ ${internalCompany} Team`;
                 </button>
               </div>
           )}
+            </>
+          )}
 
           {/* Accounting */}
           <div className="mb-2">
-            {/* Accounting - Only show if user has access */}
-            {(!worker?.categoryAccess || worker.categoryAccess.includes('accounting')) && (
+            {worker && canViewModule(worker, 'accounting') && (
+            <>
             <button onClick={() => { toggleSection('accounting'); setActiveDepartment('accounting'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
               <span className="flex items-center gap-3"><Clock className="w-4 h-4" /> Accounting</span><ChevronDown className="w-3 h-3" />
             </button>
-            )}
             {expandedSections.accounting && (
               <div className="ml-4 space-y-1 border-l border-gray-700 pl-3 my-1">
                 <button 
@@ -10984,15 +10988,16 @@ ${internalCompany} Team`;
                 </button>
               </div>
             )}
+            </>
+            )}
           </div>
 
           {/* Sales */}
-          {/* Sales Department - Only show if user has access */}
-          {(!worker?.categoryAccess || worker.categoryAccess.includes('sales')) && (
+          {worker && canViewModule(worker, 'sales') && (
+            <>
           <button onClick={() => { toggleSection('sales'); setActiveDepartment('sales'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
               <span className="flex items-center gap-3"><TrendingUp className="w-4 h-4" /> Sales Department</span><ChevronDown className="w-3 h-3" />
           </button>
-          )}
           {expandedSections.sales && (
               <div className="ml-4 space-y-1 border-l border-gray-700 pl-3 my-1">
                 <button 
@@ -11077,10 +11082,11 @@ ${internalCompany} Team`;
                 </button>
               </div>
           )}
+            </>
+          )}
 
           {/* Tasks / Kanban Board */}
-          {/* Tasks - Only show if user has access */}
-          {(!worker?.categoryAccess || worker.categoryAccess.includes('tasks')) && (
+          {worker && canViewModule(worker, 'tasks') && (
             <button onClick={() => { toggleSection('tasks'); setActiveDepartment('tasks'); }} className="w-full flex items-center justify-between p-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-400 hover:text-white hover:bg-gray-800/50">
               <span className="flex items-center gap-3"><CheckCircle2 className="w-4 h-4" /> Tasks</span><ChevronDown className="w-3 h-3" />
             </button>
@@ -11098,7 +11104,9 @@ ${internalCompany} Team`;
                   <span className="text-xs font-medium text-white truncate">{worker.name}</span>
                 </div>
                 <div className="text-xs text-gray-500 ml-5 truncate">{worker.email}</div>
-                <div className="text-xs text-gray-500 ml-5 capitalize">{worker.role.replace('_', ' ')} • {worker.department}</div>
+                <div className="text-xs text-gray-500 ml-5 capitalize">
+                  {worker.role.replace('_', ' ')} • scope: {worker.departmentScope ?? `legacy (${worker.department})`}
+                </div>
               </div>
             )}
           </div>

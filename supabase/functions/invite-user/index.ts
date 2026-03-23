@@ -50,7 +50,38 @@ serve(async (req) => {
 
     // Parse request body
     const requestBody = await req.json();
-    const { email, firstName, lastName, role, department, categoryAccess, userId, emailRedirectTo, skipInvite } = requestBody;
+    const {
+      email,
+      firstName,
+      lastName,
+      role,
+      department,
+      categoryAccess,
+      departmentScope,
+      canManageUsers,
+      canBeTaskAssignee,
+      userId,
+      emailRedirectTo,
+      skipInvite,
+    } = requestBody
+
+    /** Mirrors app rule in lib/profileDepartmentSync.ts — legacy department CHECK is facility|accounting|sales only. */
+    const mirrorLegacyDepartmentFromScope = (scope: string): 'facility' | 'accounting' | 'sales' => {
+      switch (scope) {
+        case 'facility':
+          return 'facility'
+        case 'accounting':
+          return 'accounting'
+        case 'sales':
+          return 'sales'
+        case 'properties':
+          return 'sales'
+        case 'all':
+          return 'facility'
+        default:
+          return 'facility'
+      }
+    }
     
     console.log('📥 Request body received:', {
       email,
@@ -441,7 +472,16 @@ serve(async (req) => {
 
     // Create or update profile (only if userId was not provided or if we have user data)
     // For resend, we might not have all user data, so only update if provided
-    if (firstName || lastName || role || department || categoryAccess) {
+    if (
+      firstName ||
+      lastName ||
+      role ||
+      department ||
+      categoryAccess ||
+      departmentScope ||
+      typeof canManageUsers === 'boolean' ||
+      typeof canBeTaskAssignee === 'boolean'
+    ) {
       // Validate and clean firstName/lastName - ensure email is NOT saved as first_name
       const cleanFirstName = firstName && typeof firstName === 'string' && firstName.trim() !== '' && firstName.trim() !== email 
         ? firstName.trim() 
@@ -493,8 +533,15 @@ serve(async (req) => {
       }
       
       if (role) profileData.role = role
-      if (department) profileData.department = department
+      if (departmentScope && typeof departmentScope === 'string') {
+        profileData.department_scope = departmentScope
+        profileData.department = mirrorLegacyDepartmentFromScope(departmentScope)
+      } else if (department) {
+        profileData.department = department
+      }
       if (categoryAccess) profileData.category_access = categoryAccess
+      if (typeof canManageUsers === 'boolean') profileData.can_manage_users = canManageUsers
+      if (typeof canBeTaskAssignee === 'boolean') profileData.can_be_task_assignee = canBeTaskAssignee
 
       console.log('💾 Profile data to save:', JSON.stringify(profileData, null, 2));
 

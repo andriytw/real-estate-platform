@@ -7,20 +7,11 @@ import { updateBookingStatusFromTask } from '../bookingUtils';
 import { workersService, tasksService, getTaskChatMessages, insertTaskChatMessage, getTaskAttachmentSignedUrl, type TaskChatAttachment } from '../services/supabaseService';
 import { supabase } from '../utils/supabase/client';
 import { ACCOUNTING_TASK_TYPES, getTaskColor } from '../utils/taskColors';
-import { filterAssignableWorkers, isWorkerAssignableByTaskDepartment } from './kanban/assigneeUtils';
+import { filterAssignableWorkers, isEligibleTaskAssignee } from './kanban/assigneeUtils';
 
 type ViewMode = 'month' | 'week' | 'day';
 
 const TASK_TYPES: TaskType[] = ['Einzug', 'Auszug', 'Putzen', 'Reklamation', 'Arbeit nach plan', 'Zeit Abgabe von wohnung', 'Zählerstand'];
-
-function resolveAssigneeTaskDepartment(
-  taskDepartment: CalendarEvent['department'] | undefined,
-  isAccountingCalendar: boolean
-): 'facility' | 'accounting' {
-  if (taskDepartment === 'facility') return 'facility';
-  if (taskDepartment === 'accounting') return 'accounting';
-  return isAccountingCalendar ? 'accounting' : 'facility';
-}
 
 const FACILITY_SIGNED_URL_EXPIRY_SEC = 300;
 const FACILITY_CACHE_REFRESH_BEFORE_MS = 5000;
@@ -200,44 +191,25 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       ? (event.status === 'completed' || event.status === 'verified' || event.status === 'archived')
       : getTaskBucket(event) === 'completed';
 
-  const newTaskInferredDepartment = useMemo((): CalendarEvent['department'] | undefined => {
-    if (isAccountingCalendar) return 'accounting';
-    return TASK_TYPES.includes(newTaskType) ? 'facility' : 'accounting';
-  }, [isAccountingCalendar, newTaskType]);
-
   const newTaskAssigneeOptions = useMemo(() => {
-    const base = filterAssignableWorkers(workers);
-    const dept = resolveAssigneeTaskDepartment(newTaskInferredDepartment, isAccountingCalendar);
-    return base.filter((w) => isWorkerAssignableByTaskDepartment(w, dept));
-  }, [workers, newTaskInferredDepartment, isAccountingCalendar]);
-
-  const viewEventResolvedAssigneeDept = useMemo(() => {
-    if (!viewEvent) return null;
-    return resolveAssigneeTaskDepartment(viewEvent.department, isAccountingCalendar);
-  }, [viewEvent, isAccountingCalendar]);
+    return filterAssignableWorkers(workers).filter(isEligibleTaskAssignee);
+  }, [workers]);
 
   const viewEventAssigneeOptions = useMemo(() => {
-    if (!viewEvent || viewEventResolvedAssigneeDept == null) return [];
-    const base = filterAssignableWorkers(workers);
-    return base.filter((w) => isWorkerAssignableByTaskDepartment(w, viewEventResolvedAssigneeDept));
-  }, [workers, viewEvent, viewEventResolvedAssigneeDept]);
-
-  const viewEventAssigneeUsesFallbackDept =
-    !!viewEvent &&
-    viewEvent.department !== 'facility' &&
-    viewEvent.department !== 'accounting';
+    if (!viewEvent) return [];
+    return filterAssignableWorkers(workers).filter(isEligibleTaskAssignee);
+  }, [workers, viewEvent]);
 
   useEffect(() => {
-    if (!import.meta.env.DEV || !viewEvent || viewEventResolvedAssigneeDept == null) return;
+    if (!import.meta.env.DEV || !viewEvent) return;
     const base = filterAssignableWorkers(workers);
     console.info('[AdminCalendar][assignee] worker options (detail)', {
       eventId: viewEvent.id,
       taskDepartment: viewEvent.department,
-      resolvedDept: viewEventResolvedAssigneeDept,
       rawAssignable: base.length,
       afterFilter: viewEventAssigneeOptions.length,
     });
-  }, [viewEvent?.id, viewEvent?.department, workers, viewEventResolvedAssigneeDept, viewEventAssigneeOptions.length]);
+  }, [viewEvent?.id, viewEvent?.department, workers, viewEventAssigneeOptions.length]);
 
   // Single source of truth for Facility list panel and CSV export (Open and Completed use same logic)
   const getVisibleFacilityTasks = useMemo(() => {
@@ -2104,7 +2076,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                         {workers.find((w) => w.id === viewEvent.workerId)?.name ??
                                           viewEvent.assignee ??
                                           viewEvent.workerId}{' '}
-                                        (current — outside filtered list)
+                                        (current — not in assignee pool)
                                       </option>
                                     )}
                                   {viewEventAssigneeOptions.map(worker => (
@@ -2115,18 +2087,11 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                               </select>
                               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none group-hover:text-white transition-colors" />
                            </div>
-                           {viewEventAssigneeUsesFallbackDept && viewEventResolvedAssigneeDept != null && (
-                             <p className="mt-1.5 text-[11px] text-amber-400/90 leading-snug">
-                               Task has no <span className="font-semibold">facility</span> or{' '}
-                               <span className="font-semibold">accounting</span> department on record. Assignee list uses this
-                               calendar&apos;s default ({viewEventResolvedAssigneeDept}).
-                             </p>
-                           )}
                            {viewEvent.workerId &&
                              !viewEventAssigneeOptions.some((w) => w.id === viewEvent.workerId) && (
                                <p className="mt-1.5 text-[11px] text-amber-400/90 leading-snug">
-                                 Current assignee is not in the filtered list (department rules). Save a new assignee to align
-                                 with policy, or fix the task&apos;s department in data.
+                                 Current assignee is outside the global assignee pool (inactive or task-assignee flag off). Pick
+                                 another assignee or update the user&apos;s profile.
                                </p>
                              )}
                         </div>

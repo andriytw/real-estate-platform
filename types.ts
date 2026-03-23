@@ -1057,6 +1057,9 @@ export interface KanbanColumn {
 
 export type CategoryAccess = 'properties' | 'facility' | 'accounting' | 'sales' | 'tasks';
 
+/** Editable business access scope (not `general` — legacy `general` stays on `department` only). */
+export type DepartmentScope = 'facility' | 'accounting' | 'sales' | 'properties' | 'all';
+
 export interface Worker {
   id: string;
   name: string; // Full name (for backward compatibility)
@@ -1064,11 +1067,16 @@ export interface Worker {
   lastName?: string; // Last name
   email: string;
   phone?: string;
-  department: 'facility' | 'accounting' | 'sales' | 'general';
+  /** Legacy DB column (facility|accounting|sales|general|…); mirrored from department_scope for RLS. */
+  department: string;
+  /** Canonical scope from `profiles.department_scope`; null = unresolved (e.g. legacy general). */
+  departmentScope: DepartmentScope | null;
   role: 'super_manager' | 'manager' | 'worker';
   managerId?: string;
   isActive: boolean;
-  categoryAccess?: CategoryAccess[]; // Categories user can access
+  categoryAccess?: CategoryAccess[]; // Transitional sidebar fallback when departmentScope is null
+  canManageUsers: boolean;
+  canBeTaskAssignee: boolean;
   lastInviteSentAt?: string; // Timestamp of when the last invitation email was sent
   createdAt: string;
   updatedAt: string;
