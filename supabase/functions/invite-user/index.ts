@@ -48,6 +48,45 @@ serve(async (req) => {
       }
     )
 
+    // Server-side authz: caller JWT + profiles.can_manage_users (aligned with admin-create-user).
+    const authHeader = req.headers.get('Authorization') || req.headers.get('authorization')
+    const callerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null
+    if (!callerToken) {
+      return new Response(
+        JSON.stringify({ error: 'Missing Authorization bearer token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const { data: callerAuth, error: callerAuthError } = await supabaseAdmin.auth.getUser(callerToken)
+    const callerId = callerAuth?.user?.id
+    if (callerAuthError || !callerId) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized caller' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const { data: callerProfile, error: callerProfileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, can_manage_users, is_active')
+      .eq('id', callerId)
+      .single()
+
+    if (callerProfileError || !callerProfile) {
+      return new Response(
+        JSON.stringify({ error: 'Caller profile not found' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (callerProfile.is_active === false || callerProfile.can_manage_users !== true) {
+      return new Response(
+        JSON.stringify({ error: 'Insufficient permissions to invite or manage users' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Parse request body
     const requestBody = await req.json();
     const {

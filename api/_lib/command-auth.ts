@@ -1,16 +1,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseAdmin } from './supabase-admin.js';
 import { withTimeout } from './with-timeout.js';
+import type { CommandAuthProfile } from './server-permissions.js';
+import {
+  canConfirmPaymentServer,
+  canCreateOffersServer,
+  canSaveInvoiceServer,
+} from './server-permissions.js';
 
 const AUTH_DB_TIMEOUT_MS = 25_000;
 
-export type CommandProfile = {
-  id: string;
-  role: string;
-  department: string | null;
-  is_active: boolean | null;
-  category_access: unknown;
-};
+/** Command API auth profile — same shape as CommandAuthProfile (Pass 1 / Phase 3A fields). */
+export type CommandProfile = CommandAuthProfile;
 
 export class CommandAuthError extends Error {
   status: number;
@@ -28,8 +29,33 @@ function parseBearer(request: Request): string | null {
   return t.length > 0 ? t : null;
 }
 
+type ProfileRow = {
+  id: string;
+  role: string | null;
+  department: string | null;
+  department_scope: string | null;
+  is_active: boolean | null;
+  category_access: unknown;
+  can_manage_users: boolean | null;
+  can_be_task_assignee: boolean | null;
+};
+
+function normalizeProfile(row: ProfileRow): CommandProfile {
+  return {
+    id: row.id,
+    role: String(row.role || 'worker'),
+    department: row.department != null ? String(row.department) : null,
+    department_scope: row.department_scope != null ? String(row.department_scope) : null,
+    is_active: row.is_active,
+    category_access: row.category_access,
+    can_manage_users: row.can_manage_users === true,
+    can_be_task_assignee: row.can_be_task_assignee !== false,
+  };
+}
+
 /**
  * Validate JWT via Auth API and load profiles row (service role — profiles may be RLS-restricted).
+ * Primary fields: department_scope, can_manage_users; department/category_access transitional.
  */
 export async function requireCommandProfile(request: Request): Promise<CommandProfile> {
   const token = parseBearer(request);
@@ -51,7 +77,9 @@ export async function requireCommandProfile(request: Request): Promise<CommandPr
   const { data: profile, error: profErr } = await withTimeout(
     admin
       .from('profiles')
-      .select('id, role, department, is_active, category_access')
+      .select(
+        'id, role, department, department_scope, is_active, category_access, can_manage_users, can_be_task_assignee'
+      )
       .eq('id', userId)
       .maybeSingle(),
     AUTH_DB_TIMEOUT_MS,
@@ -69,50 +97,26 @@ export async function requireCommandProfile(request: Request): Promise<CommandPr
     throw new CommandAuthError(403, 'User account is inactive');
   }
 
-  return {
-    id: profile.id,
-    role: String(profile.role || 'worker'),
-    department: profile.department != null ? String(profile.department) : null,
-    is_active: profile.is_active,
-    category_access: profile.category_access,
-  };
+  return normalizeProfile(profile as ProfileRow);
 }
 
-export function hasSalesCategoryAccess(profile: CommandProfile): boolean {
-  const ca = profile.category_access;
-  if (!ca || !Array.isArray(ca)) return false;
-  return ca.some((x) => String(x).toLowerCase() === 'sales');
-}
-
-/** Matches offers/reservations write access: sales department, super_manager, or sales category_access. */
 export function assertCanCreateOffers(profile: CommandProfile): void {
-  if (profile.role === 'super_manager') return;
-  if (profile.department === 'sales') return;
-  if (hasSalesCategoryAccess(profile)) return;
-  throw new CommandAuthError(403, 'Access denied: sales access required to create offers or bookings');
+  if (!canCreateOffersServer(profile)) {
+    throw new CommandAuthError(403, 'Access denied: sales access required to create offers or bookings');
+  }
 }
 
-/**
- * Invoice / proforma writes: accounting, sales, manager, super_manager, or sales category_access.
- * Mirrors practical UI access (sales creates proformas; accounting full; managers often elevated).
- */
 export function assertCanSaveInvoice(profile: CommandProfile): void {
-  if (profile.role === 'super_manager') return;
-  if (profile.department === 'accounting' || profile.department === 'sales') return;
-  if (profile.role === 'manager') return;
-  if (hasSalesCategoryAccess(profile)) return;
-  throw new CommandAuthError(403, 'Access denied: cannot save invoices or proformas');
+  if (!canSaveInvoiceServer(profile)) {
+    throw new CommandAuthError(403, 'Access denied: cannot save invoices or proformas');
+  }
 }
 
-/** Matches mark_invoice_paid_and_confirm_booking RPC gate. */
 export function assertCanConfirmPayment(profile: CommandProfile): void {
-  if (profile.role === 'super_manager') return;
-  if (profile.department === 'accounting' || profile.department === 'sales') return;
-  if (hasSalesCategoryAccess(profile)) return;
-  throw new CommandAuthError(403, 'Access denied: cannot confirm payment for this invoice');
+  if (!canConfirmPaymentServer(profile)) {
+    throw new CommandAuthError(403, 'Access denied: cannot confirm payment for this invoice');
+  }
 }
-
-/** Verify invoice exists, unpaid, and is a payable document type (proforma or final invoice). */
 
 export async function assertInvoiceExistsForConfirm(
   admin: SupabaseClient,

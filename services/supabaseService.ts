@@ -780,13 +780,18 @@ export const usersService = {
     if (!supabaseUrl || !anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
     const functionsUrl = `${supabaseUrl}/functions/v1/invite-user`;
 
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('You must be signed in to create users (session required for invite-user)');
+    }
+
     console.log('👤 Creating user without invitation:', userData.email);
 
     const response = await fetch(functionsUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${anonKey}`,
+        'Authorization': `Bearer ${session.access_token}`,
         'apikey': anonKey,
       },
       body: JSON.stringify({
@@ -834,19 +839,18 @@ export const usersService = {
     if (!supabaseUrl || !anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
     const functionsUrl = `${supabaseUrl}/functions/v1/invite-user`;
 
-    // Get current session token for authentication (if JWT verification is enabled)
-    // If JWT verification is disabled in Edge Function, we can use anon key directly
     const { data: { session } } = await supabase.auth.getSession();
-    const authToken = session?.access_token || anonKey;
+    if (!session?.access_token) {
+      throw new Error('You must be signed in to invite users');
+    }
 
     console.log('📧 Calling Edge Function to invite user:', userData.email);
-    console.log('🔑 Using auth token:', authToken ? 'present' : 'missing');
 
     const response = await fetch(functionsUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${anonKey}`, // Use anon key when JWT verification is disabled
+        'Authorization': `Bearer ${session.access_token}`,
         'apikey': anonKey,
       },
       body: JSON.stringify({
@@ -886,19 +890,18 @@ export const usersService = {
     if (!supabaseUrl || !anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
     const functionsUrl = `${supabaseUrl}/functions/v1/invite-user`;
 
-    // Get current session token for authentication (if JWT verification is enabled)
-    // If JWT verification is disabled in Edge Function, we can use anon key directly
     const { data: { session } } = await supabase.auth.getSession();
-    const authToken = session?.access_token || anonKey;
+    if (!session?.access_token) {
+      throw new Error('You must be signed in to resend invitations');
+    }
 
     console.log('📧 Resending invitation to:', email);
-    console.log('🔑 Using auth token:', authToken ? 'present' : 'missing');
 
     const response = await fetch(functionsUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${anonKey}`, // Use anon key when JWT verification is disabled
+        'Authorization': `Bearer ${session.access_token}`,
         'apikey': anonKey,
       },
       body: JSON.stringify({
