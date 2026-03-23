@@ -7,7 +7,7 @@ import { updateBookingStatusFromTask } from '../bookingUtils';
 import { workersService, tasksService, getTaskChatMessages, insertTaskChatMessage, getTaskAttachmentSignedUrl, type TaskChatAttachment } from '../services/supabaseService';
 import { supabase } from '../utils/supabase/client';
 import { ACCOUNTING_TASK_TYPES, getTaskColor } from '../utils/taskColors';
-import { filterAssignableWorkers, isEligibleTaskAssignee } from './kanban/assigneeUtils';
+import { filterAssignableWorkers } from './kanban/assigneeUtils';
 import { workerRoleParenUk } from '../lib/workerRoleLabels';
 
 type ViewMode = 'month' | 'week' | 'day';
@@ -192,13 +192,11 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       ? (event.status === 'completed' || event.status === 'verified' || event.status === 'archived')
       : getTaskBucket(event) === 'completed';
 
-  const newTaskAssigneeOptions = useMemo(() => {
-    return filterAssignableWorkers(workers).filter(isEligibleTaskAssignee);
-  }, [workers]);
+  const newTaskAssigneeOptions = useMemo(() => filterAssignableWorkers(workers), [workers]);
 
   const viewEventAssigneeOptions = useMemo(() => {
     if (!viewEvent) return [];
-    return filterAssignableWorkers(workers).filter(isEligibleTaskAssignee);
+    return filterAssignableWorkers(workers);
   }, [workers, viewEvent]);
 
   useEffect(() => {
@@ -207,8 +205,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     console.info('[AdminCalendar][assignee] worker options (detail)', {
       eventId: viewEvent.id,
       taskDepartment: viewEvent.department,
-      rawAssignable: base.length,
-      afterFilter: viewEventAssigneeOptions.length,
+      eligibleCount: base.length,
     });
   }, [viewEvent?.id, viewEvent?.department, workers, viewEventAssigneeOptions.length]);
 

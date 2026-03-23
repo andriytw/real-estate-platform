@@ -17,8 +17,14 @@ import LoginPage from './components/LoginPage';
 import { WorkerProvider, useWorker } from './contexts/WorkerContext';
 import { propertiesService } from './services/supabaseService';
 import { propertyMediaService } from './services/propertyMediaService';
-import { Property, FilterState, RequestData } from './types';
+import { Property, FilterState, RequestData, Worker } from './types';
 import { PAGE_INSTANCE_ID } from './utils/pageInstance';
+import { canViewModule } from './lib/permissions';
+
+function defaultAuthenticatedPath(worker: Worker): string {
+  if (worker.role === 'worker') return '/worker';
+  return '/account';
+}
 
 // Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks view.
 const KanbanBoard = React.lazy(() => import('./components/kanban/KanbanBoard'));
@@ -259,27 +265,25 @@ const AppContent: React.FC = () => {
           setCurrentView('worker');
           return;
         } else if (path === '/worker' && worker.role !== 'worker') {
-          // Non-worker trying to access worker view -> redirect to account
           setCurrentView('account');
-          navigate('/account');
+          navigate(defaultAuthenticatedPath(worker), { replace: true });
           return;
-        } else if (path === '/tasks' && worker.role === 'worker') {
-          // Workers shouldn't see full board, redirect to account
+        } else if (path === '/tasks' || path === '/admin/tasks') {
+          if (worker.role === 'worker' || !canViewModule(worker, 'tasks')) {
+            const dest = defaultAuthenticatedPath(worker);
+            setCurrentView(dest === '/worker' ? 'worker' : 'account');
+            navigate(dest, { replace: true });
+            return;
+          }
+          setCurrentView(path === '/admin/tasks' ? 'admin-tasks' : 'tasks');
+          return;
+        } else if (path === '/account' || path === '/dashboard') {
+          if (worker.role === 'worker') {
+            setCurrentView('worker');
+            navigate('/worker', { replace: true });
+            return;
+          }
           setCurrentView('account');
-          navigate('/account');
-          return;
-        } else if (path === '/tasks') {
-          // Allow access to tasks if explicitly on /tasks route
-          setCurrentView('tasks');
-          return;
-        } else if (path === '/account') {
-          // Already on account page - stay here (will show Properties by default)
-          setCurrentView('account');
-          return;
-        } else if (path === '/dashboard') {
-          // Dashboard route -> redirect to account (Properties)
-          setCurrentView('account');
-          navigate('/account');
           return;
         } else if (path === '/' || path === '/market') {
           // Root or market - stay on market (public)
@@ -291,9 +295,9 @@ const AppContent: React.FC = () => {
           // Property route - don't redirect (modal over market or overlay)
           return;
         } else {
-          // Default: All users go to account (Properties category) after login
-          setCurrentView('account');
-          navigate('/account');
+          const dest = defaultAuthenticatedPath(worker);
+          setCurrentView(dest === '/worker' ? 'worker' : 'account');
+          navigate(dest, { replace: true });
         }
       }
       if (!worker && !authLoading) {
@@ -477,7 +481,7 @@ const AppContent: React.FC = () => {
   const renderContent = () => {
     // Session is source of truth; we're only here when session exists (AuthGate passed).
     // Never show Login due to timeout — only Reconnecting… while worker loads.
-    const protectedViews = ['account', 'dashboard', 'worker', 'tasks'];
+    const protectedViews = ['account', 'dashboard', 'worker', 'tasks', 'admin-tasks'];
     const isProtected = protectedViews.includes(currentView);
     const missingWorker = worker == null;
 
@@ -541,18 +545,6 @@ const AppContent: React.FC = () => {
       );
     }
 
-    // Register: when session exists, user is logged in — show account content
-    if (currentView === 'register') {
-      return (
-        <div className="animate-fadeIn">
-          <React.Suspense fallback={<div className="flex items-center justify-center min-h-[50vh] text-gray-400">Loading…</div>}>
-            <AccountDashboard />
-          </React.Suspense>
-        </div>
-      );
-    }
-
-    // Register: when session exists, show account content
     if (currentView === 'register') {
       return (
         <div className="animate-fadeIn">
@@ -568,6 +560,13 @@ const AppContent: React.FC = () => {
       return null;
     }
     if (currentView === 'dashboard' || currentView === 'account') {
+      if (worker?.role === 'worker') {
+        return (
+          <div className="min-h-screen flex flex-col items-center justify-center bg-[#0D0F11] text-gray-400 gap-2">
+            <span>Перенаправлення…</span>
+          </div>
+        );
+      }
       return (
         <div className="animate-fadeIn">
           <ErrorBoundary>
@@ -583,14 +582,22 @@ const AppContent: React.FC = () => {
         return <WorkerMobileApp />;
       }
       return (
-        <div className="flex items-center justify-center min-h-screen text-white">
-          Redirecting to dashboard...
+        <div className="flex flex-col items-center justify-center min-h-screen bg-[#0D0F11] text-gray-400 gap-2">
+          <span>Перенаправлення…</span>
         </div>
       );
     }
 
-    // Kanban Board View (Tasks)
+    // Kanban Board View (Tasks) — top-level forbidden routes redirect via useEffect to defaultAuthenticatedPath;
+    // brief "Перенаправлення…" while guard syncs (plan D).
     if (currentView === 'tasks') {
+      if (!worker || worker.role === 'worker' || !canViewModule(worker, 'tasks')) {
+        return (
+          <div className="min-h-screen flex flex-col items-center justify-center bg-[#0D0F11] text-gray-400 gap-2 px-4">
+            <span>Перенаправлення…</span>
+          </div>
+        );
+      }
       return (
         <React.Suspense fallback={<div className="flex items-center justify-center min-h-screen text-white">Loading tasks…</div>}>
           <KanbanBoard />
@@ -598,8 +605,14 @@ const AppContent: React.FC = () => {
       );
     }
 
-    // Admin Tasks Board (Legacy? Or remove if replaced)
     if (currentView === 'admin-tasks') {
+      if (!worker || worker.role === 'worker' || !canViewModule(worker, 'tasks')) {
+        return (
+          <div className="min-h-screen flex flex-col items-center justify-center bg-[#0D0F11] text-gray-400 gap-2 px-4">
+            <span>Перенаправлення…</span>
+          </div>
+        );
+      }
       return <AdminTasksBoard />;
     }
 
@@ -698,8 +711,12 @@ const AppContent: React.FC = () => {
       setIsLoginModalOpen(true);
       return;
     }
+    if (worker?.role === 'worker') {
+      navigate('/worker');
+      return;
+    }
     navigate('/account');
-  }, [session, navigate]);
+  }, [session, navigate, worker?.role]);
 
   return (
     <div className="min-h-screen bg-[#0D0F11] text-gray-100 font-sans selection:bg-emerald-500/30">
@@ -721,7 +738,11 @@ const AppContent: React.FC = () => {
           } else if (view === 'account') {
             onMyAccountClick();
           } else if (view === 'dashboard') {
-            navigate('/dashboard');
+            if (worker?.role === 'worker') {
+              navigate('/worker');
+            } else {
+              navigate('/dashboard');
+            }
           } else if (view === 'market') {
             navigate('/market');
           }

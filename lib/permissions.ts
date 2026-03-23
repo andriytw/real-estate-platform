@@ -30,7 +30,10 @@ export function canManageUsers(user: Worker | null | undefined): boolean {
   return !!user?.canManageUsers;
 }
 
-/** Task assignee dropdown eligibility (global pool: flag + active, no department filter). */
+/**
+ * Task assignee dropdown eligibility only (global pool: flag + active, no department filter).
+ * Use in assignee selectors only — not for module visibility, route guards, or department access.
+ */
 export function isEligibleTaskAssignee(user: Worker | null | undefined): boolean {
   if (!user || user.isActive === false) return false;
   return user.canBeTaskAssignee !== false;

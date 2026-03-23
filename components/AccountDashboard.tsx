@@ -25,7 +25,8 @@ import PaymentProofPdfModal from './PaymentProofPdfModal';
 import ExpenseCategoriesModal from './ExpenseCategoriesModal';
 import BankingDashboard from './BankingDashboard';
 import UserManagement from './admin/UserManagement';
-import { canViewModule, canManageUsers } from '../lib/permissions';
+import { canViewModule, canManageUsers, type AppModule } from '../lib/permissions';
+import { firstAllowedDashboardModule, canAccessDashboardModule } from '../lib/uiAccess';
 import { workerRoleLabelUk } from '../lib/workerRoleLabels';
 
 // Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks tab.
@@ -573,6 +574,14 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     sales: true,
     tasks: true
   });
+
+  useEffect(() => {
+    if (!worker) return;
+    if (!canAccessDashboardModule(worker, activeDepartment as AppModule)) {
+      const next = firstAllowedDashboardModule(worker);
+      if (next) setActiveDepartment(next as Department);
+    }
+  }, [worker, activeDepartment]);
 
   const [propertiesTab, setPropertiesTab] = useState<PropertiesTab>('list');
   const [facilityTab, setFacilityTab] = useState<FacilityTab>('overview');
@@ -10829,6 +10838,22 @@ ${internalCompany} Team`;
 
     return <div className="p-8 text-white">Sales Content (Preserved)</div>;
   };
+
+  if (worker?.role === 'worker') {
+    return (
+      <div className="flex h-screen bg-[#111315] text-white items-center justify-center font-sans px-4">
+        <p className="text-gray-400 text-center">Перенаправлення до мобільного інтерфейсу…</p>
+      </div>
+    );
+  }
+
+  if (worker && firstAllowedDashboardModule(worker) == null) {
+    return (
+      <div className="flex h-screen bg-[#111315] text-white items-center justify-center font-sans px-4">
+        <p className="text-gray-400 text-center">Немає доступу до панелі керування.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-[#111315] text-white overflow-hidden font-sans">

@@ -6,6 +6,7 @@ import KanbanColumn from './KanbanColumn';
 import ColumnCreateModal from './ColumnCreateModal';
 import TaskDetailModal from './TaskDetailModal';
 import { useWorker } from '../../contexts/WorkerContext';
+import { effectiveDepartmentScope } from '../../lib/permissions';
 import { Filter, Plus } from 'lucide-react';
 
 type DepartmentFilter = 'all' | 'facility' | 'accounting';
@@ -22,6 +23,26 @@ function withFetchTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   ]);
 }
 
+/** Managers: only tasks within their department_scope; super_manager / scope all — no extra filter. */
+function filterTasksForUserScope(tasks: CalendarEvent[], user: Worker | null | undefined): CalendarEvent[] {
+  if (!user) return tasks;
+  if (user.role === 'super_manager') return tasks;
+  const scope = effectiveDepartmentScope(user);
+  if (scope === 'all' || scope == null) return tasks;
+  if (scope === 'facility') {
+    return tasks.filter(
+      (t) =>
+        t.department === 'facility' ||
+        t.department == null ||
+        String(t.department ?? '').trim() === ''
+    );
+  }
+  if (scope === 'accounting') {
+    return tasks.filter((t) => t.department === 'accounting');
+  }
+  return tasks;
+}
+
 const KanbanBoard: React.FC = () => {
   const { worker: currentUser } = useWorker();
   
@@ -30,6 +51,30 @@ const KanbanBoard: React.FC = () => {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
   const [departmentFilter, setDepartmentFilter] = useState<DepartmentFilter>('all');
+
+  const departmentFilterOptions = useMemo((): DepartmentFilter[] => {
+    if (!currentUser) return ['all', 'facility', 'accounting'];
+    if (currentUser.role === 'super_manager') return ['all', 'facility', 'accounting'];
+    const scope = effectiveDepartmentScope(currentUser);
+    if (scope === 'all' || scope == null) return ['all', 'facility', 'accounting'];
+    if (scope === 'facility') return ['facility'];
+    if (scope === 'accounting') return ['accounting'];
+    return ['all', 'facility', 'accounting'];
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    if (currentUser.role === 'super_manager' || effectiveDepartmentScope(currentUser) === 'all') return;
+    const scope = effectiveDepartmentScope(currentUser);
+    if (scope === 'facility') setDepartmentFilter('facility');
+    else if (scope === 'accounting') setDepartmentFilter('accounting');
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (!departmentFilterOptions.includes(departmentFilter)) {
+      setDepartmentFilter(departmentFilterOptions[0] ?? 'all');
+    }
+  }, [departmentFilterOptions, departmentFilter]);
   
   // State for custom columns (stored in localStorage)
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>(() => {
@@ -110,7 +155,8 @@ const KanbanBoard: React.FC = () => {
         validTasks = [];
       }
 
-      setTasks(validTasks);
+      const scopedTasks = filterTasksForUserScope(validTasks, currentUser);
+      setTasks(scopedTasks);
       setWorkers(workersData);
 
       if (workersData.length > 0) {
@@ -140,7 +186,7 @@ const KanbanBoard: React.FC = () => {
       setLoading(false);
       console.log('[KanbanBoard] loadBoardData:end');
     }
-  }, [departmentFilter]);
+  }, [departmentFilter, currentUser?.id]);
 
   // Load Data
   useEffect(() => {
@@ -477,33 +523,37 @@ const KanbanBoard: React.FC = () => {
         <div className="flex items-center gap-4">
           <h1 className="text-lg font-bold text-white">Task Board</h1>
           
-          {/* Filter Tabs */}
+          {/* Filter Tabs — scope-limited managers only see their department (Pass 2) */}
+          {departmentFilterOptions.length > 1 && (
           <div className="flex bg-[#1C1F24] rounded-lg p-1">
-            <button
-              onClick={() => setDepartmentFilter('all')}
-              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                departmentFilter === 'all' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setDepartmentFilter('facility')}
-              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                departmentFilter === 'facility' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Facility
-            </button>
-            <button
-              onClick={() => setDepartmentFilter('accounting')}
-              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                departmentFilter === 'accounting' ? 'bg-emerald-600 text-white' : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Accounting
-            </button>
+            {departmentFilterOptions.map((key) => {
+              const label = key === 'all' ? 'All' : key === 'facility' ? 'Facility' : 'Accounting';
+              const activeClass =
+                key === 'all'
+                  ? 'bg-gray-600 text-white'
+                  : key === 'facility'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-emerald-600 text-white';
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setDepartmentFilter(key)}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                    departmentFilter === key ? activeClass : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
+          )}
+          {departmentFilterOptions.length === 1 && (
+            <span className="text-xs text-gray-500 capitalize">
+              {departmentFilterOptions[0] === 'facility' ? 'Facility' : 'Accounting'} only
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">

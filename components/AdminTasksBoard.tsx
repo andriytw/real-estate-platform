@@ -1,33 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import KanbanBoard from './kanban/KanbanBoard';
 import { useWorker } from '../contexts/WorkerContext';
+import { canViewModule, canAccessDepartment } from '../lib/permissions';
 
 type DepartmentTab = 'facility' | 'accounting' | 'sales';
 
 export default function AdminTasksBoard() {
-  const { worker, isAdmin } = useWorker();
+  const { worker } = useWorker();
   const [activeDepartment, setActiveDepartment] = useState<DepartmentTab>('facility');
 
-  // Redirect if not admin
-  useEffect(() => {
-    if (worker && !isAdmin) {
-      window.location.href = '/dashboard';
-    }
-  }, [worker, isAdmin]);
+  const departments = useMemo(() => {
+    const all: { id: DepartmentTab; label: string }[] = [
+      { id: 'facility', label: 'Facility Management' },
+      { id: 'accounting', label: 'Accounting' },
+      { id: 'sales', label: 'Sales' },
+    ];
+    if (!worker) return all;
+    return all.filter((d) => canAccessDepartment(worker, d.id));
+  }, [worker]);
 
-  if (!worker || !isAdmin) {
+  useEffect(() => {
+    if (departments.length === 0) return;
+    if (!departments.some((d) => d.id === activeDepartment)) {
+      setActiveDepartment(departments[0].id);
+    }
+  }, [departments, activeDepartment]);
+
+  if (!worker || !canViewModule(worker, 'tasks')) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white text-xl">Доступ заборонено. Потрібні права адміністратора.</div>
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
+        <div className="text-white text-xl text-center">Немає доступу до цього розділу.</div>
       </div>
     );
   }
-
-  const departments: { id: DepartmentTab; label: string }[] = [
-    { id: 'facility', label: 'Facility Management' },
-    { id: 'accounting', label: 'Accounting' },
-    { id: 'sales', label: 'Sales' }
-  ];
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-6">

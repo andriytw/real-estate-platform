@@ -1,32 +1,10 @@
 import { Worker } from '../../types';
 import { isEligibleTaskAssignee as isEligibleTaskAssigneeFromPermissions } from '../../lib/permissions';
 
-/** Re-export for task assignee lists (global pool: flag + active). */
+/** Re-export — use only in assignee dropdowns/selectors, not guards or module visibility. */
 export const isEligibleTaskAssignee = isEligibleTaskAssigneeFromPermissions;
 
-export const ASSIGNABLE_OPERATIONAL_ROLES: ReadonlySet<Worker['role']> = new Set([
-  'worker',
-  'manager',
-  'super_manager',
-]);
-
-export function isAssignableOperationalUser(w: Worker): boolean {
-  return w.isActive !== false && ASSIGNABLE_OPERATIONAL_ROLES.has(w.role);
-}
-
+/** Assignee dropdowns only: global pool (is_active + can_be_task_assignee). */
 export function filterAssignableWorkers(workers: Worker[]): Worker[] {
-  return workers.filter(isAssignableOperationalUser);
-}
-
-/** Minimal rule: managers always; workers only facility+general or accounting+general for the task's department. */
-export function isWorkerAssignableByTaskDepartment(
-  w: Worker,
-  taskDepartment: 'facility' | 'accounting'
-): boolean {
-  if (w.role === 'super_manager' || w.role === 'manager') return true;
-  if (w.role !== 'worker') return false;
-  if (taskDepartment === 'facility') {
-    return w.department === 'facility' || w.department === 'general';
-  }
-  return w.department === 'accounting' || w.department === 'general';
+  return workers.filter(isEligibleTaskAssignee);
 }

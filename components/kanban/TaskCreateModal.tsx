@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Calendar, Clock, User, AlertCircle, Check, Building2, Wallet, ChevronDown, Sparkles, ArrowRight, ArrowLeft, FileText, FileCheck } from 'lucide-react';
 import { tasksService, workersService, propertiesService } from '../../services/supabaseService';
 import { Worker, CalendarEvent, TaskType, TaskPriority, Property } from '../../types';
-import { isAssignableOperationalUser, isWorkerAssignableByTaskDepartment } from './assigneeUtils';
+import { isEligibleTaskAssignee } from './assigneeUtils';
 import { FACILITY_TASK_TYPES, ACCOUNTING_TASK_TYPES, getTaskTextColor } from '../../utils/taskColors';
 import { useWorker } from '../../contexts/WorkerContext';
 import { workerRoleLabelUk } from '../../lib/workerRoleLabels';
@@ -199,10 +199,7 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
   const isSuperAdmin = currentUser?.role === 'super_manager';
   const availableTaskTypes = department === 'facility' ? FACILITY_TASK_TYPES : ACCOUNTING_TASK_TYPES;
 
-  const filteredWorkers = workers.filter(
-    (w) =>
-      isAssignableOperationalUser(w) && isWorkerAssignableByTaskDepartment(w, department)
-  );
+  const filteredWorkers = workers.filter(isEligibleTaskAssignee);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
