@@ -3,6 +3,10 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase, getSupabaseRestUrl } from '../utils/supabase/client';
 import type { Worker } from '../types';
 import { transformWorkerFromDB } from '../services/supabaseService';
+import {
+  SESSION_PROFILE_SELECT_COLUMNS,
+  logDevSessionProfileObservability,
+} from '../lib/sessionProfileSelect';
 
 export type ProfileLoadStatus = 'idle' | 'loading' | 'timed_out' | 'error' | 'ready';
 
@@ -73,12 +77,16 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       }
       let { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('*')
+        .select(SESSION_PROFILE_SELECT_COLUMNS)
         .eq('id', user.id)
         .single();
       const code = (profileError as { code?: string } | null)?.code;
       if (isDev && typeof window !== 'undefined') {
-        console.log('[DEV] WorkerContext: after profiles select single()', { profile: profile ?? null, errorCode: code, errorMessage: profileError?.message });
+        console.log('[DEV] WorkerContext: after profiles select single()', {
+          hasProfile: !!profile,
+          errorCode: code,
+          errorMessage: profileError?.message,
+        });
       }
       if (profileError && code === 'PGRST116') {
         const tryInsert = async (payload: Record<string, unknown>): Promise<{ error: { message?: string; code?: string } | null }> => {
@@ -106,11 +114,18 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
           if (isDev && typeof window !== 'undefined') console.log('[DEV] WorkerContext: returning error (insert failed)', { error: msg, code: insertError.code });
           return { worker: null, error: `${msg}${codeStr}` };
         }
-        const result = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        const result = await supabase
+          .from('profiles')
+          .select(SESSION_PROFILE_SELECT_COLUMNS)
+          .eq('id', user.id)
+          .single();
         profile = result.data;
         profileError = result.error;
         if (isDev && typeof window !== 'undefined') {
-          console.log('[DEV] WorkerContext: after re-select', { profile: profile ?? null, error: profileError ? { message: profileError.message, code: (profileError as { code?: string }).code } : null });
+          console.log('[DEV] WorkerContext: after re-select', {
+            hasProfile: !!profile,
+            errorCode: profileError ? (profileError as { code?: string }).code : undefined,
+          });
         }
       }
       if (profileError || !profile) {
@@ -120,8 +135,10 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
         if (isDev && typeof window !== 'undefined') console.log('[DEV] WorkerContext: returning error (profile select)', { error: msg, code: errCode });
         return { worker: null, error: `${msg}${codeStr}` };
       }
+      const sessionWorker = transformWorkerFromDB(profile);
+      logDevSessionProfileObservability(sessionWorker);
       return {
-        worker: transformWorkerFromDB(profile),
+        worker: sessionWorker,
         error: null,
       };
     } catch (e: unknown) {
