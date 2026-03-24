@@ -1,6 +1,6 @@
 import { mirrorLegacyDepartmentFromScope } from '../lib/profileDepartmentSync';
 import { getCalendarEventAssigneeId, normalizeCalendarEventAssigneeId } from '../lib/assigneeIdentity';
-import { SESSION_PROFILE_SELECT_COLUMNS } from '../lib/sessionProfileSelect';
+import { ADMIN_PROFILE_SELECT_COLUMNS, SESSION_PROFILE_SELECT_COLUMNS } from '../lib/sessionProfileSelect';
 import { supabase } from '../utils/supabase/client';
 import { PAGE_INSTANCE_ID } from '../utils/pageInstance';
 // Diagnosis: no shared request/timeout wrapper used across save flows; all calls use the singleton supabase client from utils/supabase/client.
@@ -101,33 +101,19 @@ export interface WarehouseStockItem {
 
 // ==================== WORKERS ====================
 export const workersService = {
-  /**
-   * Full profile rows (`select('*')`) for admin / user-management screens that need every column.
-   * Operational lists should use {@link workersService.getWorkerDirectory} or
-   * {@link workersService.getAssignableWorkers} instead.
-   */
-  async getAllProfilesFull(): Promise<Worker[]> {
-    console.log('🔄 Fetching all workers from database...');
+  /** Explicit admin list read model (UserManagement/admin workflows). */
+  async getAdminProfilesList(): Promise<Worker[]> {
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select(ADMIN_PROFILE_SELECT_COLUMNS)
       .order('name', { ascending: true });
 
     if (error) {
-      console.error('❌ Error fetching workers:', error);
+      console.error('❌ Error fetching admin profiles list:', error);
       throw error;
     }
 
-    console.log(
-      '✅ Raw workers data from DB:',
-      data.map((w) => ({ id: w.id, email: w.email, role: w.role, department: w.department }))
-    );
-    const transformed = data.map(transformWorkerFromDB);
-    console.log(
-      '✅ Transformed workers:',
-      transformed.map((w) => ({ id: w.id, email: w.email, role: w.role, department: w.department }))
-    );
-    return transformed;
+    return (data ?? []).map(transformWorkerFromDB);
   },
 
   /**
@@ -156,16 +142,30 @@ export const workersService = {
     return workersService.getWorkerDirectory();
   },
 
-  async getById(id: string): Promise<Worker | null> {
+  /** Explicit admin by-id read model for edit/create/invite refetch workflows. */
+  async getAdminProfileById(id: string): Promise<Worker | null> {
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select(ADMIN_PROFILE_SELECT_COLUMNS)
       .eq('id', id)
       .single();
-    
+
     if (error) return null;
     return transformWorkerFromDB(data);
-  }
+  },
+
+  /** Operational/session-aligned profile row by id (explicit column list). */
+  async getWorkerByIdOperational(id: string): Promise<Worker | null> {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select(SESSION_PROFILE_SELECT_COLUMNS)
+      .eq('id', id)
+      .single();
+
+    if (error) return null;
+    return transformWorkerFromDB(data);
+  },
+
 };
 
 // ==================== WAREHOUSE (STOCK & INVOICES) ====================
@@ -739,9 +739,9 @@ export const warehouseService = {
 
 // ==================== USER MANAGEMENT ====================
 export const usersService = {
-  /** Full profile rows for User Management (admin forms, invites). */
+  /** Explicit admin profile rows for User Management (admin forms, invites). */
   async getAll(): Promise<Worker[]> {
-    return workersService.getAllProfilesFull();
+    return workersService.getAdminProfilesList();
   },
 
   // Main admin create flow: create auth user with explicit password + profile.
@@ -799,7 +799,7 @@ export const usersService = {
       throw new Error('Failed to create user: Invalid response from server');
     }
 
-    const refetched = await workersService.getById(result.user.id);
+    const refetched = await workersService.getAdminProfileById(result.user.id);
     if (refetched) return refetched;
     throw new Error('User created but profile could not be loaded');
   },
@@ -858,7 +858,7 @@ export const usersService = {
 
     console.log('✅ User created without invitation:', result.user.email);
 
-    const refetched = await workersService.getById(result.user.id);
+    const refetched = await workersService.getAdminProfileById(result.user.id);
     if (refetched) return refetched;
     throw new Error('User created but profile could not be loaded');
   },
@@ -917,7 +917,7 @@ export const usersService = {
 
     console.log('✅ User created and invitation sent:', result.user.email);
 
-    const refetched = await workersService.getById(result.user.id);
+    const refetched = await workersService.getAdminProfileById(result.user.id);
     if (refetched) return refetched;
     throw new Error('User created but profile could not be loaded');
   },
@@ -1035,18 +1035,12 @@ export const usersService = {
 
     // Don't update if no changes
     if (Object.keys(updateData).length === 0) {
-      // Return existing user data
-      const { data: currentUserData, error: currentUserError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', id);
-      if (currentUserError) {
-        throw new Error(`Помилка отримання даних користувача: ${currentUserError.message}`);
-      }
-      if (!currentUserData || currentUserData.length === 0) {
+      // Return existing user data through explicit admin read model
+      const currentUserData = await workersService.getAdminProfileById(id);
+      if (!currentUserData) {
         throw new Error('Користувача не знайдено');
       }
-      return transformWorkerFromDB(currentUserData[0]);
+      return currentUserData;
     }
 
     // Update the user
@@ -1074,31 +1068,18 @@ export const usersService = {
       console.log('✅ Role in update result:', updateResult[0]?.role);
     }
 
-    // Fetch updated user data separately (to avoid RLS issues with SELECT after UPDATE)
-    const { data: updatedData, error: fetchUpdatedError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
-
-    if (fetchUpdatedError) {
-      console.error('Error fetching updated user data:', fetchUpdatedError);
+    // Fetch updated user data separately through explicit admin read model
+    const updatedData = await workersService.getAdminProfileById(id);
+    if (!updatedData) {
+      console.error('Error fetching updated user data: no row returned');
       // If update succeeded but fetch failed, still consider it a success
       // The user will see the changes after page reload
-      throw new Error(`Оновлення виконано, але не вдалося отримати оновлені дані. Будь ласка, оновіть сторінку. Помилка: ${fetchUpdatedError.message}`);
-    }
-    
-    if (!updatedData) {
-      // Update succeeded but no data returned - might be RLS issue
-      // Try to get user data with a different approach or just return success
-      console.warn('Update succeeded but no data returned - possible RLS issue');
       throw new Error('Оновлення виконано, але не вдалося отримати оновлені дані через обмеження доступу. Будь ласка, оновіть сторінку вручну.');
     }
     
     console.log('✅ Updated user data from DB:', { id: updatedData.id, role: updatedData.role, department: updatedData.department });
-    const transformed = transformWorkerFromDB(updatedData);
-    console.log('✅ Transformed user data:', { id: transformed.id, role: transformed.role, departmentScope: transformed.departmentScope });
-    return transformed;
+    console.log('✅ Transformed user data:', { id: updatedData.id, role: updatedData.role, departmentScope: updatedData.departmentScope });
+    return updatedData;
   },
 
   // Deactivate user (set is_active = false)

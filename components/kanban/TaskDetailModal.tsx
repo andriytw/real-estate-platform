@@ -290,7 +290,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       }
       const assigneeId = getCalendarEventAssigneeId(task);
       if (assigneeId) {
-        const worker = await workersService.getById(assigneeId);
+        const worker = await workersService.getWorkerByIdOperational(assigneeId);
         setAssignee(worker);
       } else {
         setAssignee(null);

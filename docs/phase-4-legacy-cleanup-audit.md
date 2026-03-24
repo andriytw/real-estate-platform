@@ -107,13 +107,13 @@ Each block uses: **Item** | **Where found** | **Why it still exists** | **Curren
 
 ---
 
-**Item:** `workersService.getAllProfilesFull()` — `profiles.select('*')` (admin only)
+**Item:** Admin profile list reads — explicit columns first, full fallback transitional
 
-- **Where found:** [services/supabaseService.ts](services/supabaseService.ts) — `getAllProfilesFull` uses `.select('*').order('name', ...)`. Used by [usersService.getAll](services/supabaseService.ts) → User Management.
-- **Phase 4C:** Operational lists use `getWorkerDirectory()` / `getAssignableWorkers()` with explicit columns ([SESSION_PROFILE_SELECT_COLUMNS](lib/sessionProfileSelect.ts)) and `transformWorkerFromDB`. Transitional `workersService.getAll()` was removed; admin path is `getAllProfilesFull()` only.
+- **Where found:** [services/supabaseService.ts](services/supabaseService.ts) — `getAdminProfilesList` uses explicit [ADMIN_PROFILE_SELECT_COLUMNS](lib/sessionProfileSelect.ts) and is used by [usersService.getAll](services/supabaseService.ts) for User Management list.
+- **Phase 4F:** Operational lists stay on `getWorkerDirectory()` / `getAssignableWorkers()` (explicit [SESSION_PROFILE_SELECT_COLUMNS](lib/sessionProfileSelect.ts)); admin list/by-id flows now use explicit admin column methods.
 - **Why full row:** Admin user editing and invite flows need the full profile shape in one call for UserManagement.
 - **Current risk:** Same as broad SELECT for this admin list path. Payload size.
-- **Cleanup recommendation:** If UserManagement can be served by a narrower explicit column list aligned with every edited field, narrow `getAllProfilesFull` in a later phase.
+- **Cleanup recommendation:** Remove transitional full fallback methods after final usage audit confirms no active callers.
 - **Preconditions:** Inventory admin form fields; verify assignee filtering still matches [filterAssignableWorkers](components/kanban/assigneeUtils.ts) after any column change.
 
 ---
@@ -200,7 +200,8 @@ Legend: **A** = actively used, **T** = transitional but necessary, **L** = likel
 | `can_manage_users` | A | [lib/permissions.ts](lib/permissions.ts); command auth; UserManagement. |
 | `transformWorkerFromDB` super_manager bridge for `canManageUsers` | T | [services/supabaseService.ts](services/supabaseService.ts) — true if DB null and role super_manager. |
 | `WorkerContext` `profiles.select('*')` | A | [contexts/WorkerContext.tsx](contexts/WorkerContext.tsx). |
-| `workersService.getAllProfilesFull` `select('*')` | A | [services/supabaseService.ts](services/supabaseService.ts); UserManagement via `usersService.getAll`. |
+| `workersService.getAdminProfilesList` explicit columns | A | [services/supabaseService.ts](services/supabaseService.ts); UserManagement via `usersService.getAll`. |
+| `workersService.getAllProfilesFull` / `getProfileByIdFull` `select('*')` | T | [services/supabaseService.ts](services/supabaseService.ts); transitional fallback only, not for new callers. |
 | `workersService.getWorkerDirectory` / `getAssignableWorkers` explicit columns | A | Operational lists: calendar, kanban, tasks (`getAssignableWorkers`); warehouse worker list (`getWorkerDirectory` only — same implementation). |
 | `worker_id` + `assigned_worker_id` + `assignee` | A | Transforms and [AccountDashboard](components/AccountDashboard.tsx) patch patterns. |
 | `getCalendarEventAssigneeId` | A | Assignee UI alignment post–Phase 3 fix. |
@@ -214,7 +215,7 @@ Legend: **A** = actively used, **T** = transitional but necessary, **L** = likel
 
 ## 4. Highest-risk cleanup targets
 
-1. **Narrowing `profiles` SELECT in the browser** ([contexts/WorkerContext.tsx](contexts/WorkerContext.tsx), [workersService.getWorkerDirectory](services/supabaseService.ts) / [getAssignableWorkers](services/supabaseService.ts), [workersService.getAllProfilesFull](services/supabaseService.ts)) without updating [transformWorkerFromDB](services/supabaseService.ts) and every consumer — **breaks** defaults for `categoryAccess`, invite flows, and admin UIs.
+1. **Narrowing `profiles` SELECT in the browser** ([contexts/WorkerContext.tsx](contexts/WorkerContext.tsx), [workersService.getWorkerDirectory](services/supabaseService.ts) / [getAssignableWorkers](services/supabaseService.ts), [workersService.getAdminProfilesList](services/supabaseService.ts)) without updating [transformWorkerFromDB](services/supabaseService.ts) and every consumer — **breaks** defaults for `categoryAccess`, invite flows, and admin UIs.
 
 2. **Removing `category_access` from DB or server helpers** before all users have resolvable `department_scope` — **breaks** sales/accounting access for edge profiles currently relying on LEGACY branches ([api/_lib/server-permissions.ts](api/_lib/server-permissions.ts), [20260330100000_phase3b_step1_helpers_rpc_scope_first.sql](supabase/migrations/20260330100000_phase3b_step1_helpers_rpc_scope_first.sql)).
 
@@ -347,3 +348,134 @@ Secondary priority: **document or fix Kanban vs DB drift** (`columnId` / `create
 ---
 
 *Document generated as Phase 4 planning deliverable. Update this file when cleanup milestones complete.*
+
+---
+
+## Phase 4F — Profiles read-path separation (admin vs operational)
+
+### Read-model boundaries
+
+- **Session profile**: [contexts/WorkerContext.tsx](contexts/WorkerContext.tsx) uses [SESSION_PROFILE_SELECT_COLUMNS](lib/sessionProfileSelect.ts) only.
+- **Operational profile list/read**: [workersService.getWorkerDirectory](services/supabaseService.ts), [workersService.getAssignableWorkers](services/supabaseService.ts), and [workersService.getWorkerByIdOperational](services/supabaseService.ts) use explicit session-aligned columns.
+- **Admin profile read (explicit)**: [workersService.getAdminProfilesList](services/supabaseService.ts) and [workersService.getAdminProfileById](services/supabaseService.ts) use explicit [ADMIN_PROFILE_SELECT_COLUMNS](lib/sessionProfileSelect.ts), derived from actual UserManagement list/edit/create/invite/refetch usage plus [transformWorkerFromDB](services/supabaseService.ts) compatibility.
+
+### Low-risk migration done in 4F
+
+- [components/kanban/TaskDetailModal.tsx](components/kanban/TaskDetailModal.tsx) assignee profile load migrated from broad by-id read to [workersService.getWorkerByIdOperational](services/supabaseService.ts).
+- User creation/refetch in [usersService](services/supabaseService.ts) now calls explicit admin by-id method [workersService.getAdminProfileById](services/supabaseService.ts).
+
+### Transitional full reads status
+
+- UserManagement list and admin edit/invite flows now use explicit admin-column methods via [usersService.getAll](services/supabaseService.ts) -> [workersService.getAdminProfilesList](services/supabaseService.ts).
+- Transitional full methods were retained in 4F only as temporary fallback, then removed in 4H after 4G confirmed zero blocking runtime usage.
+
+---
+
+## Phase 4G — Final usage audit before 4H deletion
+
+### Search matrix (mandatory evidence)
+
+Buckets:
+- `definition only`
+- `runtime caller`
+- `wrapper-only path`
+- `docs/reference-only`
+
+| Method symbol | File path | Line | Enclosing symbol | Bucket | Notes |
+|---|---|---:|---|---|---|
+| `getAllProfilesFull(` | [services/supabaseService.ts](services/supabaseService.ts) | 111 | `workersService.getAllProfilesFull` | definition only | Method definition. |
+| `getAllProfilesFull(` | [docs/phase-3b-step2-rls-changes.md](docs/phase-3b-step2-rls-changes.md) | 70 | docs text | docs/reference-only | Documentation mention only. |
+| `getProfileByIdFull(` | [services/supabaseService.ts](services/supabaseService.ts) | 181 | `workersService.getProfileByIdFull` | definition only | Method definition. |
+| `getProfileByIdFull(` | [services/supabaseService.ts](services/supabaseService.ts) | 220 | `workersService.getById` | wrapper-only path | Deprecated wrapper delegates to full method. |
+| `workersService.getById(` | — | — | — | runtime caller | **0 hits** (explicit `workersService.getById(` search). |
+| `.getById(` | [services/virtualDocumentsService.ts](services/virtualDocumentsService.ts) | 236 | booking path | docs/reference-only | Non-worker services (`bookingsService.getById` etc.), not target methods. |
+| `.getById(` | [components/kanban/TaskDetailModal.tsx](components/kanban/TaskDetailModal.tsx) | 288 | property load | docs/reference-only | `propertiesService.getById`, not `workersService`. |
+| `\"getById\"` / `'getById'` | — | — | — | runtime caller | **0 hits** for dynamic string-based access. |
+
+Expanded `getById` coverage was run with:
+- `search(workersService\\.getById\\()`
+- `search(\\.getById\\()`
+- `search(['\"]getById['\"])`
+- import/re-export scan for hidden non-direct usage of `workersService` methods.
+
+### Per-method caller status and classification
+
+#### `workersService.getAllProfilesFull()`
+- Runtime callers found: **0**
+- Status: `dead / obsolete` (method currently unused at runtime)
+- Blocks 4H deletion directly: **no**
+
+#### `workersService.getProfileByIdFull()`
+- Runtime callers found: **0 external**
+- Wrapper-only usage: called only by deprecated `workersService.getById()` in [services/supabaseService.ts](services/supabaseService.ts).
+- Status: `wrapper-only path`
+- Blocks 4H deletion directly: **no** (if wrapper removed together)
+
+#### `workersService.getById()` (deprecated)
+- External runtime callers found: **0**
+- Status: `dead / obsolete / wrapper-only`
+- Blocks 4H deletion directly: **no**
+
+### Fallback-prerequisite audit (separate from caller status)
+
+| Blocker area | File | blocks 4H deletion now | blocks only broader later cleanup | Reason |
+|---|---|---|---|---|
+| Sidebar unresolved-scope fallback (`category_access`) | [lib/permissions.ts](lib/permissions.ts) | no | yes | Affects legacy module visibility behavior, not transitional full-method usage. |
+| Server LEGACY access branches (`department`, `category_access`, `manager && scope == null`) | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | no | yes | Governs command authorization; independent from transitional method caller map. |
+| Command auth profile shape includes legacy fields | [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | no | yes | Needed for server permission checks; separate cleanup track. |
+| `transformWorkerFromDB` compatibility bridges/defaults | [services/supabaseService.ts](services/supabaseService.ts) | no | yes | Influences broader profile model cleanup; does not require keeping transitional full methods. |
+| `department_scope` -> `department` mirror bridge | [lib/profileDepartmentSync.ts](lib/profileDepartmentSync.ts) | no | yes | RLS/backward-compatibility bridge for later legacy cleanup phases. |
+
+No blocker above requires retaining `getAllProfilesFull/getProfileByIdFull/getById` themselves.
+
+### Recommended 4H execution order
+
+1. Remove deprecated `workersService.getById()` wrapper.
+2. Remove `workersService.getProfileByIdFull()` (wrapper leaf).
+3. Remove `workersService.getAllProfilesFull()` if still zero callers.
+4. Re-run caller matrix + build in the same PR as guardrail.
+
+### Final 4H readiness summary (mandatory)
+
+- `getAllProfilesFull()`: caller status = `0 runtime callers`; deletion readiness = **ready**.
+- `getProfileByIdFull()`: caller status = `wrapper-only`; deletion readiness = **ready with wrapper removal**.
+- `getById()`: caller status = `0 external callers`; deletion readiness = **ready**.
+- **Final verdict:** `4H can remove transitional full methods now: yes`.
+- Legacy fallback fields (`department`, `category_access`) remain loaded where required by current compatibility logic (see Phase 4E section).
+
+---
+
+## Phase 4H — Safe removal of transitional full-profile methods
+
+### Completed removals
+
+From [workersService](services/supabaseService.ts), 4H removed:
+- `getAllProfilesFull()`
+- `getProfileByIdFull()`
+- deprecated `getById()`
+
+Related transitional-only JSDoc/comments tied to those methods were removed as part of the same patch.
+
+### Why removal was safe
+
+- 4G caller audit confirmed:
+  - `getAllProfilesFull()` had zero runtime callers.
+  - `workersService.getById()` had zero external callers.
+  - `getProfileByIdFull()` was wrapper-only through deprecated `getById()`.
+- 4H rechecked method symbols before deletion and found no unexpected live runtime caller.
+
+### Broader legacy blockers intentionally left untouched (out of scope for 4H)
+
+- `category_access` fallback behavior.
+- `department` fallback and mirror bridge behavior.
+- server-permissions legacy branches.
+- command-auth legacy profile shape.
+- `transformWorkerFromDB` compatibility cleanup.
+
+These remain for later phases and were not changed in 4H.
+
+### Post-removal caller summary
+
+- `getAllProfilesFull()`: `0` remaining definitions/usages.
+- `getProfileByIdFull()`: `0` remaining definitions/usages.
+- `workersService.getById()` transitional method: `0` remaining definitions/usages.

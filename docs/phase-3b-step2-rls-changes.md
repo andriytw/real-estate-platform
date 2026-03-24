@@ -67,7 +67,7 @@ ORDER BY tablename, policyname;
 
 ## Global assignee pool
 
-Unchanged intent: assignee / operational worker lists ([`getAssignableWorkers()` / `getWorkerDirectory()`](../services/supabaseService.ts)) use the same `profiles` SELECT RLS as before; the app still filters with `isEligibleTaskAssignee`. User Management uses [`getAllProfilesFull()`](../services/supabaseService.ts) (`select('*')`).
+Unchanged intent: assignee / operational worker lists ([`getAssignableWorkers()` / `getWorkerDirectory()`](../services/supabaseService.ts)) use the same `profiles` SELECT RLS as before; the app still filters with `isEligibleTaskAssignee`. User Management uses explicit admin profile reads ([`getAdminProfilesList()` / `getAdminProfileById()`](../services/supabaseService.ts)).
 
 ## Staging verification
 

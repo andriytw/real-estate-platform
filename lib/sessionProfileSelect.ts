@@ -5,6 +5,14 @@
 export const SESSION_PROFILE_SELECT_COLUMNS =
   'id, first_name, last_name, name, email, phone, role, department, department_scope, is_active, category_access, can_manage_users, can_be_task_assignee, manager_id, last_invite_sent_at, created_at, updated_at' as const;
 
+/**
+ * Admin user-management profile row: derived from actual UserManagement usage
+ * (list rendering + edit/create/invite/refetch flows) and transformWorkerFromDB compatibility.
+ * Keep explicit to avoid hidden broad `profiles.select('*')` coupling.
+ */
+export const ADMIN_PROFILE_SELECT_COLUMNS =
+  'id, first_name, last_name, name, email, phone, role, department, department_scope, is_active, category_access, can_manage_users, can_be_task_assignee, manager_id, last_invite_sent_at, created_at, updated_at' as const;
+
 import type { Worker } from '../types';
 
 /**
