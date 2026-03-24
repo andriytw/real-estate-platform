@@ -3,7 +3,8 @@
  * after tab return. When the Supabase JS client's internal token-refresh lock
  * gets stuck (browser throttled the background refresh mid-flight), these
  * calls never resolve. We race them against a timeout and, on timeout,
- * clear the stuck internal state so the next attempt can proceed.
+ * read the persisted session directly from localStorage (bypassing the stuck
+ * Supabase internal lock) so the app stays logged in and functional.
  */
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabase/client';
@@ -36,8 +37,40 @@ function raceWithTimeout<T>(promise: Promise<T>, method: string): Promise<T> {
 }
 
 /**
+ * Reads the Supabase session directly from localStorage, bypassing
+ * the auth client's internal lock. Supabase stores the session under
+ * a key matching `sb-<projectRef>-auth-token`.
+ */
+function readSessionFromStorage(): Session | null {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        if (parsed?.access_token && parsed?.user) {
+          _dbg('authGuard:localStorage', 'read session from localStorage', {
+            key,
+            hasToken: true,
+            tokenTail: parsed.access_token.slice(-8),
+            expiresAt: parsed.expires_at,
+            userId: parsed.user?.id,
+          });
+          return parsed as Session;
+        }
+      }
+    }
+  } catch (e) {
+    _dbg('authGuard:localStorage:error', 'failed to read session from localStorage', { error: String(e) });
+  }
+  return null;
+}
+
+/**
  * Safe getSession: returns session or null. Never hangs longer than AUTH_CALL_TIMEOUT_MS.
- * On timeout, returns null (caller should treat as "not signed in").
+ * On timeout, reads the session directly from localStorage so the user stays logged in.
  */
 export async function safeGetSession(): Promise<Session | null> {
   try {
@@ -45,8 +78,12 @@ export async function safeGetSession(): Promise<Session | null> {
     return data?.session ?? null;
   } catch (e) {
     if (e instanceof AuthHangTimeoutError) {
-      _dbg('authGuard:getSession:fallback', 'getSession hung — returning null session', {});
-      return null;
+      const stored = readSessionFromStorage();
+      _dbg('authGuard:getSession:fallback', 'getSession hung — using localStorage fallback', {
+        hasStoredSession: !!stored,
+        tokenTail: stored?.access_token?.slice(-8) ?? 'none',
+      });
+      return stored;
     }
     throw e;
   }
@@ -54,6 +91,7 @@ export async function safeGetSession(): Promise<Session | null> {
 
 /**
  * Safe getUser: returns user or null. Never hangs longer than AUTH_CALL_TIMEOUT_MS.
+ * On timeout, extracts user from the localStorage session.
  */
 export async function safeGetUser(): Promise<User | null> {
   try {
@@ -61,8 +99,12 @@ export async function safeGetUser(): Promise<User | null> {
     return data?.user ?? null;
   } catch (e) {
     if (e instanceof AuthHangTimeoutError) {
-      _dbg('authGuard:getUser:fallback', 'getUser hung — returning null user', {});
-      return null;
+      const stored = readSessionFromStorage();
+      _dbg('authGuard:getUser:fallback', 'getUser hung — using localStorage user', {
+        hasStoredUser: !!stored?.user,
+        userId: stored?.user?.id ?? 'none',
+      });
+      return stored?.user ?? null;
     }
     throw e;
   }
