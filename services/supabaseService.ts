@@ -739,6 +739,22 @@ export const warehouseService = {
 
 // ==================== USER MANAGEMENT ====================
 export const usersService = {
+  // Runtime guard for scope-first writes from UI/API payloads.
+  // Keeps update/create paths from silently accepting non-canonical scope input.
+  normalizeDepartmentScopeInput(raw: unknown): DepartmentScope | null {
+    if (typeof raw !== 'string') return null;
+    const scope = raw.trim();
+    if (
+      scope === 'facility' ||
+      scope === 'accounting' ||
+      scope === 'sales' ||
+      scope === 'properties' ||
+      scope === 'all'
+    ) {
+      return scope as DepartmentScope;
+    }
+    return null;
+  },
   /** Explicit admin profile rows for User Management (admin forms, invites). */
   async getAll(): Promise<Worker[]> {
     return workersService.getAdminProfilesList();
@@ -814,6 +830,11 @@ export const usersService = {
     canManageUsers?: boolean;
     canBeTaskAssignee?: boolean;
   }): Promise<Worker> {
+    const canonicalScope = usersService.normalizeDepartmentScopeInput(userData.departmentScope);
+    if (canonicalScope == null) {
+      throw new Error('Invalid departmentScope: scope-first contract requires valid canonical department_scope');
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!supabaseUrl || !anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
@@ -838,7 +859,7 @@ export const usersService = {
         firstName: userData.firstName,
         lastName: userData.lastName,
         role: userData.role,
-        departmentScope: userData.departmentScope,
+        departmentScope: canonicalScope,
         canManageUsers: userData.canManageUsers ?? false,
         canBeTaskAssignee: userData.canBeTaskAssignee !== false,
         skipInvite: true, // Don't send invitation
@@ -873,6 +894,11 @@ export const usersService = {
     canManageUsers?: boolean;
     canBeTaskAssignee?: boolean;
   }): Promise<Worker> {
+    const canonicalScope = usersService.normalizeDepartmentScopeInput(userData.departmentScope);
+    if (canonicalScope == null) {
+      throw new Error('Invalid departmentScope: scope-first contract requires valid canonical department_scope');
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!supabaseUrl || !anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
@@ -897,7 +923,7 @@ export const usersService = {
         firstName: userData.firstName,
         lastName: userData.lastName,
         role: userData.role,
-        departmentScope: userData.departmentScope,
+        departmentScope: canonicalScope,
         canManageUsers: userData.canManageUsers ?? false,
         canBeTaskAssignee: userData.canBeTaskAssignee !== false,
         emailRedirectTo: `${window.location.origin}/login`
@@ -994,9 +1020,13 @@ export const usersService = {
       console.log('📝 Setting role in updateData:', updates.role);
     }
     if (updates.departmentScope !== undefined) {
-      updateData.department_scope = updates.departmentScope;
-      updateData.department = mirrorLegacyDepartmentFromScope(updates.departmentScope);
-      console.log('📝 Setting department_scope + mirrored department:', updates.departmentScope, updateData.department);
+      const canonicalScope = usersService.normalizeDepartmentScopeInput(updates.departmentScope);
+      if (canonicalScope == null) {
+        throw new Error('Invalid departmentScope: scope-first contract requires valid canonical department_scope');
+      }
+      updateData.department_scope = canonicalScope;
+      updateData.department = mirrorLegacyDepartmentFromScope(canonicalScope);
+      console.log('📝 Setting department_scope + mirrored department:', canonicalScope, updateData.department);
     }
     if (updates.canManageUsers !== undefined) {
       updateData.can_manage_users = updates.canManageUsers;

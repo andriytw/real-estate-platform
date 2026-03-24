@@ -3,12 +3,13 @@ import { getSupabaseAdmin } from './supabase-admin.js';
 import { withTimeout } from './with-timeout.js';
 import type { CommandAuthProfile } from './server-permissions.js';
 import {
-  canConfirmPaymentServer,
-  canCreateOffersServer,
-  canSaveInvoiceServer,
+  evaluateConfirmPaymentServerDecision,
+  evaluateCreateOffersServerDecision,
+  evaluateSaveInvoiceServerDecision,
 } from './server-permissions.js';
 
 const AUTH_DB_TIMEOUT_MS = 25_000;
+const ENABLE_PERMISSION_BRANCH_TELEMETRY = process.env.PERMISSION_BRANCH_TELEMETRY === '1';
 
 /** Command API auth profile — same shape as CommandAuthProfile (Pass 1 / Phase 3A fields). */
 export type CommandProfile = CommandAuthProfile;
@@ -101,19 +102,46 @@ export async function requireCommandProfile(request: Request): Promise<CommandPr
 }
 
 export function assertCanCreateOffers(profile: CommandProfile): void {
-  if (!canCreateOffersServer(profile)) {
+  const decision = evaluateCreateOffersServerDecision(profile);
+  if (ENABLE_PERMISSION_BRANCH_TELEMETRY) {
+    console.log('[authz-branch]', {
+      permission: 'create_offers',
+      tag: decision.tag,
+      role: profile.role,
+      scope: profile.department_scope ?? 'null',
+    });
+  }
+  if (!decision.allowed) {
     throw new CommandAuthError(403, 'Access denied: sales access required to create offers or bookings');
   }
 }
 
 export function assertCanSaveInvoice(profile: CommandProfile): void {
-  if (!canSaveInvoiceServer(profile)) {
+  const decision = evaluateSaveInvoiceServerDecision(profile);
+  if (ENABLE_PERMISSION_BRANCH_TELEMETRY) {
+    console.log('[authz-branch]', {
+      permission: 'save_invoice',
+      tag: decision.tag,
+      role: profile.role,
+      scope: profile.department_scope ?? 'null',
+    });
+  }
+  if (!decision.allowed) {
     throw new CommandAuthError(403, 'Access denied: cannot save invoices or proformas');
   }
 }
 
 export function assertCanConfirmPayment(profile: CommandProfile): void {
-  if (!canConfirmPaymentServer(profile)) {
+  const decision = evaluateConfirmPaymentServerDecision(profile);
+  if (ENABLE_PERMISSION_BRANCH_TELEMETRY) {
+    console.log('[authz-branch]', {
+      permission: 'confirm_payment',
+      tag: decision.tag,
+      role: profile.role,
+      scope: profile.department_scope ?? 'null',
+    });
+  }
+  if (!decision.allowed) {
     throw new CommandAuthError(403, 'Access denied: cannot confirm payment for this invoice');
   }
 }

@@ -121,6 +121,28 @@ serve(async (req) => {
           return 'facility'
       }
     }
+
+    const normalizeDepartmentScopeInput = (scopeRaw: unknown): 'facility' | 'accounting' | 'sales' | 'properties' | 'all' | null => {
+      if (typeof scopeRaw !== 'string') return null
+      const scope = scopeRaw.trim()
+      switch (scope) {
+        case 'facility':
+        case 'accounting':
+        case 'sales':
+        case 'properties':
+        case 'all':
+          return scope
+        default:
+          return null
+      }
+    }
+
+    const mapLegacyDepartmentToScope = (legacyRaw: unknown): 'facility' | 'accounting' | 'sales' | null => {
+      if (typeof legacyRaw !== 'string') return null
+      const d = legacyRaw.trim()
+      if (d === 'facility' || d === 'accounting' || d === 'sales') return d
+      return null
+    }
     
     console.log('📥 Request body received:', {
       email,
@@ -574,11 +596,26 @@ serve(async (req) => {
       }
       
       if (role) profileData.role = role
-      if (departmentScope && typeof departmentScope === 'string') {
-        profileData.department_scope = departmentScope
-        profileData.department = mirrorLegacyDepartmentFromScope(departmentScope)
-      } else if (department) {
-        profileData.department = department
+      const canonicalScope = normalizeDepartmentScopeInput(departmentScope)
+      if (canonicalScope) {
+        profileData.department_scope = canonicalScope
+        profileData.department = mirrorLegacyDepartmentFromScope(canonicalScope)
+      } else {
+        // Transitional compatibility: legacy-only input still accepted for external callers.
+        // Normalize to scope-first write whenever legacy department is mappable.
+        const fallbackScope = mapLegacyDepartmentToScope(department)
+        if (fallbackScope) {
+          profileData.department_scope = fallbackScope
+          profileData.department = mirrorLegacyDepartmentFromScope(fallbackScope)
+          console.log('⚠️ Legacy department-only input normalized to scope-first write:', {
+            legacyDepartment: department,
+            normalizedScope: fallbackScope,
+          })
+        } else if (department) {
+          // Keep legacy-only write path only when input cannot be safely mapped.
+          profileData.department = department
+          console.log('⚠️ Legacy-only department write retained (unmappable scope):', { department })
+        }
       }
       if (categoryAccess) profileData.category_access = categoryAccess
       if (typeof canManageUsers === 'boolean') profileData.can_manage_users = canManageUsers

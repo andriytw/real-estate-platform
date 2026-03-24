@@ -22,6 +22,20 @@ export type CommandAuthProfile = {
 
 const VALID_SCOPES = new Set(['facility', 'accounting', 'sales', 'properties', 'all']);
 
+export type PermissionBranchTag =
+  | 'super_manager'
+  | 'full_scope_allow'
+  | 'canonical_scope_allow'
+  | 'legacy_department_allow'
+  | 'legacy_category_access_allow'
+  | 'unresolved_manager_allow'
+  | 'denied';
+
+type PermissionDecision = {
+  allowed: boolean;
+  tag: PermissionBranchTag;
+};
+
 /** Prefer department_scope; else map legacy department if facility|accounting|sales. */
 export function effectiveDepartmentScope(profile: CommandAuthProfile): string | null {
   const raw = profile.department_scope;
@@ -54,50 +68,128 @@ function categoryAccessIncludesNormalizedToken(
   return ca.some((x) => String(x).toLowerCase() === token);
 }
 
+function isSuperManagerAllow(profile: CommandAuthProfile): boolean {
+  return profile.role === 'super_manager';
+}
+
+function isFullScopeAllow(profile: CommandAuthProfile): boolean {
+  return hasFullScopeAccess(profile);
+}
+
+function isCanonicalScopeAllowForOffers(scope: string | null): boolean {
+  return scope === 'sales';
+}
+
+function isLegacyDepartmentAllowForOffers(profile: CommandAuthProfile): boolean {
+  return profile.department === 'sales';
+}
+
+function isLegacyCategoryAllowForOffers(profile: CommandAuthProfile): boolean {
+  return categoryAccessIncludesNormalizedToken(profile, 'sales');
+}
+
+function isCanonicalScopeAllowForInvoice(scope: string | null): boolean {
+  return scope === 'accounting' || scope === 'sales';
+}
+
+function isLegacyDepartmentAllowForInvoice(profile: CommandAuthProfile): boolean {
+  return profile.department === 'accounting' || profile.department === 'sales';
+}
+
+function isLegacyCategoryAllowForInvoice(profile: CommandAuthProfile): boolean {
+  return (
+    categoryAccessIncludesNormalizedToken(profile, 'sales') ||
+    categoryAccessIncludesNormalizedToken(profile, 'accounting')
+  );
+}
+
+function isUnresolvedManagerAllowForInvoice(profile: CommandAuthProfile, scope: string | null): boolean {
+  return profile.role === 'manager' && scope == null;
+}
+
+function isCanonicalScopeAllowForConfirm(scope: string | null): boolean {
+  return scope === 'accounting' || scope === 'sales';
+}
+
+function isLegacyDepartmentAllowForConfirm(profile: CommandAuthProfile): boolean {
+  return profile.department === 'accounting' || profile.department === 'sales';
+}
+
+function isLegacyCategoryAllowForConfirm(profile: CommandAuthProfile): boolean {
+  return categoryAccessIncludesNormalizedToken(profile, 'sales');
+}
+
+/**
+ * Branch priority order (must remain exact for parity):
+ * super_manager -> full_scope_allow -> canonical_scope_allow -> legacy_department_allow ->
+ * legacy_category_access_allow -> unresolved_manager_allow -> denied
+ */
+export function evaluateCreateOffersServerDecision(profile: CommandAuthProfile): PermissionDecision {
+  if (isSuperManagerAllow(profile)) return { allowed: true, tag: 'super_manager' };
+  if (isFullScopeAllow(profile)) return { allowed: true, tag: 'full_scope_allow' };
+  const scope = effectiveDepartmentScope(profile);
+  if (isCanonicalScopeAllowForOffers(scope)) return { allowed: true, tag: 'canonical_scope_allow' };
+  if (isLegacyDepartmentAllowForOffers(profile)) return { allowed: true, tag: 'legacy_department_allow' };
+  if (isLegacyCategoryAllowForOffers(profile)) {
+    return { allowed: true, tag: 'legacy_category_access_allow' };
+  }
+  return { allowed: false, tag: 'denied' };
+}
+
+/**
+ * Branch priority order (must remain exact for parity):
+ * super_manager -> full_scope_allow -> canonical_scope_allow -> legacy_department_allow ->
+ * legacy_category_access_allow -> unresolved_manager_allow -> denied
+ */
+export function evaluateSaveInvoiceServerDecision(profile: CommandAuthProfile): PermissionDecision {
+  if (isSuperManagerAllow(profile)) return { allowed: true, tag: 'super_manager' };
+  if (isFullScopeAllow(profile)) return { allowed: true, tag: 'full_scope_allow' };
+  const scope = effectiveDepartmentScope(profile);
+  if (isCanonicalScopeAllowForInvoice(scope)) return { allowed: true, tag: 'canonical_scope_allow' };
+  if (isLegacyDepartmentAllowForInvoice(profile)) return { allowed: true, tag: 'legacy_department_allow' };
+  if (isLegacyCategoryAllowForInvoice(profile)) {
+    return { allowed: true, tag: 'legacy_category_access_allow' };
+  }
+  if (isUnresolvedManagerAllowForInvoice(profile, scope)) {
+    return { allowed: true, tag: 'unresolved_manager_allow' };
+  }
+  return { allowed: false, tag: 'denied' };
+}
+
+/**
+ * Branch priority order (must remain exact for parity):
+ * super_manager -> full_scope_allow -> canonical_scope_allow -> legacy_department_allow ->
+ * legacy_category_access_allow -> denied
+ */
+export function evaluateConfirmPaymentServerDecision(profile: CommandAuthProfile): PermissionDecision {
+  if (isSuperManagerAllow(profile)) return { allowed: true, tag: 'super_manager' };
+  if (isFullScopeAllow(profile)) return { allowed: true, tag: 'full_scope_allow' };
+  const scope = effectiveDepartmentScope(profile);
+  if (isCanonicalScopeAllowForConfirm(scope)) return { allowed: true, tag: 'canonical_scope_allow' };
+  if (isLegacyDepartmentAllowForConfirm(profile)) return { allowed: true, tag: 'legacy_department_allow' };
+  if (isLegacyCategoryAllowForConfirm(profile)) {
+    return { allowed: true, tag: 'legacy_category_access_allow' };
+  }
+  return { allowed: false, tag: 'denied' };
+}
+
 /**
  * Sales / offers / direct booking commands — align with UI sales module access.
  */
 export function canCreateOffersServer(profile: CommandAuthProfile): boolean {
-  if (profile.role === 'super_manager') return true;
-  if (hasFullScopeAccess(profile)) return true;
-  const scope = effectiveDepartmentScope(profile);
-  if (scope === 'sales') return true;
-  // LEGACY: department column
-  if (profile.department === 'sales') return true;
-  // LEGACY: category_access
-  if (categoryAccessIncludesNormalizedToken(profile, 'sales')) return true;
-  return false;
+  return evaluateCreateOffersServerDecision(profile).allowed;
 }
 
 /**
  * Invoice / proforma writes — accounting + sales scopes; not blanket "any manager" when scope is known.
  */
 export function canSaveInvoiceServer(profile: CommandAuthProfile): boolean {
-  if (profile.role === 'super_manager') return true;
-  if (hasFullScopeAccess(profile)) return true;
-  const scope = effectiveDepartmentScope(profile);
-  if (scope === 'accounting' || scope === 'sales') return true;
-  // LEGACY: department
-  if (profile.department === 'accounting' || profile.department === 'sales') return true;
-  if (categoryAccessIncludesNormalizedToken(profile, 'sales')) return true;
-  if (categoryAccessIncludesNormalizedToken(profile, 'accounting')) return true;
-  /**
-   * LEGACY: unresolved scope + manager — preserve prior broad allow (managers often elevated in prod).
-   * Once department_scope is backfilled everywhere, consider removing this branch.
-   */
-  if (profile.role === 'manager' && scope == null) return true;
-  return false;
+  return evaluateSaveInvoiceServerDecision(profile).allowed;
 }
 
 /**
  * Confirm payment / mark paid — same gate as historical RPC: accounting, sales, super; not blanket manager.
  */
 export function canConfirmPaymentServer(profile: CommandAuthProfile): boolean {
-  if (profile.role === 'super_manager') return true;
-  if (hasFullScopeAccess(profile)) return true;
-  const scope = effectiveDepartmentScope(profile);
-  if (scope === 'accounting' || scope === 'sales') return true;
-  if (profile.department === 'accounting' || profile.department === 'sales') return true;
-  if (categoryAccessIncludesNormalizedToken(profile, 'sales')) return true;
-  return false;
+  return evaluateConfirmPaymentServerDecision(profile).allowed;
 }

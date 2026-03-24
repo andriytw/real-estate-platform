@@ -199,9 +199,9 @@ Legend: **A** = actively used, **T** = transitional but necessary, **L** = likel
 | `profiles.category_access` | T | Sidebar fallback [lib/permissions.ts](lib/permissions.ts); server LEGACY branches [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts); DB `has_sales_category_access` when scope null. |
 | `can_manage_users` | A | [lib/permissions.ts](lib/permissions.ts); command auth; UserManagement. |
 | `transformWorkerFromDB` super_manager bridge for `canManageUsers` | T | [services/supabaseService.ts](services/supabaseService.ts) — true if DB null and role super_manager. |
-| `WorkerContext` `profiles.select('*')` | A | [contexts/WorkerContext.tsx](contexts/WorkerContext.tsx). |
+| `WorkerContext` explicit session columns | A | [contexts/WorkerContext.tsx](contexts/WorkerContext.tsx) via [SESSION_PROFILE_SELECT_COLUMNS](lib/sessionProfileSelect.ts). |
 | `workersService.getAdminProfilesList` explicit columns | A | [services/supabaseService.ts](services/supabaseService.ts); UserManagement via `usersService.getAll`. |
-| `workersService.getAllProfilesFull` / `getProfileByIdFull` `select('*')` | T | [services/supabaseService.ts](services/supabaseService.ts); transitional fallback only, not for new callers. |
+| `workersService.getAllProfilesFull` / `getProfileByIdFull` `select('*')` | L (removed) | Removed in 4H; see [Phase 4H](docs/phase-4-legacy-cleanup-audit.md). |
 | `workersService.getWorkerDirectory` / `getAssignableWorkers` explicit columns | A | Operational lists: calendar, kanban, tasks (`getAssignableWorkers`); warehouse worker list (`getWorkerDirectory` only — same implementation). |
 | `worker_id` + `assigned_worker_id` + `assignee` | A | Transforms and [AccountDashboard](components/AccountDashboard.tsx) patch patterns. |
 | `getCalendarEventAssigneeId` | A | Assignee UI alignment post–Phase 3 fix. |
@@ -285,9 +285,10 @@ Do **not** treat these as delete-ready without DBA / prod checks.
 
 ---
 
-## 6. Recommended cleanup sequence (Phase 4+)
+## 6. Historical cleanup sequence snapshot (superseded)
 
-Derived from dependencies (data before schema; read paths before column drops).
+This section captures an earlier planning snapshot and is kept for audit history only.
+Current sequencing guidance is defined by completed phases 4F-4I and newer Track B prep sections.
 
 | Stage | Focus | Purpose |
 |-------|--------|---------|
@@ -339,9 +340,10 @@ After any change to access model, profiles loading, assignee, or task chat:
 
 ---
 
-## 10. Final recommendation
+## 10. Historical recommendation snapshot
 
-**Next implementation phase after this audit:** prioritize **4A + 4B** together in spirit: **observability** for unresolved scopes and assignee column parity, plus a **narrow, explicit `profiles` column list** for the session worker load (pattern already used in [api/_lib/command-auth.ts](api/_lib/command-auth.ts)). That reduces coupling **without** removing legacy columns yet and unblocks safer **4D** (`category_access`) and **4C** (assignee unification) later.
+This recommendation is preserved as historical context from an earlier audit checkpoint.
+It is superseded by later completed phases and by the Track ordering documented in Phase 4I and Phase 4J prep.
 
 Secondary priority: **document or fix Kanban vs DB drift** (`columnId` / `createdFrom` vs [transformCalendarEventToDB](services/supabaseService.ts)) so operators and engineers do not assume DB `column_id` / `created_from` are populated by the current client path.
 
@@ -384,7 +386,7 @@ Buckets:
 | Method symbol | File path | Line | Enclosing symbol | Bucket | Notes |
 |---|---|---:|---|---|---|
 | `getAllProfilesFull(` | [services/supabaseService.ts](services/supabaseService.ts) | 111 | `workersService.getAllProfilesFull` | definition only | Method definition. |
-| `getAllProfilesFull(` | [docs/phase-3b-step2-rls-changes.md](docs/phase-3b-step2-rls-changes.md) | 70 | docs text | docs/reference-only | Documentation mention only. |
+| `getAllProfilesFull(` | — | — | — | docs/reference-only | No external docs/runtime callers found in the 4G scan besides this audit file itself. |
 | `getProfileByIdFull(` | [services/supabaseService.ts](services/supabaseService.ts) | 181 | `workersService.getProfileByIdFull` | definition only | Method definition. |
 | `getProfileByIdFull(` | [services/supabaseService.ts](services/supabaseService.ts) | 220 | `workersService.getById` | wrapper-only path | Deprecated wrapper delegates to full method. |
 | `workersService.getById(` | — | — | — | runtime caller | **0 hits** (explicit `workersService.getById(` search). |
@@ -479,3 +481,520 @@ These remain for later phases and were not changed in 4H.
 - `getAllProfilesFull()`: `0` remaining definitions/usages.
 - `getProfileByIdFull()`: `0` remaining definitions/usages.
 - `workersService.getById()` transitional method: `0` remaining definitions/usages.
+
+---
+
+## Phase 4I — Legacy compatibility dependency audit (permissions/auth/profile bridges)
+
+4I is **audit-only**. No behavior/schema/RLS/access changes were made in this phase.
+
+### Exact dependency map by area
+
+Columns:
+- runtime role: `client UI` / `server auth` / `server permission` / `profile transform` / `sync bridge` / `unknown`
+- classification: `active runtime dependency` / `compatibility fallback` / `bridge logic` / `dead / obsolete` / `unclear / manual review needed`
+
+| Area | File path | Line | Enclosing symbol | Runtime role | Fields relied on | Classification | blocks next cleanup directly | source of truth expected after cleanup | Notes |
+|---|---|---:|---|---|---|---|---|---|---|
+| category_access fallback | [lib/permissions.ts](lib/permissions.ts) | 49 | `canViewModule` | client UI | `role`, `isActive`, `departmentScope`, `department`, `categoryAccess` | compatibility fallback | yes | scope-based permission model (`department_scope` + normalized module checks) | Unresolved scope path (`scope == null`) uses `categoryAccess`. |
+| category_access server fallback | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 48 | `categoryAccessIncludesNormalizedToken` | server permission | `category_access` | compatibility fallback | yes | scope-based command permission contract | Transitional token checks still used by command gates. |
+| offers permission legacy | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 60 | `canCreateOffersServer` | server permission | `role`, `department_scope`, `department`, `category_access` | active runtime dependency | yes | scope-only server authorization rules | Keeps legacy `department`/`category_access` OR branches. |
+| invoice permission legacy | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 75 | `canSaveInvoiceServer` | server permission | `role`, `department_scope`, `department`, `category_access` | active runtime dependency | yes | scope-only server authorization rules | Includes legacy `manager && scope == null` branch. |
+| payment permission legacy | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 95 | `canConfirmPaymentServer` | server permission | `role`, `department_scope`, `department`, `category_access` | active runtime dependency | yes | scope-only server authorization rules | Transitional fallback still active. |
+| department mirror bridge | [lib/profileDepartmentSync.ts](lib/profileDepartmentSync.ts) | 29 | `mirrorLegacyDepartmentFromScope` | sync bridge | `department_scope -> department` mapping | bridge logic | yes | `department_scope` only | Technical bridge for legacy CHECK/RLS constraints. |
+| update mirror write | [services/supabaseService.ts](services/supabaseService.ts) | 967 | `usersService.update` | sync bridge | `updates.departmentScope`, `department_scope`, mirrored `department` | active runtime dependency | yes | `department_scope` only | Writes both canonical + mirrored legacy fields. |
+| create-user mirror write | [supabase/functions/admin-create-user/index.ts](supabase/functions/admin-create-user/index.ts) | 25 | local `mirrorLegacyDepartmentFromScope` | sync bridge | `departmentScope`, `department_scope`, mirrored `department` | active runtime dependency | yes | `department_scope` only | Edge function mirrors department for inserted/upserted profile rows. |
+| invite mirror/fallback write | [supabase/functions/invite-user/index.ts](supabase/functions/invite-user/index.ts) | 107 | local `mirrorLegacyDepartmentFromScope` | sync bridge | `departmentScope`, `department`, `category_access` | active runtime dependency | yes | `department_scope` only | If scope absent, flow can still write legacy `department` directly. |
+| command-auth profile load | [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | 60 | `requireCommandProfile` | server auth | `department`, `department_scope`, `category_access`, capability flags | active runtime dependency | yes | normalized command-auth contract | Legacy fields are loaded because downstream permission helpers still depend on them. |
+| command-auth normalization | [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | 43 | `normalizeProfile` | server auth | `role`, `department`, `department_scope`, `is_active`, flags | compatibility fallback | yes | strict canonical command-auth shape | Coercion/defaulting keeps transitional behavior stable. |
+| worker shape compatibility | [services/supabaseService.ts](services/supabaseService.ts) | 3244 | `transformWorkerFromDB` | profile transform | `department_scope`, `department`, `category_access`, `role`, flags, names | active runtime dependency | yes | caller-specific explicit contracts | Central compatibility shaping for session/admin/operational callers. |
+| scope resolver fallback | [services/supabaseService.ts](services/supabaseService.ts) | 3232 | `resolveDepartmentScopeFromDb` | profile transform | `department_scope`, `department` | compatibility fallback | yes | `department_scope` only | Falls back to legacy `department` when scope unresolved. |
+| session bootstrap dependency | [contexts/WorkerContext.tsx](contexts/WorkerContext.tsx) | 138 | `getCurrentWorker` | client UI | transformed `Worker` from session profile row | active runtime dependency | yes | explicit session contract with reduced transform fallback | Session path depends on transform fallback behavior today. |
+| deprecated invite branch | [services/supabaseService.ts](services/supabaseService.ts) | 807 | `usersService.createWithoutInvite` | unknown | `departmentScope` passed to invite function | unclear / manual review needed | no | explicit admin-create-user path only | Missing evidence: external invocations outside repo. Need runtime telemetry / endpoint logs to prove dead. |
+
+### Mandatory search matrix (evidence)
+
+| Symbol/pattern | File path | Line | Enclosing symbol | Bucket | Notes |
+|---|---|---:|---|---|---|
+| `category_access` | [lib/permissions.ts](lib/permissions.ts) | 44 | `canViewModule` docs + body | bridge/fallback logic | Unresolved scope branch falls back to category access. |
+| `category_access` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 48 | `categoryAccessIncludesNormalizedToken` | bridge/fallback logic | Transitional token gate helper. |
+| `category_access` | [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | 81 | `requireCommandProfile` | runtime dependency | Field is loaded for command authorization path. |
+| `category_access ||` | — | — | — | unclear/manual review needed | Missing evidence: no direct `||` fallback expression found in code. Runtime certainty not applicable for this exact syntax pattern. To prove/disprove, run semantic scan for equivalent fallback expressions (`Array.isArray(...) ? ... : ...`). |
+| `category_access ??` | — | — | — | unclear/manual review needed | Missing evidence: no `??` usage found. Equivalent behavior exists via ternary/default logic in transform and permission helpers. |
+| `department_scope` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 25 | `effectiveDepartmentScope` | runtime dependency | Scope-first resolver used by all command permission gates. |
+| `department_scope` | [services/supabaseService.ts](services/supabaseService.ts) | 997 | `usersService.update` | runtime dependency | Writes canonical scope and mirrored legacy department. |
+| `department_scope` | [supabase/functions/invite-user/index.ts](supabase/functions/invite-user/index.ts) | 578 | invite profile upsert block | bridge/fallback logic | Writes scope when present, legacy-only fallback when absent. |
+| `department` | [services/supabaseService.ts](services/supabaseService.ts) | 998 | `usersService.update` | bridge/fallback logic | Mirrored write from scope through sync helper. |
+| `department` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 66 | `canCreateOffersServer` | bridge/fallback logic | Legacy OR branch (`department === 'sales'`). |
+| `profileDepartmentSync` / mirror helper | [lib/profileDepartmentSync.ts](lib/profileDepartmentSync.ts) | 29 | `mirrorLegacyDepartmentFromScope` | definition only | Canonical sync bridge definition. |
+| `profileDepartmentSync` / mirror helper | [services/supabaseService.ts](services/supabaseService.ts) | 1 | module import | runtime dependency | Active usage in user update flow. |
+| `transformWorkerFromDB` | [services/supabaseService.ts](services/supabaseService.ts) | 3244 | `transformWorkerFromDB` | definition only | Main profile compatibility transform. |
+| `transformWorkerFromDB` | [contexts/WorkerContext.tsx](contexts/WorkerContext.tsx) | 138 | `getCurrentWorker` | runtime dependency | Session bootstrap depends on transform. |
+| `manager && scope == null` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 88 | `canSaveInvoiceServer` | bridge/fallback logic | Legacy broad-allow branch for unresolved manager scope. |
+| `scope == null` | [lib/permissions.ts](lib/permissions.ts) | 101 | `canAccessDepartment` | runtime dependency | Strict deny for unresolved scope in department access helper. |
+| `scope == null` | [components/kanban/KanbanBoard.tsx](components/kanban/KanbanBoard.tsx) | 31 | `filterTasksByManagerScope` | runtime dependency | UI scope-null treated as broad for tasks filtering. |
+| `scope === null` | — | — | — | unclear/manual review needed | Missing evidence: exact strict-null pattern not found. Equivalent null checks use `== null`. |
+| `scope == undefined` | — | — | — | unclear/manual review needed | Missing evidence: exact undefined-comparison pattern not found. Equivalent checks use `== null`. |
+| `!scope` | [components/admin/UserManagement.tsx](components/admin/UserManagement.tsx) | 93 | local scope-label helper | runtime dependency | Falsy scope display handling in admin UI labeling (not permission gate). |
+| `scope ??` | — | — | — | unclear/manual review needed | Missing evidence: exact pattern not found. Nullish handling is done with `if`/ternary branches. |
+| `department_scope ?? department` | — | — | — | unclear/manual review needed | Missing evidence: exact syntax absent. Equivalent fallback implemented in resolver functions. |
+| `department || department_scope` | — | — | — | unclear/manual review needed | Missing evidence: exact syntax absent. Equivalent ordering appears in explicit resolver code. |
+| unresolved-scope fallback pattern | [lib/permissions.ts](lib/permissions.ts) | 78 | `canViewModule` | bridge/fallback logic | Explicit unresolved-scope category fallback path. |
+| unresolved-scope fallback pattern | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 85 | `canSaveInvoiceServer` | bridge/fallback logic | Explicit unresolved-scope legacy manager branch. |
+| `category_access` (docs mention) | [docs/phase-3a-server-permissions.md](docs/phase-3a-server-permissions.md) | 8 | docs text | docs/reference-only | Documentation evidence only. |
+
+### Runtime vs compatibility distinction
+
+- **Real runtime dependencies now:** command endpoints call `requireCommandProfile + assertCan*` gates; `WorkerContext` and worker/admin service paths depend on `transformWorkerFromDB`; user update/create/invite flows actively mirror `department_scope -> department`.
+- **Compatibility fallback/bridge logic now:** `category_access` unresolved-scope fallback, legacy `department` OR branches, `manager && scope == null` branch, and transform default coercions.
+- **Unclear rows:** exact syntactic patterns (`scope ??`, `category_access ??`, etc.) are absent; equivalent semantics are implemented via explicit branches. Additional proof requires runtime tracing or semantic pattern checks, not direct regex hits.
+
+### Cleanup readiness analysis by track
+
+| Track | can cleanup start now | blockers | migration prerequisites | risk | reason |
+|---|---|---|---|---|---|
+| Track A — `category_access` | no | Client/server fallbacks still active in permission decisions | Backfill/resolve `department_scope`; remove fallback branches in client + server + SQL helper logic with parity tests | high | Removing now can deny legitimate legacy users or skew authorization parity. |
+| Track B — `department` bridge | no | Active mirror writes in update/create/invite flows; fallback readers still used | Enforce canonical `department_scope`; disable legacy-only writes; align RLS/helper assumptions | high | Premature removal breaks profile write compatibility and legacy permission paths. |
+| Track C — server permission branches | no | Command gates still use legacy OR branches and unresolved manager branch | Scope-only decision policy + staged parity tests on create offers/save invoice/confirm payment | high | Direct authorization regression risk (over-deny or over-grant). |
+| Track D — command-auth shape | no | Command profile still loads legacy fields consumed by server-permissions | First migrate server-permissions to canonical contract; then shrink command-auth selected shape | medium-high | Shape cleanup depends on C; otherwise fields removed while still read at runtime. |
+| Track E — `transformWorkerFromDB` | no | Session/admin/operational callers depend on compatibility defaults/coercions | Define caller-specific strict contracts and ensure canonical data completeness before reducing defaults | medium-high | UI/profile regressions likely if defaults removed before contract hardening. |
+
+### Recommended next phase order (reasoned)
+
+1. **Track B prep (department bridge hardening and data readiness)**
+   - Why before next: reduces unknown/unresolved scope rows feeding permission fallbacks.
+   - Risk reduced: prevents auth drift when server branches are tightened.
+   - Unlocks: safe removal path for legacy permission branches (Track C).
+2. **Track C (server permission branch cleanup)**
+   - Why before next: command authorization behavior must be canonicalized before shrinking auth shape.
+   - Risk reduced: avoids removing required legacy fields while still referenced by live gates.
+   - Unlocks: command-auth contract minimization (Track D).
+3. **Track D (command-auth profile shape cleanup)**
+   - Why before next: once server gates are canonical, legacy profile fields can be removed from auth load.
+   - Risk reduced: avoids stale/unused auth payload coupling.
+   - Unlocks: safer client fallback removals and stronger contract parity.
+4. **Track A (`category_access` fallback removal)**
+   - Why before next: permissions become fully scope-driven after server/auth alignment.
+   - Risk reduced: minimizes client/server divergence in access decisions.
+   - Unlocks: transform simplification by removing category fallback dependence.
+5. **Track E (`transformWorkerFromDB` compatibility cleanup)**
+   - Why last: depends on upstream canonical contracts being stable.
+   - Risk reduced: avoids broad UI regressions from premature fallback removal.
+   - Unlocks: final strict read-model contracts with reduced transform complexity.
+
+### Executive summary
+
+- 4I confirms legacy compatibility dependencies are still active across permission checks, command auth profile loading, department mirroring, and worker transform shaping.
+- No audited track (A-E) is ready for direct cleanup now; each still has runtime dependencies or prerequisites.
+- The least risky sequence is to stabilize data/bridge and permission contracts first (B -> C -> D), then remove category fallback (A), then tighten transform contracts (E).
+
+**Future contract target state (after cleanup):**
+- `category_access` fallback removed; scope/permission model is canonical.
+- Legacy `department` mirror bridge removed; `department_scope` is sole profile scope source of truth.
+- Server permission checks rely only on normalized scope-based contract.
+- Command-auth profile shape contains only canonical authorization fields.
+- `transformWorkerFromDB` compatibility defaults are minimized and replaced by caller-specific explicit contracts.
+
+---
+
+## Phase 4J — Track B prep (department / department_scope bridge hardening + data readiness)
+
+4J is **non-destructive prep only**. No bridge removal, no behavior/RLS/schema changes.
+
+### Exact Track B bridge dependency map
+
+| File path | Line | Enclosing symbol | Runtime role | Direction | Fields relied on | Classification | blocks Track B cleanup directly | target canonical source after cleanup | Notes |
+|---|---:|---|---|---|---|---|---|---|---|
+| [lib/profileDepartmentSync.ts](lib/profileDepartmentSync.ts) | 29 | `mirrorLegacyDepartmentFromScope` | sync bridge | scope -> department mirror write | `department_scope`, `department` | bridge logic | yes | `department_scope` | Canonical mapper used by active write paths. |
+| [services/supabaseService.ts](services/supabaseService.ts) | 996 | `usersService.update` | write path | dual-write | `department_scope`, mirrored `department` | active runtime dependency | yes | `department_scope` | UI/admin update flow writes both fields. |
+| [supabase/functions/admin-create-user/index.ts](supabase/functions/admin-create-user/index.ts) | 25 | local `mirrorLegacyDepartmentFromScope` | write path | scope -> department mirror write | `departmentScope`, `department` | bridge logic | yes | `department_scope` | Duplicated helper logic in edge function. |
+| [supabase/functions/admin-create-user/index.ts](supabase/functions/admin-create-user/index.ts) | 160 | `serve` profile upsert block | write path | dual-write | `department_scope`, `department` | active runtime dependency | yes | `department_scope` | Authoritative create flow currently mirrors legacy field. |
+| [supabase/functions/invite-user/index.ts](supabase/functions/invite-user/index.ts) | 108 | local `mirrorLegacyDepartmentFromScope` | write path | scope -> department mirror write | `departmentScope`, `department` | bridge logic | yes | `department_scope` | Duplicated helper logic in invite flow. |
+| [supabase/functions/invite-user/index.ts](supabase/functions/invite-user/index.ts) | 577 | `serve` profile write block | write path | dual-write / legacy-only write | `department_scope`, `department`, `category_access` | active runtime dependency | yes | `department_scope` | If scope missing, branch can still write only legacy `department`. |
+| [services/supabaseService.ts](services/supabaseService.ts) | 3232 | `resolveDepartmentScopeFromDb` | profile transform | department -> scope fallback read | `department_scope`, `department` | compatibility fallback | yes | `department_scope` | Core read fallback from legacy department when scope unresolved. |
+| [services/supabaseService.ts](services/supabaseService.ts) | 3244 | `transformWorkerFromDB` | profile transform | dual-read | `department_scope`, `department`, other worker fields | active runtime dependency | yes | caller-specific explicit contracts | Outputs both legacy and canonical forms today. |
+| [contexts/WorkerContext.tsx](contexts/WorkerContext.tsx) | 138 | `getCurrentWorker` | client UI | dual-read (via transform) | transformed profile row | active runtime dependency | yes | strict session profile contract | Session boot path depends on transform fallback behavior. |
+| [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 26 | `effectiveDepartmentScope` | server permission | department -> scope fallback read | `department_scope`, `department` | compatibility fallback | yes | `department_scope` | Server authz resolver still fallback-capable. |
+| [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 60/75/95 | `canCreateOffersServer` / `canSaveInvoiceServer` / `canConfirmPaymentServer` | server permission | dual-read | `department_scope`, `department`, `category_access`, `role` | active runtime dependency | yes | scope-first permission contract | Command gates still include legacy branches. |
+| [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | 80 | `requireCommandProfile` | server auth | dual-read | selected `department`, `department_scope`, flags | active runtime dependency | yes | normalized command-auth contract | Loads both fields because server permission helpers still need them. |
+| [services/supabaseService.ts](services/supabaseService.ts) | 807 | `usersService.createWithoutInvite` | unknown | write-path wrapper | `departmentScope` via invite flow | unclear / manual review needed | no | admin-create-user canonical path | Missing evidence: external callers outside repo. Proof needed: runtime logs/telemetry. |
+
+### Mandatory search matrix (Track B evidence)
+
+| Symbol/pattern | File path | Line | Enclosing symbol | Bucket | Notes |
+|---|---|---:|---|---|---|
+| `department_scope` | [services/supabaseService.ts](services/supabaseService.ts) | 997 | `usersService.update` | write path | Canonical scope write + mirror assignment. |
+| `department` | [services/supabaseService.ts](services/supabaseService.ts) | 998 | `usersService.update` | write path | Legacy mirror write derived from scope. |
+| `mirrorLegacyDepartmentFromScope` | [lib/profileDepartmentSync.ts](lib/profileDepartmentSync.ts) | 29 | `mirrorLegacyDepartmentFromScope` | definition only | Canonical bridge helper definition. |
+| `mirrorLegacyDepartmentFromScope` | [supabase/functions/admin-create-user/index.ts](supabase/functions/admin-create-user/index.ts) | 25 | local helper | write path | Duplicated helper implementation in edge function. |
+| `mirrorLegacyDepartmentFromScope` | [supabase/functions/invite-user/index.ts](supabase/functions/invite-user/index.ts) | 108 | local helper | write path | Duplicated helper implementation in invite flow. |
+| `resolveDepartmentScopeFromDb` | [services/supabaseService.ts](services/supabaseService.ts) | 3232 | `resolveDepartmentScopeFromDb` | bridge/fallback logic | Canonical-first then legacy fallback read. |
+| `transformWorkerFromDB` | [services/supabaseService.ts](services/supabaseService.ts) | 3244 | `transformWorkerFromDB` | runtime dependency | Active compatibility shaping in read models. |
+| `usersService.update` | [services/supabaseService.ts](services/supabaseService.ts) | 967 | `usersService.update` | write path | Main UI update path with dual-write behavior. |
+| `createWithoutInvite` | [services/supabaseService.ts](services/supabaseService.ts) | 807 | `usersService.createWithoutInvite` | unclear/manual review needed | Missing evidence: no repo callers. Need endpoint telemetry to prove deadness. |
+| admin-create-user profile upsert | [supabase/functions/admin-create-user/index.ts](supabase/functions/admin-create-user/index.ts) | 160 | `serve` handler | write path | Upsert writes both `department_scope` and mirrored `department`. |
+| invite-user profile upsert | [supabase/functions/invite-user/index.ts](supabase/functions/invite-user/index.ts) | 589 | `serve` handler | write path | Mixed semantics; may write legacy-only `department` if scope absent. |
+| explicit `department:` profile write | [supabase/functions/admin-create-user/index.ts](supabase/functions/admin-create-user/index.ts) | 171 | profile upsert payload | write path | Explicit legacy write retained for compatibility. |
+| explicit `department_scope:` profile write | [supabase/functions/admin-create-user/index.ts](supabase/functions/admin-create-user/index.ts) | 170 | profile upsert payload | write path | Explicit canonical scope write. |
+| explicit `department_scope:` profile write | [supabase/functions/invite-user/index.ts](supabase/functions/invite-user/index.ts) | 578 | profile data build | write path | Written only when scope present. |
+| explicit `department:` profile write | [supabase/functions/invite-user/index.ts](supabase/functions/invite-user/index.ts) | 580 | profile data build | write path | Legacy fallback write path still present. |
+
+### Track B preparation checklist (before any bridge removal)
+
+1. **Canonical write-path strategy**
+   - Define scope-first profile write contract: active create/update/invite paths must provide valid `department_scope`.
+   - Keep mirror write temporary where RLS/server compatibility still requires it.
+2. **Write-path hardening readiness**
+   - Verify `usersService.update`, `admin-create-user`, and `invite-user` can all operate scope-first.
+   - Explicitly identify branches that still allow legacy-only `department` writes.
+3. **Data-readiness checks**
+   - Confirm active-user coverage for valid `department_scope` (define target threshold before destructive cleanup).
+   - Confirm whether any runtime flow can still create rows with legacy-only `department`.
+   - Confirm command auth/permission paths that still fail if mirror is absent.
+   - Confirm RLS/helper assumptions that still depend on mirrored `department`.
+4. **Go/no-go gate artifact**
+   - Produce a pass/fail checklist + unresolved risks list.
+   - Output explicit decision: `not safe yet` / `safe to start destructive Track B`.
+
+### Recommended 4J execution split
+
+- **4J1 — Write-path hardening (non-destructive)**
+  - Why first: stops new bridge debt from being created.
+  - Risk reduced: prevents legacy-only writes from reappearing during migration.
+  - Unlocks: meaningful fallback-read reduction prep.
+- **4J2 — Fallback-read reduction prep (non-destructive)**
+  - Why second: safe only after write contracts are hardened.
+  - Risk reduced: avoids auth/profile regressions from premature fallback edits.
+  - Unlocks: objective bridge-removal prechecks.
+- **4J3 — Bridge-removal readiness gate (still prep)**
+  - Why third: requires evidence from 4J1/4J2.
+  - Risk reduced: avoids partial destructive cleanup with hidden dependencies.
+  - Unlocks: first destructive Track B cleanup phase (outside 4J).
+
+### Master document inconsistency cleanup targets (doc-only)
+
+- Updated stale “active/transitional” references for removed transitional full-profile methods (4H already removed them).
+- Marked old sequence/recommendation sections as **historical snapshots** to avoid conflict with 4I/4J ordering.
+- Corrected 4G search-matrix row that referenced a docs mention no longer present.
+- Next cleanup pass should also normalize phase-label collisions (older vs newer Phase 4 labels) into one canonical naming scheme.
+
+---
+
+## Phase 4J1 — Scope-first write-path hardening (non-destructive)
+
+4J1 keeps compatibility mirroring, but hardens active write paths so `department_scope` remains the canonical write input.
+
+### Per-write-path hardening summary
+
+| Write path | 4J1 hardening | Canonical input after 4J1 | Compatibility output after 4J1 | Legacy-only input still allowed |
+|---|---|---|---|---|
+| `usersService.update` ([services/supabaseService.ts](services/supabaseService.ts)) | Added runtime validation for canonical scope before write; mirror still derived from scope helper. | `departmentScope` (validated canonical scope only) | mirrored `department` via `mirrorLegacyDepartmentFromScope` | no |
+| `admin-create-user` ([supabase/functions/admin-create-user/index.ts](supabase/functions/admin-create-user/index.ts)) | Already strict scope-first; kept explicit scope validation and mirror write. | `departmentScope` (required + validated) | mirrored `department` from scope | no |
+| `invite-user` ([supabase/functions/invite-user/index.ts](supabase/functions/invite-user/index.ts)) | Added scope normalization step; if only legacy department is provided and mappable, converts to scope-first write and mirrors from normalized scope. | `departmentScope` when present; else derived canonical scope from mappable legacy department | mirrored `department` via mirror helper from canonical/derived scope | yes (only for legacy department values that cannot be safely mapped) |
+| `usersService.createWithoutInvite` ([services/supabaseService.ts](services/supabaseService.ts)) | Added runtime canonical scope validation before calling `invite-user`; no repo-visible caller changes. | `departmentScope` (validated canonical scope only) | delegated mirror behavior through `invite-user` | no (on this client path) |
+
+### Legacy-only row prevention check (mandatory)
+
+| Write path | Can still write row with `department` but no `department_scope`? | Why / blocker |
+|---|---|---|
+| `usersService.update` | no | Scope validation blocks non-canonical input; update writes both fields from scope. |
+| `admin-create-user` | no | Request rejects invalid/missing scope; upsert always includes `department_scope`. |
+| `invite-user` | yes (controlled transitional branch) | External callers may still send legacy-only department values that are not safely mappable. Preserved intentionally to avoid risky behavior break. |
+| `usersService.createWithoutInvite` | no | Client path now validates scope before calling edge function. |
+
+### `createWithoutInvite` explicit status (mandatory)
+
+- **repo-visible active caller:** no (no repo hit found for direct method calls).
+- **externally callable risk:** yes (method still exported in service layer; external/manual invocation remains possible).
+- **4J1 action taken:** retained transitional path with stricter scope validation; no removal in 4J1.
+
+### Compatibility mirroring intentionally retained
+
+- `mirrorLegacyDepartmentFromScope` remains the compatibility output bridge for downstream assumptions (server permission fallbacks, command-auth shape, transform/read fallback, and RLS-era compatibility constraints).
+- 4J1 intentionally does **not** remove mirror helper, legacy column, or fallback readers.
+
+### Remaining 4J2 blockers
+
+1. `invite-user` still contains a controlled legacy-only branch for unmappable department-only input.
+2. Server auth/permission paths still consume legacy-compatible shape (`department` fallback branches).
+3. `resolveDepartmentScopeFromDb` and `transformWorkerFromDB` still implement read-time fallback coupling.
+
+### 4J2 readiness
+
+- **Can 4J2 begin next:** yes, with blockers explicitly tracked.
+- **4J2 focus:** reduce fallback-read coupling and narrow legacy-only input acceptance in edge invite flow using production-call telemetry and compatibility checks before further tightening.
+
+---
+
+## Phase 4J2 — Fallback-read reduction readiness (non-destructive, tightened)
+
+4J2 is preparation/audit only. No fallback logic was removed and no permission/session behavior was changed.
+
+### Exact fallback-read dependency map
+
+| Dependency | File path | Line | Enclosing symbol | Runtime role | Fallback direction | Fields relied on | Classification | blocks fallback-read reduction directly | target canonical source after cleanup | behavior owner after cleanup | can be narrowed now without behavior change | can be isolated now without behavior change | UI blast radius if narrowed later | Notes |
+|---|---|---:|---|---|---|---|---|---|---|---|---|---|---|---|
+| scope resolver in transform layer | [services/supabaseService.ts](services/supabaseService.ts) | 3262 | `resolveDepartmentScopeFromDb` | profile transform | department -> scope fallback read | `department_scope`, `department` | compatibility fallback | yes | `department_scope` | profile transform layer (`services/supabaseService.ts`) | no | yes | Session bootstrap + dashboard/profile consumers of transformed worker | Shared by all worker/admin reads; narrowing now risks shape/visibility drift. |
+| compatibility worker shaping | [services/supabaseService.ts](services/supabaseService.ts) | 3274 | `transformWorkerFromDB` | profile transform | dual-read compatibility + fallback-shaped output | `department_scope`, `department`, `category_access`, flags, names | fallback-shaped output | yes | caller-specific strict read-model contracts | profile transform + downstream consumers | no | partial (by consumer segmentation only) | WorkerContext session load, Admin/UserManagement reads, operational worker lists | Isolation requires staged contract split before narrowing/removal. |
+| session bootstrap consumer | [contexts/WorkerContext.tsx](contexts/WorkerContext.tsx) | 138 | `getCurrentWorker` | session bootstrap | fallback-shaped output | transformed session profile | active runtime dependency | yes | explicit session profile contract | session/bootstrap (`WorkerContext`) | no | no | Login/session bootstrap; module visibility and role/scope UI state | Tight coupling to transformed fallback shape keeps this path non-isolatable now. |
+| server scope resolver | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 26 | `effectiveDepartmentScope` | server permission | department -> scope fallback read | `department_scope`, `department` | compatibility fallback | yes | scope-only server permission contract | server permission layer | no | no | n/a (server authz blast radius, not UI) | Narrowing now changes effective command authorization outcomes. |
+| server permission branches | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 60/75/95 | `canCreateOffersServer` / `canSaveInvoiceServer` / `canConfirmPaymentServer` | server permission | dual-read compatibility | `department_scope`, `department`, `category_access`, `role` | active runtime dependency | yes | canonical scope-based permission rules | server permission layer | no | no | n/a (server authz blast radius) | Includes legacy branches + `manager && scope == null`. |
+| command profile load shape | [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | 60 | `requireCommandProfile` | server auth | dual-read compatibility | `department`, `department_scope`, `category_access`, capability flags | active runtime dependency | yes | normalized command-auth profile contract | command-auth layer | no | yes (shape isolation behind adapter) | n/a (indirect UI impact via command outcomes) | Must remain until Track C removes legacy permission reads. |
+| command profile normalization | [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | 43 | `normalizeProfile` | server auth | fallback-shaped output | `department`, `department_scope`, flags | compatibility fallback | yes | strict canonical command-auth shape | command-auth layer | no | yes (adapter boundary) | n/a | Can be isolated behind canonical adapter, not narrowed yet. |
+| controlled legacy write blocker input | [supabase/functions/invite-user/index.ts](supabase/functions/invite-user/index.ts) | 580 | profile write build block | unknown | fallback-shaped output source | legacy `department` unmappable branch | unclear / manual review needed | yes | scope-first invite input contract | invite-user flow owner | no | no | n/a | Missing evidence: external caller payload distribution. Need telemetry to prove safe narrowing path. |
+
+### Mandatory search matrix (highlights)
+
+| Symbol/pattern | File path | Line | Enclosing symbol | Bucket | Notes |
+|---|---|---:|---|---|---|
+| `resolveDepartmentScopeFromDb` | [services/supabaseService.ts](services/supabaseService.ts) | 3262 | `resolveDepartmentScopeFromDb` | definition only | Canonical fallback resolver definition. |
+| `transformWorkerFromDB` | [services/supabaseService.ts](services/supabaseService.ts) | 3274 | `transformWorkerFromDB` | fallback-shaped output | Emits worker object with canonical+legacy-compatible fields. |
+| `transformWorkerFromDB` | [contexts/WorkerContext.tsx](contexts/WorkerContext.tsx) | 138 | `getCurrentWorker` | runtime dependency | Session bootstrap depends on transformed fallback-shaped worker. |
+| `effectiveDepartmentScope` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 26 | `effectiveDepartmentScope` | bridge/fallback logic | Scope resolver with legacy department fallback. |
+| `requireCommandProfile` | [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | 60 | `requireCommandProfile` | runtime dependency | Loads legacy+canonical fields used by permission helpers. |
+| `normalizeProfile` | [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | 43 | `normalizeProfile` | fallback-shaped output | Normalizes profile into compatibility shape. |
+| `department_scope` | [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | 81 | profile select list | runtime dependency | Canonical field loaded with legacy shape fields. |
+| `department` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 66 | `canCreateOffersServer` | bridge/fallback logic | Legacy department branch still active. |
+| `scope == null` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 88 | `canSaveInvoiceServer` | bridge/fallback logic | Transitional manager unresolved-scope broad allow. |
+| `department ===` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 66 | `canCreateOffersServer` | runtime dependency | Exact legacy equality checks in active authz path. |
+| `category_access` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 48 | `categoryAccessIncludesNormalizedToken` | bridge/fallback logic | Transitional category fallback in server permissions. |
+| `manager && scope == null` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 88 | `canSaveInvoiceServer` | bridge/fallback logic | High-risk authz compatibility branch. |
+| scope from legacy department branch | [services/supabaseService.ts](services/supabaseService.ts) | 3267 | `resolveDepartmentScopeFromDb` | bridge/fallback logic | `department` fallback mapping if canonical scope missing. |
+| emits canonical+legacy shaped worker | [services/supabaseService.ts](services/supabaseService.ts) | 3298 | `transformWorkerFromDB` return object | fallback-shaped output | Keeps both `departmentScope` and legacy-compatible `department`. |
+| invite transitional unmappable branch | [supabase/functions/invite-user/index.ts](supabase/functions/invite-user/index.ts) | 580 | profile write build block | unclear/manual review needed | Missing evidence: real external payload prevalence for unmappable legacy department values. Proof needed: edge telemetry + payload sampling. |
+
+### Narrow later vs must remain now
+
+- **Must remain now (cannot narrow without behavior change):**
+  - `effectiveDepartmentScope` + legacy permission branches in server-permissions (Track C blocker).
+  - `resolveDepartmentScopeFromDb` and current `transformWorkerFromDB` behavior for live consumer set (Track E blocker).
+  - session bootstrap dependency on transformed compatibility shape in `WorkerContext` (Track E blocker).
+- **Can be isolated now (but not narrowed yet):**
+  - `requireCommandProfile` and `normalizeProfile` behind a stricter adapter boundary while keeping legacy-loaded shape for current permission helpers (Track D prep).
+  - `transformWorkerFromDB` usage segmentation by consumer type (session/admin/operational contracts) without changing behavior yet (Track E prep).
+- **Can be narrowed later (after prerequisites):**
+  - command-auth legacy-loaded fields after Track C canonicalizes permission branches.
+  - transform fallback behavior after Track E establishes strict consumer contracts and confirms canonical data completeness.
+
+### 4J3 readiness inputs
+
+Checklist output:
+1. Active read paths functioning without `department -> scope` fallback: **no**.
+2. Server auth/permission still coupled to legacy `department`/`category_access`: **yes**.
+3. Session bootstrap still dependent on fallback-shaped transform output: **yes**.
+4. Invite transitional unmappable branch still a blocker input: **yes**.
+
+- **4J3 ready:** **no**.
+- **Blocking tracks before 4J3:** Track C (server permission cleanup), Track D (command-auth shape cleanup), Track E (transform/session contract cleanup), plus invite-user telemetry for unmappable legacy input branch.
+
+---
+
+## Phase 4K — Track C prep (server permission branch cleanup, scope-first authorization)
+
+4K is planning/audit only. No server permission behavior changes were made.
+
+### Exact Track C server-permission dependency map
+
+| Dependency | File path | Line | Enclosing symbol | Runtime role | Authorization dependency type | Fields relied on | Classification | blocks Track C cleanup directly | target canonical authorization rule after cleanup | behavior owner after cleanup | blocker type | Notes |
+|---|---|---:|---|---|---|---|---|---|---|---|---|---|
+| scope-first resolver (primary) | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 27 | `effectiveDepartmentScope` | server permission | scope-first canonical | `department_scope` | active runtime dependency | no | Use validated canonical `department_scope` only | server permission layer | technical blocker | Canonical branch already present. |
+| legacy dept fallback inside resolver | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 29 | `effectiveDepartmentScope` | server permission | legacy department fallback | `department` | compatibility fallback | yes | Remove fallback; resolver becomes scope-only | server permission layer | data evidence blocker | Requires proof that unresolved/legacy dept users are no longer needed for authz. |
+| legacy category token helper | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 48 | `categoryAccessIncludesNormalizedToken` | server permission | legacy category_access fallback | `category_access` | compatibility fallback | yes | Remove category-based server authz decisions | server permission layer | data evidence blocker | Shared by create/save/confirm checks. |
+| offers server gate | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 60 | `canCreateOffersServer` | server permission | mixed canonical + legacy | `role`, `department_scope`, `department`, `category_access` | active runtime dependency | yes | Role+scope matrix only (no legacy OR) | command API authorization | technical blocker | Legacy OR branches still active. |
+| invoice save gate | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 75 | `canSaveInvoiceServer` | server permission | mixed canonical + legacy + unresolved broad allow | `role`, `department_scope`, `department`, `category_access` | high-risk authz branch | yes | Role+scope matrix only; remove unresolved broad allow | command API authorization | policy/product decision needed | Contains `manager && scope == null` emergency allow. |
+| confirm payment gate | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 95 | `canConfirmPaymentServer` | server permission | mixed canonical + legacy | `role`, `department_scope`, `department`, `category_access` | active runtime dependency | yes | Role+scope matrix only (no legacy OR) | command API authorization | technical blocker | Legacy OR still active. |
+| command profile loader | [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | 60 | `requireCommandProfile` | server auth | command-auth shape dependency | selected profile shape includes canonical + legacy fields | active runtime dependency | yes | Load canonical-only auth profile after Track C parity | command-auth layer | technical blocker | Track D is blocked by Track C branch cleanup. |
+| command profile normalization | [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | 43 | `normalizeProfile` | server auth | command-auth shape dependency | `department`, `department_scope`, flags | compatibility fallback | yes | Strict canonical auth profile normalization | command-auth layer | technical blocker | Currently preserves legacy-loaded fields for permission helpers. |
+| create-direct-booking callsite | [api/commands/create-direct-booking.ts](api/commands/create-direct-booking.ts) | 23 | `POST` | API caller | command-auth shape dependency | profile from `requireCommandProfile` | active runtime dependency | no | consume canonicalized `assertCanCreateOffers` | command endpoint owner | data evidence blocker | Endpoint parity proof needed before branch cleanup. |
+| create-multi-offer callsite | [api/commands/create-multi-offer.ts](api/commands/create-multi-offer.ts) | 242 | `POST` | API caller | command-auth shape dependency | profile from `requireCommandProfile` | active runtime dependency | no | consume canonicalized `assertCanCreateOffers` | command endpoint owner | data evidence blocker | Endpoint parity proof needed before branch cleanup. |
+| save-invoice callsite | [api/commands/save-invoice.ts](api/commands/save-invoice.ts) | 112 | `POST` | API caller | command-auth shape dependency | profile from `requireCommandProfile` | active runtime dependency | no | consume canonicalized `assertCanSaveInvoice` | command endpoint owner | data evidence blocker | Highest-risk endpoint for unresolved-scope users. |
+| confirm-payment callsite | [api/commands/confirm-payment.ts](api/commands/confirm-payment.ts) | 102 | `POST` | API caller | command-auth shape dependency | profile from `requireCommandProfile` | active runtime dependency | no | consume canonicalized `assertCanConfirmPayment` | command endpoint owner | data evidence blocker | Needs parity checks after branch isolation. |
+
+### Mandatory search matrix (highlights)
+
+| Symbol/pattern | File path | Line | Enclosing symbol | Bucket | Notes |
+|---|---|---:|---|---|---|
+| `effectiveDepartmentScope` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 26 | `effectiveDepartmentScope` | definition only | Core scope resolver with legacy fallback. |
+| `canCreateOffersServer` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 60 | `canCreateOffersServer` | runtime dependency | Mixed canonical+legacy branch set. |
+| `canSaveInvoiceServer` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 75 | `canSaveInvoiceServer` | high-risk authz branch | Contains unresolved manager broad allow. |
+| `canConfirmPaymentServer` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 95 | `canConfirmPaymentServer` | runtime dependency | Legacy OR branches still active. |
+| `categoryAccessIncludesNormalizedToken` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 48 | helper | compatibility fallback | Legacy category_access token checks. |
+| `department ===` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 66 | `canCreateOffersServer` | compatibility fallback | Legacy department equality branch. |
+| `category_access` | [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | 81 | `requireCommandProfile` select | runtime dependency | Field loaded because permission helpers still use legacy checks. |
+| `manager && scope == null` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 88 | `canSaveInvoiceServer` | high-risk authz branch | Largest over-grant/behavior-drift risk. |
+| `scope == null` | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 88 | `canSaveInvoiceServer` | compatibility fallback | Unresolved-scope broad allow branch. |
+| full scope checks | [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | 34 | `hasFullScopeAccess` | runtime dependency | Scope/role full-access helper used in all command gates. |
+| `requireCommandProfile` | [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | 60 | `requireCommandProfile` | runtime dependency | Entry-point for command auth profile loading. |
+| `normalizeProfile` | [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | 43 | `normalizeProfile` | compatibility fallback | Keeps dual-shape profile contract for legacy permission branches. |
+| `assertCanCreateOffers` callsites | [api/commands/create-direct-booking.ts](api/commands/create-direct-booking.ts) | 24 | `POST` | runtime dependency | Endpoint-level consumer of Track C branch behavior. |
+| `assertCanSaveInvoice` callsites | [api/commands/save-invoice.ts](api/commands/save-invoice.ts) | 113 | `POST` | runtime dependency | Endpoint-level consumer; sensitive to unresolved scope branch removal. |
+| `assertCanConfirmPayment` callsites | [api/commands/confirm-payment.ts](api/commands/confirm-payment.ts) | 103 | `POST` | runtime dependency | Endpoint-level consumer for confirm flow. |
+
+### Per-branch cleanup readiness
+
+| Branch | can remove now without behavior change | can isolate now without behavior change | blocker type | Primary blocker | Deferred to |
+|---|---|---|---|---|---|
+| `effectiveDepartmentScope` legacy department fallback | no | yes | data evidence blocker | Need proof unresolved/legacy-only profiles no longer require fallback | 4K1 isolate, 4K3 remove |
+| `category_access` token fallbacks | no | yes | data evidence blocker | Need endpoint parity proof for legacy users currently authorized via category tokens | 4K1 isolate, 4K3 remove |
+| `department` OR branches in create/save/confirm | no | yes | technical blocker | Must canonicalize endpoint rule matrix and verify parity before deletion | 4K2/4K3 |
+| `manager && scope == null` branch | no | no | policy/product decision needed | Requires explicit policy decision for unresolved manager behavior | 4K2 policy + 4K3 cleanup |
+| command-auth dual legacy shape | no | yes | technical blocker | Server permissions still read legacy fields; Track D cannot proceed first | Track C before Track D |
+
+### Per-endpoint decision table (mandatory)
+
+| Endpoint | Current canonical rule | Current legacy fallback branches | Highest-risk branch | can isolate now | can remove now |
+|---|---|---|---|---|---|
+| `/api/commands/create-direct-booking` | super/full-scope/sales-scope allow | `department==='sales'`, `category_access` sales token | legacy category token allow | yes | no |
+| `/api/commands/create-multi-offer` | super/full-scope/sales-scope allow | `department==='sales'`, `category_access` sales token | legacy category token allow | yes | no |
+| `/api/commands/save-invoice` | super/full-scope/accounting-or-sales-scope allow | `department` ORs, `category_access` ORs, `manager && scope == null` | `manager && scope == null` | yes (except high-risk branch) | no |
+| `/api/commands/confirm-payment` | super/full-scope/accounting-or-sales-scope allow | `department` ORs, `category_access` sales token | legacy department/scope disagreement | yes | no |
+
+### Scope-disagreement analysis (mandatory)
+
+| Scenario (`department_scope` vs `department`) | Current effective behavior | Affected endpoints | Target canonical behavior after cleanup | Proof needed before behavior change |
+|---|---|---|---|---|
+| canonical scope non-sales + legacy `department='sales'` | Legacy OR may still allow sales endpoints | create-direct-booking, create-multi-offer, save-invoice, confirm-payment | Authorization should follow canonical scope/role matrix only | Branch-tag telemetry + endpoint parity test showing intended deny/allow outcomes |
+| canonical scope non-accounting + legacy `department='accounting'` | Legacy OR may still allow invoice/payment endpoints | save-invoice, confirm-payment | Follow canonical scope only | Disagreement population query + parity runbook |
+| canonical scope unresolved (`null`) + role manager | `manager && scope == null` can allow invoice save | save-invoice | Explicit policy: deny unless canonical scope grants access | Product/policy sign-off + staged canary evidence |
+
+### Command-auth coupling analysis (Track D gate)
+
+- **Canonical fields:** `id`, `role`, `is_active`, `department_scope`.
+- **Legacy-only fields currently loaded because Track C still needs them:** `department`, `category_access`.
+- **Track C prerequisite before Track D:** remove/neutralize legacy server-permission branches so `requireCommandProfile` can shrink safely without authorization drift.
+
+### Proposed Track C staged split
+
+1. **4K1 — isolate legacy branches behind explicit helper boundaries + telemetry tags**
+   - Reduces risk of hidden behavior changes.
+2. **4K2 — canonical scope-first parity validation per endpoint**
+   - Establishes safe rule matrix and disagreement handling policy.
+3. **4K3 — remove legacy department/category branches and unresolved manager broad-allow**
+   - Allowed only after evidence + policy gates pass.
+
+---
+
+## Phase 4K1 — Track C implementation (non-destructive isolation + telemetry)
+
+4K1 is an isolation/observability step only. Authorization behavior is intentionally unchanged.
+
+### Isolated permission branches in server-permissions
+
+- `api/_lib/server-permissions.ts` now isolates branch logic behind explicit internal helpers:
+  - canonical/full-scope helpers
+  - legacy department helpers
+  - legacy category_access helpers
+  - unresolved manager helper
+- `canCreateOffersServer`, `canSaveInvoiceServer`, and `canConfirmPaymentServer` remain exported boolean wrappers and return evaluator `.allowed` only.
+
+Exact branch priority order (recorded verbatim):
+1. `super_manager`
+2. `full_scope_allow`
+3. `canonical_scope_allow`
+4. `legacy_department_allow`
+5. `legacy_category_access_allow`
+6. `unresolved_manager_allow`
+7. `denied`
+
+### Branch tags and telemetry hooks
+
+- Stable internal tag vocabulary added:
+  - `super_manager`
+  - `full_scope_allow`
+  - `canonical_scope_allow`
+  - `legacy_department_allow`
+  - `legacy_category_access_allow`
+  - `unresolved_manager_allow`
+  - `denied`
+- Telemetry is internal-only and env-gated:
+  - `process.env.PERMISSION_BRANCH_TELEMETRY === '1'`
+  - emitted from command auth assert boundary as `[authz-branch]` structured log
+  - logs include only permission name, branch tag, role, canonical scope/null marker
+  - no profile IDs, tokens, or client payload changes
+- Branch tags are not exposed in API responses and do not alter thrown error text/status.
+
+### Per-endpoint branch-tag coverage (for 4K2 parity prep)
+
+| Endpoint | Permission gate | Expected allow tags | Denied-tag coverage |
+|---|---|---|---|
+| `/api/commands/create-direct-booking` | `assertCanCreateOffers` | `super_manager`, `full_scope_allow`, `canonical_scope_allow`, `legacy_department_allow`, `legacy_category_access_allow` | yes (`denied` returned when none matched) |
+| `/api/commands/create-multi-offer` | `assertCanCreateOffers` | `super_manager`, `full_scope_allow`, `canonical_scope_allow`, `legacy_department_allow`, `legacy_category_access_allow` | yes (`denied` returned when none matched) |
+| `/api/commands/save-invoice` | `assertCanSaveInvoice` | `super_manager`, `full_scope_allow`, `canonical_scope_allow`, `legacy_department_allow`, `legacy_category_access_allow`, `unresolved_manager_allow` | yes (`denied` returned when none matched) |
+| `/api/commands/confirm-payment` | `assertCanConfirmPayment` | `super_manager`, `full_scope_allow`, `canonical_scope_allow`, `legacy_department_allow`, `legacy_category_access_allow` | yes (`denied` returned when none matched) |
+
+### 4K2 evidence now enabled
+
+- Direct branch-path visibility for each command authorization check without changing auth semantics.
+- Measurable distribution of canonical vs legacy fallback grants via branch tags.
+- Denied-path coverage visibility by endpoint to support parity-risk analysis before any branch removal.
+- Track D boundary preserved: command-auth profile select shape remains unchanged in 4K1.
+
+---
+
+## Phase 4K2 — Track C parity validation (canonical vs legacy authorization paths)
+
+4K2 is a validation/measurement/documentation phase only. No authorization behavior changes were made.
+
+### Evidence model split (required)
+
+- **Code-derived parity model:** reachability and parity expectations inferred from evaluator order and endpoint-to-gate wiring.
+- **Telemetry-validated parity evidence:** runtime-confirmed branch usage distribution from `[authz-branch]` logs when `PERMISSION_BRANCH_TELEMETRY === '1'`.
+- Current repo evidence for this phase is **code-only**; no runtime telemetry snapshot is present in repository inputs for this run.
+
+### Endpoint parity-validation matrix
+
+| Endpoint | Canonical allow paths (code-derived) | Legacy allow paths (code-derived) | Deny path | Highest-risk path | Canonical-only parity appears possible now | Evidence level | Missing evidence |
+|---|---|---|---|---|---|---|---|
+| `/api/commands/create-direct-booking` | `super_manager`, `full_scope_allow`, `canonical_scope_allow` | `legacy_department_allow`, `legacy_category_access_allow` | `denied` | `legacy_category_access_allow` | no | code-only | Runtime branch-frequency distribution by role/scope; disagreement population sample. |
+| `/api/commands/create-multi-offer` | `super_manager`, `full_scope_allow`, `canonical_scope_allow` | `legacy_department_allow`, `legacy_category_access_allow` | `denied` | `legacy_category_access_allow` | no | code-only | Runtime branch-frequency distribution by role/scope; disagreement population sample. |
+| `/api/commands/save-invoice` | `super_manager`, `full_scope_allow`, `canonical_scope_allow` | `legacy_department_allow`, `legacy_category_access_allow`, `unresolved_manager_allow` | `denied` | `unresolved_manager_allow` | no | code-only | Runtime rate of `unresolved_manager_allow`; policy-backed acceptance/retirement decision. |
+| `/api/commands/confirm-payment` | `super_manager`, `full_scope_allow`, `canonical_scope_allow` | `legacy_department_allow`, `legacy_category_access_allow` | `denied` | `legacy_department_allow` (scope disagreement risk) | no | code-only | Runtime distribution of legacy grants; disagreement cases where canonical vs legacy diverge. |
+
+### Branch-tag interpretation table
+
+| Endpoint | Expected reachable tags from code | Expected rare/exceptional tags (code reasoning) | Tags that block 4K3 if still observed | Evidence level | Required telemetry proof still missing |
+|---|---|---|---|---|---|
+| `/api/commands/create-direct-booking` | `super_manager`, `full_scope_allow`, `canonical_scope_allow`, `legacy_department_allow`, `legacy_category_access_allow`, `denied` | `legacy_department_allow`, `legacy_category_access_allow`, `denied` | `legacy_department_allow`, `legacy_category_access_allow` | code-only | Time-bucketed branch counts proving legacy tags are zero/near-zero and denied parity understood. |
+| `/api/commands/create-multi-offer` | `super_manager`, `full_scope_allow`, `canonical_scope_allow`, `legacy_department_allow`, `legacy_category_access_allow`, `denied` | `legacy_department_allow`, `legacy_category_access_allow`, `denied` | `legacy_department_allow`, `legacy_category_access_allow` | code-only | Time-bucketed branch counts proving legacy tags are zero/near-zero and denied parity understood. |
+| `/api/commands/save-invoice` | `super_manager`, `full_scope_allow`, `canonical_scope_allow`, `legacy_department_allow`, `legacy_category_access_allow`, `unresolved_manager_allow`, `denied` | `legacy_department_allow`, `legacy_category_access_allow`, `unresolved_manager_allow`, `denied` | `legacy_department_allow`, `legacy_category_access_allow`, `unresolved_manager_allow` | code-only | Branch frequency for unresolved manager path + explicit policy sign-off on desired replacement behavior. |
+| `/api/commands/confirm-payment` | `super_manager`, `full_scope_allow`, `canonical_scope_allow`, `legacy_department_allow`, `legacy_category_access_allow`, `denied` | `legacy_department_allow`, `legacy_category_access_allow`, `denied` | `legacy_department_allow`, `legacy_category_access_allow` | code-only | Runtime evidence that legacy grant paths are zero/near-zero without introducing endpoint regressions. |
+
+### Disagreement-risk analysis
+
+| Disagreement case (`department_scope` vs `department`) | Current effective behavior | Endpoints affected | Risk type | Target canonical behavior | Proof needed before branch removal | Evidence level |
+|---|---|---|---|---|---|---|
+| Scope non-sales + legacy `department='sales'` | Legacy branch can still authorize sales commands | create-direct-booking, create-multi-offer, save-invoice, confirm-payment | over-grant | Only canonical scope/role should authorize | Telemetry showing legacy sales grants are zero/near-zero plus endpoint parity checks | code-only |
+| Scope non-accounting + legacy `department='accounting'` | Legacy department branch can still authorize invoice/confirm | save-invoice, confirm-payment | over-grant | Only canonical scope/role should authorize | Telemetry + sampled disagreement cases + no-regression command checks | code-only |
+| Scope unresolved (`null`) + role manager | Invoice path may allow via `unresolved_manager_allow` | save-invoice | policy ambiguity | Explicit policy outcome (deny or alternative canonical rule) | Product/policy decision + telemetry impact estimate before branch removal | code-only |
+| Invoice vs confirm legacy category asymmetry (`sales OR accounting` vs `sales`) | Endpoint-specific behavior differs under legacy category fallback | save-invoice, confirm-payment | policy ambiguity | Explicit canonical parity matrix by endpoint | Confirm intended endpoint-level parity contract and validate with telemetry | code-only |
+
+### 4K3 entry gates (go/no-go)
+
+| Gate | Status now | Required proof | Owner | Blocker type | Evidence level |
+|---|---|---|---|---|---|
+| `legacy_department_allow` zero/near-zero threshold accepted and met | unknown pending telemetry | Runtime branch counts per endpoint over agreed window | command authz owner | telemetry/data evidence blocker | code-only |
+| `legacy_category_access_allow` zero/near-zero threshold accepted and met | unknown pending telemetry | Runtime branch counts per endpoint over agreed window | command authz owner | telemetry/data evidence blocker | code-only |
+| `unresolved_manager_allow` replacement policy approved | fail | Policy decision on unresolved manager authorization + migration policy | product/auth policy owner | policy/product decision needed | code-only |
+| Denied-path parity understood (no unexpected over-deny after cleanup) | unknown pending telemetry | Denied tag distribution + endpoint parity validation runbook | command API owner | telemetry/data evidence blocker | code-only |
+| Scope disagreement cases resolved or explicitly accepted | unknown pending telemetry | Disagreement inventory + approved risk acceptance or remediation plan | authz + product owners | telemetry/data evidence blocker | code-only |
+| Track D boundary safety preserved through Track C removal sequence | pass (prep) | Keep command-auth shape unchanged until Track C destructive cleanup gates pass | command-auth layer owner | technical blocker (sequencing) | code-only |
+
+Gate rule applied: where runtime frequency/absence is required and telemetry evidence is missing, gate status remains `unknown pending telemetry` (not `pass`).
+
+### Blockers to 4K3 (typed)
+
+- **Technical blocker**
+  - Track sequencing: command-auth shape shrink (Track D) must remain blocked until Track C destructive cleanup gates pass.
+- **Telemetry/data evidence blockers**
+  - Missing runtime branch-frequency evidence for `legacy_department_allow`.
+  - Missing runtime branch-frequency evidence for `legacy_category_access_allow`.
+  - Missing denied-path parity evidence under candidate canonical-only rules.
+  - Missing quantified disagreement population evidence across command endpoints.
+- **Policy/product blockers**
+  - No approved policy outcome yet for `unresolved_manager_allow`.
+  - No explicit sign-off yet on endpoint-level parity expectations for invoice/confirm asymmetry during cleanup transition.
+
+### 4K3 readiness verdict
+
+- **4K3 ready:** **no**.
+- Rationale: 4K3 depends on telemetry-backed branch usage proof plus policy decisions not yet satisfied.
