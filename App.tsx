@@ -21,7 +21,7 @@ import { Property, FilterState, RequestData, Worker } from './types';
 import { PAGE_INSTANCE_ID } from './utils/pageInstance';
 import { canViewModule } from './lib/permissions';
 import { SHELL_RESUME_DEBUG } from './lib/shellDebug';
-import { subscribeTabResume } from './lib/tabResumeCoalesce';
+import { subscribeTabResume, _dbg } from './lib/tabResumeCoalesce';
 
 function defaultAuthenticatedPath(worker: Worker): string {
   if (worker.role === 'worker') return '/worker';
@@ -36,6 +36,30 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     console.log('[App] Page instance started', { pageInstanceId: PAGE_INSTANCE_ID });
   }, []);
+
+  // #region agent log — global pointerdown hit-test (always mounted, unlike AccountDashboard)
+  useEffect(() => {
+    let last = 0;
+    const onPointerDown = (e: PointerEvent) => {
+      const now = Date.now();
+      if (now - last < 800) return;
+      last = now;
+      const fromPoint = document.elementFromPoint(e.clientX, e.clientY);
+      const fpTag = fromPoint?.tagName?.toLowerCase() ?? 'null';
+      const fpCls = (typeof (fromPoint as HTMLElement)?.className === 'string' ? (fromPoint as HTMLElement).className : '').slice(0,100);
+      const tTag = (e.target as Element)?.tagName?.toLowerCase() ?? 'null';
+      const tCls = (typeof ((e.target as HTMLElement)?.className) === 'string' ? (e.target as HTMLElement).className : '').slice(0,100);
+      _dbg('App:pointerdown','click hit-test',{
+        target:`${tTag} ${tCls.slice(0,60)}`,
+        fromPoint:`${fpTag} ${fpCls.slice(0,60)}`,
+        xy:[e.clientX,e.clientY],
+        fixedLayers: (() => { try { const r: string[] = []; document.querySelectorAll('*').forEach(el => { const s = getComputedStyle(el); if (s.position==='fixed' && s.inset==='0px') r.push(`${el.tagName.toLowerCase()} z=${s.zIndex} pe=${s.pointerEvents} cls=${(el.className||'').toString().slice(0,50)}`); }); return r; } catch { return []; } })(),
+      });
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, []);
+  // #endregion
   const { session, worker, loading: authLoading, profileLoadStatus, workerError, retryWorker, logout } = useWorker();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
@@ -466,11 +490,12 @@ const AppContent: React.FC = () => {
   };
 
   const renderContent = () => {
-    // Session is source of truth; we're only here when session exists (AuthGate passed).
-    // Never show Login due to timeout — only Reconnecting… while worker loads.
     const protectedViews = ['account', 'dashboard', 'worker', 'tasks', 'admin-tasks'];
     const isProtected = protectedViews.includes(currentView);
     const missingWorker = worker == null;
+    // #region agent log
+    if (isProtected) { _dbg('App:renderContent','renderContent for protected view',{currentView,missingWorker,authLoading,sessionExists:session!==null,profileLoadStatus}); }
+    // #endregion
 
     if (isProtected && missingWorker && authLoading) {
       return (
@@ -482,6 +507,9 @@ const AppContent: React.FC = () => {
     }
 
     if (isProtected && missingWorker && session !== null && profileLoadStatus === 'loading') {
+      // #region agent log
+      _dbg('App:REPLACING','REPLACING AccountDashboard with Reconnecting placeholder!',{currentView,profileLoadStatus});
+      // #endregion
       return (
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-white mb-2">Reconnecting…</div>

@@ -12,6 +12,7 @@ import {
   getTabResumeGeneration,
   registerBrowserTabResumeListeners,
   subscribeTabResume,
+  _dbg,
 } from '../lib/tabResumeCoalesce';
 
 export type ProfileLoadStatus = 'idle' | 'loading' | 'timed_out' | 'error' | 'ready';
@@ -169,6 +170,9 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   const loadWorkerWithTimeoutFeedback = useCallback(async (): Promise<ProfileLoadResult> => {
     const loadId = activeProfileLoadIdRef.current + 1;
     activeProfileLoadIdRef.current = loadId;
+    // #region agent log
+    _dbg('WC:loadWorker:START','profile load START - profileLoadStatus→loading',{loadId,hadWorker:workerRef.current!=null});
+    // #endregion
     setProfileLoadStatus('loading');
     setWorkerError(null);
 
@@ -185,16 +189,25 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       window.clearTimeout(timeoutId);
 
       if (activeProfileLoadIdRef.current !== loadId) {
+        // #region agent log
+        _dbg('WC:loadWorker:STALE','load returned STALE (superseded)',{loadId,currentId:activeProfileLoadIdRef.current});
+        // #endregion
         return { status: 'stale' };
       }
 
       if (result.error) {
+        // #region agent log
+        _dbg('WC:loadWorker:ERROR','getCurrentWorker returned error',{loadId,error:result.error});
+        // #endregion
         setProfileLoadStatus('error');
         setWorkerError(result.error);
         return { status: 'error', error: result.error };
       }
 
       if (result.worker) {
+        // #region agent log
+        _dbg('WC:loadWorker:OK','profile loaded OK → setting worker',{loadId,workerId:result.worker.id,workerName:result.worker.name});
+        // #endregion
         setWorker(result.worker);
         setWorkerError(null);
         setProfileLoadStatus('ready');
@@ -209,6 +222,9 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       window.clearTimeout(timeoutId);
 
       if (activeProfileLoadIdRef.current !== loadId) {
+        // #region agent log
+        _dbg('WC:loadWorker:STALE_CATCH','load CATCH returned STALE',{loadId,currentId:activeProfileLoadIdRef.current});
+        // #endregion
         return { status: 'stale' };
       }
 
@@ -234,23 +250,38 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
 
   const syncSessionAndWorker = useCallback(async (options?: { resumeToken?: number }) => {
     const token = options?.resumeToken;
+    // #region agent log
+    _dbg('WC:sync:entry','syncSessionAndWorker called',{token,workerExists:workerRef.current!=null,profileLoadStatus});
+    // #endregion
     try {
       const { data: { session: s } } = await supabase.auth.getSession();
+      // #region agent log
+      _dbg('WC:sync:gotSession','getSession result',{hasSession:!!s,userId:s?.user?.id,expiresAt:s?.expires_at,token});
+      // #endregion
       if (token != null && getTabResumeGeneration() !== token) return;
       if (import.meta.env.DEV && typeof window !== 'undefined') {
         console.log('[DEV] WorkerContext: after getSession() (sync) hasSession=', !!s, 'userId=', s?.user?.id);
       }
       setSession(s ?? null);
       if (s) {
+        // #region agent log
+        _dbg('WC:sync:hasSession','session exists → loading worker',{token,userId:s.user?.id,currentLoadId:activeProfileLoadIdRef.current});
+        // #endregion
         await loadWorkerWithTimeoutFeedback();
         if (token != null && getTabResumeGeneration() !== token) return;
       } else {
+        // #region agent log
+        _dbg('WC:sync:NO_SESSION','NO SESSION on resume - setting worker=null, session=null',{token});
+        // #endregion
         invalidateActiveProfileLoad();
         setProfileLoadStatus('idle');
         setWorker(null);
         setWorkerError(null);
       }
-    } catch {
+    } catch (err) {
+      // #region agent log
+      _dbg('WC:sync:CATCH','syncSessionAndWorker CAUGHT ERROR - setting worker=null, session=null',{error:String(err),token});
+      // #endregion
       if (token != null && getTabResumeGeneration() !== token) return;
       invalidateActiveProfileLoad();
       setSession(null);
@@ -259,6 +290,22 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       setWorkerError(null);
     }
   }, [invalidateActiveProfileLoad, loadWorkerWithTimeoutFeedback]);
+
+  // #region agent log — track every React render cycle for worker/session/profileLoadStatus
+  const renderCountRef = useRef(0);
+  renderCountRef.current += 1;
+  useEffect(() => {
+    _dbg('WC:render','WorkerProvider state after render',{
+      renderN:renderCountRef.current,
+      hasSession:session!==undefined && session!==null,
+      sessionUndef:session===undefined,
+      hasWorker:worker!=null,
+      workerId:worker?.id??null,
+      profileLoadStatus,
+      workerError,
+    });
+  });
+  // #endregion
 
   useEffect(() => {
     let mounted = true;
@@ -296,6 +343,9 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
 
   useEffect(() => {
     return subscribeTabResume((gen) => {
+      // #region agent log
+      _dbg('WC:tabResume','tab resume flush → invalidate + syncSessionAndWorker',{gen,currentLoadId:activeProfileLoadIdRef.current,hadWorker:workerRef.current!=null});
+      // #endregion
       if (SHELL_RESUME_DEBUG) {
         console.log('[shell-resume-debug] WorkerContext tab resume flush', { t: Date.now(), gen });
       }
@@ -306,6 +356,9 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
+      // #region agent log
+      _dbg('WC:authChange','onAuthStateChange fired',{event,hasSession:!!s,userId:s?.user?.id,bootstrapComplete:bootstrapCompleteRef.current,currentLoadId:activeProfileLoadIdRef.current});
+      // #endregion
       if (event === 'SIGNED_OUT') {
         invalidateActiveProfileLoad();
         bootstrapCompleteRef.current = false;

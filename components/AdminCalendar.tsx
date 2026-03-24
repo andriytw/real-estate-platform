@@ -12,6 +12,7 @@ import { getCalendarEventAssigneeId, getCalendarEventAssigneeName } from '../lib
 import { workerRoleParenUk } from '../lib/workerRoleLabels';
 import { useWorker } from '../contexts/WorkerContext';
 import { effectiveDepartmentScope } from '../lib/permissions';
+import { _dbg } from '../lib/tabResumeCoalesce';
 
 type ViewMode = 'month' | 'week' | 'day';
 
@@ -488,15 +489,28 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     const reqId = ++chatLoadRequestIdRef.current;
     setChatLoading(true);
     setChatError(null);
-    if (import.meta.env.DEV) {
-      console.log('[AdminCalendar] chat load:start', { taskId: viewEvent.id, reqId });
-    }
+    // #region agent log
+    _dbg('chat:load:start','chat load START',{taskId:viewEvent.id,reqId});
+    // #endregion
     void (async () => {
       try {
+        // #region agent log
+        const _ct0 = Date.now();
+        _dbg('chat:getUser:start','calling getUser for chat',{taskId:viewEvent.id,reqId});
+        // #endregion
         const { data: { user } } = await supabase.auth.getUser();
+        // #region agent log
+        _dbg('chat:getUser:done','getUser returned',{taskId:viewEvent.id,reqId,ms:Date.now()-_ct0,hasUser:!!user,stale:reqId!==chatLoadRequestIdRef.current});
+        // #endregion
         if (reqId !== chatLoadRequestIdRef.current) return;
         if (user?.id) setChatMyUserId(user.id);
+        // #region agent log
+        _dbg('chat:getMessages:start','calling getTaskChatMessages',{taskId:viewEvent.id,reqId});
+        // #endregion
         const rows = await getTaskChatMessages(viewEvent.id);
+        // #region agent log
+        _dbg('chat:getMessages:done','getTaskChatMessages returned',{taskId:viewEvent.id,reqId,count:rows.length,stale:reqId!==chatLoadRequestIdRef.current});
+        // #endregion
         if (reqId !== chatLoadRequestIdRef.current) return;
         const myUid = user?.id ?? null;
         const mapped: TaskMessage[] = rows.map((r) => ({

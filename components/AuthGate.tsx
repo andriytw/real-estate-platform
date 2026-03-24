@@ -51,6 +51,9 @@ export default function AuthGate({ children }: AuthGateProps) {
   }
 
   if (session === null) {
+    // #region agent log
+    if (pathname.startsWith('/account')) { try { const e={t:Date.now(),loc:'AuthGate:NULL',msg:'session=null on /account - UNMOUNTING app tree',pathname}; console.warn('[DBG-978438]',JSON.stringify(e)); try{const a=JSON.parse(localStorage.getItem('__dbg978438')||'[]');a.push(e);localStorage.setItem('__dbg978438',JSON.stringify(a.slice(-60)));}catch{} } catch {} }
+    // #endregion
     if (isRegister) {
       return (
         <RegisterPage

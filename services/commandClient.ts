@@ -1,4 +1,5 @@
 import { supabase } from '../utils/supabase/client';
+import { _dbg } from '../lib/tabResumeCoalesce';
 
 export type CommandErrorKind = 'timeout' | 'network' | 'auth' | 'conflict' | 'server' | 'unknown';
 
@@ -51,9 +52,22 @@ export async function commandPostJson<T = unknown>(
   body: unknown,
   options?: { idempotencyKey?: string; timeoutMs?: number }
 ): Promise<T> {
+  // #region agent log
+  const _t0 = Date.now();
+  _dbg('cmd:json:start','commandPostJson START — calling getSession',{path,idemKey:options?.idempotencyKey??null});
+  // #endregion
   const { data: sessionData } = await supabase.auth.getSession();
+  // #region agent log
+  const _t1 = Date.now();
+  const _tokenPreview = sessionData?.session?.access_token ? sessionData.session.access_token.slice(-8) : 'none';
+  const _expiresAt = sessionData?.session?.expires_at;
+  _dbg('cmd:json:gotSession','getSession returned',{path,ms:_t1-_t0,hasToken:!!sessionData?.session?.access_token,tokenTail:_tokenPreview,expiresAt:_expiresAt,expired:typeof _expiresAt==='number'&&_expiresAt<Math.floor(Date.now()/1000)});
+  // #endregion
   const token = sessionData?.session?.access_token;
   if (!token) {
+    // #region agent log
+    _dbg('cmd:json:NO_TOKEN','No token — throwing auth error',{path,ms:_t1-_t0});
+    // #endregion
     throw new CommandClientError('auth', 'Not signed in');
   }
   const key =
@@ -65,6 +79,9 @@ export async function commandPostJson<T = unknown>(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
+    // #region agent log
+    _dbg('cmd:json:fetch','fetch START',{path,timeoutMs});
+    // #endregion
     const res = await fetch(path, {
       method: 'POST',
       headers: {
@@ -75,6 +92,9 @@ export async function commandPostJson<T = unknown>(
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });
+    // #region agent log
+    _dbg('cmd:json:response','fetch returned',{path,status:res.status,ms:Date.now()-_t0});
+    // #endregion
     const text = await res.text();
     let parsed: unknown;
     try {
@@ -83,6 +103,9 @@ export async function commandPostJson<T = unknown>(
       parsed = { raw: text };
     }
     if (res.status === 401) {
+      // #region agent log
+      _dbg('cmd:json:401','server returned 401',{path,parsed,tokenTail:_tokenPreview,expiresAt:_expiresAt});
+      // #endregion
       throw new CommandClientError('auth', 'Unauthorized', 401, parsed);
     }
     if (res.status === 403) {
@@ -102,6 +125,9 @@ export async function commandPostJson<T = unknown>(
     }
     return parsed as T;
   } catch (e) {
+    // #region agent log
+    _dbg('cmd:json:CATCH','commandPostJson CATCH',{path,error:String(e),kind:(e as CommandClientError)?.kind,ms:Date.now()-_t0});
+    // #endregion
     throw classifyFetchError(e, timeoutMs);
   } finally {
     clearTimeout(timer);
@@ -116,9 +142,22 @@ export async function commandPostFormData<T = unknown>(
   formData: FormData,
   options?: { idempotencyKey?: string; timeoutMs?: number }
 ): Promise<T> {
+  // #region agent log
+  const _t0 = Date.now();
+  _dbg('cmd:form:start','commandPostFormData START — calling getSession',{path,idemKey:options?.idempotencyKey??null});
+  // #endregion
   const { data: sessionData } = await supabase.auth.getSession();
+  // #region agent log
+  const _t1 = Date.now();
+  const _tokenPreview = sessionData?.session?.access_token ? sessionData.session.access_token.slice(-8) : 'none';
+  const _expiresAt = sessionData?.session?.expires_at;
+  _dbg('cmd:form:gotSession','getSession returned',{path,ms:_t1-_t0,hasToken:!!sessionData?.session?.access_token,tokenTail:_tokenPreview,expiresAt:_expiresAt,expired:typeof _expiresAt==='number'&&_expiresAt<Math.floor(Date.now()/1000)});
+  // #endregion
   const token = sessionData?.session?.access_token;
   if (!token) {
+    // #region agent log
+    _dbg('cmd:form:NO_TOKEN','No token — throwing auth error',{path});
+    // #endregion
     throw new CommandClientError('auth', 'Not signed in');
   }
   const key =
@@ -130,6 +169,9 @@ export async function commandPostFormData<T = unknown>(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
+    // #region agent log
+    _dbg('cmd:form:fetch','fetch START',{path,timeoutMs});
+    // #endregion
     const res = await fetch(path, {
       method: 'POST',
       headers: {
@@ -139,6 +181,9 @@ export async function commandPostFormData<T = unknown>(
       body: formData,
       signal: ctrl.signal,
     });
+    // #region agent log
+    _dbg('cmd:form:response','fetch returned',{path,status:res.status,ms:Date.now()-_t0});
+    // #endregion
     const text = await res.text();
     let parsed: unknown;
     try {
@@ -147,6 +192,9 @@ export async function commandPostFormData<T = unknown>(
       parsed = { raw: text };
     }
     if (res.status === 401) {
+      // #region agent log
+      _dbg('cmd:form:401','server returned 401',{path,parsed,tokenTail:_tokenPreview,expiresAt:_expiresAt});
+      // #endregion
       throw new CommandClientError('auth', 'Unauthorized', 401, parsed);
     }
     if (res.status === 403) {
@@ -166,6 +214,9 @@ export async function commandPostFormData<T = unknown>(
     }
     return parsed as T;
   } catch (e) {
+    // #region agent log
+    _dbg('cmd:form:CATCH','commandPostFormData CATCH',{path,error:String(e),kind:(e as CommandClientError)?.kind,ms:Date.now()-_t0});
+    // #endregion
     throw classifyFetchError(e, timeoutMs);
   } finally {
     clearTimeout(timer);

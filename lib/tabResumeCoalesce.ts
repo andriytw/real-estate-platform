@@ -13,6 +13,35 @@ export function getTabResumeGeneration(): number {
   return resumeGeneration;
 }
 
+function dumpDomLayers(): Array<{tag:string,z:string,classes:string}> {
+  try {
+    const els = document.querySelectorAll('*');
+    const layers: Array<{tag:string,z:number,classes:string}> = [];
+    els.forEach(el => {
+      const s = getComputedStyle(el);
+      if (s.position === 'fixed' && s.inset === '0px') {
+        layers.push({tag:el.tagName.toLowerCase(),z:parseInt(s.zIndex)||0,classes:(el.className||'').toString().slice(0,120)});
+      }
+    });
+    layers.sort((a,b) => b.z - a.z);
+    return layers.slice(0,5).map(l => ({tag:l.tag,z:String(l.z),classes:l.classes}));
+  } catch { return []; }
+}
+
+function _dbg(loc: string, msg: string, data: Record<string, unknown>) {
+  const entry = {t:Date.now(),loc,msg,...data};
+  try { console.warn('[DBG-978438]', JSON.stringify(entry)); } catch {}
+  try {
+    const arr = JSON.parse(localStorage.getItem('__dbg978438')||'[]');
+    arr.push(entry);
+    if (arr.length > 60) arr.splice(0, arr.length - 60);
+    localStorage.setItem('__dbg978438', JSON.stringify(arr));
+  } catch {}
+  try { fetch('http://127.0.0.1:7242/ingest/1aed333d-0076-47f3-8bf4-1ca5f822ecdd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'978438'},body:JSON.stringify({sessionId:'978438',location:loc,message:msg,data,timestamp:Date.now()})}).catch(()=>{}); } catch {}
+}
+
+export { _dbg };
+
 export function scheduleTabResumeWork(): void {
   if (debounceTimer != null) {
     clearTimeout(debounceTimer);
@@ -28,6 +57,9 @@ export function scheduleTabResumeWork(): void {
         /* isolate subscriber errors */
       }
     });
+    // #region agent log
+    setTimeout(() => { _dbg('tabResume:postFlush','DOM layers 2s after resume',{gen:g,layers:dumpDomLayers(),bodyChildren:document.body.childElementCount,bodyText:document.body.innerText?.slice(0,300)}); }, 2000);
+    // #endregion
   }, DEBOUNCE_MS);
 }
 
