@@ -1156,3 +1156,109 @@ Use one row per gate:
 2. Run **4K2.5a** collection in agreed environments.
 3. **4K2.5b:** fill near-zero bounds, exception registry template with real rows if needed.
 4. **4K2.5c:** complete policy matrix + go/no-go table; only then schedule **4K3** destructive work.
+
+### Phase 4K2.5a — Telemetry readiness and first-window collection
+
+4K2.5a is **operational readiness + documentation** for branch telemetry. It does **not** change authorization behavior, permission semantics, or API responses. Optional log-field extensions remain **out of scope** unless approved as a separate non-auth-changing change.
+
+**Execution tightenings (must appear in the final 4K2.5a execution report as well as this doc):**
+
+1. **Enablement ownership** — record explicitly: who enables `PERMISSION_BRANCH_TELEMETRY`, **which environment is enabled first**, who validates ingest (filled names/dates).
+2. **Healthy collection start** — collection is healthy only if **at least one** expected permission path emits events in the selected environment **or** absence is **explicitly** explained by low traffic (signed), not confused with broken telemetry.
+3. **Mandatory one-liner in final report:** **Logged `scope` is raw `department_scope` only, not `effectiveDepartmentScope`.**
+
+**Scope semantics (repeat):** Logged `scope` is raw `profiles.department_scope` only, not `effectiveDepartmentScope(profile)` from [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts). Do not interpret log `scope` as the scope used inside evaluators.
+
+#### Repository evidence (code baseline)
+
+- Tags/decisions: [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) — `evaluateCreateOffersServerDecision`, `evaluateSaveInvoiceServerDecision`, `evaluateConfirmPaymentServerDecision`.
+- Emission: [api/_lib/command-auth.ts](api/_lib/command-auth.ts) — `assertCanCreateOffers`, `assertCanSaveInvoice`, `assertCanConfirmPayment`; logs **after** evaluate, **before** deny throw when `PERMISSION_BRANCH_TELEMETRY === '1'`.
+- Endpoints: [api/commands/create-direct-booking.ts](api/commands/create-direct-booking.ts), [api/commands/create-multi-offer.ts](api/commands/create-multi-offer.ts) → `create_offers`; [api/commands/save-invoice.ts](api/commands/save-invoice.ts) → `save_invoice`; [api/commands/confirm-payment.ts](api/commands/confirm-payment.ts) → `confirm_payment`.
+
+#### Telemetry readiness audit
+
+| Capability | Ready now (ops, once env+ingest) | Blocker if no | Evidence level |
+|---|---|---|---|
+| Tags emitted at assert boundary | yes | Flag off; wrong deployment | code-only → telemetry-backed after collection |
+| Log shape `[authz-branch]` + `{ permission, tag, role, scope }` | yes | — | code-only |
+| All three permission values covered | yes (four HTTP routes, two share `create_offers`) | — | code-only |
+| Denied tag at assert | yes | — | code-only |
+| Full picture of all HTTP 403/401 failures | **no** | Fails before `assertCan*` do not emit | code-only |
+| Tag × permission counts | yes | Ingest not wired | telemetry-backed |
+| Tag × permission × role | yes | — | telemetry-backed |
+| Tag × permission × scope bucket | **partial** | Bucket is **raw `department_scope` only, not `effectiveDepartmentScope`** | code-only |
+| Scope-vs-`department` disagreement rate | **no** | No `department` / no effective scope / no disagreement class in logs | code-only |
+| **`scope` semantics clarity** | **N/A** | — | **Logged `scope` is raw `department_scope` only, not `effectiveDepartmentScope`.** |
+
+#### Enablement ownership (fill before production-style reliance)
+
+| Role | Responsibility |
+|---|---|
+| **Who enables `PERMISSION_BRANCH_TELEMETRY`** | Name + role (Platform/DevOps or deploy owner). |
+| **Which environment is enabled first** | Default: **staging first**; document actual first env + date. Production required before 4K3 go/no-go per Phase 4K2.5. |
+| **Who validates ingest** | Name + role; confirms log queries return `[authz-branch]` from the intended project/service. |
+
+#### First-window collection runbook
+
+1. Enablement owner sets `PERMISSION_BRANCH_TELEMETRY=1` on the deployment serving `/api/commands/*` (staging first by default).
+2. Redeploy/restart so runtime picks up the variable.
+3. **Smoke:** authenticated calls (or staging tests) so each of `create_offers`, `save_invoice`, `confirm_payment` can produce at least one line in the log sink where applicable.
+4. **Healthy collection start rule:** Collection is **healthy** only if **at least one** of `create_offers`, `save_invoice`, or `confirm_payment` emits `[authz-branch]` in the chosen environment during burn-in **or** zero events is **explicitly** documented as low/no traffic with **sign-off** that flag wiring and ingest are correct (not silent misconfiguration).
+5. **Review window (proposed):** e.g. 7–14 calendar days; align with invoice/business cycle (exact span: owner).
+6. **Minimum sample:** floor per cell TBD in 4K2.5b after first histogram; 4K2.5a captures data and produces first slices.
+7. **End-of-window evidence pack:** aggregation exports, 3–5 redacted log lines, ingest link, date range, environment name(s).
+
+**Final 4K2.5a execution report must include:** filled ownership table; healthy-start verdict; one-liner **Logged `scope` is raw `department_scope` only, not `effectiveDepartmentScope`.**
+
+#### Aggregation / report format (first window)
+
+| Slice | Dimensions | Why it matters | Informs gate | Telemetry sufficient? |
+|---|---|---|---|---|
+| A | `permission` × `tag` | Legacy vs canonical volume | G-legacy-dept, G-legacy-cat | yes |
+| B | `permission` × `tag` × `role` | Role-driven legacy | Same + policy | yes |
+| C | `permission` × `tag` × `scope_bucket` | **Bucket = raw log `scope` = raw `department_scope` only (not `effectiveDepartmentScope`)** | Segmentation | yes, with caveat |
+| D | `tag=denied` by permission/role/bucket | Assert-time deny baseline | G-denied-baseline | yes (assert-only) |
+| E | Legacy reliance index | Near-zero discussion | 4K2.5b thresholds | yes (denominator documented) |
+| F | Anomaly list (top cells, spikes) | Investigate before 4K2.5b | Threshold tuning | yes; root cause may need DB |
+
+Disagreement-rate slice: **not** from telemetry alone — use DB analytics or optional 4K2.5d (approved separately).
+
+#### Disagreement evidence gap
+
+| Question | Answer |
+|---|---|
+| Can telemetry alone prove `department_scope` vs `department` disagreement rates? | **No** |
+| Preferred evidence | **DB analytics** on `profiles` (primary); optional env-gated non-PII log fields — separate approval |
+| Owner | Data/DB + authz; platform if log extension |
+| Blocks 4K2.5a? | **No** for tag/role/legacy/denied counts. Blocks closing disagreement-centric gates until 4K2.5b–c or parallel DB work. |
+
+#### Safe observability extension (optional)
+
+- **Default:** doc + runbook + env + ingest + templates only — **no** code change in 4K2.5a.
+- **Optional follow-up:** coarse derived fields, env-gated, no PII, no auth change — **separate PR** and security sign-off; not required to mark 4K2.5a “ready to collect.”
+
+#### Handoff checklist for 4K2.5b (outputs 4K2.5a must produce)
+
+- [ ] Filled **enablement ownership** (who enabled, first environment + date, who validated ingest).
+- [ ] **Telemetry enabled** confirmation (service/project, date).
+- [ ] **Healthy collection start** pass or signed low-traffic explanation.
+- [ ] **Ingest proof** (platform link + filter for `[authz-branch]`).
+- [ ] **Redacted** sample lines (2–5).
+- [ ] **Window** dates + environment(s).
+- [ ] Saved **query/dashboard template** for slices A–D.
+- [ ] First **summary tables** A–E (or “window in progress”).
+- [ ] **Open gap** documented: disagreement path = DB or optional extension, owner assigned.
+- [ ] **Denied caveat:** assert-only visibility documented.
+- [ ] Final report includes: **Logged `scope` is raw `department_scope` only, not `effectiveDepartmentScope`.**
+
+#### 4K2.5a verification (this implementation)
+
+- After doc update: `npm run build`.
+- **No** changes to [api/_lib/command-auth.ts](api/_lib/command-auth.ts) or [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) in this doc-only 4K2.5a pass.
+
+#### Risks / traps (4K2.5a)
+
+- **Silent flag:** zero events misread as zero legacy usage.
+- **`denied` under-count** when failures occur before `assertCan*`.
+- **Scope bucket:** again — **Logged `scope` is raw `department_scope` only, not `effectiveDepartmentScope`.**
+- **Staging silence:** use healthy-start rule + signed explanation if needed.
