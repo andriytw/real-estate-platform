@@ -6,6 +6,7 @@ import { getTaskColor } from '../../utils/taskColors';
 import { supabase } from '../../utils/supabase/client';
 import { useWorker } from '../../contexts/WorkerContext';
 import { workerRoleParenUk } from '../../lib/workerRoleLabels';
+import { getCalendarEventAssigneeId, getCalendarEventAssigneeName } from '../../lib/assigneeIdentity';
 
 const TASK_MEDIA_BUCKET = 'task-media';
 const SIGNED_URL_EXPIRY_SEC = 300;
@@ -287,7 +288,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         const prop = await propertiesService.getById(task.propertyId);
         setProperty(prop);
       }
-      const assigneeId = task.workerId ?? task.assignedWorkerId;
+      const assigneeId = getCalendarEventAssigneeId(task);
       if (assigneeId) {
         const worker = await workersService.getById(assigneeId);
         setAssignee(worker);
@@ -590,7 +591,9 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             {/* Assignee */}
             <div className="flex items-center gap-2 text-sm text-gray-400">
               <User className="w-4 h-4" />
-              <span>{assignee?.name || task.assignee || ((task.workerId ?? task.assignedWorkerId) ? '—' : 'Unassigned')}</span>
+              <span>
+                {assignee?.name || getCalendarEventAssigneeName(task) || (getCalendarEventAssigneeId(task) ? '—' : 'Unassigned')}
+              </span>
               {assignee?.role && (
                 <span className="text-xs text-gray-500">{workerRoleParenUk(assignee.role)}</span>
               )}

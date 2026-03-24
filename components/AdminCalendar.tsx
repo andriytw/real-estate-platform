@@ -7,7 +7,8 @@ import { updateBookingStatusFromTask } from '../bookingUtils';
 import { workersService, tasksService, getTaskChatMessages, insertTaskChatMessage, getTaskAttachmentSignedUrl, type TaskChatAttachment } from '../services/supabaseService';
 import { supabase } from '../utils/supabase/client';
 import { ACCOUNTING_TASK_TYPES, getTaskColor } from '../utils/taskColors';
-import { filterAssignableWorkers, getCalendarEventAssigneeId } from './kanban/assigneeUtils';
+import { filterAssignableWorkers } from './kanban/assigneeUtils';
+import { getCalendarEventAssigneeId, getCalendarEventAssigneeName } from '../lib/assigneeIdentity';
 import { workerRoleParenUk } from '../lib/workerRoleLabels';
 import { useWorker } from '../contexts/WorkerContext';
 import { effectiveDepartmentScope } from '../lib/permissions';
@@ -329,8 +330,8 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         lines.push(header);
         prevDate = eventDate;
       }
-      const assigneeId = e.workerId ?? e.assignedWorkerId;
-      const assigneeName = e.assignee || (assigneeId ? workers.find(w => w.id === assigneeId)?.name : '') || '';
+      const assigneeId = getCalendarEventAssigneeId(e);
+      const assigneeName = getCalendarEventAssigneeName(e, (id) => workers.find((w) => w.id === id)?.name) || '';
       const prop = e.propertyId ? propertyList.find(p => p.id === e.propertyId) : null;
       if (import.meta.env.DEV) {
         if (e.propertyId && !prop) console.warn('[CSV] property not found for task', e.id, 'propertyId', e.propertyId);
@@ -1111,8 +1112,8 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                       {date || 'No date'}
                     </div>
                     {dayEvents.map(event => {
-                      const assigneeId = event.workerId ?? event.assignedWorkerId;
-                      const assigneeName = event.assignee || (assigneeId ? workers.find(w => w.id === assigneeId)?.name : '') || '—';
+                      const assigneeId = getCalendarEventAssigneeId(event);
+                      const assigneeName = getCalendarEventAssigneeName(event, (id) => workers.find((w) => w.id === id)?.name) || '—';
                       const prop = event.propertyId ? propertyList.find(p => p.id === event.propertyId) : null;
                       const addr = prop?.address ?? (prop as any)?.full_address ?? (prop as any)?.fullAddress ?? '';
                       const unit = prop?.title ?? '';
@@ -1456,9 +1457,9 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                          <div className="flex items-center gap-1 flex-wrap">
                             <span className="font-mono opacity-70 bg-black/20 px-1 rounded text-[10px]">{event.time}</span>
                             {(() => {
-                               const assigneeId = event.workerId ?? event.assignedWorkerId;
+                               const assigneeId = getCalendarEventAssigneeId(event);
                                const worker = assigneeId ? workers.find(w => w.id === assigneeId) : null;
-                               const workerName = event.assignee || (worker?.name ?? (assigneeId ? '—' : null));
+                               const workerName = getCalendarEventAssigneeName(event, () => worker?.name) || (assigneeId ? '—' : null);
                                return workerName ? (
                                   <div className="flex items-center gap-1 text-[10px] text-gray-400 min-w-0">
                                      <User className="w-3 h-3 opacity-70 shrink-0" />

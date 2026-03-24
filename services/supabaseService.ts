@@ -1,4 +1,5 @@
 import { mirrorLegacyDepartmentFromScope } from '../lib/profileDepartmentSync';
+import { getCalendarEventAssigneeId, normalizeCalendarEventAssigneeId } from '../lib/assigneeIdentity';
 import { SESSION_PROFILE_SELECT_COLUMNS } from '../lib/sessionProfileSelect';
 import { supabase } from '../utils/supabase/client';
 import { PAGE_INSTANCE_ID } from '../utils/pageInstance';
@@ -3138,7 +3139,7 @@ export async function listTaskChatThreadsForFacilityInbox(): Promise<TaskChatThr
 
   const { data: eventsData, error: eventsError } = await supabase
     .from('calendar_events')
-    .select('id, title, status, property_id, location_text, date, time, type, worker_id, description')
+    .select('id, title, status, property_id, location_text, date, time, type, worker_id, assigned_worker_id, description')
     .in('id', eventIds);
 
   if (eventsError) throw eventsError;
@@ -3157,7 +3158,13 @@ export async function listTaskChatThreadsForFacilityInbox(): Promise<TaskChatThr
     }
   }
 
-  const assigneeIds = [...new Set(events.map((e) => e.worker_id).filter(Boolean))] as string[];
+  const assigneeIds = [
+    ...new Set(
+      events
+        .map((e) => getCalendarEventAssigneeId({ workerId: e.worker_id ?? undefined, assignedWorkerId: e.assigned_worker_id ?? undefined }))
+        .filter(Boolean)
+    ),
+  ] as string[];
   let assigneeMap = new Map<string, string>();
   if (assigneeIds.length > 0) {
     const { data: profilesData } = await supabase
@@ -3202,7 +3209,10 @@ export async function listTaskChatThreadsForFacilityInbox(): Promise<TaskChatThr
             ? ev.type!
             : (propertyLabel ?? 'Task');
 
-    const workerId = ev.worker_id ?? undefined;
+    const workerId = getCalendarEventAssigneeId({
+      workerId: ev.worker_id ?? undefined,
+      assignedWorkerId: ev.assigned_worker_id ?? undefined,
+    }) || undefined;
     const assigneeName = workerId ? (assigneeMap.get(workerId) ?? '—') : '—';
     let dueAt: string | undefined;
     if (ev.date) {
@@ -4080,8 +4090,20 @@ function buildCalendarEventDbPatch(patch: Partial<CalendarEvent>): Record<string
   const out: Record<string, unknown> = {};
   const has = (k: keyof CalendarEvent) => Object.prototype.hasOwnProperty.call(patch, k);
 
-  if (has('workerId')) out.worker_id = patch.workerId ?? null;
-  if (has('assignedWorkerId')) out.assigned_worker_id = patch.assignedWorkerId ?? null;
+  const hasWorkerId = has('workerId');
+  const hasAssignedWorkerId = has('assignedWorkerId');
+  if (hasWorkerId || hasAssignedWorkerId) {
+    // Explicit omit-vs-clear-vs-set policy:
+    // - neither key present => leave both DB columns untouched
+    // - key present with empty/null => clear both as null
+    // - key present with real id => set both columns to same id
+    const normalizedAssigneeId = normalizeCalendarEventAssigneeId({
+      workerId: hasWorkerId ? (patch.workerId ?? null) : null,
+      assignedWorkerId: hasAssignedWorkerId ? (patch.assignedWorkerId ?? null) : null,
+    });
+    out.worker_id = normalizedAssigneeId;
+    out.assigned_worker_id = normalizedAssigneeId;
+  }
   if (has('assignee')) out.assignee = patch.assignee ?? null;
   if (has('status')) out.status = patch.status ?? null;
   if (has('date')) out.date = patch.date ?? null;
@@ -4109,7 +4131,10 @@ function buildCalendarEventDbPatch(patch: Partial<CalendarEvent>): Record<string
 
 function transformCalendarEventToDB(event: CalendarEvent): any {
   // Explicitly convert undefined to null for UUID fields to avoid Supabase errors
-  const workerIdValue = (event.workerId || event.assignedWorkerId) || null;
+  const workerIdValue = normalizeCalendarEventAssigneeId({
+    workerId: event.workerId ?? null,
+    assignedWorkerId: event.assignedWorkerId ?? null,
+  });
   const managerIdValue = event.managerId || null;
   const bookingIdValue = event.bookingId || null;
   const propertyIdValue = event.propertyId || null;

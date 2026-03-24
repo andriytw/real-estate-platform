@@ -28,6 +28,7 @@ import UserManagement from './admin/UserManagement';
 import { canViewModule, canManageUsers, type AppModule } from '../lib/permissions';
 import { firstAllowedDashboardModule, canAccessDashboardModule } from '../lib/uiAccess';
 import { workerRoleLabelUk } from '../lib/workerRoleLabels';
+import { getCalendarEventAssigneeId, getCalendarEventAssigneeName } from '../lib/assigneeIdentity';
 
 // Lazy-load KanbanBoard so @hello-pangea/dnd is only loaded when user opens Tasks tab.
 // This avoids "X is not a constructor" on /account (CJS/ESM + esbuild minification issue with dnd).
@@ -9091,8 +9092,8 @@ ${internalCompany} Team`;
               ) : (
                 <div className="border border-gray-700 rounded-lg overflow-hidden bg-[#16181D] divide-y divide-gray-700/50">
                   {sortedPropertyTasks.map(e => {
-                    const assigneeId = e.workerId ?? e.assignedWorkerId;
-                    const resolvedName = e.assignee || (assigneeId ? workers.find(w => w.id === assigneeId)?.name : undefined) || '';
+                    const assigneeId = getCalendarEventAssigneeId(e);
+                    const resolvedName = getCalendarEventAssigneeName(e, (id) => workers.find((w) => w.id === id)?.name) || '';
                     const assigneeLabel = !assigneeId ? 'Unassigned' : (resolvedName || '—');
                     const assigneeMuted = !assigneeId || !resolvedName;
 
