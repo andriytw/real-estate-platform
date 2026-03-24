@@ -4,6 +4,7 @@ import { tasksService, workersService, propertiesService, getTaskChatMessages, i
 import { CalendarEvent, TaskStatus, Property, Worker } from '../../types';
 import { getTaskColor } from '../../utils/taskColors';
 import { supabase } from '../../utils/supabase/client';
+import { safeGetUser } from '../../lib/supabaseAuthGuard';
 import { useWorker } from '../../contexts/WorkerContext';
 import { workerRoleParenUk } from '../../lib/workerRoleLabels';
 import { getCalendarEventAssigneeId, getCalendarEventAssigneeName } from '../../lib/assigneeIdentity';
@@ -102,7 +103,7 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     }
     (async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await safeGetUser();
         if (cancelled) return;
         if (user?.id) setChatMyUserId(user.id);
         const rows = await getTaskChatMessages(task.id);

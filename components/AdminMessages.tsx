@@ -12,6 +12,7 @@ import {
   type TaskChatAttachment,
 } from '../services/supabaseService';
 import { supabase } from '../utils/supabase/client';
+import { safeGetUser } from '../lib/supabaseAuthGuard';
 import { getTaskColor } from '../utils/taskColors';
 
 const TASK_MEDIA_BUCKET = 'task-media';
@@ -112,7 +113,7 @@ const AdminMessages: React.FC = () => {
 
   // Current user id for bubbles
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    safeGetUser().then((user) => {
       setChatMyUserId(user?.id ?? null);
     });
   }, []);

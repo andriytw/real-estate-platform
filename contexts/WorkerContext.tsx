@@ -14,6 +14,7 @@ import {
   subscribeTabResume,
   _dbg,
 } from '../lib/tabResumeCoalesce';
+import { safeGetSession, safeGetUser } from '../lib/supabaseAuthGuard';
 
 export type ProfileLoadStatus = 'idle' | 'loading' | 'timed_out' | 'error' | 'ready';
 
@@ -73,12 +74,12 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       if (isDev && typeof window !== 'undefined') {
         console.log('[DEV] WorkerContext: supabaseUrl=', getSupabaseRestUrl(), 'window.location.origin=', window.location.origin);
       }
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      const user = await safeGetUser();
       if (isDev && typeof window !== 'undefined') {
-        console.log('[DEV] WorkerContext: after getUser() user=', !!user, 'userId=', user?.id, 'authError=', authError?.message ?? authError);
+        console.log('[DEV] WorkerContext: after safeGetUser() user=', !!user, 'userId=', user?.id);
       }
-      if (authError || !user) {
-        const errMsg = authError?.message ?? 'Not authenticated';
+      if (!user) {
+        const errMsg = 'Not authenticated';
         if (isDev && typeof window !== 'undefined') console.log('[DEV] WorkerContext: returning error (no user)', { error: errMsg });
         return { worker: null, error: errMsg };
       }
@@ -254,9 +255,9 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     _dbg('WC:sync:entry','syncSessionAndWorker called',{token,workerExists:workerRef.current!=null,profileLoadStatus});
     // #endregion
     try {
-      const { data: { session: s } } = await supabase.auth.getSession();
+      const s = await safeGetSession();
       // #region agent log
-      _dbg('WC:sync:gotSession','getSession result',{hasSession:!!s,userId:s?.user?.id,expiresAt:s?.expires_at,token});
+      _dbg('WC:sync:gotSession','safeGetSession result',{hasSession:!!s,userId:s?.user?.id,expiresAt:s?.expires_at,token});
       // #endregion
       if (token != null && getTabResumeGeneration() !== token) return;
       if (import.meta.env.DEV && typeof window !== 'undefined') {
@@ -310,9 +311,9 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const { data: { session: s } } = await supabase.auth.getSession();
+      const s = await safeGetSession();
       if (import.meta.env.DEV && typeof window !== 'undefined') {
-        console.log('[DEV] WorkerContext: after getSession() hasSession=', !!s, 'userId=', s?.user?.id);
+        console.log('[DEV] WorkerContext: after safeGetSession() hasSession=', !!s, 'userId=', s?.user?.id);
       }
       if (!mounted) return;
       setSession(s ?? null);

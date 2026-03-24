@@ -3,6 +3,7 @@ import { X, Upload } from 'lucide-react';
 import { PaymentProof } from '../types';
 import { paymentProofsService } from '../services/supabaseService';
 import { supabase } from '../utils/supabase/client';
+import { safeGetSession } from '../lib/supabaseAuthGuard';
 
 const PAYMENT_PROOF_PDF_INPUT_ID = 'payment-proof-pdf-upload';
 
@@ -55,7 +56,7 @@ const PaymentProofPdfModal: React.FC<PaymentProofPdfModalProps> = ({
           fileUploadedAt: new Date().toISOString(),
         });
       } else {
-        const { data: { session } } = await supabase.auth.getSession();
+        const session = await safeGetSession();
         const createdBy = session?.user?.id ?? undefined;
         const newProof = await paymentProofsService.create({ invoiceId, createdBy });
         const filePath = await paymentProofsService.uploadPaymentProofFile(pdfFile, invoiceId, newProof.id);

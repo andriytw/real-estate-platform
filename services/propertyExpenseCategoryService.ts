@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '../utils/supabase/client';
+import { safeGetUser } from '../lib/supabaseAuthGuard';
 
 export interface PropertyExpenseCategoryRow {
   id: string;
@@ -46,7 +47,7 @@ export const propertyExpenseCategoryService = {
 
   /** Call on first open of expenses tile: if user has no categories, create defaults. */
   async ensureDefaults(): Promise<PropertyExpenseCategoryRow[]> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await safeGetUser();
     if (!user?.id) return [];
     const existing = await this.listCategories(true);
     if (existing.length > 0) return existing;
@@ -66,7 +67,7 @@ export const propertyExpenseCategoryService = {
   },
 
   async createCategory(name: string, code?: string): Promise<PropertyExpenseCategoryRow> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await safeGetUser();
     if (!user?.id) throw new Error('Not authenticated');
     const finalCode = code ?? name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
     const { data, error } = await supabase

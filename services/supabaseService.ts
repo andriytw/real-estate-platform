@@ -2,6 +2,7 @@ import { mirrorLegacyDepartmentFromScope } from '../lib/profileDepartmentSync';
 import { getCalendarEventAssigneeId, normalizeCalendarEventAssigneeId } from '../lib/assigneeIdentity';
 import { ADMIN_PROFILE_SELECT_COLUMNS, SESSION_PROFILE_SELECT_COLUMNS } from '../lib/sessionProfileSelect';
 import { supabase } from '../utils/supabase/client';
+import { safeGetSession, safeGetUser } from '../lib/supabaseAuthGuard';
 import { PAGE_INSTANCE_ID } from '../utils/pageInstance';
 // Diagnosis: no shared request/timeout wrapper used across save flows; all calls use the singleton supabase client from utils/supabase/client.
 import {
@@ -777,7 +778,7 @@ export const usersService = {
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!supabaseUrl || !anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
 
-    const { data: { session } } = await supabase.auth.getSession();
+    const session = await safeGetSession();
     const authToken = session?.access_token;
     if (!authToken) {
       throw new Error('Потрібна авторизація адміністратора');
@@ -840,7 +841,7 @@ export const usersService = {
     if (!supabaseUrl || !anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
     const functionsUrl = `${supabaseUrl}/functions/v1/invite-user`;
 
-    const { data: { session } } = await supabase.auth.getSession();
+    const session = await safeGetSession();
     if (!session?.access_token) {
       throw new Error('You must be signed in to create users (session required for invite-user)');
     }
@@ -904,7 +905,7 @@ export const usersService = {
     if (!supabaseUrl || !anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
     const functionsUrl = `${supabaseUrl}/functions/v1/invite-user`;
 
-    const { data: { session } } = await supabase.auth.getSession();
+    const session = await safeGetSession();
     if (!session?.access_token) {
       throw new Error('You must be signed in to invite users');
     }
@@ -955,7 +956,7 @@ export const usersService = {
     if (!supabaseUrl || !anonKey) throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
     const functionsUrl = `${supabaseUrl}/functions/v1/invite-user`;
 
-    const { data: { session } } = await supabase.auth.getSession();
+    const session = await safeGetSession();
     if (!session?.access_token) {
       throw new Error('You must be signed in to resend invitations');
     }
@@ -1438,7 +1439,7 @@ export const propertiesService = {
   },
 
   async archiveProperty(propertyId: string): Promise<Property> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await safeGetUser();
     const userId = user?.id ?? null;
     const { data, error } = await supabase
       .from('properties')
@@ -1558,7 +1559,7 @@ export const addressBookPartiesService = {
   /** Upsert by (owner_user_id, role, name, iban, street, zip, city). Gets user inside for RLS; normalizes so phones/emails are always arrays (NOT NULL in DB). */
   async upsertMany(entries: AddressBookPartyEntry[]): Promise<void> {
     if (!entries.length) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await safeGetUser();
     if (!user) throw new Error('Not authenticated');
     const normStr = (v: any) => (v == null ? '' : String(v).trim());
     const normArr = (arr?: string[]) =>
@@ -1589,7 +1590,7 @@ export const addressBookPartiesService = {
   },
 
   async deleteById(id: string): Promise<void> {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await safeGetUser();
     if (!user) throw new Error('Not authenticated');
     const { error } = await supabase
       .from('address_book_parties')
@@ -3022,7 +3023,7 @@ export async function getTaskChatMessages(calendarEventId: string): Promise<Task
 }
 
 export async function insertTaskChatMessage(calendarEventId: string, messageText: string): Promise<TaskChatMessageRow> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await safeGetUser();
   if (!user?.id) throw new Error('Not authenticated');
   const { data, error } = await supabase
     .from('task_chat_messages')
@@ -3049,7 +3050,7 @@ export async function insertTaskChatMessageWithAttachment(
   calendarEventId: string,
   attachments: TaskChatAttachment[]
 ): Promise<TaskChatMessageRow | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await safeGetUser();
   if (!user?.id) throw new Error('Not authenticated');
   const { data, error } = await supabase
     .from('task_chat_messages')
@@ -4464,8 +4465,8 @@ export const propertyDepositProofsService = {
       .upload(filePath, file, { cacheControl: '3600', upsert: false });
     if (uploadError) throw new Error(uploadError.message || 'Storage upload failed');
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const createdBy = sessionData?.session?.user?.id ?? null;
+    const _session = await safeGetSession();
+    const createdBy = _session?.user?.id ?? null;
 
     const { data, error } = await supabase
       .from('property_deposit_proofs')

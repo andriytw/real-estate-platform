@@ -1,5 +1,5 @@
-import { supabase } from '../utils/supabase/client';
 import { _dbg } from '../lib/tabResumeCoalesce';
+import { safeGetSession } from '../lib/supabaseAuthGuard';
 
 export type CommandErrorKind = 'timeout' | 'network' | 'auth' | 'conflict' | 'server' | 'unknown';
 
@@ -56,14 +56,14 @@ export async function commandPostJson<T = unknown>(
   const _t0 = Date.now();
   _dbg('cmd:json:start','commandPostJson START — calling getSession',{path,idemKey:options?.idempotencyKey??null});
   // #endregion
-  const { data: sessionData } = await supabase.auth.getSession();
+  const session = await safeGetSession();
   // #region agent log
   const _t1 = Date.now();
-  const _tokenPreview = sessionData?.session?.access_token ? sessionData.session.access_token.slice(-8) : 'none';
-  const _expiresAt = sessionData?.session?.expires_at;
-  _dbg('cmd:json:gotSession','getSession returned',{path,ms:_t1-_t0,hasToken:!!sessionData?.session?.access_token,tokenTail:_tokenPreview,expiresAt:_expiresAt,expired:typeof _expiresAt==='number'&&_expiresAt<Math.floor(Date.now()/1000)});
+  const _tokenPreview = session?.access_token ? session.access_token.slice(-8) : 'none';
+  const _expiresAt = session?.expires_at;
+  _dbg('cmd:json:gotSession','getSession returned',{path,ms:_t1-_t0,hasToken:!!session?.access_token,tokenTail:_tokenPreview,expiresAt:_expiresAt,expired:typeof _expiresAt==='number'&&_expiresAt<Math.floor(Date.now()/1000)});
   // #endregion
-  const token = sessionData?.session?.access_token;
+  const token = session?.access_token;
   if (!token) {
     // #region agent log
     _dbg('cmd:json:NO_TOKEN','No token — throwing auth error',{path,ms:_t1-_t0});
@@ -146,14 +146,14 @@ export async function commandPostFormData<T = unknown>(
   const _t0 = Date.now();
   _dbg('cmd:form:start','commandPostFormData START — calling getSession',{path,idemKey:options?.idempotencyKey??null});
   // #endregion
-  const { data: sessionData } = await supabase.auth.getSession();
+  const session = await safeGetSession();
   // #region agent log
   const _t1 = Date.now();
-  const _tokenPreview = sessionData?.session?.access_token ? sessionData.session.access_token.slice(-8) : 'none';
-  const _expiresAt = sessionData?.session?.expires_at;
-  _dbg('cmd:form:gotSession','getSession returned',{path,ms:_t1-_t0,hasToken:!!sessionData?.session?.access_token,tokenTail:_tokenPreview,expiresAt:_expiresAt,expired:typeof _expiresAt==='number'&&_expiresAt<Math.floor(Date.now()/1000)});
+  const _tokenPreview = session?.access_token ? session.access_token.slice(-8) : 'none';
+  const _expiresAt = session?.expires_at;
+  _dbg('cmd:form:gotSession','getSession returned',{path,ms:_t1-_t0,hasToken:!!session?.access_token,tokenTail:_tokenPreview,expiresAt:_expiresAt,expired:typeof _expiresAt==='number'&&_expiresAt<Math.floor(Date.now()/1000)});
   // #endregion
-  const token = sessionData?.session?.access_token;
+  const token = session?.access_token;
   if (!token) {
     // #region agent log
     _dbg('cmd:form:NO_TOKEN','No token — throwing auth error',{path});
