@@ -20,6 +20,8 @@ import { propertyMediaService } from './services/propertyMediaService';
 import { Property, FilterState, RequestData, Worker } from './types';
 import { PAGE_INSTANCE_ID } from './utils/pageInstance';
 import { canViewModule } from './lib/permissions';
+import { SHELL_RESUME_DEBUG } from './lib/shellDebug';
+import { subscribeTabResume } from './lib/tabResumeCoalesce';
 
 function defaultAuthenticatedPath(worker: Worker): string {
   if (worker.role === 'worker') return '/worker';
@@ -206,30 +208,15 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [syncViewWithPath]);
 
-  // Handle page visibility changes (when returning to tab)
+  // Tab return / bfcache: coalesced with WorkerContext via lib/tabResumeCoalesce (debounced single flush).
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        if (SYNC_PATH_LOGS_ENABLED) console.log('🔄 App: Tab became visible, syncing view with path');
-        syncViewWithPath();
+    return subscribeTabResume((gen) => {
+      if (SYNC_PATH_LOGS_ENABLED) console.log('🔄 App: Tab resume flush, syncing view with path');
+      if (SHELL_RESUME_DEBUG) {
+        console.log('[shell-resume-debug] App tab resume flush → syncViewWithPath', { t: Date.now(), gen });
       }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [syncViewWithPath]);
-
-  // Handle bfcache (back/forward cache) restoration
-  useEffect(() => {
-    const handlePageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) {
-        if (SYNC_PATH_LOGS_ENABLED) console.log('🔄 App: Page restored from bfcache, syncing view with path');
-        syncViewWithPath();
-      }
-    };
-
-    window.addEventListener('pageshow', handlePageShow);
-    return () => window.removeEventListener('pageshow', handlePageShow);
+      syncViewWithPath();
+    });
   }, [syncViewWithPath]);
 
   // Check authentication and redirect (session is source of truth; we only redirect when worker is known)

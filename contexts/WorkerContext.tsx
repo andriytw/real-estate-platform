@@ -7,6 +7,12 @@ import {
   SESSION_PROFILE_SELECT_COLUMNS,
   logDevSessionProfileObservability,
 } from '../lib/sessionProfileSelect';
+import { SHELL_RESUME_DEBUG } from '../lib/shellDebug';
+import {
+  getTabResumeGeneration,
+  registerBrowserTabResumeListeners,
+  subscribeTabResume,
+} from '../lib/tabResumeCoalesce';
 
 export type ProfileLoadStatus = 'idle' | 'loading' | 'timed_out' | 'error' | 'ready';
 
@@ -226,15 +232,18 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     await loadWorkerWhenSessionExists();
   }, [loadWorkerWhenSessionExists]);
 
-  const syncSessionAndWorker = useCallback(async () => {
+  const syncSessionAndWorker = useCallback(async (options?: { resumeToken?: number }) => {
+    const token = options?.resumeToken;
     try {
       const { data: { session: s } } = await supabase.auth.getSession();
+      if (token != null && getTabResumeGeneration() !== token) return;
       if (import.meta.env.DEV && typeof window !== 'undefined') {
         console.log('[DEV] WorkerContext: after getSession() (sync) hasSession=', !!s, 'userId=', s?.user?.id);
       }
       setSession(s ?? null);
       if (s) {
         await loadWorkerWithTimeoutFeedback();
+        if (token != null && getTabResumeGeneration() !== token) return;
       } else {
         invalidateActiveProfileLoad();
         setProfileLoadStatus('idle');
@@ -242,6 +251,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
         setWorkerError(null);
       }
     } catch {
+      if (token != null && getTabResumeGeneration() !== token) return;
       invalidateActiveProfileLoad();
       setSession(null);
       setProfileLoadStatus('idle');
@@ -281,14 +291,18 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   }, [invalidateActiveProfileLoad, loadWorkerWithTimeoutFeedback]);
 
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        syncSessionAndWorker();
+    return registerBrowserTabResumeListeners();
+  }, []);
+
+  useEffect(() => {
+    return subscribeTabResume((gen) => {
+      if (SHELL_RESUME_DEBUG) {
+        console.log('[shell-resume-debug] WorkerContext tab resume flush', { t: Date.now(), gen });
       }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [syncSessionAndWorker]);
+      invalidateActiveProfileLoad();
+      void syncSessionAndWorker({ resumeToken: gen });
+    });
+  }, [invalidateActiveProfileLoad, syncSessionAndWorker]);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {

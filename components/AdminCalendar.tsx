@@ -148,6 +148,8 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   const wheelDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchStartXRef = useRef<number | null>(null);
   const pendingMonthJumpRef = useRef(false);
+  /** Monotonic id so stale chat fetches after task switch / unmount do not clobber UI. */
+  const chatLoadRequestIdRef = useRef(0);
 
   // Функція для отримання зрозумілого опису (прибирає JSON, показує тільки текст)
   const getReadableDescription = (description: string | undefined): string => {
@@ -360,20 +362,29 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
 
   // Load workers from database
   useEffect(() => {
+    let cancelled = false;
     const loadWorkers = async () => {
       try {
         setLoadingWorkers(true);
         console.log('🔄 Loading workers for AdminCalendar...');
         const workersData = await workersService.getAssignableWorkers();
+        if (cancelled) return;
         console.log('✅ Loaded workers:', workersData.length);
         setWorkers(workersData);
       } catch (error) {
-        console.error('❌ Error loading workers:', error);
+        if (!cancelled) {
+          console.error('❌ Error loading workers:', error);
+        }
       } finally {
-        setLoadingWorkers(false);
+        if (!cancelled) {
+          setLoadingWorkers(false);
+        }
       }
     };
-    loadWorkers();
+    void loadWorkers();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Facility only: fetch latest chat message per task for CSV last_comment when panel is open
@@ -474,19 +485,19 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       setChatError(null);
       return;
     }
-    let cancelled = false;
+    const reqId = ++chatLoadRequestIdRef.current;
     setChatLoading(true);
     setChatError(null);
     if (import.meta.env.DEV) {
-      console.log('[AdminCalendar] chat load:start', { taskId: viewEvent.id });
+      console.log('[AdminCalendar] chat load:start', { taskId: viewEvent.id, reqId });
     }
-    (async () => {
+    void (async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        if (cancelled) return;
+        if (reqId !== chatLoadRequestIdRef.current) return;
         if (user?.id) setChatMyUserId(user.id);
         const rows = await getTaskChatMessages(viewEvent.id);
-        if (cancelled) return;
+        if (reqId !== chatLoadRequestIdRef.current) return;
         const myUid = user?.id ?? null;
         const mapped: TaskMessage[] = rows.map((r) => ({
           id: r.id,
@@ -502,16 +513,16 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        if (!cancelled) {
-          console.error('[AdminCalendar] chat load:error', { taskId: viewEvent.id, error: e });
-          setChatError(msg || 'Could not load messages');
-          setTaskMessages([]);
-        }
+        if (reqId !== chatLoadRequestIdRef.current) return;
+        console.error('[AdminCalendar] chat load:error', { taskId: viewEvent.id, error: e });
+        setChatError(msg || 'Could not load messages');
+        setTaskMessages([]);
       } finally {
-        setChatLoading(false);
+        if (reqId === chatLoadRequestIdRef.current) {
+          setChatLoading(false);
+        }
       }
     })();
-    return () => { cancelled = true; };
   }, [viewEvent?.id, viewEvent?.hasUnreadMessage, isAccountingCalendar]);
 
   const months = [

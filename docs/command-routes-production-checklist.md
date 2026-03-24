@@ -82,3 +82,8 @@ How to classify quickly:
 Post-fix note:
 
 - If UI close actions are disabled during in-flight save/confirm, treat this as intentional anti-stale-state behavior, not a new hang symptom. Validate completion using Network status plus matching command-route log line.
+
+Tab-return shell note:
+
+- If failure reproduces mainly after tab switch/return and affects logout/dropdown/chat together, treat it as shell-lifecycle/interactivity triage first, then command-route triage second.
+- Use the shell-focused audit section in `docs/production-hanging-flows-investigation.md` as the primary decision source before classifying route-level hangs.

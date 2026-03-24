@@ -1,5 +1,13 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import {
+  SHELL_RESUME_DEBUG,
+  registerShellDebugSnapshotGetter,
+  getShellDebugSnapshot,
+  describeElementBrief,
+  describeEventTarget,
+  buildAccountDashboardShellDebugSnapshot,
+} from '../lib/shellDebug';
 import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Ruler, Square, Download, LayoutGrid, Bed, MoreVertical, Archive, RotateCcw } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 import AdminCalendar from './AdminCalendar';
@@ -2602,6 +2610,70 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
 
   const [uebergabeprotokollLoading, setUebergabeprotokollLoading] = useState(false);
   const [uebergabeprotokollPdfLoading, setUebergabeprotokollPdfLoading] = useState(false);
+
+  const shellModalFlagsRef = useRef<Record<string, boolean>>({});
+  shellModalFlagsRef.current = {
+    editingLead: !!editingLead,
+    clientHistoryLead: !!clientHistoryLead,
+    isCreateLeadModalOpen,
+    isOfferEditModalOpen,
+    docPreviewOpen: docPreview.open,
+    sendChannelOpen: sendChannelPayload !== null,
+    isMultiOfferDetailsOpen,
+    openMediaModal: openMediaModalType != null,
+    meterGallery: meterGalleryReadingId != null,
+    depositProofOverlay:
+      isDepositProofModalOpen && depositProofType != null && selectedProperty != null,
+    addApartmentGroupModalOpen,
+    isAddressBookModalOpen,
+    isMeterNumbersModalOpen,
+    isInvoiceModalOpen,
+    confirmPaymentModalOpen: confirmPaymentModalProforma !== null,
+    paymentProofModalOpen: paymentProofModal !== null,
+    isOfferViewModalOpen,
+    isZweckentfremdungModalOpen,
+    isManageModalOpen,
+    isPropertyAddModalOpen,
+    isRequestModalOpen,
+    archiveModalOpen: archiveModalPropertyId != null,
+    deleteModalOpen: deleteModalPropertyId != null,
+    isTransferModalOpen,
+    isAddInventoryModalOpen,
+    isPropertyAddFromDocumentOpen,
+    isExpenseAddFromDocumentOpen,
+    isExpenseCategoriesModalOpen,
+    isCreateWarehouseModalOpen,
+  };
+
+  useEffect(() => {
+    if (!SHELL_RESUME_DEBUG) return;
+    return registerShellDebugSnapshotGetter(() =>
+      buildAccountDashboardShellDebugSnapshot(shellModalFlagsRef.current)
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!SHELL_RESUME_DEBUG) return;
+    let last = 0;
+    const throttleMs = 400;
+    const onPointerDown = (e: PointerEvent) => {
+      const now = Date.now();
+      if (now - last < throttleMs) return;
+      last = now;
+      const path = e.composedPath();
+      const path0 = path[0];
+      const fromPoint = document.elementFromPoint(e.clientX, e.clientY);
+      console.log('[shell-resume-debug] pointerdown', {
+        target: describeEventTarget(e.target),
+        composedPath0: describeEventTarget(path0),
+        elementFromPoint: describeElementBrief(fromPoint),
+        client: { x: e.clientX, y: e.clientY },
+        snapshot: getShellDebugSnapshot(),
+      });
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, []);
 
   // Stats
   const activePropertiesCount = properties.length;
