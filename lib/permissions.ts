@@ -42,6 +42,9 @@ export function isEligibleTaskAssignee(user: Worker | null | undefined): boolean
 /**
  * Sidebar / module tiles. Managers only see modules for their scope (Properties is NOT universal).
  * Unresolved scope (null): fall back to legacy category_access only for sidebar compatibility.
+ *
+ * Server-side command gates mirror scope + LEGACY branches in api/_lib/server-permissions.ts (no shared import).
+ * Note: canAccessDepartment is stricter (no category_access fallback) — intentional asymmetry.
  */
 export function canViewModule(user: Worker | null | undefined, module: AppModule): boolean {
   if (!user || user.isActive === false) return false;

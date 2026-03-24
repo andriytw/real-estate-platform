@@ -40,16 +40,18 @@ export function canManageUsersServer(profile: CommandAuthProfile): boolean {
   return profile.can_manage_users === true;
 }
 
-function hasSalesCategoryAccess(profile: CommandAuthProfile): boolean {
+/**
+ * LEGACY: `profiles.category_access` array check — must preserve exact semantics from Phase 3A:
+ * - null / non-array / missing → false
+ * - match via `String(x).toLowerCase() === token` (same as prior `hasSalesCategoryAccess` / `hasAccountingCategoryAccess`)
+ */
+function categoryAccessIncludesNormalizedToken(
+  profile: CommandAuthProfile,
+  token: 'sales' | 'accounting'
+): boolean {
   const ca = profile.category_access;
   if (!ca || !Array.isArray(ca)) return false;
-  return ca.some((x) => String(x).toLowerCase() === 'sales');
-}
-
-function hasAccountingCategoryAccess(profile: CommandAuthProfile): boolean {
-  const ca = profile.category_access;
-  if (!ca || !Array.isArray(ca)) return false;
-  return ca.some((x) => String(x).toLowerCase() === 'accounting');
+  return ca.some((x) => String(x).toLowerCase() === token);
 }
 
 /**
@@ -63,7 +65,7 @@ export function canCreateOffersServer(profile: CommandAuthProfile): boolean {
   // LEGACY: department column
   if (profile.department === 'sales') return true;
   // LEGACY: category_access
-  if (hasSalesCategoryAccess(profile)) return true;
+  if (categoryAccessIncludesNormalizedToken(profile, 'sales')) return true;
   return false;
 }
 
@@ -77,8 +79,8 @@ export function canSaveInvoiceServer(profile: CommandAuthProfile): boolean {
   if (scope === 'accounting' || scope === 'sales') return true;
   // LEGACY: department
   if (profile.department === 'accounting' || profile.department === 'sales') return true;
-  if (hasSalesCategoryAccess(profile)) return true;
-  if (hasAccountingCategoryAccess(profile)) return true;
+  if (categoryAccessIncludesNormalizedToken(profile, 'sales')) return true;
+  if (categoryAccessIncludesNormalizedToken(profile, 'accounting')) return true;
   /**
    * LEGACY: unresolved scope + manager — preserve prior broad allow (managers often elevated in prod).
    * Once department_scope is backfilled everywhere, consider removing this branch.
@@ -96,6 +98,6 @@ export function canConfirmPaymentServer(profile: CommandAuthProfile): boolean {
   const scope = effectiveDepartmentScope(profile);
   if (scope === 'accounting' || scope === 'sales') return true;
   if (profile.department === 'accounting' || profile.department === 'sales') return true;
-  if (hasSalesCategoryAccess(profile)) return true;
+  if (categoryAccessIncludesNormalizedToken(profile, 'sales')) return true;
   return false;
 }

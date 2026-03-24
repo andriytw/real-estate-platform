@@ -130,7 +130,7 @@ Each block uses: **Item** | **Where found** | **Why it still exists** | **Curren
 
 **Item:** `category_access` + unresolved `department_scope` — sidebar and server LEGACY branches
 
-- **Where found:** [lib/permissions.ts](lib/permissions.ts) `canViewModule` (lines 75–87) when `effectiveDepartmentScope` is null; [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) (`hasSalesCategoryAccess`, `department === 'sales'`, etc.); DB [has_sales_category_access()](supabase/migrations/20260330100000_phase3b_step1_helpers_rpc_scope_first.sql) when `department_scope IS NULL`.
+- **Where found:** [lib/permissions.ts](lib/permissions.ts) `canViewModule` (lines 75–87) when `effectiveDepartmentScope` is null; [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) (LEGACY `category_access` via `categoryAccessIncludesNormalizedToken`, `department === 'sales'`, etc.); DB [has_sales_category_access()](supabase/migrations/20260330100000_phase3b_step1_helpers_rpc_scope_first.sql) when `department_scope IS NULL`.
 - **Why it still exists:** Users with legacy `department` (e.g. `general`) or missing scope still need Sales/Accounting UI and RPC behavior until scopes are set.
 - **Current risk:** Removing `category_access` or LEGACY OR branches without backfill **denies** module tiles or command API access for edge profiles.
 - **Cleanup recommendation:** Phase **4D**: metrics on `department_scope IS NULL` for active users; backfill scopes; then delete LEGACY branches in a coordinated client + server + DB release.
@@ -238,6 +238,49 @@ Legend: **A** = actively used, **T** = transitional but necessary, **L** = likel
 | **Duplicate helper definitions** in root SQL | Consolidation docs / deprecation headers | e.g. `has_sales_category_access` appears in multiple migration files — align on **latest** migration actually applied. |
 
 Do **not** treat these as delete-ready without DBA / prod checks.
+
+---
+
+## Phase 4E — Legacy `category_access` / `department` fallback (inventory, controlled pass)
+
+**Scope of this subsection:** access fallback reduction only (classification + safe internal deduplication). **Not** destructive removal. **Note:** the staged sequence table in §6 labels a different “4E” (Kanban storage); that remains a separate track.
+
+### Inventory (code evidence)
+
+| Location | Symbol / usage | Role |
+|----------|----------------|------|
+| [lib/permissions.ts](lib/permissions.ts) | `effectiveDepartmentScope` | Canonical first: valid `department_scope`; else map legacy `department` ∈ {facility, accounting, sales}; else `null`. |
+| [lib/permissions.ts](lib/permissions.ts) | `canViewModule` | If scope non-null → scope-only module rules. If scope **null** → **legacy `categoryAccess` array** maps modules (sidebar). |
+| [lib/permissions.ts](lib/permissions.ts) | `canAccessDepartment` | Scope-only; **no** `category_access` fallback — returns false when scope unresolved. |
+| [lib/uiAccess.ts](lib/uiAccess.ts) | `firstAllowedDashboardModule`, `canAccessDashboardModule` | Thin wrappers over `canViewModule`. |
+| [api/_lib/command-auth.ts](api/_lib/command-auth.ts) | `requireCommandProfile` select list | Loads `department`, `department_scope`, `category_access`, capability flags for command API. |
+| [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) | `canCreateOffersServer`, `canSaveInvoiceServer`, `canConfirmPaymentServer` | Primary: `effectiveDepartmentScope` + full scope; **LEGACY** `department` column; **LEGACY** `category_access` via normalized token match (`String(x).toLowerCase()`); `canSaveInvoiceServer` retains **`manager && scope == null`** broad allow. |
+| [lib/sessionProfileSelect.ts](lib/sessionProfileSelect.ts) | `SESSION_PROFILE_SELECT_COLUMNS` | Session worker load includes `category_access` while client fallback exists. |
+| [services/supabaseService.ts](services/supabaseService.ts) | `transformWorkerFromDB` | Maps `category_access` → `categoryAccess`. |
+| [types.ts](types.ts) | `Worker.categoryAccess` | Typed transitional field. |
+| [supabase/functions/invite-user/index.ts](supabase/functions/invite-user/index.ts) | invite payload | May write `category_access` — operational, not UI fallback. |
+| [components/kanban/KanbanBoard.tsx](components/kanban/KanbanBoard.tsx) | `filterTasksForUserScope` | When `effectiveDepartmentScope` is **null**, returns tasks **unfiltered** (observe vs sidebar). |
+
+### Classification (A / B / C)
+
+**A — keep for now (backward compatibility / production-sensitive)**
+
+- All **LEGACY** `department` and `category_access` branches in [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts), including **`profile.role === 'manager' && effectiveDepartmentScope(profile) == null`** on `canSaveInvoiceServer`.
+- `canViewModule` **category_access** branch when `effectiveDepartmentScope` is null.
+- `effectiveDepartmentScope` mapping from legacy `department` (RLS / row-shape compatibility).
+
+**B — safe in this pass (no intended behavior change)**
+
+- Internal deduplication of duplicate `category_access` array checks in [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) into one helper with **identical** null/empty/array and token-matching semantics.
+
+**C — remove later (prerequisites)**
+
+- Dropping **category_access** from sidebar or server gates only after: active-user metrics for `department_scope IS NULL`, parity tests on command paths (offers / invoices / confirm payment), and policy on rows where `department_scope` disagrees with `department`.
+- Aligning Kanban `scope == null` filtering with sidebar — product decision + tests.
+
+### What Phase 4E explicitly did **not** do
+
+- No DB column drops, no RLS edits, no removal of legacy branches, no widening or narrowing of gates beyond refactor-preserving semantics.
 
 ---
 
