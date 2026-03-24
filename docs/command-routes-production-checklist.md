@@ -57,3 +57,28 @@ npm run build
 ```
 
 Optional: `npx vercel build` (with Vercel CLI linked) to validate serverless compilation.
+
+## 6. Stuck-flow triage addendum (UI appears hanging)
+
+Capture these artifacts for each suspected stuck flow:
+
+1. Browser **Network** record for the exact command request:
+   - request URL/path
+   - start/end timing
+   - status code
+   - response body
+2. Browser **Console** lines around the same timestamp:
+   - trace/idempotency related logs
+   - modal close/reopen actions
+3. Matching **Vercel function log** line for same route and time window.
+
+How to classify quickly:
+
+- **Server success + UI still blocked**: network `2xx` and Vercel success logs exist, but user remains in modal/next-step UI -> likely sequencing/stale-state issue.
+- **Client timeout**: browser shows aborted request (`AbortError`/timeout message); check if server finished later using same idempotency key.
+- **Backend error path**: network non-2xx with structured `{"error": ...}` body and matching server error log.
+- **No server log match**: likely request never reached function (frontend/network/session problem).
+
+Post-fix note:
+
+- If UI close actions are disabled during in-flight save/confirm, treat this as intentional anti-stale-state behavior, not a new hang symptom. Validate completion using Network status plus matching command-route log line.

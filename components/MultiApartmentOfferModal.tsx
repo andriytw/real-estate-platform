@@ -15,6 +15,7 @@ import {
   calculateOfferNights,
   formatApartmentIdentificationLine,
 } from '../utils/salesOfferFlow';
+import { COMMAND_JSON_TIMEOUT_MS } from '../services/commandClient';
 
 export type MultiApartmentOfferSubmitMode = 'draft' | 'send' | 'directBooking';
 
@@ -25,8 +26,8 @@ interface MultiApartmentOfferModalProps {
   leads?: Lead[];
   prefilledRequestData?: Partial<RequestData>;
   onSubmit: (draft: MultiApartmentOfferDraft, mode: MultiApartmentOfferSubmitMode) => Promise<void> | void;
-  /** DEBUG/RECOVERY: after submit timeout or user closes while saving — parent clears AccountDashboard save lock (trace-safe). */
-  onStuckClearLock?: () => void;
+  /** DEBUG/RECOVERY: after submit timeout or user closes while saving — parent clears only flow-specific lock. */
+  onStuckClearLock?: (flow: 'multiOffer' | 'directBooking') => void;
   /** When true, hide offer message section and use single "Create booking" action (calendar direct-booking flow). */
   directBookingMode?: boolean;
   /** When 'view', show read-only content from viewData; apartments and onSubmit are unused. */
@@ -404,9 +405,10 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     // cancel or reject the parent async flow (onSubmit). The underlying request may still be in
     // flight or stuck; when the timeout wins we only clear loading state and show an alert. Retry
     // after timeout may risk duplicate creation if the original request finishes late.
-    const TIMEOUT_MS = 90_000;
+    const TIMEOUT_MS = COMMAND_JSON_TIMEOUT_MS;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('SUBMIT_TIMEOUT')), TIMEOUT_MS);
+      timeoutId = setTimeout(() => reject(new Error('SUBMIT_TIMEOUT')), TIMEOUT_MS);
     });
     try {
       setSavingMode(submitMode);
@@ -421,19 +423,20 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     } catch (err) {
       if (err instanceof Error && err.message === 'SUBMIT_TIMEOUT') {
         setSavingMode(null);
-        onStuckClearLock?.();
+        onStuckClearLock?.(submitMode === 'directBooking' ? 'directBooking' : 'multiOffer');
         alert('Request is taking longer than expected. You can try again or check your connection.');
         return;
       }
       throw err;
     } finally {
+      if (timeoutId) clearTimeout(timeoutId);
       setSavingMode(null);
     }
   };
 
   const handleModalClose = () => {
     if (savingMode !== null) {
-      onStuckClearLock?.();
+      onStuckClearLock?.(savingMode === 'directBooking' ? 'directBooking' : 'multiOffer');
     }
     onClose();
   };

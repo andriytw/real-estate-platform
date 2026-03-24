@@ -4,6 +4,7 @@ import { InvoiceData } from '../types';
 import {
   commandPostFormData,
   CommandClientError,
+  COMMAND_UPLOAD_TIMEOUT_MS,
   parseCommandApiErrorMessage,
 } from '../services/commandClient';
 
@@ -59,6 +60,7 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
   };
 
   const handleClose = () => {
+    if (uploading) return;
     resetForm();
     onClose();
   };
@@ -83,7 +85,7 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
       const { bookingId } = await commandPostFormData<{ bookingId: string; proofId: string }>(
         '/api/commands/confirm-payment',
         fd,
-        { idempotencyKey: idemKey }
+        { idempotencyKey: idemKey, timeoutMs: COMMAND_UPLOAD_TIMEOUT_MS }
       );
       idempotencyKeyRef.current = null;
       await onConfirmed(bookingId);
@@ -131,6 +133,7 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
           <button
             type="button"
             onClick={handleClose}
+            disabled={uploading}
             className="text-gray-400 hover:text-white p-2 rounded-lg transition-colors"
             aria-label="Close"
           >

@@ -15,8 +15,8 @@ export class CommandClientError extends Error {
   }
 }
 
-const DEFAULT_TIMEOUT_MS = 90_000;
-const UPLOAD_TIMEOUT_MS = 120_000;
+export const COMMAND_JSON_TIMEOUT_MS = 90_000;
+export const COMMAND_UPLOAD_TIMEOUT_MS = 120_000;
 
 /** Parse JSON error body from command routes (error may be string or wrongly-shaped). */
 export function parseCommandApiErrorMessage(parsed: unknown): string {
@@ -32,11 +32,13 @@ export function parseCommandApiErrorMessage(parsed: unknown): string {
   return 'Request failed';
 }
 
-function classifyFetchError(e: unknown): CommandClientError {
+function classifyFetchError(e: unknown, timeoutMs?: number): CommandClientError {
   if (e instanceof CommandClientError) return e;
   const err = e as { name?: string; message?: string };
   if (err?.name === 'AbortError') {
-    return new CommandClientError('timeout', 'Request timed out');
+    const seconds = typeof timeoutMs === 'number' ? Math.round(timeoutMs / 1000) : null;
+    const message = seconds != null ? `Request timed out after ${seconds}s` : 'Request timed out';
+    return new CommandClientError('timeout', message, undefined, timeoutMs != null ? { timeoutMs } : undefined);
   }
   return new CommandClientError('network', err?.message || 'Network error');
 }
@@ -59,7 +61,7 @@ export async function commandPostJson<T = unknown>(
     (typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = options?.timeoutMs ?? COMMAND_JSON_TIMEOUT_MS;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -100,7 +102,7 @@ export async function commandPostJson<T = unknown>(
     }
     return parsed as T;
   } catch (e) {
-    throw classifyFetchError(e);
+    throw classifyFetchError(e, timeoutMs);
   } finally {
     clearTimeout(timer);
   }
@@ -124,7 +126,7 @@ export async function commandPostFormData<T = unknown>(
     (typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const timeoutMs = options?.timeoutMs ?? UPLOAD_TIMEOUT_MS;
+  const timeoutMs = options?.timeoutMs ?? COMMAND_UPLOAD_TIMEOUT_MS;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -164,7 +166,7 @@ export async function commandPostFormData<T = unknown>(
     }
     return parsed as T;
   } catch (e) {
-    throw classifyFetchError(e);
+    throw classifyFetchError(e, timeoutMs);
   } finally {
     clearTimeout(timer);
   }

@@ -2581,12 +2581,24 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const invoiceIdempotencyKeyRef = useRef<string | null>(null);
 
   // DEBUG/RECOVERY: escape hatch when modal times out or user abandons stuck save — not final business logic.
-  const onStuckClearAccountDashboardSaveLock = useCallback(() => {
-    console.warn('[DEBUG/RECOVERY] clearAccountDashboardSaveLock (all per-flow flags)', { pageInstanceId: PAGE_INSTANCE_ID });
-    multiOfferSaveInProgressRef.current = false;
-    directBookingSaveInProgressRef.current = false;
-    invoiceSaveInProgressRef.current = false;
-  }, []);
+  const onStuckClearAccountDashboardSaveLock = useCallback(
+    (flow?: 'multiOffer' | 'directBooking' | 'invoice') => {
+      console.warn('[DEBUG/RECOVERY] clearAccountDashboardSaveLock', { flow: flow || 'all', pageInstanceId: PAGE_INSTANCE_ID });
+      if (!flow || flow === 'multiOffer') {
+        multiOfferSaveInProgressRef.current = false;
+        multiOfferIdempotencyKeyRef.current = null;
+      }
+      if (!flow || flow === 'directBooking') {
+        directBookingSaveInProgressRef.current = false;
+        directBookingIdempotencyKeyRef.current = null;
+      }
+      if (!flow || flow === 'invoice') {
+        invoiceSaveInProgressRef.current = false;
+        invoiceIdempotencyKeyRef.current = null;
+      }
+    },
+    []
+  );
 
   const [uebergabeprotokollLoading, setUebergabeprotokollLoading] = useState(false);
   const [uebergabeprotokollPdfLoading, setUebergabeprotokollPdfLoading] = useState(false);
@@ -12128,10 +12140,7 @@ ${internalCompany} Team`;
         }}
         onAbandonStuck={(phase) => {
           console.warn('[DEBUG/RECOVERY] InvoiceModal abandon stuck flow', { phase, pageInstanceId: PAGE_INSTANCE_ID });
-          if (phase === 'persist') {
-            invoiceSaveInProgressRef.current = false;
-          }
-          invoiceIdempotencyKeyRef.current = null;
+          onStuckClearAccountDashboardSaveLock('invoice');
           setInvoiceModalInstanceKey((k) => k + 1);
           setIsInvoiceModalOpen(false);
           setSelectedOfferForInvoice(null);

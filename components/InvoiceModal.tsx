@@ -704,7 +704,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
                   <button
                     type="button"
                     onClick={() => handleSave('save')}
-                    disabled={(isAddProformaMode || isAddInvoiceToProformaMode) && (!pdfFile || uploading || saving || (isAddInvoiceToProformaMode && !addInvoiceFinancialValid))}
+                    disabled={uploading || saving || ((isAddProformaMode || isAddInvoiceToProformaMode) && (!pdfFile || (isAddInvoiceToProformaMode && !addInvoiceFinancialValid)))}
                     className="px-4 py-2 rounded-lg text-sm font-bold bg-[#1C1F24] border border-gray-700 hover:bg-gray-700 text-gray-300 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Save className="w-4 h-4" />
@@ -714,7 +714,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
                 <button 
                     type="button"
                     onClick={() => handleSave((isAddProformaMode || isAddInvoiceToProformaMode) ? 'send' : 'save')}
-                    disabled={(isAddProformaMode || isAddInvoiceToProformaMode) && (!pdfFile || uploading || saving || (isAddInvoiceToProformaMode && !addInvoiceFinancialValid))}
+                    disabled={uploading || saving || ((isAddProformaMode || isAddInvoiceToProformaMode) && (!pdfFile || (isAddInvoiceToProformaMode && !addInvoiceFinancialValid)))}
                     className="px-6 py-2 rounded-lg text-sm font-bold bg-purple-600 hover:bg-purple-500 text-white shadow-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <Save className="w-4 h-4" />

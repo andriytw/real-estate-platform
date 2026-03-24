@@ -1203,6 +1203,112 @@ Use one row per gate:
 1. Enablement owner sets `PERMISSION_BRANCH_TELEMETRY=1` on the deployment serving `/api/commands/*` (staging first by default).
 2. Redeploy/restart so runtime picks up the variable.
 3. **Smoke:** authenticated calls (or staging tests) so each of `create_offers`, `save_invoice`, `confirm_payment` can produce at least one line in the log sink where applicable.
+
+#### Phase 4K2.5a — Operational execution package (repo-specific, copy-paste)
+
+This subsection turns the checkpoint into **concrete operator steps**. It does **not** claim telemetry is enabled or that logs were collected in this repository—only what the codebase does when the flag is set.
+
+**Deployment assumption (from repo):** The [vercel.json](vercel.json) file configures Vercel rewrites and lists **serverless functions** for the four command handlers. Treat **`PERMISSION_BRANCH_TELEMETRY`** as a **server-side (Vercel)** environment variable on the project that deploys this repo. If you deploy elsewhere (Docker, other host), map the same variable name to that runtime’s configuration—**this doc does not verify your live hosting**.
+
+##### A. Behavior confirmed from code (no live telemetry claim)
+
+| Item | Fact |
+|---|---|
+| **Emission site** | [api/_lib/command-auth.ts](api/_lib/command-auth.ts) only — inside `assertCanCreateOffers`, `assertCanSaveInvoice`, `assertCanConfirmPayment`. |
+| **Order** | Each function calls `evaluate*ServerDecision(profile)`, then if telemetry is on logs **once**, then throws `403` if `!decision.allowed`. Denies **do** emit a line (with `tag: 'denied'`) before the throw. |
+| **Env variable** | **`PERMISSION_BRANCH_TELEMETRY`** must equal the string **`1`** at Node process start: `process.env.PERMISSION_BRANCH_TELEMETRY === '1'` ([api/_lib/command-auth.ts](api/_lib/command-auth.ts) line 12). |
+| **Marker** | First argument to `console.log`: **`[authz-branch]`** (literal). |
+| **Payload** | Second argument: object with **`permission`**, **`tag`**, **`role`**, **`scope`**. |
+| **`permission` values** | `'create_offers'` \| `'save_invoice'` \| `'confirm_payment'` (fixed per assert). |
+| **`tag` values** | From [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) type `PermissionBranchTag`: `super_manager`, `full_scope_allow`, `canonical_scope_allow`, `legacy_department_allow`, `legacy_category_access_allow`, `unresolved_manager_allow` (**save-invoice only**), `denied`. **confirm-payment** evaluator has **no** `unresolved_manager_allow` branch. |
+| **`role`** | `profile.role` (string from DB, default normalized in loader). |
+| **`scope`** | **`profile.department_scope ?? 'null'`** — raw `profiles.department_scope` column or sentinel `'null'`. **Not** `effectiveDepartmentScope(profile)`. |
+| **Endpoints → assert** | `POST` [api/commands/create-direct-booking.ts](api/commands/create-direct-booking.ts) → `assertCanCreateOffers`; [api/commands/create-multi-offer.ts](api/commands/create-multi-offer.ts) → same; [api/commands/save-invoice.ts](api/commands/save-invoice.ts) → `assertCanSaveInvoice`; [api/commands/confirm-payment.ts](api/commands/confirm-payment.ts) → `assertCanConfirmPayment`. |
+| **HTTP paths (Vercel)** | `/api/commands/create-direct-booking`, `/api/commands/create-multi-offer`, `/api/commands/save-invoice`, `/api/commands/confirm-payment` (matching `api/commands/*.ts` layout). |
+| **`denied` coverage** | **Partial globally:** `[authz-branch]` appears only when the request reaches `assertCan*`. **No** emission for: missing/invalid bearer (`401`), profile missing/inactive (`403`) inside `requireCommandProfile`, or validation/body errors that occur **before** the assert in a given handler. For the four listed handlers, assert runs **immediately after** `requireCommandProfile` and **before** idempotency/body checks, so a **minimal authenticated POST** can still emit telemetry even when the API returns `400` later (e.g. missing `X-Idempotency-Key`). |
+
+##### B. Operator runbook (outside the repo)
+
+1. **Choose environment first** (recommended: **Preview/staging** Vercel environment before Production). Record which one in the evidence pack.
+2. **Set variable** in Vercel: Project → **Settings** → **Environment Variables** → add **`PERMISSION_BRANCH_TELEMETRY`** = **`1`**, scoped to the intended environment(s) (e.g. Preview only, or Production when ready).
+3. **Redeploy** the latest deployment (or trigger a new deployment) so every **new** serverless invocation **loads** the updated env. *Changing env without a new deployment can be unreliable; treat redeploy as required.*
+4. **Confirm target:** the project that serves **`/api/commands/*`** for your staging/prod hostname (same Git repo; [vercel.json](vercel.json) references the four function paths).
+5. **Validate ingest:** open **Vercel** → project → **Logs** (or your log drain destination: Datadog, Axiom, etc.) for that deployment/environment.
+6. **Smoke-test** (see checklist below). **Success:** at least one log line contains **`[authz-branch]`** with `permission` in `{ create_offers, save_invoice, confirm_payment }` after a deliberate test request.
+7. **Record evidence** using the template at the end of this subsection.
+
+**What “working” looks like:** A line matching the filter **`[authz-branch]`** with JSON/object fields **`permission`**, **`tag`**, **`role`**, **`scope`** consistent with the test user’s profile (role and raw `department_scope`).
+
+**Distinguish “no traffic” from “misconfigured”:**
+
+| Situation | What to check |
+|---|---|
+| Suspect **flag off** or wrong project | Env UI shows `PERMISSION_BRANCH_TELEMETRY=1` on **this** project and environment; deployment **time is after** the change. |
+| Suspect **wrong log stream** | Logs filtered by the **same** deployment URL / project / env you tested. |
+| **Confirmed wiring** but **zero** events | Issue **one** intentional authenticated `POST` to any command path below, then re-query. If still zero, verify **function logs** (not only Edge). |
+| **True low traffic** | Document window, environment, and **signed** confirmation that ingest + flag were verified with a **forced** smoke request (so silence is not confused with broken telemetry). |
+
+##### C. Smoke-test checklist (initial burn-in)
+
+Base URL: `https://<your-deployment-host>` (staging first). All routes **`POST`**, header **`Authorization: Bearer <valid JWT>`** for a user that exists and is active in `profiles`.
+
+| # | HTTP path | Source file | Assert | Reachable `tag` values (from evaluators) | Minimal smoke | Expected telemetry line |
+|---:|---|---|---|---|---|---|
+| 1 | `/api/commands/create-direct-booking` | [api/commands/create-direct-booking.ts](api/commands/create-direct-booking.ts) | `assertCanCreateOffers` | `super_manager`, `full_scope_allow`, `canonical_scope_allow`, `legacy_department_allow`, `legacy_category_access_allow`, `denied` | **One** `POST` after auth is enough **for emission**: e.g. empty JSON body `{}` may still yield `400` later, but assert already ran. Optional: omit idempotency key to fail fast after log. | `{ permission: 'create_offers', tag: '<one-of-above>', role: '...', scope: '...' \| 'null' }` |
+| 2 | `/api/commands/create-multi-offer` | [api/commands/create-multi-offer.ts](api/commands/create-multi-offer.ts) | `assertCanCreateOffers` | same as row 1 | Same as row 1. | Same `permission: 'create_offers'` (second route shares permission name). |
+| 3 | `/api/commands/save-invoice` | [api/commands/save-invoice.ts](api/commands/save-invoice.ts) | `assertCanSaveInvoice` | Same tags as create-offers **plus** `unresolved_manager_allow` (manager + null effective scope per [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts)). | One authenticated `POST` (JSON or multipart path hits assert first). | `{ permission: 'save_invoice', ... }` |
+| 4 | `/api/commands/confirm-payment` | [api/commands/confirm-payment.ts](api/commands/confirm-payment.ts) | `assertCanConfirmPayment` | Same as row 1 **except** **no** `unresolved_manager_allow` | One authenticated `POST`; handler may return `400` for bad `content-type` **after** assert — telemetry still emitted when assert runs. | `{ permission: 'confirm_payment', ... }` |
+
+**Coverage note:** Two routes emit **`permission: 'create_offers'`**; you need **at least one** of them for legacy volume, not necessarily both, for health checks. For a **full** path smoke, hit one create-offers route + save-invoice + confirm-payment.
+
+##### D. Log verification (exact filter text)
+
+- **Contains (case-sensitive):** `[authz-branch]`
+- **Optional refinement:** also match `create_offers` OR `save_invoice` OR `confirm_payment` depending on slice.
+
+**Redacted example shape (illustrative only):**
+
+```text
+[authz-branch] { permission: 'save_invoice', tag: 'canonical_scope_allow', role: 'manager', scope: 'sales' }
+```
+
+Do not treat `scope` as `effectiveDepartmentScope` in reports: **Logged `scope` is raw `department_scope` only, not `effectiveDepartmentScope`.**
+
+##### E. Healthy collection start (operator checklist)
+
+- [ ] **`PERMISSION_BRANCH_TELEMETRY=1`** set for the intended Vercel environment.
+- [ ] **Redeploy** completed after setting the variable.
+- [ ] **Log sink** shows runtime logs for this project/deployment.
+- [ ] **At least one** `[authz-branch]` event with `permission` in `create_offers` | `save_invoice` | `confirm_payment` after a deliberate smoke **or** **signed** low-traffic exception documenting forced smoke and ingest verification.
+
+##### F. First evidence pack (copy-paste template)
+
+```text
+## Phase 4K2.5a — Evidence pack (fill after enablement)
+
+- Environment (Vercel env / hostname): 
+- Date/time telemetry enabled (UTC): 
+- Who enabled (name, role): 
+- Who validated ingest (name, role): 
+- Redeploy / deployment ID or URL: 
+- Log platform + link (if applicable): 
+- Exact query / filter used: [authz-branch]
+- Sample lines (2–5, redact tokens/ids if adjacent in stream):
+  
+- Endpoints smoke-tested: [ ] create-direct-booking [ ] create-multi-offer [ ] save-invoice [ ] confirm-payment
+- Permissions observed in logs: [ ] create_offers [ ] save_invoice [ ] confirm_payment
+- Healthy start: [ ] pass (≥1 permission path)  [ ] signed low-traffic exception (attach)
+- Open gaps (e.g. prod not yet enabled): 
+- Next review date / window end: 
+
+Mandatory one-liner for final report:
+Logged `scope` is raw `department_scope` only, not `effectiveDepartmentScope`.
+```
+
+##### G. Scope statement for this doc change
+
+- **No** authorization behavior changes are made by adding this subsection.
+- **No** claim that telemetry was enabled or logs collected **in CI or in this repo** — only operators can complete enablement on Vercel (or equivalent).
 4. **Healthy collection start rule:** Collection is **healthy** only if **at least one** of `create_offers`, `save_invoice`, or `confirm_payment` emits `[authz-branch]` in the chosen environment during burn-in **or** zero events is **explicitly** documented as low/no traffic with **sign-off** that flag wiring and ingest are correct (not silent misconfiguration).
 5. **Review window (proposed):** e.g. 7–14 calendar days; align with invoice/business cycle (exact span: owner).
 6. **Minimum sample:** floor per cell TBD in 4K2.5b after first histogram; 4K2.5a captures data and produces first slices.
@@ -1262,3 +1368,201 @@ Disagreement-rate slice: **not** from telemetry alone — use DB analytics or op
 - **`denied` under-count** when failures occur before `assertCan*`.
 - **Scope bucket:** again — **Logged `scope` is raw `department_scope` only, not `effectiveDepartmentScope`.**
 - **Staging silence:** use healthy-start rule + signed explanation if needed.
+
+## Phase 4K2.5b — First telemetry window review and threshold draft
+
+This phase is **documentation-only** and formalizes first-window review structure after healthy telemetry start. It does not modify auth logic, telemetry emission, command-auth contract, or endpoint behavior.
+
+### 1) First-window review framing (facts vs expectations vs unknowns)
+
+**Observed facts (telemetry-backed, runtime evidence):**
+
+- `PERMISSION_BRANCH_TELEMETRY` enablement and healthy-start were confirmed operationally (outside repo).
+- `[authz-branch]` events were observed for `create_offers`, `save_invoice`, and `confirm_payment`.
+- Smoke evidence included `super_manager`-tagged events.
+
+**Code-derived expectations (not yet fully quantified by window data):**
+
+- Event shape remains `[authz-branch]` with `{ permission, tag, role, scope }` from [api/_lib/command-auth.ts](api/_lib/command-auth.ts).
+- `scope` is raw `profiles.department_scope` (or `'null'`), not `effectiveDepartmentScope(profile)`.
+- Tag universe follows [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) evaluators.
+
+**Unknowns pending more volume/time:**
+
+- Stable percentages for legacy tags by permission and role.
+- Representative denied baseline beyond smoke.
+- Whether observed low legacy usage is durable across business-cycle traffic.
+- Scope-vs-legacy disagreement rate (requires DB analytics and/or approved extension).
+
+### 2) Telemetry review table (first-window staging/prod review format)
+
+| permission | tag | observed count | evidence source | interpretation | gate relevance |
+|---|---|---:|---|---|---|
+| `create_offers` | `super_manager` | observed in smoke | telemetry runtime logs (`[authz-branch]`) | Telemetry path active for offers flow; role-heavy smoke traffic expected | baseline only; not near-zero proof |
+| `save_invoice` | `super_manager` | observed in smoke | telemetry runtime logs (`[authz-branch]`) | Telemetry path active for invoice save flow | baseline only; not threshold pass |
+| `confirm_payment` | `super_manager` | observed in smoke | telemetry runtime logs (`[authz-branch]`) | Telemetry path active for confirm flow | baseline only; not threshold pass |
+| `create_offers` | `canonical_scope_allow` | TBD | pending first-window aggregates | Needed for canonical-vs-legacy ratio | G-legacy-dept/G-legacy-cat |
+| `save_invoice` | `canonical_scope_allow` | TBD | pending first-window aggregates | Canonical adoption in invoice path | G-legacy-dept/G-legacy-cat |
+| `confirm_payment` | `canonical_scope_allow` | TBD | pending first-window aggregates | Canonical adoption in confirm path | G-legacy-dept/G-legacy-cat |
+| `*` | `legacy_department_allow` | TBD | pending first-window aggregates | Legacy dependency indicator | G-legacy-dept |
+| `*` | `legacy_category_access_allow` | TBD | pending first-window aggregates | Legacy category fallback indicator | G-legacy-cat |
+| `save_invoice` | `unresolved_manager_allow` | TBD | pending first-window aggregates | Transitional manager/null-scope reliance | policy + sequencing |
+| `*` | `denied` | TBD | pending first-window aggregates | Assert-time deny baseline only (not all auth failures) | G-denied-baseline |
+
+### 3) Threshold-draft table (provisional, for 4K2.5c sign-off prep)
+
+| Tag | Proposed metric definition | Current evidence level | Provisional threshold style | Owner | Can support 4K3 yet |
+|---|---|---|---|---|---|
+| `legacy_department_allow` | `% of events for each permission where tag=legacy_department_allow` | code-ready + telemetry-enabled; counts pending | near-zero target with minimum denominator per permission | authz lead + product/security policy | no |
+| `legacy_category_access_allow` | `% of events for each permission where tag=legacy_category_access_allow` | code-ready + telemetry-enabled; counts pending | stricter near-zero target than department fallback | authz lead + product/security policy | no |
+| `unresolved_manager_allow` | `% within `save_invoice` where tag=unresolved_manager_allow` | code-ready + telemetry-enabled; counts pending | explicit cap + exception register requirement | finance flow owner + authz lead | no |
+| `denied` | rate of assert-time denies per permission/role/scope bucket | partial coverage by design | baseline band (monitor drift, not absolute reject KPI) | API owner + SRE | no |
+| `canonical_scope_allow` | share of canonical allows by permission | code-ready + telemetry-enabled; counts pending | should dominate non-super-manager allows | authz lead | no |
+| `full_scope_allow` | share where full/all scope grants access | code-ready + telemetry-enabled; counts pending | bounded expected range by org role model | authz lead + policy owner | no |
+| `super_manager` | share where super-manager branch used | telemetry-backed smoke only + pending window counts | expected low/known admin baseline | platform admin owner | no |
+
+### 4) Near-zero formalization (required before 4K3)
+
+- "Near-zero" must be converted from narrative to **numeric bounds** per gate and denominator definition.
+- Current values are **provisional** until sufficient first-window volume exists (permission-level minima required).
+- Pass/fail remains **unknown** until runtime aggregates satisfy sample and stability requirements.
+- Any threshold override requires documented rationale, approver, and expiry/review date.
+
+### 5) 4K3 blocker table (typed)
+
+| Blocker type | Blocker | Current status | Exit criterion |
+|---|---|---|---|
+| telemetry/data evidence blocker | First-window aggregate counts by permission×tag×role×scope not yet documented as finalized | open | publish reviewed A-F summaries with denominator notes |
+| telemetry/data evidence blocker | `denied` interpretation incomplete for non-assert failures | open | keep explicit caveat + do not use as global auth-failure metric |
+| telemetry/data evidence blocker | disagreement rate (`department_scope` vs legacy `department`) not proven from logs | open | DB analytics result (or approved separate extension) attached |
+| policy blocker | numeric near-zero thresholds not approved by policy owners | open | signed threshold table (owners + date) |
+| policy blocker | exception governance (who can approve temporary legacy exceedance) not finalized | open | approved exception workflow with SLA and sunset |
+| technical sequencing blocker | 4K2.5c sign-offs and go/no-go packet not complete | open | 4K2.5c checklist complete, then authorize 4K3 planning |
+
+### 6) 4K2.5c handoff (what must be attached)
+
+Required policy sign-offs before go/no-go:
+
+- Authz lead sign-off on numeric thresholds and interpretation caveats.
+- Product/security (or equivalent governance owner) sign-off on acceptable residual legacy exposure.
+- Platform/SRE sign-off on telemetry ingest reliability for the reviewed window.
+
+Required evidence artifacts:
+
+- Final first-window tables (A-F) with denominators, date range, and environment labels.
+- Redacted representative `[authz-branch]` samples for each observed permission path.
+- Threshold-draft table promoted to signed thresholds (or explicitly deferred with risk note).
+- Open-gap statement for disagreement evidence path (DB analytics and owner/date).
+- Final explicit line: **Logged `scope` is raw `department_scope` only, not `effectiveDepartmentScope`.**
+
+4K3 readiness at this stage: **no** (blocked by evidence closure + policy sign-off + sequencing).
+
+### Phase 4K2.5b — First telemetry window summary and blocker recording
+
+This subsection records the current first-window snapshot as **documentation-only evidence accounting**. It does not change authorization behavior, telemetry emission, endpoint contracts, or Track C cleanup sequencing.
+
+#### 1) Evidence snapshot
+
+| signal | observed now | evidence type | notes |
+|---|---|---|---|
+| `create_offers` permission | yes | production log evidence | `[authz-branch]` observed in production logs |
+| `save_invoice` permission | yes | production log evidence | `[authz-branch]` observed in production logs |
+| `confirm_payment` permission | yes | production log evidence | `[authz-branch]` observed in production logs |
+| `super_manager` tag | yes | production log evidence | observed in current production sample |
+| `canonical_scope_allow` tag | yes | production log evidence | observed in current production sample |
+| `legacy_department_allow` tag | not observed in current smoke/sample | not yet observed | non-observed is not evidence of absence |
+| `legacy_category_access_allow` tag | not observed in current smoke/sample | not yet observed | non-observed is not evidence of absence |
+| `unresolved_manager_allow` tag | not observed in current smoke/sample | not yet observed | only eligible on `save_invoice`; still requires broader window |
+| `denied` tag | not observed in current smoke/sample | not yet observed | assert-time deny evidence still pending representative window |
+
+#### 2) Manual scenario validation
+
+| scenario | result | related permission path | notes |
+|---|---|---|---|
+| create offer | pass | `create_offers` | manual flow executed successfully |
+| create multi-offer | pass | `create_offers` | manual flow executed successfully |
+| send email | pass | `create_offers` related business flow | scenario validated; telemetry path covered by command flow checks |
+| send proforma | pass | `save_invoice` | manual flow executed successfully |
+| attach payment proof | pass | `confirm_payment` | manual flow executed successfully |
+| confirm payment | pass | `confirm_payment` | manual flow executed successfully |
+| add invoice | pass | `save_invoice` | manual flow executed successfully |
+| upload invoice | pass | `save_invoice` | manual flow executed successfully |
+| facility calendar task flows | pass | outside command telemetry core; adjacent operational path | verified as successful; does not by itself prove legacy-tag absence |
+
+#### 3) Current limitations
+
+- Current evidence is sufficient to prove telemetry is **live and healthy** in production.
+- Current evidence is **not sufficient** to approve 4K3 destructive cleanup.
+- Legacy branch absence is **not proven** by current sample.
+- A longer collection window and/or additional evidence is still required before branch-removal decisions.
+
+#### 4) 4K3 blocker restatement
+
+| blocker | type | status | why still blocked |
+|---|---|---|---|
+| Missing legacy tag frequency evidence (`legacy_department_allow`, `legacy_category_access_allow`) | telemetry/data evidence blocker | open | current sample confirms live telemetry but not sustained low-frequency bounds |
+| Missing denied baseline understanding | telemetry/data evidence blocker | open | `denied` not yet observed in representative window; assert-only caveat remains |
+| `unresolved_manager_allow` policy decision | policy blocker | open | threshold/exception policy not finalized for invoice transitional path |
+| Disagreement evidence gap (`department_scope` vs legacy `department`) | telemetry/data evidence blocker | open | cannot be concluded from current log fields alone |
+| Track D dependency | technical sequencing blocker | open | Track D remains blocked until Track C destructive-closure evidence and policy gates are complete |
+
+#### 5) Explicit verdict
+
+- 4K2.5a operational telemetry start: **complete**.
+- 4K2.5b current summary: **recorded**.
+- 4K3 ready: **no**.
+
+#### 6) Evidence discipline note
+
+- Logged `scope` is raw `department_scope` only, not `effectiveDepartmentScope`.
+- Non-observed tags in current logs must not be interpreted as zero usage.
+
+#### 7) Phase 4K2.5 checkpoint status (current stop point)
+
+| Item | Status | Note |
+|---|---|---|
+| 4K2.5a | completed | telemetry readiness + operational start confirmed |
+| 4K2.5b | completed | first-window summary and blocker recording documented |
+| 4K2.5c | deferred / not started | policy-signoff and go/no-go packet intentionally postponed |
+| 4K3 readiness | no | destructive cleanup remains blocked |
+| Track C overall | paused after telemetry checkpoint | intentional pause after 4K2.5b |
+
+#### 8) Current checkpoint verdict (Track C pause decision)
+
+- Telemetry wiring works for command auth branch logging in production.
+- `[authz-branch]` branch logs are observable and manual scenario evidence exists.
+- Current evidence remains insufficient for destructive cleanup decisions.
+- Numeric thresholds and policy sign-offs are unresolved.
+- Therefore, 4K3 remains blocked and must not be started from this checkpoint.
+
+#### 9) Separation of evidence classes at pause boundary
+
+**Observed facts (runtime-backed):**
+
+- Production telemetry enablement and healthy branch-log visibility are confirmed.
+- Observed permissions include `create_offers`, `save_invoice`, `confirm_payment`.
+- Observed tags include `super_manager` and `canonical_scope_allow`.
+
+**Code-derived expectations (not yet closure evidence):**
+
+- Full tag universe and assert coverage as defined in [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts) and [api/_lib/command-auth.ts](api/_lib/command-auth.ts).
+- `denied` remains assert-bound, not a global auth-failure metric.
+- Logged `scope` remains raw `department_scope` only, not `effectiveDepartmentScope`.
+
+**Unresolved blockers (prevent 4K3):**
+
+- Legacy tag frequency evidence not yet sufficient for branch-removal safety.
+- `denied` baseline interpretation still incomplete for non-assert failures.
+- `unresolved_manager_allow` policy/exception handling is not signed off.
+- Disagreement evidence gap (`department_scope` vs `department`) still open.
+
+**Future requirements (explicitly deferred):**
+
+- 4K2.5c policy sign-off and finalized go/no-go packet.
+- 4K3 destructive Track C cleanup only after deliberate return and explicit approvals.
+
+#### 10) Transition note (outside Track C priority)
+
+- Next engineering priority is outside Track C at this checkpoint.
+- Track C should remain paused until a deliberate return for 4K2.5c or 4K3 readiness work.
+- Likely next product/debug priority: booking / offer / proforma hanging diagnosis.
