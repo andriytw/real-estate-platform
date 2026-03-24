@@ -998,3 +998,161 @@ Gate rule applied: where runtime frequency/absence is required and telemetry evi
 
 - **4K3 ready:** **no**.
 - Rationale: 4K3 depends on telemetry-backed branch usage proof plus policy decisions not yet satisfied.
+
+---
+
+## Phase 4K2.5 — Telemetry / policy checkpoint before 4K3
+
+4K2.5 is a **checkpoint-only** phase: define how to collect evidence, formalize thresholds and policy, and record a **go/no-go** for destructive Track C (4K3). **No authorization behavior changes** are made in 4K2.5 by this documentation pass. Optional future work (e.g. extended log fields) must remain **non-auth-changing** and requires separate approval.
+
+### 1. Repository evidence summary (checkpoint baseline)
+
+- **Evaluators and tags** are defined in [api/_lib/server-permissions.ts](api/_lib/server-permissions.ts): `evaluateCreateOffersServerDecision`, `evaluateSaveInvoiceServerDecision`, `evaluateConfirmPaymentServerDecision`.
+- **Command gates:** [api/commands/create-direct-booking.ts](api/commands/create-direct-booking.ts), [api/commands/create-multi-offer.ts](api/commands/create-multi-offer.ts) → `assertCanCreateOffers`; [api/commands/save-invoice.ts](api/commands/save-invoice.ts) → `assertCanSaveInvoice`; [api/commands/confirm-payment.ts](api/commands/confirm-payment.ts) → `assertCanConfirmPayment` ([api/_lib/command-auth.ts](api/_lib/command-auth.ts)).
+- **Current telemetry:** when `PERMISSION_BRANCH_TELEMETRY === '1'`, logs `[authz-branch]` with `permission`, `tag`, `role`, `scope` where `scope` is `profile.department_scope ?? 'null'` only — **not** `effectiveDepartmentScope`, **not** `department`, **not** a disagreement class. Sufficient for **tag × permission × role × coarse scope bucket** counts; **insufficient alone** for full scope-vs-`department` disagreement quantification (use DB analytics or an optional approved log extension).
+- **4K2 state:** parity model is **code-only** in-repo; gates that need runtime counts remain **unknown pending telemetry** until 4K2.5 produces telemetry-backed evidence.
+
+### 2. Telemetry collection plan
+
+**Branch tags to observe (minimum)**
+
+| Tag | `permission` values in log | Why it matters | Informs 4K3 |
+|---|---|---|---|
+| `legacy_department_allow` | `create_offers`, `save_invoice`, `confirm_payment` | Reliance on legacy `department` after canonical path | Safe removal of department OR branches |
+| `legacy_category_access_allow` | same | Reliance on `category_access` grant path | Safe removal of category branch |
+| `unresolved_manager_allow` | `save_invoice` only | Emergency manager broad allow | Policy + branch removal |
+| `denied` | all three | Baseline denies at assert | Over-deny risk after cleanup |
+| `canonical_scope_allow` | all three | Canonical path volume | Expected traffic |
+| `full_scope_allow` | all three | Scope-`all` path (distinct from super) | Dashboard segmentation |
+| `super_manager` | all three | Super path | Usually exempt from legacy-removal gates |
+
+**Environments**
+
+- **Staging:** required minimum; enable telemetry flag; longer windows acceptable if traffic is low.
+- **Production:** required for **go/no-go**; privacy review; aggregate in downstream tooling only.
+
+**Duration / sample (planning — not claims)**
+
+- Choose a **review window** per environment (e.g. 7 / 14 / 30 days) and a **minimum event count** per `(permission, tag)` or per permission for statistical meaning (exact numbers: **TBD by owner** after first ingest).
+- Include at least **one full business cycle** if usage is weekly-biased (e.g. invoicing spikes).
+
+**Metrics / summaries**
+
+- Counts and rates: `tag` × `permission` × `role` × coarse `department_scope` bucket (`null`, `sales`, `accounting`, `all`, `properties`, other).
+- **Denied slice:** `denied` per permission, by `role` and scope bucket.
+- **Legacy reliance index (example):** `(legacy_department_allow + legacy_category_access_allow) / (all checks with tag logged for that permission)` — define denominator explicitly to avoid div-by-zero on low traffic.
+
+**Gap: disagreement quantification**
+
+- Not derivable from current log fields alone when `effectiveDepartmentScope` mixes `department_scope` and legacy `department`.
+- **Evidence options (pick or combine):** (1) **DB batch analytics** on `profiles` with a documented predicate; (2) optional **4K2.5d** env-gated, non-PII derived log fields — security review; **must not** change allow/deny.
+
+**`denied` visibility trap**
+
+- `denied` is logged only when the request reaches `assertCan*`. Earlier 401/403/400 responses do **not** emit `[authz-branch]`. Do not infer “no denies in logs” means “no access failures globally.”
+
+### 3. 4K3 threshold-definition plan (definitions only — do not claim “met”)
+
+| Signal | Example threshold patterns (to finalize with owners) | Gate meaning | Evidence level until filled |
+|---|---|---|---|
+| `legacy_department_allow` | Zero **or** formal **near-zero** + signed exception registry | Legacy department OR removable | unknown pending telemetry |
+| `legacy_category_access_allow` | Same | Legacy category removable | unknown pending telemetry |
+| `unresolved_manager_allow` | Zero **or** policy-approved cap + migration timeline | Remove/replace emergency allow | policy + telemetry |
+| `denied` distribution | Understood baseline; post-change **delta bound** | Avoid silent over-deny | unknown pending telemetry |
+| Canonical / full_scope / super segments | Expected majority; anomalies investigated | Context for legacy removal | telemetry-backed when collected |
+| Disagreement population | Max acceptable count/rate **or** explicit acceptance | Scope-only resolver safety | telemetry/DB |
+
+Each finalized gate row must record: **metric definition**, **review window**, **owner sign-off**, **escape hatch** (exception registry or defer 4K3).
+
+#### Near-zero must be formalized before real go/no-go
+
+Placeholder phrases (“near-zero”, “near-zero with exceptions”) are **not** sufficient for a **pass**. Before 4K3 approval, owners must lock:
+
+| Field | What to record |
+|---|---|
+| **Event definition** | One event = one `[authz-branch]` line per permission check (plus dedup rules if any). |
+| **Units** | One primary metric per gate (e.g. absolute count per window, or share of logged checks for that permission). |
+| **Review window** | Exact calendar span(s); staging vs prod may differ; align with billing/monthly cycles if relevant. |
+| **Statistical floor** | Minimum total volume so “near-zero” is not noise on sparse endpoints. |
+| **Near-zero numeric bound** | e.g. ≤ N events per window **or** ≤ p% — **set in 4K2.5b** after volumes exist; approver named. |
+| **Exception path** | Non-zero residual must map to **signed exception registry** rows (owner, reason, **expiry/revisit**, sign-off). |
+| **Who signs near-zero acceptance** | Named role + person for “residual is acceptable.” |
+
+Until these are set, legacy-rate gates stay **unknown pending telemetry**, not pass.
+
+### 4. Policy decision matrix (required before 4K3)
+
+| Decision topic | Question | Why it matters technically | Affected endpoints | Owner | Blocks 4K3 unless |
+|---|---|---|---|---|---|
+| `unresolved_manager_allow` | After backfill, may any manager with unresolved effective scope still `save_invoice`? Under what rule? | High-risk broad allow | `save_invoice` | Product + security | Written policy + migration/telemetry aligned |
+| Scope vs `department` disagreement | Until cleanup, who wins if `department_scope` and `department` imply different outcomes? | `effectiveDepartmentScope` + legacy ORs → over-grant | all four command routes | Authz + product | Target behavior + evidence |
+| Invoice vs confirm asymmetry | Keep asymmetric legacy category (`sales`+`accounting` vs `sales` only) through transition? | Evaluator asymmetry | `save_invoice`, `confirm_payment` | Product | Explicit parity contract |
+| Temporary exceptions | Who may stay on legacy paths, for how long? | Unblocks cleanup without infinite waiver | all | Product + exec sponsor | **Exception registry** with mandatory fields |
+
+#### Temporary exception registry — mandatory fields
+
+No **pass** on a legacy-removal gate may rely on informal waivers. Each exception row must include:
+
+| Field | Requirement |
+|---|---|
+| **Owner** | Accountable person for renewal/removal (not “team” only). |
+| **Reason** | Why this subject is outside canonical-only rule. |
+| **Expiry or revisit date** | Hard end **or** mandatory review date — **no** open-ended “temporary.” Extensions = **new** dated approval row. |
+| **Scope of exception** | Subject class (e.g. role bucket, opaque id in secure registry — avoid PII in logs). |
+| **Sign-off** | Approver name + date (ties to near-zero acceptance). |
+
+Rows **without** expiry/revisit **cannot** support a gate **pass**.
+
+### 5. Evidence ownership map (missing proof → owner → artifact)
+
+| Proof item | Owner | Evidence source | Required artifact | Blocker type |
+|---|---|---|---|---|
+| Legacy branch rates | Platform/SRE or backend | Log drain / metrics | Dashboard + summary CSV/window | telemetry/data evidence |
+| Deny baseline | Same | Same | Table per `permission` | telemetry/data evidence |
+| Disagreement quantification | Data/DB + authz | DB query or approved extension | One-pager: query + counts | telemetry/data evidence |
+| Unresolved manager policy | Product | Decision meeting | Signed excerpt / annex | policy/product |
+| Invoice/confirm parity | Product | Decision | Matrix in doc annex | policy/product |
+| Exception registry | Product + eng | Ticket/doc system | Rows with owner, reason, expiry, sign-off | policy/product |
+
+### 6. Checkpoint split (4K2.5a–c; optional 4K2.5d)
+
+| Subphase | Goal | Why first | Risk reduced | Unlocks |
+|---|---|---|---|---|
+| **4K2.5a** | Telemetry readiness: flag on staging/prod, ingest confirmed, metric defs | No ingest → no trustworthy rates | False zero from silence | 4K2.5b |
+| **4K2.5b** | Draft thresholds + first full window; set **near-zero** numbers with data | Needs real volumes | Bad thresholds before seasonality | 4K2.5c |
+| **4K2.5c** | Policy sign-off + **4K3 go/no-go** record | Data before policy commit | 4K3 with vague exceptions | 4K3 planning (destructive) only if gates pass/waived |
+| **4K2.5d (optional)** | Safe observability for disagreement class | Only if DB path insufficient | — | Richer telemetry |
+
+### 7. 4K3 go/no-go record format (template)
+
+Use one row per gate:
+
+| Gate ID | Status | Evidence level | Evidence link / artifact | Owner | Date | Notes |
+|---|---|---|---|---|---|---|
+| G-legacy-dept | `pass` / `fail` / `unknown pending telemetry` / `waived` | code-only / telemetry-backed / unknown | | | | Near-zero bound + registry refs |
+| G-legacy-cat | same | same | | | | |
+| G-unresolved-mgr | same | same | | | | Policy annex required for pass |
+| G-denied-baseline | same | same | | | | Includes assert-only caveat |
+| G-disagreement | same | same | | | | DB or 4K2.5d |
+| G-track-d-seq | same | same | | | | Track D after Track C destructive |
+
+### 8. Verification (this documentation pass)
+
+- **Authorization behavior:** unchanged by this Phase 4K2.5 doc update alone.
+- **Build:** run `npm run build` after doc edit to confirm repo health.
+- **4K3 readiness after checkpoint:** remains **no** until 4K2.5a–c produces telemetry-backed evidence and signed policy/registry as defined above.
+
+### 9. Risks / false-positive traps
+
+- **`denied` under-counting** if failures happen before `assertCan*`.
+- **Merging `super_manager` and `full_scope_allow`** in dashboards misstates “canonical” traffic.
+- **`department_scope` log field alone** can miss disagreement where legacy `department` maps into effective scope.
+- **Low traffic:** percentage thresholds noisy — use minimum counts.
+- **Staging-only approval** for 4K3 without prod evidence or explicit waiver.
+
+### 10. Execution order (operational)
+
+1. Confirm aggregation for `[authz-branch]` when `PERMISSION_BRANCH_TELEMETRY=1`.
+2. Run **4K2.5a** collection in agreed environments.
+3. **4K2.5b:** fill near-zero bounds, exception registry template with real rows if needed.
+4. **4K2.5c:** complete policy matrix + go/no-go table; only then schedule **4K3** destructive work.
