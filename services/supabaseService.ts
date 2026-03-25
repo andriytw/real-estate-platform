@@ -180,8 +180,6 @@ export const warehouseService = {
    * (from OCR modal Add inventory), which will create warehouse_invoices and warehouse_invoice_lines records.
    */
   async getStock(warehouseId?: string): Promise<WarehouseStockItem[]> {
-    console.log('📦 Loading warehouse stock...', warehouseId ? { warehouseId } : 'all warehouses');
-
     let query = supabase
       .from('warehouse_stock')
       .select(
@@ -846,8 +844,6 @@ export const usersService = {
       throw new Error('You must be signed in to create users (session required for invite-user)');
     }
 
-    console.log('👤 Creating user without invitation:', userData.email);
-
     const response = await fetch(functionsUrl, {
       method: 'POST',
       headers: {
@@ -877,8 +873,6 @@ export const usersService = {
     if (!result.success || !result.user) {
       throw new Error('Failed to create user: Invalid response from server');
     }
-
-    console.log('✅ User created without invitation:', result.user.email);
 
     const refetched = await workersService.getAdminProfileById(result.user.id);
     if (refetched) return refetched;
@@ -910,8 +904,6 @@ export const usersService = {
       throw new Error('You must be signed in to invite users');
     }
 
-    console.log('📧 Calling Edge Function to invite user:', userData.email);
-
     const response = await fetch(functionsUrl, {
       method: 'POST',
       headers: {
@@ -942,8 +934,6 @@ export const usersService = {
       throw new Error('Failed to create user: Invalid response from server');
     }
 
-    console.log('✅ User created and invitation sent:', result.user.email);
-
     const refetched = await workersService.getAdminProfileById(result.user.id);
     if (refetched) return refetched;
     throw new Error('User created but profile could not be loaded');
@@ -960,8 +950,6 @@ export const usersService = {
     if (!session?.access_token) {
       throw new Error('You must be signed in to resend invitations');
     }
-
-    console.log('📧 Resending invitation to:', email);
 
     const response = await fetch(functionsUrl, {
       method: 'POST',
@@ -987,8 +975,6 @@ export const usersService = {
     if (!result.success) {
       throw new Error('Failed to resend invitation: Invalid response from server');
     }
-
-    console.log('✅ Invitation resent to:', email);
   },
 
   // Update user (role, department_scope + mirrored department, flags, name)
@@ -1018,7 +1004,6 @@ export const usersService = {
     // Always update role if provided (even if it's the same value)
     if (updates.role !== undefined) {
       updateData.role = updates.role;
-      console.log('📝 Setting role in updateData:', updates.role);
     }
     if (updates.departmentScope !== undefined) {
       const canonicalScope = usersService.normalizeDepartmentScopeInput(updates.departmentScope);
@@ -1027,7 +1012,6 @@ export const usersService = {
       }
       updateData.department_scope = canonicalScope;
       updateData.department = mirrorLegacyDepartmentFromScope(canonicalScope);
-      console.log('📝 Setting department_scope + mirrored department:', canonicalScope, updateData.department);
     }
     if (updates.canManageUsers !== undefined) {
       updateData.can_manage_users = updates.canManageUsers;
@@ -1075,8 +1059,6 @@ export const usersService = {
     }
 
     // Update the user
-    console.log('📝 Updating user in database:', { id, updateData, role: updates.role, departmentScope: updates.departmentScope });
-    
     // First, try UPDATE with SELECT to get immediate result
     const { error: updateError, data: updateResult } = await supabase
       .from('profiles')
@@ -1089,14 +1071,10 @@ export const usersService = {
       throw new Error(`Помилка оновлення в базі даних: ${updateError.message || updateError.details || 'Невідома помилка'}`);
     }
     
-    console.log('✅ Update result from database (immediate):', updateResult);
-    
     // If updateResult is empty, it might be RLS blocking the SELECT
     // In that case, we'll fetch separately
     if (!updateResult || updateResult.length === 0) {
       console.warn('⚠️ UPDATE succeeded but SELECT returned no rows - likely RLS issue, fetching separately...');
-    } else {
-      console.log('✅ Role in update result:', updateResult[0]?.role);
     }
 
     // Fetch updated user data separately through explicit admin read model
@@ -1108,8 +1086,6 @@ export const usersService = {
       throw new Error('Оновлення виконано, але не вдалося отримати оновлені дані через обмеження доступу. Будь ласка, оновіть сторінку вручну.');
     }
     
-    console.log('✅ Updated user data from DB:', { id: updatedData.id, role: updatedData.role, department: updatedData.department });
-    console.log('✅ Transformed user data:', { id: updatedData.id, role: updatedData.role, departmentScope: updatedData.departmentScope });
     return updatedData;
   },
 
@@ -1211,17 +1187,6 @@ export const tasksService = {
       dbData.description = typeof descriptionSrc === 'string' ? descriptionSrc : JSON.stringify(descriptionSrc);
     }
 
-    // Debug: verify payload before insert (safe, no PII)
-    if (task.title?.includes('Перевезти інвентар') || task.title?.includes('transfer')) {
-      console.log('[transfer task create]', {
-        title: task.title?.slice(0, 60),
-        hasPropertyId: !!dbData.property_id,
-        descriptionLength: (dbData.description?.length ?? 0),
-        dbDataPropertyId: dbData.property_id ?? null,
-        dbDataDescriptionLength: (dbData.description?.length ?? 0),
-      });
-    }
-
     const { data, error } = await supabase
       .from('calendar_events')
       .insert([dbData])
@@ -1234,9 +1199,6 @@ export const tasksService = {
 
   async update(id: string, updates: Partial<CalendarEvent>): Promise<CalendarEvent> {
     const dbPatch = buildCalendarEventDbPatch(updates);
-    if (import.meta.env.DEV) {
-      console.log('[tasksService.update] dbPatch keys', Object.keys(dbPatch));
-    }
 
     const { data, error } = await supabase
       .from('calendar_events')
@@ -1248,17 +1210,6 @@ export const tasksService = {
     if (error) throw error;
     
     const result = transformCalendarEventFromDB(data);
-    if (import.meta.env.DEV) {
-      console.log('[tasksService.update] result key fields', {
-        id: result.id,
-        title: result.title,
-        type: result.type,
-        propertyId: result.propertyId,
-        time: result.time,
-        description: result.description != null ? (String(result.description).slice(0, 40) + '...') : result.description,
-        workerId: result.workerId,
-      });
-    }
     return result;
   },
 
@@ -1354,13 +1305,11 @@ export const propertiesService = {
   // Get all properties
   async getAll(lightweight = false): Promise<Property[]> {
     try {
-      console.log('📡 propertiesService.getAll called, lightweight:', lightweight);
       // For Marketplace/public views, only load essential fields for faster loading
       const selectFields = lightweight 
         ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip, zweckentfremdung_flag, zweckentfremdung_updated_at, cover_photo_asset_id, lat, lng, details, archived_at, archived_by'
         : '*';
       
-      console.log('📡 Querying properties table with fields:', selectFields);
       const { data, error } = await supabase
         .from('properties')
         .select(selectFields)
@@ -1377,9 +1326,7 @@ export const propertiesService = {
         throw error;
       }
       
-      console.log('📡 Query successful, received', data?.length || 0, 'rows');
       const transformed = data.map(transformPropertyFromDB);
-      console.log('📡 Transformed', transformed.length, 'properties');
       return transformed;
     } catch (err: any) {
       console.error('❌ propertiesService.getAll error:', err);
@@ -1582,7 +1529,6 @@ export const addressBookPartiesService = {
       unit_identifier: e.unitIdentifier != null ? String(e.unitIdentifier).trim() : null,
       contact_person: e.contactPerson != null ? String(e.contactPerson).trim() : null,
     }));
-    console.debug('[AddressBook upsertMany]', rows.length, 'rows');
     const { error } = await supabase
       .from('address_book_parties')
       .upsert(rows, { onConflict: 'owner_user_id,role,name,iban,street,zip,city' });
@@ -1738,29 +1684,19 @@ export const reservationsService = {
   async create(reservation: Omit<Reservation, 'id' | 'createdAt' | 'updatedAt'>, traceId?: string): Promise<Reservation> {
     const t0 = Date.now();
     const tid = traceId ?? 'no-trace';
-    const table = 'reservations';
-    const callShape = 'insert(...).select().single()';
     try {
-      console.log('[reservationsService.create] before query build', { traceId: tid, table, callShape });
       const dbData = transformReservationToDB(reservation);
-      console.log('[reservationsService.create] before await supabase call', { traceId: tid, table });
       const { data, error } = await supabase
         .from('reservations')
         .insert([dbData])
         .select()
         .single();
-      const durationMs = Date.now() - t0;
       if (error) throw error;
-      console.log('[reservationsService.create] after success', { traceId: tid, durationMs, id: data?.id });
-      const out = transformReservationFromDB(data);
-      console.log('[reservationsService.create] before return', { traceId: tid });
-      return out;
+      return transformReservationFromDB(data);
     } catch (e) {
       const durationMs = Date.now() - t0;
       console.error('[reservationsService.create] catch', { traceId: tid, durationMs, error: errorFingerprint(e) });
       throw e;
-    } finally {
-      console.log('[reservationsService.create] finally', { traceId: tid });
     }
   },
 
@@ -1843,7 +1779,6 @@ export const bookingsService = {
       
       if (companies) {
         dbData.company_id = companies.id;
-        console.log('✅ Using default company_id:', companies.id);
       }
     }
     
@@ -1896,23 +1831,18 @@ export const offersService = {
   async getNextOfferNo(traceId?: string): Promise<string> {
     const t0 = Date.now();
     const tid = traceId ?? 'no-trace';
-    const callShape = 'rpc("get_next_offer_no")';
     try {
-      console.log('[offersService.getNextOfferNo] before await supabase call', { traceId: tid, callShape });
       const { data, error } = await supabase.rpc('get_next_offer_no');
       const durationMs = Date.now() - t0;
       if (error || data == null) {
         console.error('[offersService.getNextOfferNo] catch', { traceId: tid, durationMs, error: errorFingerprint(error ?? new Error('null data')) });
         throw new Error(error?.message || 'Failed to generate offer number');
       }
-      console.log('[offersService.getNextOfferNo] after success', { traceId: tid, durationMs });
       return String(data);
     } catch (e) {
       const durationMs = Date.now() - t0;
       console.error('[offersService.getNextOfferNo] catch', { traceId: tid, durationMs, error: errorFingerprint(e) });
       throw e;
-    } finally {
-      console.log('[offersService.getNextOfferNo] finally', { traceId: tid });
     }
   },
 
@@ -1920,29 +1850,19 @@ export const offersService = {
   async create(offer: Omit<OfferData, 'id'>, traceId?: string): Promise<OfferData> {
     const t0 = Date.now();
     const tid = traceId ?? 'no-trace';
-    const table = 'offers';
-    const callShape = 'insert(...).select().single()';
     try {
-      console.log('[offersService.create] before query build', { traceId: tid, table, callShape });
       const dbData = transformOfferToDB(offer);
-      console.log('[offersService.create] before await supabase call', { traceId: tid, table });
       const { data, error } = await supabase
         .from('offers')
         .insert([dbData])
         .select()
         .single();
-      const durationMs = Date.now() - t0;
       if (error) throw error;
-      console.log('[offersService.create] after success', { traceId: tid, durationMs, id: data?.id });
-      const out = transformOfferFromDB(data);
-      console.log('[offersService.create] before return', { traceId: tid });
-      return out;
+      return transformOfferFromDB(data);
     } catch (e) {
       const durationMs = Date.now() - t0;
       console.error('[offersService.create] catch', { traceId: tid, durationMs, error: errorFingerprint(e) });
       throw e;
-    } finally {
-      console.log('[offersService.create] finally', { traceId: tid });
     }
   },
 
@@ -2003,7 +1923,6 @@ export const offersService = {
     traceId?: string
   ): Promise<OfferData[]> {
     const tid = traceId ?? 'no-trace';
-    const t0 = Date.now();
     const checkIn = draft.shared.checkIn;
     const checkOut = draft.shared.checkOut;
     const nights = Math.max(
@@ -2019,8 +1938,6 @@ export const offersService = {
     const dates = `${checkIn} to ${checkOut}`;
 
     let tStep = Date.now();
-    console.log('[createGroupFromMultiApartmentDraft] before query build: get_next_offer_no', { traceId: tid, callShape: 'rpc("get_next_offer_no")' });
-    console.log('[createGroupFromMultiApartmentDraft] before await supabase call', { traceId: tid, callShape: 'rpc("get_next_offer_no")' });
     const { data: offerNoData, error: rpcError } = await supabase.rpc('get_next_offer_no');
     const durationRpc = Date.now() - tStep;
     if (rpcError || offerNoData == null) {
@@ -2028,7 +1945,6 @@ export const offersService = {
       throw new Error(rpcError?.message || 'Failed to generate offer number');
     }
     const offerNo = String(offerNoData);
-    console.log('[createGroupFromMultiApartmentDraft] after success', { traceId: tid, durationMs: durationRpc });
     const offerGroupId = crypto.randomUUID();
 
     // 1. Create one reservation per apartment so confirm-payment flow can use offer.reservation_id
@@ -2056,9 +1972,6 @@ export const offersService = {
       };
     });
     tStep = Date.now();
-    const resRowCount = reservationRows.length;
-    console.log('[createGroupFromMultiApartmentDraft] before query build: insert reservations', { traceId: tid, table: 'reservations', callShape: 'insert(...).select("id")', rowCount: resRowCount });
-    console.log('[createGroupFromMultiApartmentDraft] before await supabase call', { traceId: tid, table: 'reservations' });
     const { data: insertedReservations, error: resError } = await supabase
       .from('reservations')
       .insert(reservationRows)
@@ -2069,17 +1982,12 @@ export const offersService = {
       throw resError;
     }
     const reservationIds = (insertedReservations ?? []).map((r) => r.id);
-    console.log('[createGroupFromMultiApartmentDraft] after success', { traceId: tid, durationMs: durationRes, rowCount: reservationIds.length });
 
     if (reservationIds.length !== draft.apartments.length) {
       throw new Error(
         `Reservation creation failed: count mismatch (expected ${draft.apartments.length}, got ${reservationIds.length})`
       );
     }
-    if (typeof console !== 'undefined' && console.debug) {
-      console.debug('[createGroupFromMultiApartmentDraft] Inserted reservation ids:', reservationIds);
-    }
-
     const rows: Omit<OfferData, 'id'>[] = draft.apartments.map((apartment, index) => {
       const netTotal = Number((nights * apartment.nightlyPrice).toFixed(2));
       const vatAmount = Number((netTotal * (apartment.taxRate / 100)).toFixed(2));
@@ -2121,9 +2029,6 @@ export const offersService = {
 
     const dbRows = rows.map((row) => transformOfferToDB(row as OfferData));
     tStep = Date.now();
-    const offerRowCount = dbRows.length;
-    console.log('[createGroupFromMultiApartmentDraft] before query build: insert offers', { traceId: tid, table: 'offers', callShape: 'insert(...).select("*")', rowCount: offerRowCount });
-    console.log('[createGroupFromMultiApartmentDraft] before await supabase call', { traceId: tid, table: 'offers' });
     const { data: inserted, error } = await supabase.from('offers').insert(dbRows).select('*');
     const durationOffers = Date.now() - tStep;
     if (error) {
@@ -2131,7 +2036,6 @@ export const offersService = {
       throw error;
     }
     const insertedList = inserted ?? [];
-    console.log('[createGroupFromMultiApartmentDraft] after success', { traceId: tid, durationMs: durationOffers, rowCount: insertedList.length });
 
     for (const row of insertedList) {
       if (row.reservation_id == null || row.reservation_id === '') {
@@ -2139,16 +2043,6 @@ export const offersService = {
           'Offer row missing reservation_id after insert; persistence/linking bug. Check payload, column, and RLS.'
         );
       }
-    }
-    if (typeof console !== 'undefined' && console.debug) {
-      console.debug(
-        '[createGroupFromMultiApartmentDraft] Created offer ids:',
-        insertedList.map((r) => r.id)
-      );
-      console.debug(
-        '[createGroupFromMultiApartmentDraft] Created offer reservation_id values:',
-        insertedList.map((r) => ({ offerId: r.id, reservation_id: r.reservation_id }))
-      );
     }
 
     return insertedList.map(transformOfferFromDB);
@@ -2490,18 +2384,10 @@ export const invoicesService = {
   async uploadInvoicePdf(file: File, pathPrefix?: string): Promise<string> {
     const UPLOAD_TIMEOUT_MS = 90_000;
     const t0 = Date.now();
-    console.log('[uploadInvoicePdf] start', { pageInstanceId: PAGE_INSTANCE_ID });
-    console.log('[uploadInvoicePdf] file info', {
-      pageInstanceId: PAGE_INSTANCE_ID,
-      name: file?.name,
-      size: file?.size,
-      type: file?.type,
-    });
     const bucket = 'invoice-pdfs';
     const safeName = `${Date.now()}-${crypto.randomUUID()}.pdf`;
     const path = pathPrefix ? `${pathPrefix}/${safeName}` : safeName;
     try {
-      console.log('[uploadInvoicePdf] before supabase upload', { pageInstanceId: PAGE_INSTANCE_ID, bucket, path });
       // Timeout does not cancel the in-flight request; it only unblocks the UI.
       const uploadPromise = supabase.storage
         .from(bucket)
@@ -2511,9 +2397,7 @@ export const invoicesService = {
       });
       const { error } = await Promise.race([uploadPromise, timeoutPromise]);
       if (error) throw new Error(error.message || 'Storage upload failed');
-      console.log('[uploadInvoicePdf] after supabase upload success', { pageInstanceId: PAGE_INSTANCE_ID, durationMs: Date.now() - t0 });
       const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
-      console.log('[uploadInvoicePdf] after url/sign step', { pageInstanceId: PAGE_INSTANCE_ID });
       return urlData.publicUrl;
     } catch (e: unknown) {
       const err = e as { message?: string; name?: string; code?: string };
@@ -2525,8 +2409,6 @@ export const invoicesService = {
         durationMs: Date.now() - t0,
       });
       throw e;
-    } finally {
-      console.log('[uploadInvoicePdf] finally', { pageInstanceId: PAGE_INSTANCE_ID, durationMs: Date.now() - t0 });
     }
   },
 
@@ -2620,17 +2502,9 @@ export const paymentProofsService = {
   async uploadPaymentProofFile(file: File, invoiceId: string, proofId: string): Promise<string> {
     const UPLOAD_TIMEOUT_MS = 90_000;
     const t0 = Date.now();
-    console.log('[uploadPaymentProofFile] start', { pageInstanceId: PAGE_INSTANCE_ID });
-    console.log('[uploadPaymentProofFile] file info', {
-      pageInstanceId: PAGE_INSTANCE_ID,
-      name: file?.name,
-      size: file?.size,
-      type: file?.type,
-    });
     const safeName = `${Date.now()}-${crypto.randomUUID()}.pdf`;
     const path = `payments/${invoiceId}/${proofId}/${safeName}`;
     try {
-      console.log('[uploadPaymentProofFile] before supabase upload', { pageInstanceId: PAGE_INSTANCE_ID, bucket: PAYMENT_PROOFS_BUCKET, path });
       // Timeout does not cancel the in-flight request; it only unblocks the UI.
       const uploadPromise = supabase.storage
         .from(PAYMENT_PROOFS_BUCKET)
@@ -2640,7 +2514,6 @@ export const paymentProofsService = {
       });
       const { error } = await Promise.race([uploadPromise, timeoutPromise]);
       if (error) throw new Error(error.message || 'Storage upload failed');
-      console.log('[uploadPaymentProofFile] after supabase upload success', { pageInstanceId: PAGE_INSTANCE_ID, durationMs: Date.now() - t0 });
       return path;
     } catch (e: unknown) {
       const err = e as { message?: string; name?: string; code?: string };
@@ -2652,8 +2525,6 @@ export const paymentProofsService = {
         durationMs: Date.now() - t0,
       });
       throw e;
-    } finally {
-      console.log('[uploadPaymentProofFile] finally', { pageInstanceId: PAGE_INSTANCE_ID, durationMs: Date.now() - t0 });
     }
   },
 

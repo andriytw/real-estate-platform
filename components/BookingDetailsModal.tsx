@@ -260,7 +260,6 @@ ${selectedInternalCompany} Team`;
       return;
     }
 
-    console.log('[DELETE] isReservation', isReservation, 'id', reservationId, booking);
 
     const confirmed = window.confirm('Are you sure you want to delete this reservation? This action cannot be undone.');
 

@@ -98,9 +98,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     let cancelled = false;
     setChatLoading(true);
     setChatError(null);
-    if (import.meta.env.DEV) {
-      console.log('[TaskDetailModal] chat load:start', { taskId: task.id });
-    }
     (async () => {
       try {
         const user = await safeGetUser();
@@ -109,12 +106,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         const rows = await getTaskChatMessages(task.id);
         if (cancelled) return;
         setChatMessages(rows);
-        if (import.meta.env.DEV) {
-          console.log('[TaskDetailModal] chat load:ok', { taskId: task.id, count: rows.length });
-        }
-        if (rows.length === 0 && !cancelled) {
-          if (import.meta.env.DEV) console.log('[TaskDetailModal] chat load:empty', { taskId: task.id });
-        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (!cancelled) {
@@ -218,9 +209,6 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
       alert('Attachment is missing bucket/path.');
       return;
     }
-    if (import.meta.env.DEV) {
-      console.debug('[TaskChat] openAttachment', { bucket: att.bucket, path: att.path, filename: att.filename });
-    }
     try {
       const url = await getCachedOrFetchUrl(att);
       window.open(url, '_blank', 'noopener,noreferrer');
@@ -236,20 +224,8 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     const path = `${task.id}/${Date.now()}-${safeName}`;
     setChatUploading(true);
     try {
-      const { data: uploadData, error: uploadError } = await supabase.storage.from(TASK_MEDIA_BUCKET).upload(path, file, { upsert: false });
-      if (process.env.NODE_ENV === 'development') {
-        const bucket = TASK_MEDIA_BUCKET;
-        if (uploadError) {
-          console.debug('[Task chat upload]', { bucket, path, uploadError: JSON.stringify(uploadError, null, 2), message: uploadError?.message, statusCode: (uploadError as { statusCode?: number })?.statusCode });
-        } else {
-          console.debug('[Task chat upload]', { bucket, path, result: uploadData });
-        }
-      }
+      const { error: uploadError } = await supabase.storage.from(TASK_MEDIA_BUCKET).upload(path, file, { upsert: false });
       if (uploadError) throw uploadError;
-      if (process.env.NODE_ENV === 'development') {
-        const { data: listData, error: listError } = await supabase.storage.from(TASK_MEDIA_BUCKET).list(task.id, { limit: 5 });
-        console.debug('[Task chat upload] list after success', { visible: listError ? false : (listData ?? []).some((o: { name?: string }) => path.endsWith(o.name ?? '')), listError: listError?.message, fileCount: (listData ?? []).length });
-      }
       const payload: TaskChatAttachment[] = [{
         bucket: TASK_MEDIA_BUCKET,
         path,

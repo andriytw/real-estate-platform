@@ -75,7 +75,6 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
       .getMarketplacePhotoUrlsForProperty(property.id, 3600, property.cover_photo_asset_id ?? undefined)
       .then((urls) => {
         if (!cancelled) {
-          if (import.meta.env.DEV) console.log('[marketplace-gallery] urls', urls.length);
           setGalleryImageUrls(urls);
         }
       })

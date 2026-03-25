@@ -310,7 +310,6 @@ const BookingListModal: React.FC<BookingListModalProps> = ({
     }
 
     // МОК: Показуємо дані в консолі та alert (замість реального надсилання)
-    console.log(`📧 Email data to send (${type}):`, emailData);
     
     // Показуємо preview першого email
     const firstEmail = emailData[0];
@@ -333,7 +332,6 @@ ${emailData.length > 1 ? `\n... та ще ${emailData.length - 1} email(ів)` :
 
     if (confirmed) {
       // МОК: Імітуємо надсилання
-      console.log(`✅ Sending emails (${type})...`, emailData);
       
       // Симулюємо затримку
       await new Promise(resolve => setTimeout(resolve, 1000));

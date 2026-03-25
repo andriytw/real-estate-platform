@@ -199,8 +199,7 @@ export function updateBookingStatus(
   newStatus: BookingStatus,
   options?: { log?: boolean; syncToDB?: boolean }
 ): (prev: any[]) => any[] {
-  // Логування (якщо потрібно)
-  if (options?.log !== false) {
+  if (import.meta.env.DEV && options?.log) {
     console.log(`[Booking Status Update] Booking ${bookingId}: ${newStatus} at ${new Date().toISOString()}`);
   }
   

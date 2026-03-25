@@ -2,9 +2,6 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   SHELL_RESUME_DEBUG,
   registerShellDebugSnapshotGetter,
-  getShellDebugSnapshot,
-  describeElementBrief,
-  describeEventTarget,
   buildAccountDashboardShellDebugSnapshot,
 } from '../lib/shellDebug';
 import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Ruler, Square, Download, LayoutGrid, Bed, MoreVertical, Archive, RotateCcw } from 'lucide-react';
@@ -895,16 +892,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     };
   }, [selectedProperty]);
 
-  useEffect(() => {
-    if (import.meta.env.DEV && selectedPropertyId) {
-      const { ownerParty, company1Party, company2Party } = paymentChainParties;
-      console.log('[Payment Chain] resolved parties', { ownerParty, company1Party, company2Party });
-      console.log('[Payment Chain] Card A: receiver = ownerParty', { receiver: ownerParty });
-      console.log('[Payment Chain] Card B: payer = company1Party, receiver = ownerParty', { payer: company1Party, receiver: ownerParty });
-      console.log('[Payment Chain] Card C: payer = company2Party, receiver = company1Party', { payer: company2Party, receiver: company1Party });
-    }
-  }, [selectedPropertyId, paymentChainParties]);
-
   const filteredProperties = useMemo(() => {
     const q = normalizeSearch(propertySearch);
     if (!q) return properties;
@@ -1581,9 +1568,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
           
           if (rows.length === 0) {
             setTransferError('No items found in the invoice. Please check the document or try another file.');
-          } else {
-            // Show success message
-            console.log(`✅ OCR completed: ${rows.length} items recognized`);
           }
         } catch (error: any) {
           console.error('OCR Error:', error);
@@ -1790,7 +1774,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         }))
       );
       await refreshPropertyInventory();
-      if (import.meta.env.DEV) console.log('[PropertyInventoryOCR]', { propertyId: selectedPropertyId, itemsCount: validRows.length });
       setIsPropertyAddFromDocumentOpen(false);
       setPropertyOcrRows([]);
       setPropertyOcrFile(null);
@@ -1827,7 +1810,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
 
       // Знаходимо всі квартири, де є цей інвентар, і видаляємо його
       if (itemId) {
-        console.log(`🗑️ Removing inventory with itemId ${itemId} (${stockItem.itemName}) from all properties...`);
         const allProperties = await propertiesService.getAll();
         const itemName = stockItem.itemName;
         for (const property of allProperties) {
@@ -1836,23 +1818,19 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
             const inventoryToRemove = property.inventory.filter((item: any) => {
               // Перевірка за itemId
               if (item.itemId === itemId) {
-                console.log(`  ✓ Found by itemId in ${property.title}: ${item.name || item.type}`);
                 return true;
               }
               // Перевірка за invNumber
               if (item.invNumber === invNumber) {
-                console.log(`  ✓ Found by invNumber in ${property.title}: ${item.name || item.type}`);
                 return true;
               }
               // Перевірка за назвою товару (якщо немає itemId)
               if (!item.itemId && (item.name === itemName || item.type === itemName)) {
-                console.log(`  ✓ Found by name in ${property.title}: ${item.name || item.type}`);
                 return true;
               }
               return false;
             });
             if (inventoryToRemove.length > 0) {
-              console.log(`🗑️ Removing ${inventoryToRemove.length} inventory item(s) from property: ${property.title}`);
               const updatedInventory = property.inventory.filter((item: any) => {
                 // Залишаємо тільки ті, які не знайдені для видалення
                 return !(
@@ -1886,7 +1864,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
                 );
               });
               if (updatedInventory.length !== p.inventory.length) {
-                console.log(`  ✓ Updated local state for property: ${p.title}`);
                 return { ...p, inventory: updatedInventory };
               }
             }
@@ -1897,7 +1874,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         
         // Оновити список квартир
         window.dispatchEvent(new CustomEvent('propertiesUpdated'));
-        console.log('✅ Inventory removal completed');
       }
 
       // Refresh stock list
@@ -1909,8 +1885,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         next.delete(stockId);
         return next;
       });
-      
-      console.log('✅ Stock item deleted and removed from all properties');
     } catch (error: any) {
       console.error('Error deleting stock item:', error);
       alert(`Failed to delete item: ${error?.message || 'Unknown error'}`);
@@ -1949,7 +1923,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   // Функція для виконання transfer інвентарю після підтвердження завдання
   const executeInventoryTransfer = async (transferData: any) => {
     try {
-      console.log('📦 Starting inventory transfer execution...', transferData);
       const { transferData: items, propertyId } = transferData;
 
       if (!items || !Array.isArray(items) || items.length === 0) {
@@ -1962,11 +1935,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         return;
       }
 
-      console.log(`📦 Transferring ${items.length} items to property ${propertyId}`);
-
       // 1) Зменшити залишки на складі + записати рух
       for (const item of items) {
-        console.log(`📦 Processing item: ${item.itemName}, quantity: ${item.quantity}, stockId: ${item.stockId}`);
         await warehouseService.decreaseStockQuantity(item.stockId, item.quantity);
         await warehouseService.createStockMovement({
           warehouseId: item.warehouseId,
@@ -1979,8 +1949,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
           invoiceId: undefined,
         });
       }
-
-      console.log('✅ Warehouse stock decreased and movements created');
 
       // 2) Insert into property_inventory_items (append-only, same table the "Möbel/Inventar" tile reads).
       // Idempotency: callers check transferExecuted before calling this function.
@@ -1997,7 +1965,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         store: 'Warehouse transfer',
       }));
       await propertyInventoryService.appendItems(propertyId, null, inventoryRows);
-      console.log('✅ Property inventory items inserted (property_inventory_items)');
 
       // Refresh the inventory tile so transferred items appear immediately
       refreshPropertyInventory();
@@ -2005,12 +1972,9 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       // 3) Оновити склад
       const refreshed = await warehouseService.getStock();
       setWarehouseStock(refreshed);
-      console.log('✅ Warehouse stock refreshed');
       
       // 4) Оновити список квартир (щоб інвентар відобразився в інших компонентах)
       window.dispatchEvent(new CustomEvent('propertiesUpdated'));
-      console.log('✅ Properties update event dispatched');
-      console.log('✅ Inventory transfer completed successfully');
     } catch (error) {
       console.error('❌ Error executing inventory transfer:', error);
       throw error;
@@ -2108,9 +2072,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   useEffect(() => {
     const loadFacilityTasks = async () => {
       try {
-        console.log('🔄 Loading Facility tasks from database...');
-        console.log('👤 Current user:', worker?.id, worker?.role, worker?.department);
-        
         // Build filters based on user role
         const filters: any = {
           department: 'facility'
@@ -2123,19 +2084,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         }
         // Для manager та super_manager - не фільтруємо по workerId, показуємо всі завдання Facility
         const tasks = await tasksService.getAll(filters);
-        console.log('✅ Loaded Facility tasks:', tasks.length);
-        console.log('📋 All tasks:', tasks.map(t => ({ 
-          id: t.id, 
-          title: t.title, 
-          workerId: t.workerId, 
-          department: t.department, 
-          bookingId: t.bookingId, 
-          bookingIdType: typeof t.bookingId, 
-          type: t.type,
-          status: t.status,
-          date: t.date,
-          day: t.day
-        })));
         
         // Filter out ONLY tasks with temporary "auto-task-*" IDs
         // These should not exist in database, but if they do, filter them out
@@ -2153,10 +2101,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         if (validTasks.length !== tasks.length) {
             console.warn(`⚠️ Filtered out ${tasks.length - validTasks.length} tasks with temporary auto-task-* IDs`);
         }
-        console.log('📋 Tasks after filtering:', validTasks.length);
-        if (validTasks.length > 0) {
-            console.log('📋 Task IDs:', validTasks.map(t => t.id));
-        }
 
         // Process any verified/completed transfer tasks (e.g. confirmed in another tab) so inventory is applied
         for (const task of validTasks) {
@@ -2164,11 +2108,9 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
             try {
               const parsed = JSON.parse(task.description);
               if (parsed.action === 'transfer_inventory' && parsed.transferData && !parsed.transferExecuted) {
-                console.log('📦 Executing pending inventory transfer on load for task:', task.id);
                 await executeInventoryTransfer(parsed);
                 parsed.transferExecuted = true;
                 await tasksService.update(task.id, { description: JSON.stringify(parsed) });
-                console.log('✅ Pending inventory transfer executed for task:', task.id);
               }
             } catch (_) { /* ignore */ }
           }
@@ -2211,13 +2153,11 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     // NOTE: We use a debounce to prevent multiple rapid reloads
     let reloadTimeout: NodeJS.Timeout | null = null;
     const handleTaskUpdated = () => {
-      console.log('🔄 Task updated event received, will reload Facility tasks in 500ms...');
       // Debounce reload to prevent race conditions when multiple updates happen quickly
       if (reloadTimeout) {
         clearTimeout(reloadTimeout);
       }
       reloadTimeout = setTimeout(() => {
-        console.log('🔄 Reloading Facility tasks...');
         loadFacilityTasks();
       }, 500);
     };
@@ -2381,7 +2321,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   useEffect(() => {
     const handleTaskUpdated = async () => {
       try {
-        console.log('🔄 Task updated event received, reloading Facility tasks...');
         // Build filters based on user role
         const filters: any = {
           department: 'facility'
@@ -2393,7 +2332,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         }
         
         const tasks = await tasksService.getAll(filters);
-        console.log('✅ Reloaded Facility tasks:', tasks.length);
         // Finalize transfer only when status is verified (not on completed)
         for (const task of tasks) {
           if (task.status === 'verified' && task.description) {
@@ -2403,7 +2341,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
               if (parsed.action === 'transfer_inventory' && parsed.transferData) {
                 // Перевірити, чи transfer вже виконано (можна додати прапорець в parsed)
                 if (!parsed.transferExecuted) {
-                  console.log('📦 Executing inventory transfer for task:', task.id);
                   await executeInventoryTransfer(parsed);
                   
                   // Позначити transfer як виконаний в description
@@ -2411,8 +2348,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
                   await tasksService.update(task.id, {
                     description: JSON.stringify(parsed),
                   });
-                  
-                  console.log('✅ Inventory transfer executed for task:', task.id);
                 }
               }
             } catch (e) {
@@ -2439,9 +2374,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   useEffect(() => {
     const loadAccountingTasks = async () => {
       try {
-        console.log('🔄 Loading Accounting tasks from database...');
-        console.log('👤 Current user:', worker?.id, worker?.role, worker?.department);
-        
         // Build filters based on user role
         const filters: any = {
           department: 'accounting'
@@ -2454,8 +2386,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         // For super_manager, don't filter by workerId - show all accounting tasks
         
         const tasks = await tasksService.getAll(filters);
-        console.log('✅ Loaded Accounting tasks:', tasks.length);
-        console.log('📋 Tasks:', tasks.map(t => ({ id: t.id, title: t.title, workerId: t.workerId, department: t.department })));
         
         setAccountingEvents(tasks);
       } catch (error) {
@@ -2473,8 +2403,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   useEffect(() => {
     const handleAccountingTaskUpdated = async () => {
       try {
-        console.log('🔄 Task updated event received, reloading Accounting tasks...');
-        
         const filters: any = {
           department: 'accounting'
         };
@@ -2484,7 +2412,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         }
         
         const tasks = await tasksService.getAll(filters);
-        console.log('✅ Reloaded Accounting tasks:', tasks.length);
         
         setAccountingEvents(tasks);
       } catch (error) {
@@ -2653,29 +2580,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     );
   }, []);
 
-  useEffect(() => {
-    if (!SHELL_RESUME_DEBUG) return;
-    let last = 0;
-    const throttleMs = 400;
-    const onPointerDown = (e: PointerEvent) => {
-      const now = Date.now();
-      if (now - last < throttleMs) return;
-      last = now;
-      const path = e.composedPath();
-      const path0 = path[0];
-      const fromPoint = document.elementFromPoint(e.clientX, e.clientY);
-      console.log('[shell-resume-debug] pointerdown', {
-        target: describeEventTarget(e.target),
-        composedPath0: describeEventTarget(path0),
-        elementFromPoint: describeElementBrief(fromPoint),
-        client: { x: e.clientX, y: e.clientY },
-        snapshot: getShellDebugSnapshot(),
-      });
-    };
-    document.addEventListener('pointerdown', onPointerDown, true);
-    return () => document.removeEventListener('pointerdown', onPointerDown, true);
-  }, []);
-
   // Stats
   const activePropertiesCount = properties.length;
   const activeTasksCount = 14; 
@@ -2749,13 +2653,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
             };
             propertyToUpdate.meterLog = [initialMeterLog, ...existingCheckInOut];
           }
-          
-          console.log('📊 Converting meterReadings to meterLog (edit mode):', {
-            meterReadings: newProperty.meterReadings,
-            existingCheckInOutCount: existingCheckInOut.length,
-            updatedMeterLogCount: propertyToUpdate.meterLog.length,
-            meterLog: propertyToUpdate.meterLog
-          });
         } else {
           // Якщо немає meterReadings, зберегти існуючий meterLog
           propertyToUpdate.meterLog = propertyToEdit.meterLog;
@@ -2768,9 +2665,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         }
         
         const updatedProperty = await propertiesService.update(propertyToEdit.id, propertyToUpdate);
-        console.log('✅ Property updated in database:', updatedProperty.id);
-        console.log('📊 Updated property meterLog:', updatedProperty.meterLog);
-        console.log('📊 Updated property meterReadings:', updatedProperty.meterReadings);
         
         // Оновити локальний стан
         setProperties(prev => prev.map(p => p.id === updatedProperty.id ? updatedProperty : p));
@@ -2820,20 +2714,10 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
           
           // Додати meterLog до property
           propertyWithoutId.meterLog = [initialMeterLog];
-          
-          console.log('📊 Converting meterReadings to meterLog:', {
-            meterReadings: newProperty.meterReadings,
-            meterLog: propertyWithoutId.meterLog
-          });
-        } else {
-          console.log('⚠️ No meterReadings to convert');
         }
         
         // Зберегти об'єкт в базу даних
         const savedProperty = await propertiesService.create(propertyWithoutId);
-        console.log('✅ Property saved to database:', savedProperty.id);
-        console.log('📊 Saved property meterLog:', savedProperty.meterLog);
-        console.log('📊 Saved property meterReadings:', savedProperty.meterReadings);
         
         // Оновити локальний стан з об'єктом з бази (з правильним ID)
         setProperties([...properties, savedProperty]);
@@ -4629,9 +4513,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
    */
   const handleDeleteReservation = async (id: number | string) => {
       try {
-        // Debug logging
-        console.log('[DELETE] reservationsService.delete', id);
-        
         // Convert id to string for comparison
         const idStr = String(id);
         
@@ -4767,13 +4648,11 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   /** Calendar direct-booking: server command creates reservation + offer (auth + idempotency on API). */
   const handleSaveDirectBookingFromCalendar = async (draft: MultiApartmentOfferDraft) => {
     if (directBookingSaveInProgressRef.current) {
-      console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar ignored (already in progress)');
       return;
     }
     directBookingSaveInProgressRef.current = true;
     const traceId = directBookingIdempotencyKeyRef.current || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `db-${Date.now()}`);
     if (!directBookingIdempotencyKeyRef.current) directBookingIdempotencyKeyRef.current = traceId;
-    console.log('[AccountDashboard] handleSaveDirectBookingFromCalendar start', { traceId, pageInstanceId: PAGE_INSTANCE_ID });
     try {
       if (!draft.apartments.length) {
         alert('No apartment in draft.');
@@ -4900,13 +4779,11 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     mode: 'draft' | 'send'
   ) => {
     if (multiOfferSaveInProgressRef.current) {
-      console.log('[AccountDashboard] handleSaveMultiApartmentOffer ignored (already in progress)');
       return;
     }
     multiOfferSaveInProgressRef.current = true;
     const traceId = multiOfferIdempotencyKeyRef.current || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ma-${Date.now()}`);
     if (!multiOfferIdempotencyKeyRef.current) multiOfferIdempotencyKeyRef.current = traceId;
-    console.log('[AccountDashboard] handleSaveMultiApartmentOffer start', { traceId, mode, pageInstanceId: PAGE_INSTANCE_ID });
     try {
       const { offers: created, leadId } = await commandPostJson<{ offers: OfferData[]; reservationIds: string[]; leadId: string | null }>(
         '/api/commands/create-multi-offer',
@@ -4931,7 +4808,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         offersService.getAll().then(setOffers).catch((e) => console.error('[AccountDashboard] getAll offers after multi-offer', e));
       }, 0);
       if (mode === 'send') {
-        console.log('[AccountDashboard] handleSaveMultiApartmentOffer before setSendChannelPayload', { traceId });
         const first = created[0];
         sendChannelResultPrefixRef.current = 'Offer';
         sendChannelOnCloseRef.current = () => {
@@ -5552,13 +5428,11 @@ ${internalCompany} Team`;
   /** Invoice/proforma persist + PDF upload via server command (per-flow lock, idempotent). */
   const handleSaveInvoice = async (invoice: InvoiceData, mode?: 'save' | 'send', pdfFile?: File | null) => {
       if (invoiceSaveInProgressRef.current) {
-        console.log('[AccountDashboard] handleSaveInvoice ignored (already in progress)');
         return;
       }
       invoiceSaveInProgressRef.current = true;
       const traceId = invoiceIdempotencyKeyRef.current || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `inv-${Date.now()}`);
       if (!invoiceIdempotencyKeyRef.current) invoiceIdempotencyKeyRef.current = traceId;
-      console.log('[AccountDashboard] handleSaveInvoice start', { traceId, mode, invoiceId: invoice.id, pageInstanceId: PAGE_INSTANCE_ID });
       try {
         const offerItemId = pendingOfferItemForInvoice?.id;
         let savedInvoice: InvoiceData;
@@ -5613,7 +5487,6 @@ ${internalCompany} Team`;
         
         const isProformaSend = mode === 'send' && savedInvoice.documentType === 'proforma' && !invoice.proformaId;
         if (isProformaSend) {
-          console.log('[AccountDashboard] handleSaveInvoice before setSendChannelPayload (proforma send)', { traceId });
           const offerId = savedInvoice.offerIdSource ?? savedInvoice.offerId;
           const linkedOffer = offerId ? offers.find(o => o.id === offerId || String(o.id) === String(offerId)) : null;
           const recipientEmail = linkedOffer?.email?.trim() || undefined;
@@ -5653,7 +5526,6 @@ ${internalCompany} Team`;
             recipientPhone,
           });
         } else {
-          console.log('[AccountDashboard] handleSaveInvoice before setIsInvoiceModalOpen(false)', { traceId });
           setIsInvoiceModalOpen(false);
           setSelectedOfferForInvoice(null);
           setSelectedInvoice(null);
@@ -5850,7 +5722,6 @@ ${internalCompany} Team`;
                           };
                           const savedTask = await tasksService.create(taskToSave);
                           savedTasks.push(savedTask);
-                          console.log('✅ Created Facility task in database:', savedTask.id, savedTask.title, 'bookingId:', savedTask.bookingId);
                       } catch (error: any) {
                           console.error('❌ Error creating Facility task in database:', error);
                       }
@@ -5860,8 +5731,6 @@ ${internalCompany} Team`;
                       setAdminEvents(prevEvents => [...prevEvents, ...savedTasks]);
                       // Notify other components and reload tasks from database
                       window.dispatchEvent(new CustomEvent('taskUpdated'));
-                      console.log('✅ Created and added', savedTasks.length, 'Facility tasks to calendar');
-                      console.log('✅ Task details:', savedTasks.map(t => ({ id: t.id, type: t.type, bookingId: t.bookingId, title: t.title })));
                   } else {
                       console.warn('⚠️ No tasks were created. Check if tasks already exist or if there was an error.');
                       console.warn('hasEinzugTask:', hasEinzugTask, 'hasAuszugTask:', hasAuszugTask, 'newTasksCount:', newTasks.length);
@@ -5967,8 +5836,7 @@ ${internalCompany} Team`;
             patchPayload.date = updatedEvent.date;
             patchPayload.day = updatedEvent.day;
           }
-          const savedTask = await tasksService.update(updatedEvent.id, patchPayload);
-          console.log('✅ Task updated in database:', updatedEvent.id);
+          await tasksService.update(updatedEvent.id, patchPayload);
           // Notify other components (Kanban) about task update
           // NOTE: We do NOT reload tasks here to prevent race condition
           // The local state is already updated above, and Kanban will reload on its own
@@ -9578,19 +9446,6 @@ ${internalCompany} Team`;
 
             {/* 12. Apartment Statistics */}
             <CollapsibleSection title="12. Apartment Statistics" defaultOpen={false}>
-              {import.meta.env.DEV &&
-                selectedProperty &&
-                (() => {
-                  // eslint-disable-next-line no-console
-                  console.log('rooms debug', {
-                    id: selectedProperty.id,
-                    title: selectedProperty.title,
-                    detailsRooms: selectedProperty?.details?.rooms,
-                    topRooms: selectedProperty?.rooms,
-                    resolved: getRoomsCount(selectedProperty),
-                  });
-                  return null;
-                })()}
               <ApartmentStatisticsSection
                 roomsCount={getRoomsCount(selectedProperty)}
                 propertyPayments={propertyPayments}

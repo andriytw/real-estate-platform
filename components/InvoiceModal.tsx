@@ -4,7 +4,6 @@ import { X, Save, FileText, Download, Edit2, Check, Upload } from 'lucide-react'
 import { OfferData, InvoiceData, CompanyDetails, ReservationData } from '../types';
 import { INTERNAL_COMPANIES_DATA } from '../constants';
 import { propertiesService } from '../services/supabaseService';
-import { PAGE_INSTANCE_ID } from '../utils/pageInstance';
 
 const IM_COMPACT_NUMBER = 'invoice-modal-compact-number';
 const IM_ADD_NET = 'invoice-modal-add-net';
@@ -269,7 +268,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
   const handleSave = async (saveMode: 'save' | 'send' = 'save') => {
     if (!invoiceData || !senderDetails) return;
     const needsUpload = (isAddProformaMode || isAddInvoiceToProformaMode) && !!pdfFile;
-    console.log('[InvoiceModal] handleSave start', { saveMode, needsUpload, pageInstanceId: PAGE_INSTANCE_ID });
     try {
       if (needsUpload && pdfFile) {
         setUploading(true);
@@ -319,11 +317,9 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
         proformaId: invoiceData.proformaId,
       };
       setSaving(true);
-      console.log('[InvoiceModal] before onSave');
       const pdfForServer =
         (isAddProformaMode || isAddInvoiceToProformaMode) && pdfFile ? pdfFile : undefined;
       await Promise.resolve(onSave(finalInvoice, saveMode, pdfForServer));
-      console.log('[InvoiceModal] after onSave');
     } catch (e) {
       console.error('[InvoiceModal] handleSave catch', e);
       const msg = e instanceof Error ? e.message : String(e);
@@ -331,7 +327,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
     } finally {
       setUploading(false);
       setSaving(false);
-      console.log('[InvoiceModal] handleSave finally');
     }
   };
 

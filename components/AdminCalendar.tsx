@@ -212,38 +212,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     [viewEvent?.id, viewEvent?.workerId, viewEvent?.assignedWorkerId]
   );
 
-  useEffect(() => {
-    if (!import.meta.env.DEV || !viewEvent) return;
-    const eligible = filterAssignableWorkers(workers);
-    const inPool = detailAssigneeId !== '' && eligible.some((w) => w.id === detailAssigneeId);
-    const fallbackInjected = detailAssigneeId !== '' && !inPool;
-    const disabledBecauseDone = isDoneTask(viewEvent);
-    const disabledBecauseLoading = loadingWorkers;
-    console.info('[AdminCalendar][assignee][detail]', {
-      role: currentWorker?.role,
-      departmentScope: currentWorker?.departmentScope,
-      effectiveScope: currentWorker ? effectiveDepartmentScope(currentWorker) : null,
-      eventId: viewEvent.id,
-      workerId: viewEvent.workerId,
-      assignedWorkerId: viewEvent.assignedWorkerId,
-      detailAssigneeId,
-      workersLoadedCount: workers.length,
-      filteredAssigneeOptionsCount: eligible.length,
-      fallbackInjected,
-      selectDisabled: disabledBecauseDone || disabledBecauseLoading,
-      disabledBecauseDone,
-      disabledBecauseLoadingWorkers: disabledBecauseLoading,
-    });
-  }, [
-    viewEvent,
-    workers,
-    detailAssigneeId,
-    viewEventAssigneeOptions.length,
-    currentWorker?.role,
-    currentWorker?.departmentScope,
-    loadingWorkers,
-  ]);
-
   // Single source of truth for Facility list panel and CSV export (Open and Completed use same logic)
   const getVisibleFacilityTasks = useMemo(() => {
     return (bucket: TaskBucket | null): CalendarEvent[] => {
@@ -368,10 +336,8 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     const loadWorkers = async () => {
       try {
         setLoadingWorkers(true);
-        console.log('🔄 Loading workers for AdminCalendar...');
         const workersData = await workersService.getAssignableWorkers();
         if (cancelled) return;
-        console.log('✅ Loaded workers:', workersData.length);
         setWorkers(workersData);
       } catch (error) {
         if (!cancelled) {
@@ -523,9 +489,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
           attachments: r.attachments ?? [],
         }));
         setTaskMessages(mapped);
-        if (import.meta.env.DEV) {
-          console.log('[AdminCalendar] chat load:ok', { taskId: viewEvent.id, count: mapped.length });
-        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (reqId !== chatLoadRequestIdRef.current) return;
@@ -789,8 +752,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
         day: dayToAdd,
         isIssue: false
       });
-
-      console.log('✅ Task created in database:', newTask.id);
       
       // Notify other components (Kanban) about new task
       window.dispatchEvent(new CustomEvent('taskUpdated'));
@@ -918,9 +879,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     if (!att.bucket?.trim() || !att.path?.trim()) {
       alert('Attachment is missing bucket/path.');
       return;
-    }
-    if (import.meta.env.DEV) {
-      console.debug('[TaskChat] openAttachment', { bucket: att.bucket, path: att.path, filename: att.filename });
     }
     try {
       const url = await getFacilityCachedOrFetchUrl(att);
@@ -1997,16 +1955,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                                   throw new Error('Task not found in database. Please refresh the page.');
                                               }
                                               
-                                              if (import.meta.env.DEV) {
-                                                console.log('[AdminCalendar assignee] BEFORE update (search path)', {
-                                                  id: viewEvent.id,
-                                                  title: viewEvent.title,
-                                                  type: viewEvent.type,
-                                                  propertyId: viewEvent.propertyId,
-                                                  time: viewEvent.time,
-                                                  workerId: viewEvent.workerId,
-                                                });
-                                              }
                                               // Update found task - preserve date and day to prevent loss (PATCH-only)
                                               const updated = await tasksService.update(foundTask.id, {
                                                   workerId: newWorkerId,
@@ -2014,16 +1962,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                                   date: viewEvent.date,
                                                   day: viewEvent.day
                                               });
-                                              if (import.meta.env.DEV) {
-                                                console.log('[AdminCalendar assignee] AFTER update (search path)', {
-                                                  id: updated.id,
-                                                  title: updated.title,
-                                                  type: updated.type,
-                                                  propertyId: updated.propertyId,
-                                                  time: updated.time,
-                                                  workerId: updated.workerId,
-                                                });
-                                              }
                                               // Preserve viewEvent display fields; null-safe so API nulls never wipe card
                                               const updatedWithDate = {
                                                   ...viewEvent,
@@ -2041,32 +1979,12 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                                   date: updated.date ?? viewEvent.date,
                                                   day: updated.day !== undefined ? updated.day : viewEvent.day
                                               };
-                                              if (import.meta.env.DEV) {
-                                                console.log('[AdminCalendar assignee] merged (search path)', {
-                                                  id: updatedWithDate.id,
-                                                  title: updatedWithDate.title,
-                                                  type: updatedWithDate.type,
-                                                  propertyId: updatedWithDate.propertyId,
-                                                  time: updatedWithDate.time,
-                                                  workerId: updatedWithDate.workerId,
-                                                });
-                                              }
                                               // Update local state with correct ID
                                               setViewEvent(updatedWithDate);
                                               onUpdateEvent(updatedWithDate);
                                               return;
                                           }
                                           
-                                          if (import.meta.env.DEV) {
-                                            console.log('[AdminCalendar assignee] BEFORE update (by-id)', {
-                                              id: viewEvent.id,
-                                              title: viewEvent.title,
-                                              type: viewEvent.type,
-                                              propertyId: viewEvent.propertyId,
-                                              time: viewEvent.time,
-                                              workerId: viewEvent.workerId,
-                                            });
-                                          }
                                           // Update in database - preserve date and day to prevent loss (PATCH-only)
                                           const updated = await tasksService.update(viewEvent.id, {
                                               workerId: newWorkerId,
@@ -2074,16 +1992,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                               date: viewEvent.date,
                                               day: viewEvent.day
                                           });
-                                          if (import.meta.env.DEV) {
-                                            console.log('[AdminCalendar assignee] AFTER update (by-id)', {
-                                              id: updated.id,
-                                              title: updated.title,
-                                              type: updated.type,
-                                              propertyId: updated.propertyId,
-                                              time: updated.time,
-                                              workerId: updated.workerId,
-                                            });
-                                          }
                                           // Find worker name for display; null-safe coalescing so API nulls never wipe card
                                           const worker = workers.find(w => w.id === newWorkerId);
                                           const updatedWithName = {
@@ -2101,16 +2009,6 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                                               date: updated.date ?? viewEvent.date,
                                               day: updated.day !== undefined ? updated.day : viewEvent.day
                                           };
-                                          if (import.meta.env.DEV) {
-                                            console.log('[AdminCalendar assignee] merged (by-id)', {
-                                              id: updatedWithName.id,
-                                              title: updatedWithName.title,
-                                              type: updatedWithName.type,
-                                              propertyId: updatedWithName.propertyId,
-                                              time: updatedWithName.time,
-                                              workerId: updatedWithName.workerId,
-                                            });
-                                          }
                                           onUpdateEvent(updatedWithName);
                                           setViewEvent(updatedWithName);
                                           

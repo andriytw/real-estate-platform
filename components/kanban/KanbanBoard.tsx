@@ -87,7 +87,6 @@ const KanbanBoard: React.FC = () => {
         if (Array.isArray(parsed)) {
           if (parsed.length > 0 && typeof parsed[0] === 'string') {
             // Old format: string[] (worker IDs)
-            console.log('🔄 Migrating customColumns from old format (string[]) to new format (CustomColumn[])');
             return parsed.map((workerId: string) => ({
               id: crypto.randomUUID(),
               workerId: workerId,
@@ -113,16 +112,13 @@ const KanbanBoard: React.FC = () => {
   const loadBoardData = useCallback(async () => {
     setLoading(true);
     setLoadIssues({});
-    console.log('[KanbanBoard] loadBoardData:start', { departmentFilter });
 
     let tasksData: CalendarEvent[] = [];
     let workersData: Worker[] = [];
 
     try {
-      console.log('[KanbanBoard] tasks fetch:start');
       try {
         tasksData = await withFetchTimeout(tasksService.getAll(), 'tasks fetch');
-        console.log('[KanbanBoard] tasks fetch:ok', { count: tasksData.length });
       } catch (e) {
         console.error('[KanbanBoard] tasks fetch:error', e);
         const msg = e instanceof Error ? e.message : String(e);
@@ -130,10 +126,8 @@ const KanbanBoard: React.FC = () => {
         tasksData = [];
       }
 
-      console.log('[KanbanBoard] workers fetch:start');
       try {
         workersData = await withFetchTimeout(workersService.getAssignableWorkers(), 'workers fetch');
-        console.log('[KanbanBoard] workers fetch:ok', { count: workersData.length });
       } catch (e) {
         console.error('[KanbanBoard] workers fetch:error', e);
         const msg = e instanceof Error ? e.message : String(e);
@@ -141,15 +135,10 @@ const KanbanBoard: React.FC = () => {
         workersData = [];
       }
 
-      console.log('[KanbanBoard] transform:start');
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       let validTasks: CalendarEvent[] = [];
       try {
         validTasks = tasksData.filter((t) => uuidRegex.test(t.id));
-        console.log('[KanbanBoard] transform:ok', {
-          valid: validTasks.length,
-          dropped: tasksData.length - validTasks.length,
-        });
       } catch (e) {
         console.error('[KanbanBoard] transform:error', e);
         validTasks = [];
@@ -162,29 +151,17 @@ const KanbanBoard: React.FC = () => {
       if (workersData.length > 0) {
         const validWorkerIds = new Set(workersData.map((w) => w.id));
         setCustomColumns((prev) => {
-          console.log('[KanbanBoard] customColumns sanitize:start', { prevCount: prev.length });
           const removedEntries = prev.filter(
             (col) => col.workerId && !validWorkerIds.has(col.workerId)
           );
           const next = prev.filter((col) => !col.workerId || validWorkerIds.has(col.workerId));
-          const removed = prev.length - next.length;
-          console.log('[KanbanBoard] customColumns sanitize:ok', { removed, remaining: next.length });
-          if (removed > 0) {
-            console.info('[KanbanBoard] customColumns pruned stale workerIds', {
-              removedWorkerIds: removedEntries.map((c) => c.workerId).filter(Boolean),
-              removedColumnIds: removedEntries.map((c) => c.id),
-            });
-          }
           return next;
         });
-      } else {
-        console.log('[KanbanBoard] customColumns sanitize:skip', { reason: 'no workers loaded' });
       }
     } catch (error) {
       console.error('[KanbanBoard] loadBoardData:unexpected', error);
     } finally {
       setLoading(false);
-      console.log('[KanbanBoard] loadBoardData:end');
     }
   }, [departmentFilter, currentUser?.id]);
 
@@ -196,7 +173,6 @@ const KanbanBoard: React.FC = () => {
   // Listen for workers update event (when new user is created/updated)
   useEffect(() => {
     const handleWorkersUpdated = () => {
-      console.log('🔄 Workers updated event received, reloading board data...');
       loadBoardData();
     };
 
@@ -209,7 +185,6 @@ const KanbanBoard: React.FC = () => {
   // Listen for task updates from calendar
   useEffect(() => {
     const handleTaskUpdated = () => {
-      console.log('🔄 Task updated event received, reloading board data...');
       loadBoardData();
     };
 
@@ -437,21 +412,18 @@ const KanbanBoard: React.FC = () => {
 
   // Handle column creation (creates empty column)
   const handleColumnCreated = React.useCallback(() => {
-    console.log('🔄 Creating empty column');
     const newColumn: CustomColumn = {
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString()
     };
     setCustomColumns(prev => {
       const updated = [...prev, newColumn];
-      console.log('✅ Empty column created. New customColumns count:', updated.length);
       return updated;
     });
   }, []);
 
   // Handle worker assignment to column
   const handleColumnWorkerAssigned = React.useCallback((columnId: string, workerId: string) => {
-    console.log('🔄 Assigning worker to column:', columnId, workerId);
     setCustomColumns(prev => {
       return prev.map(col => 
         col.id === columnId 
@@ -564,7 +536,6 @@ const KanbanBoard: React.FC = () => {
                 if (window.confirm('Очистити всі створені колонки? Це видалить всі колонки з дошки.')) {
                   localStorage.removeItem('kanban_custom_columns');
                   setCustomColumns([]);
-                  console.log('🗑️ Cleared customColumns from localStorage');
                 }
               }}
               className="px-3 py-1 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-md transition-colors"

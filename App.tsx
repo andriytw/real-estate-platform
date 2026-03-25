@@ -18,7 +18,6 @@ import { WorkerProvider, useWorker } from './contexts/WorkerContext';
 import { propertiesService } from './services/supabaseService';
 import { propertyMediaService } from './services/propertyMediaService';
 import { Property, FilterState, RequestData, Worker } from './types';
-import { PAGE_INSTANCE_ID } from './utils/pageInstance';
 import { canViewModule } from './lib/permissions';
 import { SHELL_RESUME_DEBUG } from './lib/shellDebug';
 import { subscribeTabResume, _dbg } from './lib/tabResumeCoalesce';
@@ -33,10 +32,6 @@ const KanbanBoard = React.lazy(() => import('./components/kanban/KanbanBoard'));
 
 // Internal AppContent: only rendered when session exists (inside AuthGate)
 const AppContent: React.FC = () => {
-  useEffect(() => {
-    console.log('[App] Page instance started', { pageInstanceId: PAGE_INSTANCE_ID });
-  }, []);
-
   // #region agent log — global pointerdown hit-test (always mounted, unlike AccountDashboard)
   useEffect(() => {
     let last = 0;
@@ -160,15 +155,9 @@ const AppContent: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      console.log('🔄 Loading properties from Supabase...');
 
       // Use lightweight mode for faster initial load (especially for Marketplace)
-      const startTime = Date.now();
       const data = await propertiesService.getAll(true);
-      const loadTime = Date.now() - startTime;
-
-      console.log(`✅ Properties loaded: ${data.length} items in ${loadTime}ms`);
-      console.log('📊 Properties data:', data.length > 0 ? data.slice(0, 3).map(p => ({ id: p.id, title: p.title })) : 'empty');
 
       setProperties(data);
       setLoading(false);
@@ -209,7 +198,6 @@ const AppContent: React.FC = () => {
       setProperties([]);
     } finally {
       setLoading(false);
-      console.log('🏁 Properties loading finished, loading state:', false);
     }
   };
 
@@ -246,17 +234,13 @@ const AppContent: React.FC = () => {
   // Check authentication and redirect (session is source of truth; we only redirect when worker is known)
   useEffect(() => {
     if (worker) {
-        console.log('✅ App: Worker loaded, checking permissions:', worker.name, worker.role);
-        
         // IMPORTANT: If there's a pending property view, don't redirect - let the pendingPropertyView useEffect handle it
         if (pendingPropertyView) {
-          console.log('🔄 App: Pending property view exists, skipping role-based redirect');
           return;
         }
         
         // IMPORTANT: If already on property-overlay view, don't redirect
         if (currentView === 'property-overlay' && selectedProperty) {
-          console.log('🔄 App: Already on property overlay (modal), staying here');
           return;
         }
         
@@ -266,7 +250,6 @@ const AppContent: React.FC = () => {
         if (path.startsWith('/property/')) {
           const propertyId = path.split('/property/')[1]?.split('?')[0];
           if (selectedProperty && selectedProperty.id === propertyId) {
-            console.log('🔄 App: On property route with matching property, staying');
             return;
           }
         }
@@ -312,7 +295,6 @@ const AppContent: React.FC = () => {
         }
       }
       if (!worker && !authLoading) {
-        console.log('⚠️ App: No worker (profile loading failed or pending)');
         const path = window.location.pathname;
         const protectedPaths = ['/account', '/worker', '/admin/tasks', '/tasks'];
         // Do not redirect from public paths: guest is allowed on /, /market, /property/*
@@ -355,12 +337,10 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (worker && pendingPropertyView) {
       const property = pendingPropertyView;
-      console.log('🔄 Post-login: Showing property modal for pending property:', property.title);
       setPendingPropertyView(null);
       setSelectedProperty(property);
       setPropertyDetailsModalPropertyId(property.id);
       navigate(`/property/${property.id}`, { replace: true });
-      console.log('✅ Post-login: property overlay set, property:', property.id);
     }
   }, [worker, pendingPropertyView, navigate]);
 
@@ -369,7 +349,6 @@ const AppContent: React.FC = () => {
   // This useEffect is kept for potential future customizations but doesn't redirect anymore
   useEffect(() => {
     if (worker?.id && currentView === 'account' && !pendingPropertyView?.id) {
-      console.log('🔄 Post-login: User logged in, staying on account page (Properties category)');
       // All users stay on account page - AccountDashboard defaults to Properties category
     }
     // Use only primitive values in dependencies to avoid React error #310
@@ -377,8 +356,6 @@ const AppContent: React.FC = () => {
   }, [worker?.id, currentView, pendingPropertyView?.id]);
 
   const handleMarketListingClick = React.useCallback((listing: any) => {
-    console.log('🔵 Marketplace click:', listing);
-    
     const openPropertyAsModal = (prop: Property) => {
       setSelectedProperty(prop);
       setPropertyDetailsModalPropertyId(prop.id);

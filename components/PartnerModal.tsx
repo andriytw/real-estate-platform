@@ -49,7 +49,6 @@ const PartnerModal: React.FC<PartnerModalProps> = ({ isOpen, onClose }) => {
     // Simulate API upload
     setTimeout(() => {
       setStatus('success');
-      console.log("Partner Application Submitted:", { formData, files });
     }, 2000);
   };
 
