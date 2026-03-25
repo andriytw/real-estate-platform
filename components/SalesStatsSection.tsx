@@ -1,7 +1,7 @@
 /**
- * Shared stats section: BookingStatsTiles (Check-ins, Check-outs, Cleanings, Reminders)
- * + Proforma dashboard tiles (Paid, Open, Kaution Liability) with month/Operating Company filters.
- * Used by Sales Department → Dashboard only.
+ * Sales Department → Dashboard stats: month/Operating Company filters, then operational tiles
+ * (Check-ins, Check-outs, Cleanings, Reminders), then six KPI tiles in one grid row on large screens,
+ * then Available Apartments. Used by Sales Department → Dashboard only.
  */
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Booking, CalendarEvent, Property, Lead } from '../types';
@@ -433,7 +433,13 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
     return out.reverse();
   }, []);
 
-  const tileClass = 'rounded-lg border border-gray-700 bg-[#1C1F24] p-4 min-w-[180px]';
+  const tileBase = 'rounded-lg border border-gray-700 bg-[#1C1F24] p-4';
+  /** KPI row: equal columns on desktop, no min-width so grid can size evenly */
+  const kpiTileClass = `${tileBase} min-w-0 min-h-[240px] h-full flex flex-col`;
+  /** Available Apartments: same visual shell as before this layout pass */
+  const availableApartmentsTileClass = `${tileBase} min-w-[180px]`;
+  const kpiInteractive =
+    'text-left hover:border-emerald-600/50 hover:bg-[#23262b] transition-colors cursor-pointer';
   const tileTitleClass = 'text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2';
   const amountClass = 'text-xl font-bold text-white tabular-nums';
   const countClass = 'text-sm text-gray-400 mt-1';
@@ -469,12 +475,24 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
           </label>
         </div>
 
-        {/* Proforma tiles */}
-        <div className="flex flex-wrap gap-4">
+        {/* Row 1: operational tiles (check-ins, check-outs, cleanings, reminders) */}
+        <div className="w-full">
+          <BookingStatsTiles
+            reservations={allBookings}
+            confirmedBookings={confirmedBookings}
+            adminEvents={adminEvents}
+            properties={properties}
+            initialDate={TODAY}
+            onTileClick={handleStatsTileClick}
+          />
+        </div>
+
+        {/* Row 2: six KPI tiles — equal-width columns on large screens */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 w-full items-stretch">
           <button
             type="button"
             onClick={() => setIsPaidModalOpen(true)}
-            className={`${tileClass} text-left hover:border-emerald-600/50 hover:bg-[#23262b] transition-colors cursor-pointer`}
+            className={`${kpiTileClass} ${kpiInteractive}`}
           >
             <div className={tileTitleClass}>Paid Proformas</div>
             <div className={amountClass}>€{paidGross.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
@@ -486,7 +504,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
           <button
             type="button"
             onClick={() => setIsOpenModalOpen(true)}
-            className={`${tileClass} text-left hover:border-emerald-600/50 hover:bg-[#23262b] transition-colors cursor-pointer`}
+            className={`${kpiTileClass} ${kpiInteractive}`}
           >
             <div className={tileTitleClass}>Open Proformas</div>
             <div className={amountClass}>€{openGross.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
@@ -498,7 +516,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
           <button
             type="button"
             onClick={() => setIsKautionLiabilityModalOpen(true)}
-            className={`${tileClass} text-left hover:border-emerald-600/50 hover:bg-[#23262b] transition-colors cursor-pointer`}
+            className={`${kpiTileClass} ${kpiInteractive}`}
           >
             <div className={tileTitleClass}>Kaution Liability</div>
             <div className={amountClass}>€{kautionLiabilityTotal.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
@@ -511,7 +529,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
             tabIndex={0}
             onClick={() => setIsRequestsModalOpen(true)}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsRequestsModalOpen(true); } }}
-            className={`${tileClass} text-left hover:border-emerald-600/50 hover:bg-[#23262b] transition-colors cursor-pointer`}
+            className={`${kpiTileClass} ${kpiInteractive}`}
           >
             <div className={tileTitleClass}>Incoming Requests</div>
             <div className="flex flex-wrap items-center gap-1 mb-1" onClick={(e) => e.stopPropagation()}>
@@ -550,7 +568,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
             tabIndex={0}
             onClick={() => setIsSentOffersModalOpen(true)}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsSentOffersModalOpen(true); } }}
-            className={`${tileClass} text-left hover:border-emerald-600/50 hover:bg-[#23262b] transition-colors cursor-pointer`}
+            className={`${kpiTileClass} ${kpiInteractive}`}
           >
             <div className={tileTitleClass}>Offers Created</div>
             <div className="flex flex-wrap items-center gap-1 mb-1" onClick={(e) => e.stopPropagation()}>
@@ -589,7 +607,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
             tabIndex={0}
             onClick={() => setIsClosedRentalsModalOpen(true)}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsClosedRentalsModalOpen(true); } }}
-            className={`${tileClass} text-left hover:border-emerald-600/50 hover:bg-[#23262b] transition-colors cursor-pointer`}
+            className={`${kpiTileClass} ${kpiInteractive}`}
           >
             <div className={tileTitleClass}>Closed Rentals</div>
             <div className="flex flex-wrap items-center gap-1 mb-1" onClick={(e) => e.stopPropagation()}>
@@ -621,9 +639,11 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
             <div className={amountClass}>{closedRentalsFiltered.length}</div>
             <div className={countClass}>closed rentals</div>
           </div>
+        </div>
 
-          {/* Available Apartments by room count (only confirmed bookings block; active inventory only) */}
-          <div className={tileClass}>
+        {/* Available Apartments — layout unchanged from product perspective; own row below KPIs */}
+        <div className="w-full">
+          <div className={availableApartmentsTileClass}>
             <div className={tileTitleClass}>Available Apartments</div>
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <span className="text-xs text-gray-500">{availabilityDateStr}</span>
@@ -675,18 +695,6 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
               })}
             </div>
           </div>
-        </div>
-
-        {/* Booking stats tiles (existing) */}
-        <div className="pt-2">
-          <BookingStatsTiles
-            reservations={allBookings}
-            confirmedBookings={confirmedBookings}
-            adminEvents={adminEvents}
-            properties={properties}
-            initialDate={TODAY}
-            onTileClick={handleStatsTileClick}
-          />
         </div>
       </div>
 
