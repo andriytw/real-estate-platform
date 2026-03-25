@@ -4,7 +4,7 @@ import {
   registerShellDebugSnapshotGetter,
   buildAccountDashboardShellDebugSnapshot,
 } from '../lib/shellDebug';
-import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Ruler, Square, Download, LayoutGrid, Bed, MoreVertical, Archive, RotateCcw } from 'lucide-react';
+import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Ruler, Square, Download, LayoutGrid, Bed, MoreVertical, Archive, RotateCcw, History } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 
 import AdminCalendar from './AdminCalendar';
@@ -58,6 +58,8 @@ import {
   unitLeaseTermsService,
   checkBookingOverlap,
   WarehouseStockItem,
+  WarehouseTransferLogRow,
+  sumWarehouseStockValueEuro,
   UnitLeaseTermUi,
   addressBookPartiesService,
   propertyToPartiesAddressBookEntries,
@@ -1137,6 +1139,10 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const [transferWorkerId, setTransferWorkerId] = useState<string>('');
   /** Per stock row: quantity to transfer (1..available). Initialized when opening transfer modal. */
   const [transferQuantitiesByStockId, setTransferQuantitiesByStockId] = useState<Record<string, number>>({});
+  /** Facility Overview: confirmed warehouse → apartment transfers (stock_movements). */
+  const [facilityTransferLog, setFacilityTransferLog] = useState<WarehouseTransferLogRow[]>([]);
+  const [facilityTransferLogLoading, setFacilityTransferLogLoading] = useState(false);
+  const [facilityTransferLogError, setFacilityTransferLogError] = useState<string | null>(null);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('');
@@ -1345,25 +1351,67 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   }, [isAddInventoryModalOpen]);
 
   useEffect(() => {
-    const shouldLoadStock = activeDepartment === 'facility' && facilityTab === 'warehouse' && warehouseTab === 'stock';
+    const shouldLoadStock =
+      activeDepartment === 'facility' &&
+      ((facilityTab === 'warehouse' && warehouseTab === 'stock') || facilityTab === 'overview');
     if (!shouldLoadStock) return;
 
+    let cancelled = false;
     const loadStock = async () => {
       try {
         setIsLoadingWarehouseStock(true);
         setWarehouseStockError(null);
         const stock = await warehouseService.getStock(filterWarehouseId || undefined);
-        setWarehouseStock(stock);
-      } catch (error: any) {
+        if (!cancelled) setWarehouseStock(stock);
+      } catch (error: unknown) {
         console.error('Error loading warehouse stock:', error);
-        setWarehouseStockError(error?.message || 'Failed to load warehouse stock');
+        if (!cancelled) {
+          setWarehouseStockError(error instanceof Error ? error.message : 'Failed to load warehouse stock');
+        }
       } finally {
-        setIsLoadingWarehouseStock(false);
+        if (!cancelled) setIsLoadingWarehouseStock(false);
       }
     };
 
-    loadStock();
+    void loadStock();
+    const onTaskUpdated = () => {
+      void loadStock();
+    };
+    window.addEventListener('taskUpdated', onTaskUpdated);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('taskUpdated', onTaskUpdated);
+    };
   }, [activeDepartment, facilityTab, warehouseTab, filterWarehouseId]);
+
+  // Facility Overview: load transfer history (canonical OUT movements after confirmed transfers)
+  useEffect(() => {
+    if (activeDepartment !== 'facility' || facilityTab !== 'overview') return;
+    let cancelled = false;
+    const loadLog = async () => {
+      try {
+        setFacilityTransferLogLoading(true);
+        setFacilityTransferLogError(null);
+        const rows = await warehouseService.getWarehouseToPropertyTransferMovements(20);
+        if (!cancelled) setFacilityTransferLog(rows);
+      } catch (e: unknown) {
+        if (!cancelled) {
+          setFacilityTransferLogError(e instanceof Error ? e.message : 'Не вдалося завантажити історію');
+        }
+      } finally {
+        if (!cancelled) setFacilityTransferLogLoading(false);
+      }
+    };
+    void loadLog();
+    const onTaskUpdated = () => {
+      void loadLog();
+    };
+    window.addEventListener('taskUpdated', onTaskUpdated);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('taskUpdated', onTaskUpdated);
+    };
+  }, [activeDepartment, facilityTab]);
 
   // Autocomplete suggestions for warehouse stock search
   useEffect(() => {
@@ -1446,6 +1494,17 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       );
     });
   }, [warehouseStock, searchQuery]);
+
+  const facilityOverviewWarehouseValueEuro = useMemo(
+    () => sumWarehouseStockValueEuro(warehouseStock),
+    [warehouseStock]
+  );
+
+  const workerNameByIdForFacility = useMemo(() => {
+    const m = new Map<string, string>();
+    workers.forEach((w) => m.set(w.id, w.name));
+    return m;
+  }, [workers]);
 
   const getPropertyNameById = (id: string | number | undefined) => {
     if (!id) return '';
@@ -9973,7 +10032,119 @@ ${internalCompany} Team`;
       );
     }
 
-    return <div className="p-8 text-white">Facility Overview (Preserved)</div>;
+    return (
+      <div className="h-full w-full bg-[#0D1117] text-white flex flex-col overflow-auto">
+        <div className="px-6 py-4 border-b border-gray-800 shrink-0">
+          <h2 className="text-xl font-bold">Facility Overview</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Поточна вартість залишків на складі та історія перевезень у квартири (підтверджені рухи).
+          </p>
+        </div>
+        <div className="flex-1 p-6 space-y-6">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+            <div className="bg-[#161B22] border border-gray-800 rounded-lg p-5">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                  <DollarSign className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm font-semibold text-white">Вартість інвентарю на складі</h3>
+                  <p className="text-[11px] text-gray-500 mt-0.5">Current stock value — усі склади, поточні залишки × ціна за одиницю</p>
+                  {isLoadingWarehouseStock ? (
+                    <p className="text-sm text-gray-500 mt-3">Завантаження…</p>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold text-white mt-3 tabular-nums">
+                        €{facilityOverviewWarehouseValueEuro.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      {warehouseStockError && (
+                        <p className="text-[11px] text-amber-400 mt-2">{warehouseStockError}</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-[#161B22] border border-gray-800 rounded-lg p-5 xl:row-span-1">
+              <div className="flex items-start gap-3 mb-3">
+                <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/30">
+                  <History className="w-5 h-5 text-blue-400" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-white">Історія перевезень (склад → квартира)</h3>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    Лише реальні перевезення склад → квартира після підтвердження задачі (рух OUT у системі).
+                  </p>
+                </div>
+              </div>
+              {facilityTransferLogLoading ? (
+                <p className="text-sm text-gray-500 py-6 text-center">Завантаження…</p>
+              ) : facilityTransferLogError ? (
+                <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-md px-3 py-2">{facilityTransferLogError}</p>
+              ) : facilityTransferLog.length === 0 ? (
+                <div className="py-10 text-center text-gray-500 text-sm border border-dashed border-gray-700 rounded-md">
+                  Поки немає підтверджених перевезень. Після виконання задачі Facility з перевезенням з&apos;явиться запис.
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-gray-800 rounded-md max-h-[min(24rem,50vh)] overflow-y-auto">
+                  <table className="min-w-full text-[11px]">
+                    <thead className="bg-[#020617] text-gray-400 sticky top-0 z-10">
+                      <tr>
+                        <th className="px-2 py-2 text-left font-medium">Дата / час</th>
+                        <th className="px-2 py-2 text-left font-medium">Склад</th>
+                        <th className="px-2 py-2 text-left font-medium">Квартира</th>
+                        <th className="px-2 py-2 text-left font-medium">Товар</th>
+                        <th className="px-2 py-2 text-right font-medium">К-сть</th>
+                        <th className="px-2 py-2 text-left font-medium">Од.</th>
+                        <th className="px-2 py-2 text-left font-medium">Працівник</th>
+                        <th className="px-2 py-2 text-left font-medium">Статус</th>
+                        <th className="px-2 py-2 text-left font-medium">ID руху</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-800">
+                      {facilityTransferLog.map((row) => {
+                        const dt = row.date ? new Date(row.date) : null;
+                        const when = dt && !Number.isNaN(dt.getTime())
+                          ? dt.toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' })
+                          : '—';
+                        const workerLabel = row.workerId
+                          ? workerNameByIdForFacility.get(row.workerId) ?? row.workerId.slice(0, 8) + '…'
+                          : '—';
+                        return (
+                          <tr key={row.id} className="hover:bg-white/[0.03]">
+                            <td className="px-2 py-2 text-gray-300 whitespace-nowrap">{when}</td>
+                            <td className="px-2 py-2 text-gray-300 max-w-[8rem] truncate" title={row.warehouseName}>
+                              {row.warehouseName}
+                            </td>
+                            <td className="px-2 py-2 text-gray-300 max-w-[12rem] truncate" title={row.propertyLabel}>
+                              {row.propertyLabel}
+                            </td>
+                            <td className="px-2 py-2 text-gray-100 max-w-[14rem]">
+                              <div className="truncate font-medium" title={row.itemName}>{row.itemName}</div>
+                              {row.sku && <div className="text-[10px] text-gray-500 truncate">SKU: {row.sku}</div>}
+                            </td>
+                            <td className="px-2 py-2 text-right font-mono text-gray-200">{row.quantity}</td>
+                            <td className="px-2 py-2 text-gray-400">{row.unit ?? '—'}</td>
+                            <td className="px-2 py-2 text-gray-400 max-w-[7rem] truncate" title={workerLabel}>
+                              {workerLabel}
+                            </td>
+                            <td className="px-2 py-2 text-emerald-400/90">Підтверджено</td>
+                            <td className="px-2 py-2 text-gray-500 font-mono text-[10px]" title={row.id}>
+                              {row.id.slice(0, 8)}…
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderAdminContent = () => {

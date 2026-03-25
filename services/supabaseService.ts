@@ -100,6 +100,34 @@ export interface WarehouseStockItem {
   transferTaskStatus?: string | null; // Status of last transfer task (calendar_events.status)
 }
 
+/** Confirmed warehouse → apartment transfer row (from stock_movements OUT + reason). */
+export interface WarehouseTransferLogRow {
+  id: string;
+  date: string;
+  quantity: number;
+  reason?: string;
+  warehouseName: string;
+  itemName: string;
+  sku?: string;
+  unit?: string;
+  propertyLabel: string;
+  propertyId?: string;
+  workerId?: string | null;
+}
+
+/** Total € value of current warehouse stock: sum of (remaining qty × unit price). Missing/zero price contributes 0. */
+export function sumWarehouseStockValueEuro(stock: WarehouseStockItem[]): number {
+  return stock.reduce((sum, row) => {
+    const qty = Math.max(0, Number(row.quantity) || 0);
+    if (qty <= 0) return sum;
+    const raw = row.unitPrice ?? row.defaultPrice;
+    if (raw == null || raw === '') return sum;
+    const p = typeof raw === 'number' ? raw : parseFloat(String(raw));
+    if (!Number.isFinite(p) || p <= 0) return sum;
+    return sum + qty * p;
+  }, 0);
+}
+
 // ==================== WORKERS ====================
 export const workersService = {
   /** Explicit admin list read model (UserManagement/admin workflows). */
@@ -413,6 +441,61 @@ export const warehouseService = {
       console.error('❌ Error creating stock movement:', error);
       throw error;
     }
+  },
+
+  /**
+   * Confirmed transfers from warehouse to apartments (same records as executeInventoryTransfer creates).
+   * Source: stock_movements OUT + reason "Transfer to property (confirmed)" + property_id set.
+   */
+  async getWarehouseToPropertyTransferMovements(limit = 20): Promise<WarehouseTransferLogRow[]> {
+    const { data, error } = await supabase
+      .from('stock_movements')
+      .select(
+        `
+        id,
+        quantity,
+        date,
+        reason,
+        property_id,
+        worker_id,
+        warehouses ( name ),
+        items ( name, sku, unit ),
+        properties ( title, address, full_address )
+      `
+      )
+      .eq('type', 'OUT')
+      .eq('reason', 'Transfer to property (confirmed)')
+      .not('property_id', 'is', null)
+      .order('date', { ascending: false })
+      .limit(Math.min(Math.max(1, limit), 100));
+
+    if (error) {
+      console.error('❌ Error loading warehouse transfer log:', error);
+      throw error;
+    }
+
+    return (data || []).map((row: any): WarehouseTransferLogRow => {
+      const title = row.properties?.title as string | undefined;
+      const addr =
+        (row.properties?.full_address as string | undefined) ||
+        (row.properties?.address as string | undefined) ||
+        '';
+      const propertyLabel =
+        title && addr ? `${title} — ${addr}` : title || addr || '—';
+      return {
+        id: row.id,
+        date: row.date,
+        quantity: parseFloat(row.quantity ?? 0),
+        reason: row.reason,
+        warehouseName: row.warehouses?.name ?? '—',
+        itemName: row.items?.name ?? '—',
+        sku: row.items?.sku ?? undefined,
+        unit: row.items?.unit ?? undefined,
+        propertyLabel,
+        propertyId: row.property_id ?? undefined,
+        workerId: row.worker_id ?? null,
+      };
+    });
   },
 
   /**
