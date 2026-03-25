@@ -153,24 +153,24 @@ const CreateBookingModal: React.FC<CreateBookingModalProps> = ({ lead, propertie
             </div>
           )}
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Client name</label>
-            <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
+            <label htmlFor="create-booking-client-name" className="block text-xs font-medium text-gray-400 mb-1">Client name</label>
+            <input id="create-booking-client-name" name="clientName" value={clientName} onChange={(e) => setClientName(e.target.value)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
+            <label htmlFor="create-booking-email" className="block text-xs font-medium text-gray-400 mb-1">Email</label>
+            <input id="create-booking-email" name="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Phone</label>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
+            <label htmlFor="create-booking-phone" className="block text-xs font-medium text-gray-400 mb-1">Phone</label>
+            <input id="create-booking-phone" name="phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Address</label>
-            <input value={address} onChange={(e) => setAddress(e.target.value)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
+            <label htmlFor="create-booking-address" className="block text-xs font-medium text-gray-400 mb-1">Address</label>
+            <input id="create-booking-address" name="address" value={address} onChange={(e) => setAddress(e.target.value)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Property (required)</label>
-            <select value={propertyId} onChange={(e) => setPropertyId(e.target.value)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white">
+            <label htmlFor="create-booking-property" className="block text-xs font-medium text-gray-400 mb-1">Property (required)</label>
+            <select id="create-booking-property" name="propertyId" value={propertyId} onChange={(e) => setPropertyId(e.target.value)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white">
               <option value="">Select property</option>
               {properties.map((p) => (
                 <option key={p.id} value={p.id}>{getPropertyDisplayLabel(p)}</option>
@@ -179,31 +179,31 @@ const CreateBookingModal: React.FC<CreateBookingModalProps> = ({ lead, propertie
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Check-in</label>
-              <input type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
+              <label htmlFor="create-booking-check-in" className="block text-xs font-medium text-gray-400 mb-1">Check-in</label>
+              <input id="create-booking-check-in" name="checkIn" type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Check-out</label>
-              <input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
+              <label htmlFor="create-booking-check-out" className="block text-xs font-medium text-gray-400 mb-1">Check-out</label>
+              <input id="create-booking-check-out" name="checkOut" type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
             </div>
           </div>
           <div className="text-xs text-gray-500">Nights: {nights}</div>
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Price / nightly</label>
-            <input type="number" min={0} step={0.01} value={nightlyPrice || ''} onChange={(e) => setNightlyPrice(Number(e.target.value) || 0)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
+            <label htmlFor="create-booking-nightly" className="block text-xs font-medium text-gray-400 mb-1">Price / nightly</label>
+            <input id="create-booking-nightly" name="nightlyPrice" type="number" min={0} step={0.01} value={nightlyPrice || ''} onChange={(e) => setNightlyPrice(Number(e.target.value) || 0)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Tax rate (%)</label>
-            <input type="number" min={0} step={0.1} value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value) || 0)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
+            <label htmlFor="create-booking-tax" className="block text-xs font-medium text-gray-400 mb-1">Tax rate (%)</label>
+            <input id="create-booking-tax" name="taxRate" type="number" min={0} step={0.1} value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value) || 0)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
           </div>
           <div className="text-xs text-gray-500">Net: {netTotal.toFixed(2)} · VAT: {vatAmount.toFixed(2)} · Gross: {grossPreview.toFixed(2)}</div>
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Kaution</label>
-            <input type="number" min={0} step={0.01} value={kaution || ''} onChange={(e) => setKaution(Number(e.target.value) || 0)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
+            <label htmlFor="create-booking-kaution" className="block text-xs font-medium text-gray-400 mb-1">Kaution</label>
+            <input id="create-booking-kaution" name="kaution" type="number" min={0} step={0.01} value={kaution || ''} onChange={(e) => setKaution(Number(e.target.value) || 0)} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Internal notes (optional)</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
+            <label htmlFor="create-booking-notes" className="block text-xs font-medium text-gray-400 mb-1">Internal notes (optional)</label>
+            <textarea id="create-booking-notes" name="notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white" />
           </div>
         </div>
         <div className="p-4 border-t border-gray-800 flex justify-end gap-2">

@@ -46,8 +46,6 @@ function jsonResponse(body: object, status: number): Response {
   });
 }
 
-const chrom = chromium as typeof chromium & { defaultViewport?: unknown; headless?: boolean };
-
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -150,9 +148,9 @@ export async function POST(request: Request) {
       }
       browser = await puppeteer.launch({
         args: chromium.args,
-        defaultViewport: chrom.defaultViewport ?? null,
+        defaultViewport: null,
         executablePath,
-        headless: chrom.headless ?? true,
+        headless: true,
       });
       const page = await browser.newPage();
       await page.setContent(fullHtml, { waitUntil: 'networkidle0' });

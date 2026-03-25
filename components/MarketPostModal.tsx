@@ -49,31 +49,31 @@ const MarketPostModal: React.FC<MarketPostModalProps> = ({ isOpen, onClose }) =>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1.5">Ad Title</label>
-                <input required placeholder="e.g. Cozy room in WG" className="w-full bg-[#111315] border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-emerald-500 focus:outline-none" />
+                <label htmlFor="market-post-title" className="block text-xs font-medium text-gray-400 mb-1.5">Ad Title</label>
+                <input id="market-post-title" name="title" required placeholder="e.g. Cozy room in WG" className="w-full bg-[#111315] border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-emerald-500 focus:outline-none" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1.5">Price (€)</label>
-                  <input required type="number" placeholder="500" className="w-full bg-[#111315] border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-emerald-500 focus:outline-none" />
+                  <label htmlFor="market-post-price" className="block text-xs font-medium text-gray-400 mb-1.5">Price (€)</label>
+                  <input id="market-post-price" name="price" required type="number" placeholder="500" className="w-full bg-[#111315] border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-emerald-500 focus:outline-none" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1.5">Location</label>
-                  <input required placeholder="Berlin, Mitte" className="w-full bg-[#111315] border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-emerald-500 focus:outline-none" />
+                  <label htmlFor="market-post-location" className="block text-xs font-medium text-gray-400 mb-1.5">Location</label>
+                  <input id="market-post-location" name="location" required placeholder="Berlin, Mitte" className="w-full bg-[#111315] border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-emerald-500 focus:outline-none" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1.5">Description</label>
-                <textarea required rows={3} placeholder="Describe the place..." className="w-full bg-[#111315] border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-emerald-500 focus:outline-none resize-none" />
+                <label htmlFor="market-post-description" className="block text-xs font-medium text-gray-400 mb-1.5">Description</label>
+                <textarea id="market-post-description" name="description" required rows={3} placeholder="Describe the place..." className="w-full bg-[#111315] border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-emerald-500 focus:outline-none resize-none" />
               </div>
               
               <div>
-                 <label className="block text-xs font-medium text-gray-400 mb-1.5">Photo</label>
+                 <label htmlFor="market-post-photo" className="block text-xs font-medium text-gray-400 mb-1.5">Photo</label>
                  <div 
                     onClick={() => fileInputRef.current?.click()}
                     className="border-2 border-dashed border-gray-700 hover:border-emerald-500 bg-[#111315] rounded-lg p-6 text-center cursor-pointer transition-colors"
                  >
-                    <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageSelect} />
+                    <input id="market-post-photo" name="photo" type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageSelect} />
                     {selectedImage ? (
                       <div className="flex items-center justify-center gap-2 text-emerald-500">
                         <Image className="w-5 h-5" />

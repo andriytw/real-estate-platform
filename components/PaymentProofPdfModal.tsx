@@ -119,7 +119,7 @@ const PaymentProofPdfModal: React.FC<PaymentProofPdfModalProps> = ({
             Proof created {new Date(proof.createdAt).toLocaleString()}
           </p>
           <div>
-            <label className="text-xs font-medium text-gray-400 block mb-2">
+            <label htmlFor={PAYMENT_PROOF_PDF_INPUT_ID} className="text-xs font-medium text-gray-400 block mb-2">
               PDF file
             </label>
             {!pdfFile ? (

@@ -6,6 +6,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient as SupabaseClientGeneric } from '@supabase/supabase-js';
 import Docxtemplater from 'docxtemplater';
 import PizZip from 'pizzip';
 import { getProtocolData } from './shared.js';
@@ -22,14 +23,12 @@ function jsonResponse(body: object, status: number): Response {
   });
 }
 
-type SupabaseClient = ReturnType<typeof createClient>;
-
 /**
  * Shared logic: fetch data, render DOCX, upload to property-documents, return signed URL.
  * Throws on error (message and optional stage on error object).
  */
 export async function generateDocxAndReturnUrl(
-  supabase: SupabaseClient,
+  supabase: SupabaseClientGeneric<any, 'public', any>,
   bookingId: string,
   propertyId: string
 ): Promise<{ url: string; warning?: string }> {
