@@ -96,7 +96,9 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   const activeProfileLoadIdRef = useRef(0);
   const workerRef = useRef<Worker | null>(null);
   const sessionRef = useRef<Session | null | undefined>(undefined);
-  const resumeSyncInFlightRef = useRef<Promise<void> | null>(null);
+  const profileLoadStatusRef = useRef<ProfileLoadStatus>('idle');
+  /** Single-flight gate shared by tabResume and onAuthStateChange (prevents resume storms). */
+  const unifiedSyncInFlightRef = useRef<Promise<void> | null>(null);
   const resumeSyncTokenRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -105,29 +107,36 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+  useEffect(() => {
+    profileLoadStatusRef.current = profileLoadStatus;
+  }, [profileLoadStatus]);
 
   /** loading = session not yet determined (session === undefined) */
   const loading = session === undefined;
 
-  const getCurrentWorker = useCallback(async (): Promise<{ worker: Worker | null; error: string | null }> => {
+  const getCurrentWorker = useCallback(async (opts?: { userId?: string }): Promise<{ worker: Worker | null; error: string | null }> => {
     const isDev = import.meta.env.DEV;
     try {
       if (isDev && typeof window !== 'undefined') {
         console.log('[DEV] WorkerContext: supabaseUrl=', getSupabaseRestUrl(), 'window.location.origin=', window.location.origin);
       }
-      const user = await safeGetUser();
-      if (isDev && typeof window !== 'undefined') {
-        console.log('[DEV] WorkerContext: after safeGetUser() user=', !!user, 'userId=', user?.id);
-      }
-      if (!user) {
-        const errMsg = 'Not authenticated';
-        if (isDev && typeof window !== 'undefined') console.log('[DEV] WorkerContext: returning error (no user)', { error: errMsg });
-        return { worker: null, error: errMsg };
+      let userId = opts?.userId?.trim();
+      if (!userId) {
+        const user = await safeGetUser();
+        if (isDev && typeof window !== 'undefined') {
+          console.log('[DEV] WorkerContext: after safeGetUser() user=', !!user, 'userId=', user?.id);
+        }
+        if (!user) {
+          const errMsg = 'Not authenticated';
+          if (isDev && typeof window !== 'undefined') console.log('[DEV] WorkerContext: returning error (no user)', { error: errMsg });
+          return { worker: null, error: errMsg };
+        }
+        userId = user.id;
       }
       let { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select(SESSION_PROFILE_SELECT_COLUMNS)
-        .eq('id', user.id)
+        .eq('id', userId)
         .single();
       const code = (profileError as { code?: string } | null)?.code;
       if (isDev && typeof window !== 'undefined') {
@@ -145,16 +154,16 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
         const isColumnError = (e: { message?: string; code?: string } | null) =>
           e && (e.code === '42703' || /column.*does not exist|undefined_column/i.test(e.message ?? ''));
         let insertError: { message?: string; code?: string } | null = null;
-        insertError = (await tryInsert({ id: user.id, name: user.email ?? 'Unknown', email: user.email ?? undefined })).error;
+        insertError = (await tryInsert({ id: userId, name: 'Unknown' })).error;
         if (isDev && typeof window !== 'undefined') {
           console.log('[DEV] WorkerContext: insert attempt 1', { insertError: insertError ? { message: insertError.message, code: insertError.code } : null });
         }
         if (insertError && isColumnError(insertError)) {
-          insertError = (await tryInsert({ id: user.id, name: user.email ?? 'Unknown' })).error;
+          insertError = (await tryInsert({ id: userId, name: 'Unknown' })).error;
           if (isDev && typeof window !== 'undefined') console.log('[DEV] WorkerContext: insert attempt 2', { insertError: insertError ? { message: insertError.message, code: insertError.code } : null });
         }
         if (insertError && isColumnError(insertError)) {
-          insertError = (await tryInsert({ id: user.id })).error;
+          insertError = (await tryInsert({ id: userId })).error;
           if (isDev && typeof window !== 'undefined') console.log('[DEV] WorkerContext: insert attempt 3', { insertError: insertError ? { message: insertError.message, code: insertError.code } : null });
         }
         if (insertError) {
@@ -166,7 +175,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
         const result = await supabase
           .from('profiles')
           .select(SESSION_PROFILE_SELECT_COLUMNS)
-          .eq('id', user.id)
+          .eq('id', userId)
           .single();
         profile = result.data;
         profileError = result.error;
@@ -209,13 +218,19 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     activeProfileLoadIdRef.current += 1;
   }, []);
 
-  const loadWorkerWithTimeoutFeedback = useCallback(async (opts?: { preserveUiIfAlreadyReady?: boolean }): Promise<ProfileLoadResult> => {
+  const loadWorkerWithTimeoutFeedback = useCallback(async (opts?: {
+    preserveUiIfAlreadyReady?: boolean;
+    /** When set, skips safeGetUser() and loads profile by id (avoids hung getUser on resume). */
+    userIdHint?: string;
+  }): Promise<ProfileLoadResult> => {
     const loadId = activeProfileLoadIdRef.current + 1;
     activeProfileLoadIdRef.current = loadId;
+    const hadWorker = workerRef.current != null;
+    const skipLoadingChurn = Boolean(opts?.preserveUiIfAlreadyReady && hadWorker);
     // #region agent log
-    _dbg('WC:loadWorker:START','profile load START - profileLoadStatus→loading',{loadId,hadWorker:workerRef.current!=null});
+    _dbg('WC:loadWorker:START','profile load START',{loadId,hadWorker,skipLoadingChurn,userIdHint:opts?.userIdHint?.slice(0,8)??null});
     // #endregion
-    if (!(opts?.preserveUiIfAlreadyReady && workerRef.current != null && profileLoadStatus === 'ready')) {
+    if (!skipLoadingChurn) {
       setProfileLoadStatus('loading');
     }
     setWorkerError(null);
@@ -229,7 +244,7 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     }, PROFILE_LOAD_TIMEOUT_MS);
 
     try {
-      const result = await getCurrentWorker();
+      const result = await getCurrentWorker(opts?.userIdHint ? { userId: opts.userIdHint } : undefined);
       window.clearTimeout(timeoutId);
 
       if (activeProfileLoadIdRef.current !== loadId) {
@@ -292,17 +307,27 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     await loadWorkerWhenSessionExists();
   }, [loadWorkerWhenSessionExists]);
 
-  const syncSessionAndWorker = useCallback(async (options?: { resumeToken?: number; source?: 'init' | 'resume' | 'manual' }) => {
+  const syncSessionAndWorker = useCallback(async (options?: {
+    resumeToken?: number;
+    source?: 'init' | 'resume' | 'manual' | 'authResume';
+    /** From onAuthStateChange — avoids await safeGetSession() on auth-triggered sync. */
+    sessionHint?: Session | null;
+  }) => {
     const token = options?.resumeToken;
     const source = options?.source ?? 'manual';
     // #region agent log
-    _dbg('WC:sync:entry','syncSessionAndWorker called',{token,source,workerExists:workerRef.current!=null,profileLoadStatus,hasSession:sessionRef.current!==undefined && sessionRef.current!==null});
+    _dbg('WC:sync:entry','syncSessionAndWorker called',{token,source,workerExists:workerRef.current!=null,profileLoadStatus:profileLoadStatusRef.current,hasSession:sessionRef.current!==undefined && sessionRef.current!==null});
     // #endregion
     try {
-      // On tab resume, keep the already-authenticated UI rendered while we reconcile in background.
-      // If we have a known-good in-memory session, do not block UI continuity on getSession().
-      const cached = source === 'resume' ? (sessionRef.current ?? null) : null;
-      const s = cached ?? (await safeGetSession());
+      let s: Session | null = null;
+      if (options?.sessionHint != null) {
+        s = options.sessionHint;
+      } else if (source === 'resume' || source === 'authResume') {
+        const cached = sessionRef.current ?? null;
+        s = cached ?? (await safeGetSession());
+      } else {
+        s = await safeGetSession();
+      }
       // #region agent log
       _dbg('WC:sync:gotSession','safeGetSession result',{hasSession:!!s,userId:s?.user?.id,expiresAt:s?.expires_at,token});
       // #endregion
@@ -316,15 +341,20 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       }
       if (s) {
         // #region agent log
-        _dbg('WC:sync:hasSession','session exists → loading worker',{token,userId:s.user?.id,currentLoadId:activeProfileLoadIdRef.current});
+        _dbg('WC:sync:hasSession','session exists → consider worker reload',{token,userId:s.user?.id,currentLoadId:activeProfileLoadIdRef.current});
         // #endregion
         const currentWorker = workerRef.current;
         const workerUserId = currentWorker?.id ? String(currentWorker.id) : null;
         const sessionUserId = s.user?.id ? String(s.user.id) : null;
         const shouldReloadWorker =
           currentWorker == null || (workerUserId && sessionUserId && workerUserId !== sessionUserId);
+        const resumeLike = source === 'resume' || source === 'authResume';
+        const preserveUi = resumeLike && currentWorker != null;
         if (shouldReloadWorker) {
-          await loadWorkerWithTimeoutFeedback({ preserveUiIfAlreadyReady: source === 'resume' });
+          await loadWorkerWithTimeoutFeedback({
+            preserveUiIfAlreadyReady: preserveUi,
+            userIdHint: sessionUserId ?? undefined,
+          });
         } else {
           // #region agent log
           _dbg('WC:sync:skipWorkerReload','worker already loaded and userId unchanged; skipping reload',{token,source,workerUserId,sessionUserId});
@@ -415,15 +445,15 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   useEffect(() => {
     return subscribeTabResume((gen) => {
       // #region agent log
-      _dbg('WC:tabResume','tab resume flush → invalidate + syncSessionAndWorker',{gen,currentLoadId:activeProfileLoadIdRef.current,hadWorker:workerRef.current!=null});
+      _dbg('WC:tabResume','tab resume flush → syncSessionAndWorker (unified single-flight)',{gen,currentLoadId:activeProfileLoadIdRef.current,hadWorker:workerRef.current!=null});
       // #endregion
       if (SHELL_RESUME_DEBUG) {
         console.log('[shell-resume-debug] WorkerContext tab resume flush', { t: Date.now(), gen });
       }
-      // Single-flight: do not start another resume sync if one is already in flight.
-      if (resumeSyncInFlightRef.current) {
+      // Single-flight shared with onAuthStateChange — prevents resume/auth storms.
+      if (unifiedSyncInFlightRef.current) {
         // #region agent log
-        _dbg('WC:tabResume:skip','resume sync skipped (in-flight)',{gen,inFlightToken:resumeSyncTokenRef.current});
+        _dbg('WC:tabResume:skip','resume sync skipped (unified in-flight)',{gen,inFlightToken:resumeSyncTokenRef.current});
         // #endregion
         return;
       }
@@ -434,9 +464,9 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
         })
         .finally(() => {
           if (resumeSyncTokenRef.current === gen) resumeSyncTokenRef.current = null;
-          resumeSyncInFlightRef.current = null;
+          unifiedSyncInFlightRef.current = null;
         });
-      resumeSyncInFlightRef.current = p;
+      unifiedSyncInFlightRef.current = p;
     });
   }, [invalidateActiveProfileLoad, syncSessionAndWorker]);
 
@@ -458,7 +488,30 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && s) {
         setSession(s);
         if (!bootstrapCompleteRef.current) return;
-        await loadWorkerWhenSessionExists();
+
+        const uid = s.user?.id;
+        const w = workerRef.current;
+        const sameUser = Boolean(uid && w && String(w.id) === String(uid));
+        if (sameUser) {
+          // #region agent log
+          _dbg('WC:authChange:skipRedundant','redundant auth event — same user + worker; no reload',{event,userId:uid});
+          // #endregion
+          return;
+        }
+
+        if (unifiedSyncInFlightRef.current) {
+          // #region agent log
+          _dbg('WC:authChange:skipInFlight','auth sync skipped (unified in-flight)',{event,userId:uid});
+          // #endregion
+          return;
+        }
+
+        const p = syncSessionAndWorker({ source: 'authResume', sessionHint: s })
+          .catch(() => {})
+          .finally(() => {
+            unifiedSyncInFlightRef.current = null;
+          });
+        unifiedSyncInFlightRef.current = p;
       }
       if (event === 'INITIAL_SESSION') {
         setSession(s ?? null);
