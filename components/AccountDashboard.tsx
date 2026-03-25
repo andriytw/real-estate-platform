@@ -1990,7 +1990,10 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   };
 
   // Функція для виконання transfer інвентарю після підтвердження завдання
-  const executeInventoryTransfer = async (transferData: any) => {
+  const executeInventoryTransfer = async (
+    transferData: any,
+    taskLike?: Pick<CalendarEvent, 'workerId' | 'assignedWorkerId'>
+  ) => {
     try {
       const { transferData: items, propertyId } = transferData;
 
@@ -2004,6 +2007,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         return;
       }
 
+      const movementWorkerId = getCalendarEventAssigneeId(taskLike) || undefined;
+
       // 1) Зменшити залишки на складі + записати рух
       for (const item of items) {
         await warehouseService.decreaseStockQuantity(item.stockId, item.quantity);
@@ -2014,7 +2019,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
           quantity: item.quantity,
           reason: 'Transfer to property (confirmed)',
           propertyId: propertyId,
-          workerId: undefined,
+          workerId: movementWorkerId,
           invoiceId: undefined,
         });
       }
@@ -2189,7 +2194,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
             try {
               const parsed = JSON.parse(task.description);
               if (parsed.action === 'transfer_inventory' && parsed.transferData && !parsed.transferExecuted) {
-                await executeInventoryTransfer(parsed);
+                await executeInventoryTransfer(parsed, task);
                 parsed.transferExecuted = true;
                 await tasksService.update(task.id, { description: JSON.stringify(parsed) });
               }
@@ -2422,7 +2427,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
               if (parsed.action === 'transfer_inventory' && parsed.transferData) {
                 // Перевірити, чи transfer вже виконано (можна додати прапорець в parsed)
                 if (!parsed.transferExecuted) {
-                  await executeInventoryTransfer(parsed);
+                  await executeInventoryTransfer(parsed, task);
                   
                   // Позначити transfer як виконаний в description
                   parsed.transferExecuted = true;
@@ -5866,7 +5871,7 @@ ${internalCompany} Team`;
           const parsed = JSON.parse(updatedEvent.description);
           if (parsed?.action === 'transfer_inventory' && parsed?.transferData && !parsed?.transferExecuted) {
             try {
-              await executeInventoryTransfer(parsed);
+              await executeInventoryTransfer(parsed, updatedEvent);
             } catch (finalizeErr: any) {
               const errMsg = finalizeErr?.message ?? String(finalizeErr);
               console.error('❌ Finalize inventory transfer failed', { task_id: updatedEvent.id, error: errMsg });
