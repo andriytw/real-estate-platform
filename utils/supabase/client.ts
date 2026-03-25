@@ -36,12 +36,6 @@ async function processLock<R>(
   acquireTimeout: number,
   fn: () => Promise<R>,
 ): Promise<R> {
-  // #region agent log
-  const t0 = Date.now();
-  const entry = {t:t0,loc:'supabase:processLock',msg:'lock acquire',name,acquireTimeout};
-  try { console.warn('[DBG-978438]', JSON.stringify(entry)); } catch {}
-  try { fetch('http://127.0.0.1:7242/ingest/1aed333d-0076-47f3-8bf4-1ca5f822ecdd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'978438'},body:JSON.stringify({sessionId:'978438',location:'client.ts:processLock',message:'lock acquire',data:{name,acquireTimeout},timestamp:t0})}).catch(()=>{}); } catch {}
-  // #endregion
   const prev = PROCESS_LOCKS[name] ?? Promise.resolve();
   const current = (acquireTimeout >= 0
     ? Promise.race([
@@ -51,16 +45,7 @@ async function processLock<R>(
         ),
       ])
     : prev.catch(() => null)
-  ).then(async () => {
-    const result = await fn();
-    // #region agent log
-    const dt = Date.now() - t0;
-    const doneEntry = {t:Date.now(),loc:'supabase:processLock',msg:'lock released',name,durationMs:dt};
-    try { console.warn('[DBG-978438]', JSON.stringify(doneEntry)); } catch {}
-    try { fetch('http://127.0.0.1:7242/ingest/1aed333d-0076-47f3-8bf4-1ca5f822ecdd',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'978438'},body:JSON.stringify({sessionId:'978438',location:'client.ts:processLock',message:'lock released',data:{name,durationMs:dt},timestamp:Date.now()})}).catch(()=>{}); } catch {}
-    // #endregion
-    return result;
-  });
+  ).then(() => fn());
   PROCESS_LOCKS[name] = current.catch(() => null);
   return current;
 }

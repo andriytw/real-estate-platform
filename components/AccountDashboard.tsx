@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   SHELL_RESUME_DEBUG,
@@ -11,40 +10,6 @@ import {
 import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Ruler, Square, Download, LayoutGrid, Bed, MoreVertical, Archive, RotateCcw } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 
-// #region agent log
-const __PROOF_ENDPOINT_978438 =
-  'http://127.0.0.1:7242/ingest/1aed333d-0076-47f3-8bf4-1ca5f822ecdd' as const;
-function __getProofRunId978438(): string {
-  try {
-    const k = '__proofRunId978438';
-    const existing = sessionStorage.getItem(k);
-    if (existing) return existing;
-    const id = `pr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    sessionStorage.setItem(k, id);
-    return id;
-  } catch {
-    return `pr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  }
-}
-const __proofRunId978438 = __getProofRunId978438();
-function __proofMark978438(location: string, marker: string, data?: Record<string, unknown>) {
-  try {
-    fetch(__PROOF_ENDPOINT_978438, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '978438' },
-      body: JSON.stringify({
-        sessionId: '978438',
-        runId: __proofRunId978438,
-        hypothesisId: 'proof',
-        location,
-        message: marker,
-        data: { proofRunId: __proofRunId978438, ...(data ?? {}) },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-  } catch {}
-}
-// #endregion
 import AdminCalendar from './AdminCalendar';
 import AdminMessages from './AdminMessages';
 import SalesCalendar from './SalesCalendar';
@@ -4832,9 +4797,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         },
         { idempotencyKey: traceId }
       );
-      // #region agent log
-      __proofMark978438('AccountDashboard.tsx:directBooking:afterCommandResolved', 'directBooking:afterCommandResolved', { traceId });
-      // #endregion
 
       directBookingIdempotencyKeyRef.current = null;
       setOffers((prev) => [savedOffer, ...prev]);
@@ -4861,15 +4823,9 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         recipientPhone: draft.shared.phone?.trim() || undefined,
       });
       setToastMessage('Booking created from calendar.');
-      // #region agent log
-      __proofMark978438('AccountDashboard.tsx:directBooking:beforeScheduleLoadReservations', 'directBooking:beforeScheduleLoadReservations', { traceId });
-      // #endregion
       setTimeout(() => {
         loadReservations().catch((e) => console.error('[AccountDashboard] loadReservations after direct booking', e));
       }, 0);
-      // #region agent log
-      __proofMark978438('AccountDashboard.tsx:directBooking:finish', 'directBooking:finish', { traceId });
-      // #endregion
     } catch (err) {
       console.error('[AccountDashboard] handleSaveDirectBookingFromCalendar', err);
       const msg =
@@ -5461,12 +5417,6 @@ ${internalCompany} Team`;
   };
 
   const refreshDataAfterPaymentConfirmed = async (newBookingId: string) => {
-    // #region agent log
-    __proofMark978438('AccountDashboard.tsx:refreshAfterPayment:start', 'refreshAfterPayment:start', { newBookingId });
-    // #endregion
-    // #region agent log
-    __proofMark978438('AccountDashboard.tsx:refreshAfterPayment:beforeReservations', 'refreshAfterPayment:before reservationsService.getAll()', {});
-    // #endregion
     const reservationsData = await reservationsService.getAll();
     const transformedReservations: ReservationData[] = reservationsData.map(res => ({
       id: res.id as any,
@@ -5506,35 +5456,17 @@ ${internalCompany} Team`;
       createdAt: res.createdAt,
     })) as ReservationData[];
     setReservations(transformedReservations);
-    // #region agent log
-    __proofMark978438('AccountDashboard.tsx:refreshAfterPayment:beforeBookings', 'refreshAfterPayment:before bookingsService.getAll()', {});
-    // #endregion
     const bookings = await bookingsService.getAll();
     setConfirmedBookings(bookings);
-    // #region agent log
-    __proofMark978438('AccountDashboard.tsx:refreshAfterPayment:beforeOffers', 'refreshAfterPayment:before offersService.getAll()', {});
-    // #endregion
     const offersData = await offersService.getAll();
     setOffers(offersData);
-    // #region agent log
-    __proofMark978438('AccountDashboard.tsx:refreshAfterPayment:beforeRefreshMultiOffers', 'refreshAfterPayment:before refreshMultiApartmentOffers()', {});
-    // #endregion
     await refreshMultiApartmentOffers();
-    // #region agent log
-    __proofMark978438('AccountDashboard.tsx:refreshAfterPayment:beforeProformas', 'refreshAfterPayment:before invoicesService.getProformas()', {});
-    // #endregion
     const list = await invoicesService.getProformas();
     setProformas(list);
-    // #region agent log
-    __proofMark978438('AccountDashboard.tsx:refreshAfterPayment:beforeInvoices', 'refreshAfterPayment:before invoicesService.getAll()', {});
-    // #endregion
     const invoicesData = await invoicesService.getAll();
     setInvoices(invoicesData);
     setProformaChildInvoices({});
     setExpandedProformaIds(new Set());
-    // #region agent log
-    __proofMark978438('AccountDashboard.tsx:refreshAfterPayment:beforePaymentProofs', 'refreshAfterPayment:before loadPaymentProofsForInvoiceIds(...)', { count: list.length });
-    // #endregion
     await loadPaymentProofsForInvoiceIds(list.map(p => p.id));
 
     const newBooking = bookings.find(b => String(b.id) === String(newBookingId));
@@ -5546,12 +5478,6 @@ ${internalCompany} Team`;
       const hasEinzugTask = existingTasks.some(e => e.type === 'Einzug');
       const hasAuszugTask = existingTasks.some(e => e.type === 'Auszug');
       if (!hasEinzugTask || !hasAuszugTask) {
-        // #region agent log
-        __proofMark978438('AccountDashboard.tsx:refreshAfterPayment:beforeTasksLoop', 'refreshAfterPayment:before tasks create loop', {
-          hasEinzugTask,
-          hasAuszugTask,
-        });
-        // #endregion
         const property = properties.find(p => p.id === newBooking.propertyId || p.id === newBooking.roomId || String(p.id) === String(newBooking.propertyId));
         const propertyName = property?.title || property?.address || newBooking.address || newBooking.roomId || 'Unknown';
         const tasks = createFacilityTasksForBooking(newBooking, propertyName);
@@ -5591,9 +5517,6 @@ ${internalCompany} Team`;
         }));
       }
     }
-    // #region agent log
-    __proofMark978438('AccountDashboard.tsx:refreshAfterPayment:finish', 'refreshAfterPayment:finish', { newBookingId });
-    // #endregion
   };
 
   const handleRetryProofConfirmation = async (proforma: InvoiceData, proof: PaymentProof) => {
@@ -5659,13 +5582,6 @@ ${internalCompany} Team`;
           );
           savedInvoice = res.savedInvoice;
         }
-        // #region agent log
-        __proofMark978438('AccountDashboard.tsx:saveInvoice:afterCommandResolved', 'saveInvoice:afterCommandResolved', {
-          traceId,
-          mode: mode || 'save',
-          hasInvoiceId: !!savedInvoice?.id,
-        });
-        // #endregion
         invoiceIdempotencyKeyRef.current = null;
 
         const priorListed = invoices.some((inv) => inv.id === savedInvoice.id);
@@ -5684,25 +5600,16 @@ ${internalCompany} Team`;
         }
 
         if (pendingOfferItemForInvoice && savedInvoice.documentType === 'proforma') {
-          // #region agent log
-          __proofMark978438('AccountDashboard.tsx:saveInvoice:beforeScheduleRefreshMultiOffers', 'saveInvoice:before refreshMultiApartmentOffers() (scheduled)', { traceId });
-          // #endregion
           setTimeout(() => {
             refreshMultiApartmentOffers().catch((e) => console.error('[AccountDashboard] refresh multi-offers after invoice', e));
           }, 0);
         }
 
         if (invoice.bookingId) {
-          // #region agent log
-          __proofMark978438('AccountDashboard.tsx:saveInvoice:beforeScheduleLoadReservations', 'saveInvoice:before loadReservations() (scheduled)', { traceId });
-          // #endregion
           setTimeout(() => {
             loadReservations().catch((e) => console.error('[AccountDashboard] loadReservations after invoice save', e));
           }, 0);
         }
-        // #region agent log
-        __proofMark978438('AccountDashboard.tsx:saveInvoice:finish', 'saveInvoice:finish', { traceId });
-        // #endregion
         
         const isProformaSend = mode === 'send' && savedInvoice.documentType === 'proforma' && !invoice.proformaId;
         if (isProformaSend) {
@@ -11317,9 +11224,6 @@ ${internalCompany} Team`;
           </div>
           <button
             onClick={async () => {
-              // #region agent log
-              __proofMark978438('AccountDashboard.tsx:logout:uiClick', 'logout:ui:click', { source: 'AccountDashboardSidebar' });
-              // #endregion
               try {
                 await logout();
                 window.location.href = '/';

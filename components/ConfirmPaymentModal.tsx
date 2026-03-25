@@ -8,41 +8,6 @@ import {
   parseCommandApiErrorMessage,
 } from '../services/commandClient';
 
-// #region agent log
-const __PROOF_ENDPOINT_978438 =
-  'http://127.0.0.1:7242/ingest/1aed333d-0076-47f3-8bf4-1ca5f822ecdd' as const;
-function __getProofRunId978438(): string {
-  try {
-    const k = '__proofRunId978438';
-    const existing = sessionStorage.getItem(k);
-    if (existing) return existing;
-    const id = `pr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    sessionStorage.setItem(k, id);
-    return id;
-  } catch {
-    return `pr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  }
-}
-const __proofRunId978438 = __getProofRunId978438();
-function __proofMark978438(location: string, marker: string, data?: Record<string, unknown>) {
-  try {
-    fetch(__PROOF_ENDPOINT_978438, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '978438' },
-      body: JSON.stringify({
-        sessionId: '978438',
-        runId: __proofRunId978438,
-        hypothesisId: 'proof',
-        location,
-        message: marker,
-        data: { proofRunId: __proofRunId978438, ...(data ?? {}) },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-  } catch {}
-}
-// #endregion
-
 function formatConfirmPaymentFailure(e: CommandClientError): string {
   const base = parseCommandApiErrorMessage(e.body) || e.message;
   if (!e.body || typeof e.body !== 'object') return base;
@@ -122,19 +87,8 @@ const ConfirmPaymentModal: React.FC<ConfirmPaymentModalProps> = ({
         fd,
         { idempotencyKey: idemKey, timeoutMs: COMMAND_UPLOAD_TIMEOUT_MS }
       );
-      // #region agent log
-      __proofMark978438('ConfirmPaymentModal.tsx:afterCommandResolved', 'confirmPayment:afterCommandResolved', {
-        hasBookingId: !!bookingId,
-      });
-      // #endregion
       idempotencyKeyRef.current = null;
-      // #region agent log
-      __proofMark978438('ConfirmPaymentModal.tsx:beforeOnConfirmed', 'confirmPayment:beforeOnConfirmed', {});
-      // #endregion
       await onConfirmed(bookingId);
-      // #region agent log
-      __proofMark978438('ConfirmPaymentModal.tsx:afterOnConfirmed', 'confirmPayment:afterOnConfirmed', {});
-      // #endregion
       handleClose();
     } catch (e: unknown) {
       if (e instanceof CommandClientError) {
