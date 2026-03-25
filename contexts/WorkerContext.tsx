@@ -95,10 +95,16 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   const bootstrapCompleteRef = useRef(false);
   const activeProfileLoadIdRef = useRef(0);
   const workerRef = useRef<Worker | null>(null);
+  const sessionRef = useRef<Session | null | undefined>(undefined);
+  const resumeSyncInFlightRef = useRef<Promise<void> | null>(null);
+  const resumeSyncTokenRef = useRef<number | null>(null);
 
   useEffect(() => {
     workerRef.current = worker;
   }, [worker]);
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   /** loading = session not yet determined (session === undefined) */
   const loading = session === undefined;
@@ -203,13 +209,15 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     activeProfileLoadIdRef.current += 1;
   }, []);
 
-  const loadWorkerWithTimeoutFeedback = useCallback(async (): Promise<ProfileLoadResult> => {
+  const loadWorkerWithTimeoutFeedback = useCallback(async (opts?: { preserveUiIfAlreadyReady?: boolean }): Promise<ProfileLoadResult> => {
     const loadId = activeProfileLoadIdRef.current + 1;
     activeProfileLoadIdRef.current = loadId;
     // #region agent log
     _dbg('WC:loadWorker:START','profile load START - profileLoadStatus→loading',{loadId,hadWorker:workerRef.current!=null});
     // #endregion
-    setProfileLoadStatus('loading');
+    if (!(opts?.preserveUiIfAlreadyReady && workerRef.current != null && profileLoadStatus === 'ready')) {
+      setProfileLoadStatus('loading');
+    }
     setWorkerError(null);
 
     const timeoutId = window.setTimeout(() => {
@@ -284,13 +292,17 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     await loadWorkerWhenSessionExists();
   }, [loadWorkerWhenSessionExists]);
 
-  const syncSessionAndWorker = useCallback(async (options?: { resumeToken?: number }) => {
+  const syncSessionAndWorker = useCallback(async (options?: { resumeToken?: number; source?: 'init' | 'resume' | 'manual' }) => {
     const token = options?.resumeToken;
+    const source = options?.source ?? 'manual';
     // #region agent log
-    _dbg('WC:sync:entry','syncSessionAndWorker called',{token,workerExists:workerRef.current!=null,profileLoadStatus});
+    _dbg('WC:sync:entry','syncSessionAndWorker called',{token,source,workerExists:workerRef.current!=null,profileLoadStatus,hasSession:sessionRef.current!==undefined && sessionRef.current!==null});
     // #endregion
     try {
-      const s = await safeGetSession();
+      // On tab resume, keep the already-authenticated UI rendered while we reconcile in background.
+      // If we have a known-good in-memory session, do not block UI continuity on getSession().
+      const cached = source === 'resume' ? (sessionRef.current ?? null) : null;
+      const s = cached ?? (await safeGetSession());
       // #region agent log
       _dbg('WC:sync:gotSession','safeGetSession result',{hasSession:!!s,userId:s?.user?.id,expiresAt:s?.expires_at,token});
       // #endregion
@@ -298,32 +310,55 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       if (import.meta.env.DEV && typeof window !== 'undefined') {
         console.log('[DEV] WorkerContext: after getSession() (sync) hasSession=', !!s, 'userId=', s?.user?.id);
       }
-      setSession(s ?? null);
+      // Do not clear or flip session during resume reconciliation if we already have a session.
+      if (!(source === 'resume' && sessionRef.current)) {
+        setSession(s ?? null);
+      }
       if (s) {
         // #region agent log
         _dbg('WC:sync:hasSession','session exists → loading worker',{token,userId:s.user?.id,currentLoadId:activeProfileLoadIdRef.current});
         // #endregion
-        await loadWorkerWithTimeoutFeedback();
+        const currentWorker = workerRef.current;
+        const workerUserId = currentWorker?.id ? String(currentWorker.id) : null;
+        const sessionUserId = s.user?.id ? String(s.user.id) : null;
+        const shouldReloadWorker =
+          currentWorker == null || (workerUserId && sessionUserId && workerUserId !== sessionUserId);
+        if (shouldReloadWorker) {
+          await loadWorkerWithTimeoutFeedback({ preserveUiIfAlreadyReady: source === 'resume' });
+        } else {
+          // #region agent log
+          _dbg('WC:sync:skipWorkerReload','worker already loaded and userId unchanged; skipping reload',{token,source,workerUserId,sessionUserId});
+          // #endregion
+        }
         if (token != null && getTabResumeGeneration() !== token) return;
       } else {
         // #region agent log
         _dbg('WC:sync:NO_SESSION','NO SESSION on resume - setting worker=null, session=null',{token});
         // #endregion
-        invalidateActiveProfileLoad();
-        setProfileLoadStatus('idle');
-        setWorker(null);
-        setWorkerError(null);
+        // On resume, absence/timeout is not equivalent to explicit sign-out.
+        if (source !== 'resume') {
+          invalidateActiveProfileLoad();
+          setProfileLoadStatus('idle');
+          setWorker(null);
+          setWorkerError(null);
+        }
       }
     } catch (err) {
       // #region agent log
       _dbg('WC:sync:CATCH','syncSessionAndWorker CAUGHT ERROR - setting worker=null, session=null',{error:String(err),token});
       // #endregion
       if (token != null && getTabResumeGeneration() !== token) return;
-      invalidateActiveProfileLoad();
-      setSession(null);
-      setProfileLoadStatus('idle');
-      setWorker(null);
-      setWorkerError(null);
+      if (source !== 'resume') {
+        invalidateActiveProfileLoad();
+        setSession(null);
+        setProfileLoadStatus('idle');
+        setWorker(null);
+        setWorkerError(null);
+      } else {
+        // #region agent log
+        _dbg('WC:sync:resumeErrorIgnored','resume sync error ignored to preserve UI continuity',{error:String(err),token});
+        // #endregion
+      }
     }
   }, [invalidateActiveProfileLoad, loadWorkerWithTimeoutFeedback]);
 
@@ -385,8 +420,23 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       if (SHELL_RESUME_DEBUG) {
         console.log('[shell-resume-debug] WorkerContext tab resume flush', { t: Date.now(), gen });
       }
-      invalidateActiveProfileLoad();
-      void syncSessionAndWorker({ resumeToken: gen });
+      // Single-flight: do not start another resume sync if one is already in flight.
+      if (resumeSyncInFlightRef.current) {
+        // #region agent log
+        _dbg('WC:tabResume:skip','resume sync skipped (in-flight)',{gen,inFlightToken:resumeSyncTokenRef.current});
+        // #endregion
+        return;
+      }
+      resumeSyncTokenRef.current = gen;
+      const p = syncSessionAndWorker({ resumeToken: gen, source: 'resume' })
+        .catch(() => {
+          /* errors handled inside syncSessionAndWorker for resume */
+        })
+        .finally(() => {
+          if (resumeSyncTokenRef.current === gen) resumeSyncTokenRef.current = null;
+          resumeSyncInFlightRef.current = null;
+        });
+      resumeSyncInFlightRef.current = p;
     });
   }, [invalidateActiveProfileLoad, syncSessionAndWorker]);
 
@@ -450,33 +500,35 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
     // #region agent log
     __proofMark978438('WorkerContext.tsx:logout:fnStart', 'logout:fn:start', {});
     // #endregion
+    // Optimistic local clear; network signOut may hang. Keep logout separate from resume fixes.
+    invalidateActiveProfileLoad();
+    bootstrapCompleteRef.current = false;
+    initialWorkerLoadStartedRef.current = false;
+    setSession(null);
+    setProfileLoadStatus('idle');
+    setWorker(null);
+    setWorkerError(null);
     try {
       // #region agent log
       __proofMark978438('WorkerContext.tsx:logout:beforeSignOut', 'logout:beforeSignOut', {});
       // #endregion
-      await supabase.auth.signOut();
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('signOut timeout')), 5000)),
+      ]);
       // #region agent log
       __proofMark978438('WorkerContext.tsx:logout:afterSignOut', 'logout:afterSignOut', {});
       // #endregion
-      invalidateActiveProfileLoad();
-      bootstrapCompleteRef.current = false;
-      initialWorkerLoadStartedRef.current = false;
-      setSession(null);
-      setProfileLoadStatus('idle');
-      setWorker(null);
-      setWorkerError(null);
     } catch (e) {
       // #region agent log
       __proofMark978438('WorkerContext.tsx:logout:catch', 'logout:catch', {
         error: e instanceof Error ? e.message : String(e),
       });
       // #endregion
-      throw e;
     } finally {
       // #region agent log
       __proofMark978438('WorkerContext.tsx:logout:finally', 'logout:finally', {});
       // #endregion
-      /* session/worker cleared above */
     }
   }, [invalidateActiveProfileLoad]);
 
