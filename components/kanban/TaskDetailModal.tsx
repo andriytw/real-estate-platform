@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Calendar, Clock, User, CheckCircle2, Circle, Building2, Wrench, Check, Image as ImageIcon, FileVideo, Zap, Droplets, Flame, ClipboardList, Send, Paperclip, FileIcon, FileText } from 'lucide-react';
+import { X, Calendar, Clock, User, CheckCircle2, Circle, Building2, Wrench, Check, Image as ImageIcon, FileVideo, Zap, Droplets, Flame, ClipboardList, Send, Paperclip, FileIcon, FileText, Trash2 } from 'lucide-react';
 import { tasksService, workersService, propertiesService, getTaskChatMessages, insertTaskChatMessage, insertTaskChatMessageWithAttachment, getTaskAttachmentSignedUrl, type TaskChatMessageRow, type TaskChatAttachment } from '../../services/supabaseService';
 import { CalendarEvent, TaskStatus, Property, Worker } from '../../types';
 import { getTaskColor } from '../../utils/taskColors';
@@ -67,6 +67,12 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const [attachmentUrlCache, setAttachmentUrlCache] = useState<Record<string, AttachmentCacheEntry>>({});
   const [lightboxAtt, setLightboxAtt] = useState<TaskChatAttachment | null>(null);
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
+  const [kanbanDeleteConfirmOpen, setKanbanDeleteConfirmOpen] = useState(false);
+  const [kanbanDeleteSubmitting, setKanbanDeleteSubmitting] = useState(false);
+
+  useEffect(() => {
+    setKanbanDeleteConfirmOpen(false);
+  }, [task?.id]);
 
   useEffect(() => {
     if (isOpen && task) {
@@ -763,6 +769,56 @@ const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 </span>
               </div>
             </div>
+
+            {isFacilityTask && onDeleteTask && (
+              <div className="pt-2 border-t border-gray-800">
+                {!kanbanDeleteConfirmOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setKanbanDeleteConfirmOpen(true)}
+                    className="flex items-center gap-2 text-xs font-medium text-red-400 hover:text-red-300 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete task
+                  </button>
+                ) : (
+                  <div className="rounded-lg border border-red-900/40 bg-red-950/20 p-3 space-y-2">
+                    <p className="text-xs text-gray-300 leading-relaxed">
+                      Remove this Facility task only. Rent, payments, bookings, and offers are not affected.
+                      Completed warehouse or stock movements are not reversed.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={kanbanDeleteSubmitting}
+                        onClick={() => setKanbanDeleteConfirmOpen(false)}
+                        className="px-3 py-1.5 text-xs rounded-md border border-gray-600 text-gray-300 hover:bg-gray-800/80 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={kanbanDeleteSubmitting}
+                        onClick={async () => {
+                          if (!onDeleteTask || !task) return;
+                          setKanbanDeleteSubmitting(true);
+                          try {
+                            await onDeleteTask(task.id);
+                          } catch (err) {
+                            const msg = err instanceof Error ? err.message : String(err);
+                            alert(`Could not delete task: ${msg}`);
+                            setKanbanDeleteSubmitting(false);
+                          }
+                        }}
+                        className="px-3 py-1.5 text-xs rounded-md bg-red-600 hover:bg-red-500 text-white disabled:opacity-50"
+                      >
+                        {kanbanDeleteSubmitting ? 'Deleting…' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           </div>
 

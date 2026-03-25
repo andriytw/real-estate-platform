@@ -3,6 +3,7 @@ import { CalendarEvent, Property } from '../../types';
 import { getTaskColor, getTaskBadgeColor, getTaskTextColor } from '../../utils/taskColors';
 import { AlertTriangle, CheckCircle2, Circle, AlertCircle, Building2, Calendar } from 'lucide-react';
 import { propertiesService } from '../../services/supabaseService';
+import { getFacilityTaskPrimaryLine } from '../../lib/facilityTaskCardDisplay';
 
 function formatPropertyLabelAddressFirst(p: Property): string {
   const address = p.address ?? p.fullAddress ?? (p as any).full_address ?? '—';
@@ -51,6 +52,7 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
   const titleNorm = normalize(task.title ?? '');
   const unitNorm = property ? normalize(property.title ?? '') : null;
   const titleEqualsUnit = Boolean(property && titleNorm && titleNorm === unitNorm);
+  const isExplicitFacilityTask = task.department === 'facility';
 
   // Priority Icon
   const getPriorityIcon = () => {
@@ -103,7 +105,20 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
       </div>
 
       {/* Title */}
-      {titleEqualsUnit ? (
+      {isExplicitFacilityTask ? (
+        <div className="mb-1 min-w-0">
+          <h4
+            className={`text-sm font-medium min-w-0 truncate transition-colors ${
+              isCompleted ? 'text-gray-500 line-through' : `${textColor} group-hover:opacity-80`
+            }`}
+          >
+            {getFacilityTaskPrimaryLine(task, property)}
+          </h4>
+          {propLabel && (
+            <p className="text-xs text-gray-400 truncate mt-0.5 min-w-0">{propLabel}</p>
+          )}
+        </div>
+      ) : titleEqualsUnit ? (
         <h4 className={`text-sm font-medium mb-1 min-w-0 truncate transition-colors ${
           isCompleted ? 'text-gray-500 line-through' : `${textColor} group-hover:opacity-80`
         }`}>
@@ -130,7 +145,7 @@ const KanbanTaskCard: React.FC<KanbanTaskCardProps> = ({ task, onClick }) => {
       </p>
 
       {/* Property / Location — only when no property (fallback) and not duplicating title */}
-      {!titleEqualsUnit && !property && (task.locationText || task.propertyId) &&
+      {!isExplicitFacilityTask && !titleEqualsUnit && !property && (task.locationText || task.propertyId) &&
         normalize(task.locationText ?? '') !== titleNorm && (
         <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-2">
           <Building2 className="w-3 h-3 shrink-0" />

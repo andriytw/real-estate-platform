@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Plus, ChevronDown, ChevronLeft, ChevronRight, Calendar as CalendarIcon, X, Check, Building, Clock, CheckCircle2, MoreHorizontal, User, AlignLeft, Tag, LayoutGrid, List, Filter, Paperclip, Send, Image as ImageIcon, FileText, FileIcon, Mail, ClipboardList, Loader, CheckSquare, ArrowUpDown, Layers, Archive, History, ShieldCheck, Hammer, Video, Download, XCircle } from 'lucide-react';
+import { Plus, ChevronDown, ChevronLeft, ChevronRight, Calendar as CalendarIcon, X, Check, Building, Clock, CheckCircle2, MoreHorizontal, User, AlignLeft, Tag, LayoutGrid, List, Filter, Paperclip, Send, Image as ImageIcon, FileText, FileIcon, Mail, ClipboardList, Loader, CheckSquare, ArrowUpDown, Layers, Archive, History, ShieldCheck, Hammer, Video, Download, XCircle, Trash2 } from 'lucide-react';
 import { MOCK_PROPERTIES } from '../constants';
 import { CalendarEvent, TaskType, TaskStatus, Property, BookingStatus, Worker } from '../types';
 import { updateBookingStatusFromTask } from '../bookingUtils';
@@ -14,6 +14,7 @@ import { useWorker } from '../contexts/WorkerContext';
 import { effectiveDepartmentScope } from '../lib/permissions';
 import { _dbg } from '../lib/tabResumeCoalesce';
 import { safeGetUser } from '../lib/supabaseAuthGuard';
+import { getFacilityTaskPrimaryLine } from '../lib/facilityTaskCardDisplay';
 
 type ViewMode = 'month' | 'week' | 'day';
 
@@ -99,7 +100,13 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   // Selection States
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [viewEvent, setViewEvent] = useState<CalendarEvent | null>(null); // For Task Detail Modal
-  
+  const [facilityDeleteConfirmOpen, setFacilityDeleteConfirmOpen] = useState(false);
+  const [facilityDeleteInProgress, setFacilityDeleteInProgress] = useState(false);
+
+  useEffect(() => {
+    setFacilityDeleteConfirmOpen(false);
+  }, [viewEvent?.id]);
+
   // Filter State
   const [filterTask, setFilterTask] = useState<TaskType | 'All'>('All');
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
@@ -1426,11 +1433,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                       }`}>
                          {!isAccountingCalendar && event.propertyId ? (() => {
                            const prop = propertyList.find(p => p.id === event.propertyId);
-                           const unitTitle = (prop?.title ?? '').trim();
-                           const eventTitle = (event.title ?? '').trim();
-                           const isDuplicateTitle = unitTitle && eventTitle && eventTitle.toLowerCase() === unitTitle.toLowerCase();
-                           const primaryLine = isDuplicateTitle ? ((event.type as string) || event.title) : event.title;
-                           return primaryLine;
+                           return prop ? getFacilityTaskPrimaryLine(event, prop) : (event.title ?? '');
                          })() : event.title}
                       </div>
                       {!isAccountingCalendar && event.propertyId && (() => {
@@ -2062,6 +2065,60 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                               {viewEvent.status.toUpperCase()}
                            </div>
                         </div>
+
+                        {!isAccountingCalendar && viewEvent.department === 'facility' && (
+                          <div className="pt-4 border-t border-gray-800">
+                            {!facilityDeleteConfirmOpen ? (
+                              <button
+                                type="button"
+                                onClick={() => setFacilityDeleteConfirmOpen(true)}
+                                className="flex items-center gap-2 text-xs font-medium text-red-400 hover:text-red-300 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                Delete task
+                              </button>
+                            ) : (
+                              <div className="rounded-lg border border-red-900/40 bg-red-950/20 p-3 space-y-2">
+                                <p className="text-xs text-gray-300 leading-relaxed">
+                                  Remove this Facility task only. Rent, payments, bookings, and offers are not affected.
+                                  Completed warehouse or stock movements are not reversed.
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={facilityDeleteInProgress}
+                                    onClick={() => setFacilityDeleteConfirmOpen(false)}
+                                    className="px-3 py-1.5 text-xs rounded-md border border-gray-600 text-gray-300 hover:bg-gray-800 disabled:opacity-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={facilityDeleteInProgress}
+                                    onClick={async () => {
+                                      if (!viewEvent) return;
+                                      setFacilityDeleteInProgress(true);
+                                      try {
+                                        await tasksService.delete(viewEvent.id);
+                                        setViewEvent(null);
+                                        setFacilityDeleteConfirmOpen(false);
+                                        window.dispatchEvent(new CustomEvent('taskUpdated'));
+                                      } catch (err) {
+                                        const msg = err instanceof Error ? err.message : String(err);
+                                        alert(`Could not delete task: ${msg}`);
+                                      } finally {
+                                        setFacilityDeleteInProgress(false);
+                                      }
+                                    }}
+                                    className="px-3 py-1.5 text-xs rounded-md bg-red-600 hover:bg-red-500 text-white disabled:opacity-50"
+                                  >
+                                    {facilityDeleteInProgress ? 'Deleting…' : 'Delete'}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                      </div>
                   </div>
 
