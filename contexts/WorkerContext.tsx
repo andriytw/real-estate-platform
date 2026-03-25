@@ -16,6 +16,41 @@ import {
 } from '../lib/tabResumeCoalesce';
 import { safeGetSession, safeGetUser } from '../lib/supabaseAuthGuard';
 
+// #region agent log
+const __PROOF_ENDPOINT_978438 =
+  'http://127.0.0.1:7242/ingest/1aed333d-0076-47f3-8bf4-1ca5f822ecdd' as const;
+function __getProofRunId978438(): string {
+  try {
+    const k = '__proofRunId978438';
+    const existing = sessionStorage.getItem(k);
+    if (existing) return existing;
+    const id = `pr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    sessionStorage.setItem(k, id);
+    return id;
+  } catch {
+    return `pr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+}
+const __proofRunId978438 = __getProofRunId978438();
+function __proofMark978438(location: string, marker: string, data?: Record<string, unknown>) {
+  try {
+    fetch(__PROOF_ENDPOINT_978438, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '978438' },
+      body: JSON.stringify({
+        sessionId: '978438',
+        runId: __proofRunId978438,
+        hypothesisId: 'proof',
+        location,
+        message: marker,
+        data: { proofRunId: __proofRunId978438, ...(data ?? {}) },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  } catch {}
+}
+// #endregion
+
 export type ProfileLoadStatus = 'idle' | 'loading' | 'timed_out' | 'error' | 'ready';
 
 interface WorkerContextType {
@@ -412,8 +447,17 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
   }, [loadWorkerWithTimeoutFeedback]);
 
   const logout = useCallback(async () => {
+    // #region agent log
+    __proofMark978438('WorkerContext.tsx:logout:fnStart', 'logout:fn:start', {});
+    // #endregion
     try {
+      // #region agent log
+      __proofMark978438('WorkerContext.tsx:logout:beforeSignOut', 'logout:beforeSignOut', {});
+      // #endregion
       await supabase.auth.signOut();
+      // #region agent log
+      __proofMark978438('WorkerContext.tsx:logout:afterSignOut', 'logout:afterSignOut', {});
+      // #endregion
       invalidateActiveProfileLoad();
       bootstrapCompleteRef.current = false;
       initialWorkerLoadStartedRef.current = false;
@@ -421,7 +465,17 @@ export function WorkerProvider({ children }: WorkerProviderProps) {
       setProfileLoadStatus('idle');
       setWorker(null);
       setWorkerError(null);
+    } catch (e) {
+      // #region agent log
+      __proofMark978438('WorkerContext.tsx:logout:catch', 'logout:catch', {
+        error: e instanceof Error ? e.message : String(e),
+      });
+      // #endregion
+      throw e;
     } finally {
+      // #region agent log
+      __proofMark978438('WorkerContext.tsx:logout:finally', 'logout:finally', {});
+      // #endregion
       /* session/worker cleared above */
     }
   }, [invalidateActiveProfileLoad]);
