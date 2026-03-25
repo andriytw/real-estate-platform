@@ -647,36 +647,38 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
         {/* Available Apartments — layout unchanged from product perspective; own row below KPIs */}
         <div className="w-full">
           <div className={availableApartmentsTileClass}>
-            <div className={tileTitleClass}>Available Apartments</div>
-            <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-gray-500">{availabilityDateStr}</span>
-              <div className="flex items-center gap-1">
-                {(['Today', 'Tomorrow', 'Day+2'] as const).map((label, i) => {
-                  const d = new Date(TODAY);
-                  d.setDate(d.getDate() + i);
-                  const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                  const isActive = availabilityDateStr === dStr;
-                  return (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => setAvailabilityDate(new Date(d))}
-                      className={`rounded px-1.5 py-0.5 text-[10px] transition-colors sm:text-[11px] ${isActive ? 'bg-emerald-600/30 text-emerald-400' : 'bg-gray-700/50 text-gray-400 hover:text-white'}`}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-                <input
-                  type="date"
-                  value={availabilityDateStr}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v) setAvailabilityDate(new Date(v + 'T12:00:00'));
-                  }}
-                  className="ml-1 rounded border border-gray-600 bg-[#161B22] px-1.5 py-0.5 text-[10px] text-white focus:outline-none focus:border-emerald-500 sm:text-[11px]"
-                />
-              </div>
+            {/* Title + static date on one row (same data as before) */}
+            <div className="mb-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <span className={`${tileTitleClass} mb-0`}>Available Apartments</span>
+              <span className="shrink-0 text-[10px] tabular-nums text-gray-500 sm:text-[11px]">{availabilityDateStr}</span>
+            </div>
+            {/* Quick filters + date picker: left-aligned, tight spacing */}
+            <div className="mb-1.5 flex flex-wrap items-center justify-start gap-1">
+              {(['Today', 'Tomorrow', 'Day+2'] as const).map((label, i) => {
+                const d = new Date(TODAY);
+                d.setDate(d.getDate() + i);
+                const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                const isActive = availabilityDateStr === dStr;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setAvailabilityDate(new Date(d))}
+                    className={`rounded px-1.5 py-0.5 text-[10px] transition-colors sm:text-[11px] ${isActive ? 'bg-emerald-600/30 text-emerald-400' : 'bg-gray-700/50 text-gray-400 hover:text-white'}`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+              <input
+                type="date"
+                value={availabilityDateStr}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v) setAvailabilityDate(new Date(v + 'T12:00:00'));
+                }}
+                className="rounded border border-gray-600 bg-[#161B22] px-1.5 py-0.5 text-[10px] text-white focus:outline-none focus:border-emerald-500 sm:text-[11px]"
+              />
             </div>
             <div className={amountClass}>{totalAvailable}</div>
             <div className={countClass}>Total available</div>
