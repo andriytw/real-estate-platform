@@ -433,28 +433,31 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
     return out.reverse();
   }, []);
 
-  const tileBase = 'rounded-lg border border-gray-700 bg-[#1C1F24] p-4';
-  /** KPI row: equal columns on desktop, no min-width so grid can size evenly */
-  const kpiTileClass = `${tileBase} min-w-0 min-h-[240px] h-full flex flex-col`;
-  /** Available Apartments: same visual shell as before this layout pass */
+  const tileBase = 'rounded-lg border border-gray-700 bg-[#1C1F24] p-2.5';
+  /** KPI row: compact cards, equal columns; height follows content (no forced min-height) */
+  const kpiTileClass = `${tileBase} min-w-0 h-full flex flex-col`;
+  /** Available Apartments: logic unchanged; slightly tighter shell to match dense dashboard */
   const availableApartmentsTileClass = `${tileBase} min-w-[180px]`;
   const kpiInteractive =
     'text-left hover:border-emerald-600/50 hover:bg-[#23262b] transition-colors cursor-pointer';
-  const tileTitleClass = 'text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2';
-  const amountClass = 'text-xl font-bold text-white tabular-nums';
-  const countClass = 'text-sm text-gray-400 mt-1';
+  const tileTitleClass =
+    'text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 leading-tight sm:text-[11px]';
+  const amountClass = 'text-base font-bold text-white tabular-nums leading-tight sm:text-lg';
+  const countClass = 'text-xs text-gray-400 mt-0.5 leading-tight';
+  const kpiFilterBtn =
+    'px-1.5 py-0.5 text-[10px] leading-tight rounded transition-colors sm:text-[11px]';
 
   return (
     <>
-      <div className="px-4 py-4 bg-[#111315] border-b border-gray-800 space-y-4">
+      <div className="px-4 py-2.5 bg-[#111315] border-b border-gray-800 space-y-2">
         {/* Proforma filters */}
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <label className="flex items-center gap-2 text-sm text-gray-400">
             Month
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+              className="bg-[#161B22] border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-emerald-500"
             >
               {monthOptions.map((m) => (
                 <option key={m} value={m}>{m}</option>
@@ -466,7 +469,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
             <select
               value={selectedOperatingCompany}
               onChange={(e) => setSelectedOperatingCompany(e.target.value)}
-              className="bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500 min-w-[160px]"
+              className="min-w-[160px] rounded border border-gray-700 bg-[#161B22] px-2 py-1 text-sm text-white focus:outline-none focus:border-emerald-500"
             >
               {operatingCompanyOptions.map((opt) => (
                 <option key={opt} value={opt}>{opt}</option>
@@ -488,7 +491,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
         </div>
 
         {/* Row 2: six KPI tiles — equal-width columns on large screens */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 w-full items-stretch">
+        <div className="grid w-full grid-cols-1 items-stretch gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 lg:gap-2">
           <button
             type="button"
             onClick={() => setIsPaidModalOpen(true)}
@@ -497,7 +500,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
             <div className={tileTitleClass}>Paid Proformas</div>
             <div className={amountClass}>€{paidGross.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             <div className={countClass}>{paidProformas.length} proformas</div>
-            <div className="mt-2 text-xs text-gray-500 space-y-0.5">
+            <div className="mt-1 text-[10px] leading-snug text-gray-500 sm:text-[11px]">
               <div>Net €{paidNet.toLocaleString('de-DE', { minimumFractionDigits: 2 })} · VAT €{paidVat.toLocaleString('de-DE', { minimumFractionDigits: 2 })} · Kaution €{paidKaution.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</div>
             </div>
           </button>
@@ -509,7 +512,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
             <div className={tileTitleClass}>Open Proformas</div>
             <div className={amountClass}>€{openGross.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             <div className={countClass}>{openProformas.length} proformas</div>
-            <div className="mt-2 text-xs text-gray-500 space-y-0.5">
+            <div className="mt-1 text-[10px] leading-snug text-gray-500 sm:text-[11px]">
               <div>Net €{openNet.toLocaleString('de-DE', { minimumFractionDigits: 2 })} · VAT €{openVat.toLocaleString('de-DE', { minimumFractionDigits: 2 })} · Kaution €{openKaution.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</div>
             </div>
           </button>
@@ -532,7 +535,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
             className={`${kpiTileClass} ${kpiInteractive}`}
           >
             <div className={tileTitleClass}>Incoming Requests</div>
-            <div className="flex flex-wrap items-center gap-1 mb-1" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-0.5 flex flex-wrap items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
               {(['monthly', 'today', 'yesterday', 'date'] as const).map((p) => (
                 <button
                   key={p}
@@ -542,7 +545,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                     setRequestsPeriod(p);
                     if (p === 'date' && requestsCustomDate == null) setRequestsCustomDate(periodDateContext.todayStr);
                   }}
-                  className={`px-2 py-1 text-xs rounded transition-colors ${requestsPeriod === p ? 'bg-emerald-600/30 text-emerald-400' : 'bg-gray-700/50 text-gray-400 hover:text-white'}`}
+                  className={`${kpiFilterBtn} ${requestsPeriod === p ? 'bg-emerald-600/30 text-emerald-400' : 'bg-gray-700/50 text-gray-400 hover:text-white'}`}
                 >
                   {p === 'monthly' ? 'Monthly' : p === 'date' ? 'Date' : p === 'today' ? 'Today' : 'Yesterday'}
                 </button>
@@ -553,11 +556,11 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                   value={requestsCustomDate ?? periodDateContext.todayStr}
                   onChange={(e) => { const v = e.target.value; if (v) setRequestsCustomDate(v); }}
                   onClick={(e) => e.stopPropagation()}
-                  className="bg-[#161B22] border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  className="rounded border border-gray-600 bg-[#161B22] px-1.5 py-0.5 text-[10px] text-white focus:outline-none focus:border-emerald-500"
                 />
               )}
             </div>
-            <div className="text-xs text-gray-500 mb-1">{getPeriodLabel(requestsPeriod, requestsCustomDate, periodDateContext)}</div>
+            <div className="mb-0.5 text-[10px] leading-tight text-gray-500 sm:text-[11px]">{getPeriodLabel(requestsPeriod, requestsCustomDate, periodDateContext)}</div>
             <div className={amountClass}>{incomingRequestsFiltered.length}</div>
             <div className={countClass}>requests</div>
           </div>
@@ -571,7 +574,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
             className={`${kpiTileClass} ${kpiInteractive}`}
           >
             <div className={tileTitleClass}>Offers Created</div>
-            <div className="flex flex-wrap items-center gap-1 mb-1" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-0.5 flex flex-wrap items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
               {(['monthly', 'today', 'yesterday', 'date'] as const).map((p) => (
                 <button
                   key={p}
@@ -581,7 +584,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                     setOffersSentPeriod(p);
                     if (p === 'date' && offersSentCustomDate == null) setOffersSentCustomDate(periodDateContext.todayStr);
                   }}
-                  className={`px-2 py-1 text-xs rounded transition-colors ${offersSentPeriod === p ? 'bg-emerald-600/30 text-emerald-400' : 'bg-gray-700/50 text-gray-400 hover:text-white'}`}
+                  className={`${kpiFilterBtn} ${offersSentPeriod === p ? 'bg-emerald-600/30 text-emerald-400' : 'bg-gray-700/50 text-gray-400 hover:text-white'}`}
                 >
                   {p === 'monthly' ? 'Monthly' : p === 'date' ? 'Date' : p === 'today' ? 'Today' : 'Yesterday'}
                 </button>
@@ -592,11 +595,11 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                   value={offersSentCustomDate ?? periodDateContext.todayStr}
                   onChange={(e) => { const v = e.target.value; if (v) setOffersSentCustomDate(v); }}
                   onClick={(e) => e.stopPropagation()}
-                  className="bg-[#161B22] border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  className="rounded border border-gray-600 bg-[#161B22] px-1.5 py-0.5 text-[10px] text-white focus:outline-none focus:border-emerald-500"
                 />
               )}
             </div>
-            <div className="text-xs text-gray-500 mb-1">{getPeriodLabel(offersSentPeriod, offersSentCustomDate, periodDateContext)}</div>
+            <div className="mb-0.5 text-[10px] leading-tight text-gray-500 sm:text-[11px]">{getPeriodLabel(offersSentPeriod, offersSentCustomDate, periodDateContext)}</div>
             <div className={amountClass}>{offersCreatedFiltered.length}</div>
             <div className={countClass}>offers created</div>
           </div>
@@ -610,7 +613,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
             className={`${kpiTileClass} ${kpiInteractive}`}
           >
             <div className={tileTitleClass}>Closed Rentals</div>
-            <div className="flex flex-wrap items-center gap-1 mb-1" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-0.5 flex flex-wrap items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
               {(['monthly', 'today', 'yesterday', 'date'] as const).map((p) => (
                 <button
                   key={p}
@@ -620,7 +623,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                     setClosedRentalsPeriod(p);
                     if (p === 'date' && closedRentalsCustomDate == null) setClosedRentalsCustomDate(periodDateContext.todayStr);
                   }}
-                  className={`px-2 py-1 text-xs rounded transition-colors ${closedRentalsPeriod === p ? 'bg-emerald-600/30 text-emerald-400' : 'bg-gray-700/50 text-gray-400 hover:text-white'}`}
+                  className={`${kpiFilterBtn} ${closedRentalsPeriod === p ? 'bg-emerald-600/30 text-emerald-400' : 'bg-gray-700/50 text-gray-400 hover:text-white'}`}
                 >
                   {p === 'monthly' ? 'Monthly' : p === 'date' ? 'Date' : p === 'today' ? 'Today' : 'Yesterday'}
                 </button>
@@ -631,11 +634,11 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                   value={closedRentalsCustomDate ?? periodDateContext.todayStr}
                   onChange={(e) => { const v = e.target.value; if (v) setClosedRentalsCustomDate(v); }}
                   onClick={(e) => e.stopPropagation()}
-                  className="bg-[#161B22] border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  className="rounded border border-gray-600 bg-[#161B22] px-1.5 py-0.5 text-[10px] text-white focus:outline-none focus:border-emerald-500"
                 />
               )}
             </div>
-            <div className="text-xs text-gray-500 mb-1">{getPeriodLabel(closedRentalsPeriod, closedRentalsCustomDate, periodDateContext)}</div>
+            <div className="mb-0.5 text-[10px] leading-tight text-gray-500 sm:text-[11px]">{getPeriodLabel(closedRentalsPeriod, closedRentalsCustomDate, periodDateContext)}</div>
             <div className={amountClass}>{closedRentalsFiltered.length}</div>
             <div className={countClass}>closed rentals</div>
           </div>
@@ -645,7 +648,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
         <div className="w-full">
           <div className={availableApartmentsTileClass}>
             <div className={tileTitleClass}>Available Apartments</div>
-            <div className="flex flex-wrap items-center gap-2 mb-2">
+            <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-gray-500">{availabilityDateStr}</span>
               <div className="flex items-center gap-1">
                 {(['Today', 'Tomorrow', 'Day+2'] as const).map((label, i) => {
@@ -658,7 +661,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                       key={label}
                       type="button"
                       onClick={() => setAvailabilityDate(new Date(d))}
-                      className={`px-2 py-1 text-xs rounded transition-colors ${isActive ? 'bg-emerald-600/30 text-emerald-400' : 'bg-gray-700/50 text-gray-400 hover:text-white'}`}
+                      className={`rounded px-1.5 py-0.5 text-[10px] transition-colors sm:text-[11px] ${isActive ? 'bg-emerald-600/30 text-emerald-400' : 'bg-gray-700/50 text-gray-400 hover:text-white'}`}
                     >
                       {label}
                     </button>
@@ -671,13 +674,13 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                     const v = e.target.value;
                     if (v) setAvailabilityDate(new Date(v + 'T12:00:00'));
                   }}
-                  className="ml-1 bg-[#161B22] border border-gray-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  className="ml-1 rounded border border-gray-600 bg-[#161B22] px-1.5 py-0.5 text-[10px] text-white focus:outline-none focus:border-emerald-500 sm:text-[11px]"
                 />
               </div>
             </div>
             <div className={amountClass}>{totalAvailable}</div>
             <div className={countClass}>Total available</div>
-            <div className="mt-2 space-y-1 text-sm">
+            <div className="mt-1.5 space-y-0.5 text-sm">
               {(['1', '2', '3', '4+'] as const).map((key) => {
                 const count = availableRoomCounts[key];
                 const label = key === '4+' ? '4+ rooms' : `${key} room${key === '1' ? '' : 's'}`;
@@ -686,7 +689,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                     key={key}
                     type="button"
                     onClick={() => setAvailableApartmentsModalRoom(key)}
-                    className="w-full text-left px-2 py-1 rounded hover:bg-gray-700/50 text-gray-300 hover:text-white transition-colors flex justify-between"
+                    className="flex w-full justify-between rounded px-1.5 py-0.5 text-left text-gray-300 transition-colors hover:bg-gray-700/50 hover:text-white"
                   >
                     <span>{label}</span>
                     <span className="tabular-nums font-medium">{count}</span>

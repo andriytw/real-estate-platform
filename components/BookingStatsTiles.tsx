@@ -135,49 +135,51 @@ const BookingStatsTiles: React.FC<BookingStatsTilesProps> = ({
     onClick: () => void;
   }> = ({ title, count, date, icon, color, onDateChange, onClick }) => (
     <div
-      className={`bg-[#1C1F24] border border-gray-800 rounded-lg p-4 min-w-0 h-full min-h-[168px] flex flex-col cursor-pointer hover:bg-[#25282D] transition-colors ${color}`}
+      className={`flex min-w-0 items-center gap-1 rounded-md border border-gray-800 bg-[#1C1F24] px-1.5 py-1.5 sm:gap-1.5 sm:px-2 sm:py-2 cursor-pointer hover:bg-[#25282D] transition-colors ${color}`}
       onClick={onClick}
     >
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          {icon}
-          <span className="text-xs text-gray-400 font-medium">{title}</span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDateChange(-1);
+        }}
+        className="shrink-0 rounded p-0.5 hover:bg-gray-800/80 transition-colors"
+        aria-label="Previous day"
+      >
+        <ChevronLeft className="h-3.5 w-3.5 text-gray-400 hover:text-white sm:h-4 sm:w-4" />
+      </button>
+      <div className="flex min-w-0 flex-1 items-center justify-between gap-1.5 sm:gap-2">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-1.5">
+          <span className="shrink-0">{icon}</span>
+          <span className="truncate text-[10px] font-medium text-gray-400 sm:text-xs">{title}</span>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <span className="text-base font-bold tabular-nums text-white sm:text-lg">{count}</span>
+          <span className="whitespace-nowrap text-[10px] text-gray-500">{formatDateDisplay(date, today)}</span>
         </div>
       </div>
-      <div className="flex items-center justify-between">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDateChange(-1);
-          }}
-          className="p-1 hover:bg-gray-800 rounded transition-colors"
-        >
-          <ChevronLeft className="w-4 h-4 text-gray-400 hover:text-white" />
-        </button>
-        <div className="flex flex-col items-center">
-          <span className="text-3xl font-bold text-white">{count}</span>
-          <span className="text-xs text-gray-500 mt-1">{formatDateDisplay(date, today)}</span>
-        </div>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDateChange(1);
-          }}
-          className="p-1 hover:bg-gray-800 rounded transition-colors"
-        >
-          <ChevronRight className="w-4 h-4 text-gray-400 hover:text-white" />
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDateChange(1);
+        }}
+        className="shrink-0 rounded p-0.5 hover:bg-gray-800/80 transition-colors"
+        aria-label="Next day"
+      >
+        <ChevronRight className="h-3.5 w-3.5 text-gray-400 hover:text-white sm:h-4 sm:w-4" />
+      </button>
     </div>
   );
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full items-stretch">
+    <div className="grid w-full grid-cols-2 gap-2 md:grid-cols-4 md:gap-2">
       <Tile
         title="Check-ins"
         count={checkIns.length}
         date={checkInDate}
-        icon={<LogIn className="w-4 h-4 text-purple-500" />}
+        icon={<LogIn className="h-3.5 w-3.5 shrink-0 text-purple-500 sm:h-4 sm:w-4" />}
         color="border-purple-500/30"
         onDateChange={(offset) => changeDate(setCheckInDate, checkInDate, offset)}
         onClick={() => handleTileClick('checkin', checkInDate, checkIns)}
@@ -186,7 +188,7 @@ const BookingStatsTiles: React.FC<BookingStatsTilesProps> = ({
         title="Check-outs"
         count={checkOuts.length}
         date={checkOutDate}
-        icon={<LogOut className="w-4 h-4 text-blue-500" />}
+        icon={<LogOut className="h-3.5 w-3.5 shrink-0 text-blue-500 sm:h-4 sm:w-4" />}
         color="border-blue-500/30"
         onDateChange={(offset) => changeDate(setCheckOutDate, checkOutDate, offset)}
         onClick={() => handleTileClick('checkout', checkOutDate, checkOuts)}
@@ -195,7 +197,7 @@ const BookingStatsTiles: React.FC<BookingStatsTilesProps> = ({
         title="Cleanings"
         count={cleanings.length}
         date={cleaningDate}
-        icon={<Sparkles className="w-4 h-4 text-orange-500" />}
+        icon={<Sparkles className="h-3.5 w-3.5 shrink-0 text-orange-500 sm:h-4 sm:w-4" />}
         color="border-orange-500/30"
         onDateChange={(offset) => changeDate(setCleaningDate, cleaningDate, offset)}
         onClick={() => handleTileClick('cleaning', cleaningDate, cleanings)}
@@ -204,7 +206,7 @@ const BookingStatsTiles: React.FC<BookingStatsTilesProps> = ({
         title="Reminders (2 days)"
         count={reminders.length}
         date={reminderDate}
-        icon={<Bell className="w-4 h-4 text-yellow-500" />}
+        icon={<Bell className="h-3.5 w-3.5 shrink-0 text-yellow-500 sm:h-4 sm:w-4" />}
         color="border-yellow-500/30"
         onDateChange={(offset) => changeDate(setReminderDate, reminderDate, offset)}
         onClick={() => handleTileClick('reminder', reminderDate, reminders)}
