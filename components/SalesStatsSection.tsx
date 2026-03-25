@@ -436,8 +436,8 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
   const tileBase = 'rounded-lg border border-gray-700 bg-[#1C1F24] p-2.5';
   /** KPI row: compact cards, equal columns; height follows content (no forced min-height) */
   const kpiTileClass = `${tileBase} min-w-0 h-full flex flex-col`;
-  /** Available Apartments: logic unchanged; slightly tighter shell to match dense dashboard */
-  const availableApartmentsTileClass = `${tileBase} min-w-[180px]`;
+  /** Available Apartments: same shell as KPI tiles; width comes from grid column (not full row) */
+  const availableApartmentsTileClass = `${tileBase} min-w-0 w-full flex flex-col`;
   const kpiInteractive =
     'text-left hover:border-emerald-600/50 hover:bg-[#23262b] transition-colors cursor-pointer';
   const tileTitleClass =
@@ -644,9 +644,10 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
           </div>
         </div>
 
-        {/* Available Apartments — layout unchanged from product perspective; own row below KPIs */}
-        <div className="w-full">
-          <div className={availableApartmentsTileClass}>
+        {/* Available Apartments — one grid column (same template as KPI row); empty cells to the right on lg+ */}
+        <div className="grid w-full grid-cols-1 items-stretch gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 lg:gap-2">
+          <div className="min-w-0 lg:col-span-1">
+            <div className={availableApartmentsTileClass}>
             {/* Title + static date on one row (same data as before) */}
             <div className="mb-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <span className={`${tileTitleClass} mb-0`}>Available Apartments</span>
@@ -699,6 +700,7 @@ const SalesStatsSection: React.FC<SalesStatsSectionProps> = ({
                 );
               })}
             </div>
+          </div>
           </div>
         </div>
       </div>
