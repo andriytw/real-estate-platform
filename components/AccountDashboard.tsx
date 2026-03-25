@@ -1135,6 +1135,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const expenseOcrFileInputRef = useRef<HTMLInputElement | null>(null);
   const [transferPropertyId, setTransferPropertyId] = useState<string>('');
   const [transferWorkerId, setTransferWorkerId] = useState<string>('');
+  /** Per stock row: quantity to transfer (1..available). Initialized when opening transfer modal. */
+  const [transferQuantitiesByStockId, setTransferQuantitiesByStockId] = useState<Record<string, number>>({});
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('');
@@ -1478,6 +1480,13 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     // Preselect first property & worker if available
     setTransferPropertyId((prev) => prev || (properties[0]?.id ?? ''));
     setTransferWorkerId((prev) => prev || (workers[0]?.id ?? ''));
+    const initialQty: Record<string, number> = {};
+    for (const row of warehouseStock) {
+      if (!selectedStockIds.has(row.stockId)) continue;
+      const maxQ = Math.floor(Number(row.quantity) || 0);
+      if (maxQ >= 1) initialQty[row.stockId] = maxQ;
+    }
+    setTransferQuantitiesByStockId(initialQty);
     setIsTransferModalOpen(true);
   };
 
@@ -1485,6 +1494,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     setIsTransferModalOpen(false);
     setTransferError(null);
     setIsExecutingTransfer(false);
+    setTransferQuantitiesByStockId({});
   };
 
   const handleOcrReal = async () => {
@@ -1984,6 +1994,18 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const handleExecuteTransfer = async () => {
     if (!transferPropertyId || !transferWorkerId || selectedStockItems.length === 0) return;
 
+    const invalidRow = selectedStockItems.find((row) => {
+      const maxQ = Math.floor(Number(row.quantity) || 0);
+      const q = transferQuantitiesByStockId[row.stockId];
+      return maxQ < 1 || !Number.isInteger(q) || q < 1 || q > maxQ;
+    });
+    if (invalidRow) {
+      setTransferError(
+        'Вкажіть коректну кількість для кожної позиції: ціле число від 1 до доступного залишку на складі.'
+      );
+      return;
+    }
+
     try {
       setIsExecutingTransfer(true);
       setTransferError(null);
@@ -1998,7 +2020,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         warehouseId: row.warehouseId,
         itemId: row.itemId,
         itemName: row.itemName,
-        quantity: row.quantity,
+        quantity: transferQuantitiesByStockId[row.stockId]!,
         unitPrice: row.unitPrice || row.defaultPrice || 0,
         sku: row.sku,
         invoiceNumber: row.invoiceNumber,
@@ -9975,6 +9997,13 @@ ${internalCompany} Team`;
   // --- Warehouse Transfer Modal ---
   const selectedStockItems = warehouseStock.filter((row) => selectedStockIds.has(row.stockId));
 
+  const transferQuantityInputsValid =
+    selectedStockItems.length > 0 &&
+    selectedStockItems.every((row) => {
+      const maxQ = Math.floor(Number(row.quantity) || 0);
+      const q = transferQuantitiesByStockId[row.stockId];
+      return maxQ >= 1 && Number.isInteger(q) && q >= 1 && q <= maxQ;
+    });
 
   const renderSalesContent = () => {
     if (salesTab === 'dashboard') {
@@ -11190,9 +11219,56 @@ ${internalCompany} Team`;
                         </td>
                         <td className="px-3 py-2 text-right font-mono text-gray-300">{row.quantity}</td>
                         <td className="px-3 py-2 text-right">
-                          <span className="inline-block px-2 py-1 bg-black/40 rounded-md border border-gray-700">
-                            max {row.quantity}
-                          </span>
+                          {(() => {
+                            const maxQ = Math.floor(Number(row.quantity) || 0);
+                            const q = transferQuantitiesByStockId[row.stockId];
+                            const displayVal = q === undefined ? '' : String(q);
+                            return (
+                              <div className="flex flex-col items-end gap-0.5">
+                                <input
+                                  id={`transfer-qty-${row.stockId}`}
+                                  type="number"
+                                  min={1}
+                                  max={maxQ >= 1 ? maxQ : 1}
+                                  step={1}
+                                  inputMode="numeric"
+                                  disabled={maxQ < 1}
+                                  value={displayVal}
+                                  onChange={(e) => {
+                                    const raw = e.target.value.trim();
+                                    if (raw === '') {
+                                      setTransferQuantitiesByStockId((prev) => {
+                                        const next = { ...prev };
+                                        delete next[row.stockId];
+                                        return next;
+                                      });
+                                      return;
+                                    }
+                                    if (!/^\d+$/.test(raw)) return;
+                                    let n = parseInt(raw, 10);
+                                    if (Number.isNaN(n)) return;
+                                    if (n > maxQ) n = maxQ;
+                                    setTransferQuantitiesByStockId((prev) => ({
+                                      ...prev,
+                                      [row.stockId]: n,
+                                    }));
+                                  }}
+                                  onBlur={() => {
+                                    if (maxQ < 1) return;
+                                    const qNow = transferQuantitiesByStockId[row.stockId];
+                                    if (qNow === undefined || !Number.isInteger(qNow) || qNow < 1 || qNow > maxQ) {
+                                      setTransferQuantitiesByStockId((prev) => ({
+                                        ...prev,
+                                        [row.stockId]: maxQ,
+                                      }));
+                                    }
+                                  }}
+                                  className="w-20 bg-[#020617] border border-gray-700 rounded-md px-2 py-1 text-right font-mono text-gray-100 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+                                />
+                                <span className="text-[10px] text-gray-500">max {maxQ}</span>
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="px-3 py-2 text-gray-400">{row.unit}</td>
                       </tr>
@@ -11217,9 +11293,19 @@ ${internalCompany} Team`;
                   Скасувати
                 </button>
                 <button
-                  disabled={!transferPropertyId || !transferWorkerId || selectedStockItems.length === 0 || isExecutingTransfer}
+                  disabled={
+                    !transferPropertyId ||
+                    !transferWorkerId ||
+                    selectedStockItems.length === 0 ||
+                    !transferQuantityInputsValid ||
+                    isExecutingTransfer
+                  }
                   className={`px-4 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-colors ${
-                    !transferPropertyId || !transferWorkerId || selectedStockItems.length === 0 || isExecutingTransfer
+                    !transferPropertyId ||
+                    !transferWorkerId ||
+                    selectedStockItems.length === 0 ||
+                    !transferQuantityInputsValid ||
+                    isExecutingTransfer
                       ? 'bg-emerald-600/30 text-emerald-200/60 cursor-not-allowed'
                       : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                   }`}
