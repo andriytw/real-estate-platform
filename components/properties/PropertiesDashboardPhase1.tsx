@@ -203,17 +203,16 @@ const PropertiesDashboardPhase1: React.FC = () => {
       <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
         <h3 className="text-sm font-semibold text-gray-300 mb-3">Apartment / Day Matrix</h3>
         <div className="overflow-x-auto">
-          <table className="min-w-[2000px] text-xs border-collapse">
+          <table className="min-w-[1600px] text-xs border-collapse">
             <thead>
               <tr className="text-gray-400">
-                <th className="p-2 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[90px]" style={{ left: 0 }}>ID</th>
-                <th className="p-2 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[130px]" style={{ left: 90 }}>Abteilung</th>
-                <th className="p-2 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[120px]" style={{ left: 220 }}>Status</th>
-                <th className="p-2 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[240px]" style={{ left: 340 }}>Adresse</th>
-                <th className="p-2 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[140px]" style={{ left: 580 }}>Wohnung</th>
-                <th className="p-2 border-b border-gray-700 text-right sticky bg-[#1C1F24] z-20 w-[70px]" style={{ left: 720 }}>QM</th>
-                <th className="p-2 border-b border-gray-700 text-right sticky bg-[#1C1F24] z-20 w-[80px]" style={{ left: 790 }}>Betten</th>
-                <th className="p-2 border-b border-gray-700 text-right sticky bg-[#1C1F24] z-20 w-[80px]" style={{ left: 870 }}>Rooms</th>
+                <th className="p-2 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[90px]" style={{ left: 0 }}>Abteilung</th>
+                <th className="p-2 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[90px]" style={{ left: 90 }}>Status</th>
+                <th className="p-2 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[180px]" style={{ left: 180 }}>Adresse</th>
+                <th className="p-2 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[90px]" style={{ left: 360 }}>Wohnung</th>
+                <th className="p-2 border-b border-gray-700 text-right sticky bg-[#1C1F24] z-20 w-[52px]" style={{ left: 450 }}>QM</th>
+                <th className="p-2 border-b border-gray-700 text-right sticky bg-[#1C1F24] z-20 w-[60px]" style={{ left: 502 }}>Betten</th>
+                <th className="p-2 border-b border-gray-700 text-right sticky bg-[#1C1F24] z-20 w-[58px]" style={{ left: 562 }}>Rooms</th>
                 {monthData.days.map((_, i) => (
                   <th key={`matrix-day-${i}`} className="p-2 border-b border-gray-700">{i + 1}</th>
                 ))}
@@ -223,14 +222,13 @@ const PropertiesDashboardPhase1: React.FC = () => {
             <tbody>
               {monthData.rows.map((row) => (
                 <tr key={row.apartmentId}>
-                  <td className="p-2 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[90px]" style={{ left: 0 }}>{row.apartmentId.slice(0, 8)}</td>
-                  <td className="p-2 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[130px]" style={{ left: 90 }}>{row.abteilung || '—'}</td>
-                  <td className="p-2 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[120px]" style={{ left: 220 }}>{row.statusLabel}</td>
-                  <td className="p-2 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[240px]" style={{ left: 340 }}>{row.adresse}</td>
-                  <td className="p-2 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[140px]" style={{ left: 580 }}>{row.wohnung}</td>
-                  <td className="p-2 border-b border-gray-800 text-right sticky bg-[#1C1F24] z-10 w-[70px]" style={{ left: 720 }}>{row.qm}</td>
-                  <td className="p-2 border-b border-gray-800 text-right sticky bg-[#1C1F24] z-10 w-[80px]" style={{ left: 790 }}>{row.betten}</td>
-                  <td className="p-2 border-b border-gray-800 text-right sticky bg-[#1C1F24] z-10 w-[80px]" style={{ left: 870 }}>{row.rooms}</td>
+                  <td className="p-2 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[90px]" style={{ left: 0 }}>{row.abteilung || '—'}</td>
+                  <td className="p-2 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[90px]" style={{ left: 90 }}>{row.statusLabel}</td>
+                  <td className="p-2 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[180px]" style={{ left: 180 }}>{row.adresse}</td>
+                  <td className="p-2 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[90px]" style={{ left: 360 }}>{row.wohnung}</td>
+                  <td className="p-2 border-b border-gray-800 text-right sticky bg-[#1C1F24] z-10 w-[52px]" style={{ left: 450 }}>{row.qm}</td>
+                  <td className="p-2 border-b border-gray-800 text-right sticky bg-[#1C1F24] z-10 w-[60px]" style={{ left: 502 }}>{row.betten}</td>
+                  <td className="p-2 border-b border-gray-800 text-right sticky bg-[#1C1F24] z-10 w-[58px]" style={{ left: 562 }}>{row.rooms}</td>
                   {row.dayCells.map((cell, idx) => (
                     <td key={`${row.apartmentId}-${idx}`} className={`p-2 border-b border-gray-800 text-center ${statusClass(cell.kind)}`}>
                       {cell.kind === 'ooo' ? 'OOO' : formatCellCurrency(cell.amountNet)}
