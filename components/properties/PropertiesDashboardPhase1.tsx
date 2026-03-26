@@ -93,8 +93,8 @@ const PropertiesDashboardPhase1: React.FC = () => {
     return <div className="p-6 text-gray-300">Invalid month selected.</div>;
   }
 
-  const frozenHeaderBase = 'px-1.5 py-1 border-b border-gray-700 sticky bg-[#1C1F24] z-40';
-  const frozenCellBase = 'px-1.5 py-1 border-b border-gray-800 sticky bg-[#1C1F24] z-30';
+  const frozenHeaderBase = 'px-1.5 py-1 border-b border-gray-700 sticky z-40 overflow-hidden';
+  const frozenCellBase = 'px-1.5 py-1 border-b border-gray-800 sticky z-30 overflow-hidden';
   const leftZoneBoundaryClass = 'shadow-[1px_0_0_0_rgba(55,65,81,1)]';
 
   return (
@@ -208,32 +208,32 @@ const PropertiesDashboardPhase1: React.FC = () => {
       <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
         <h3 className="text-sm font-semibold text-gray-300 mb-3">Apartment / Day Matrix</h3>
         <div className="overflow-x-auto">
-          <table className="min-w-[1520px] text-xs border-collapse">
+          <table className="min-w-[1520px] text-xs border-separate border-spacing-0 table-fixed">
             <thead>
               <tr className="text-gray-400">
-                <th className={`${frozenHeaderBase} text-left w-[84px]`} style={{ left: 0 }}>Abteilung</th>
-                <th className={`${frozenHeaderBase} text-left w-[84px]`} style={{ left: 84 }}>Status</th>
-                <th className={`${frozenHeaderBase} text-left w-[220px]`} style={{ left: 168 }}>Adresse</th>
-                <th className={`${frozenHeaderBase} text-left w-[88px]`} style={{ left: 388 }}>Wohnung</th>
+                <th className={`${frozenHeaderBase} text-left w-[80px] min-w-[80px] max-w-[80px]`} style={{ left: 0, backgroundColor: '#1C1F24' }}>Abteilung</th>
+                <th className={`${frozenHeaderBase} text-left w-[80px] min-w-[80px] max-w-[80px]`} style={{ left: 80, backgroundColor: '#1C1F24' }}>Status</th>
+                <th className={`${frozenHeaderBase} text-left w-[240px] min-w-[240px] max-w-[240px]`} style={{ left: 160, backgroundColor: '#1C1F24' }}>Adresse</th>
+                <th className={`${frozenHeaderBase} text-left w-[80px] min-w-[80px] max-w-[80px]`} style={{ left: 400, backgroundColor: '#1C1F24' }}>Wohnung</th>
                 <th
-                  className={`${frozenHeaderBase} text-right w-[44px]`}
-                  style={{ left: 476 }}
+                  className={`${frozenHeaderBase} text-right w-[40px] min-w-[40px] max-w-[40px]`}
+                  style={{ left: 480, backgroundColor: '#1C1F24' }}
                   title="QM"
                   aria-label="QM"
                 >
                   <span className="inline-flex justify-end w-full"><Ruler className="w-3.5 h-3.5 text-gray-400" /></span>
                 </th>
                 <th
-                  className={`${frozenHeaderBase} text-right w-[44px]`}
-                  style={{ left: 520 }}
+                  className={`${frozenHeaderBase} text-right w-[40px] min-w-[40px] max-w-[40px]`}
+                  style={{ left: 520, backgroundColor: '#1C1F24' }}
                   title="Betten"
                   aria-label="Betten"
                 >
                   <span className="inline-flex justify-end w-full"><Bed className="w-3.5 h-3.5 text-gray-400" /></span>
                 </th>
                 <th
-                  className={`${frozenHeaderBase} text-right w-[44px] ${leftZoneBoundaryClass}`}
-                  style={{ left: 564 }}
+                  className={`${frozenHeaderBase} text-right w-[40px] min-w-[40px] max-w-[40px] ${leftZoneBoundaryClass}`}
+                  style={{ left: 560, backgroundColor: '#1C1F24' }}
                   title="Rooms"
                   aria-label="Rooms"
                 >
@@ -248,15 +248,15 @@ const PropertiesDashboardPhase1: React.FC = () => {
             <tbody>
               {monthData.rows.map((row) => (
                 <tr key={row.apartmentId}>
-                  <td className={`${frozenCellBase} w-[84px]`} style={{ left: 0 }}>{row.abteilung || '—'}</td>
-                  <td className={`${frozenCellBase} w-[84px]`} style={{ left: 84 }}>{row.statusLabel}</td>
-                  <td className={`${frozenCellBase} w-[220px]`} style={{ left: 168 }}>
+                  <td className={`${frozenCellBase} w-[80px] min-w-[80px] max-w-[80px]`} style={{ left: 0, backgroundColor: '#1C1F24' }}>{row.abteilung || '—'}</td>
+                  <td className={`${frozenCellBase} w-[80px] min-w-[80px] max-w-[80px]`} style={{ left: 80, backgroundColor: '#1C1F24' }}>{row.statusLabel}</td>
+                  <td className={`${frozenCellBase} w-[240px] min-w-[240px] max-w-[240px]`} style={{ left: 160, backgroundColor: '#1C1F24' }}>
                     <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{row.adresse}</span>
                   </td>
-                  <td className={`${frozenCellBase} w-[88px]`} style={{ left: 388 }}>{row.wohnung}</td>
-                  <td className={`${frozenCellBase} text-right w-[44px]`} style={{ left: 476 }}>{row.qm}</td>
-                  <td className={`${frozenCellBase} text-right w-[44px]`} style={{ left: 520 }}>{row.betten}</td>
-                  <td className={`${frozenCellBase} text-right w-[44px] ${leftZoneBoundaryClass}`} style={{ left: 564 }}>{row.rooms}</td>
+                  <td className={`${frozenCellBase} w-[80px] min-w-[80px] max-w-[80px]`} style={{ left: 400, backgroundColor: '#1C1F24' }}>{row.wohnung}</td>
+                  <td className={`${frozenCellBase} text-right w-[40px] min-w-[40px] max-w-[40px]`} style={{ left: 480, backgroundColor: '#1C1F24' }}>{row.qm}</td>
+                  <td className={`${frozenCellBase} text-right w-[40px] min-w-[40px] max-w-[40px]`} style={{ left: 520, backgroundColor: '#1C1F24' }}>{row.betten}</td>
+                  <td className={`${frozenCellBase} text-right w-[40px] min-w-[40px] max-w-[40px] ${leftZoneBoundaryClass}`} style={{ left: 560, backgroundColor: '#1C1F24' }}>{row.rooms}</td>
                   {row.dayCells.map((cell, idx) => (
                     <td key={`${row.apartmentId}-${idx}`} className={`px-1.5 py-1 border-b border-gray-800 text-center w-[56px] min-w-[56px] max-w-[56px] whitespace-nowrap relative z-0 ${statusClass(cell.kind)}`}>
                       {cell.kind === 'ooo' ? 'OOO' : formatCellCurrency(cell.amountNet)}
