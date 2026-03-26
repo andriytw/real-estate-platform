@@ -99,7 +99,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
   const frozenWidths = {
     abteilung: 66,
     status: 66,
-    adresse: 232,
+    adresse: 196,
     wohnung: 64,
     qm: 30,
     betten: 30,
@@ -109,10 +109,10 @@ const PropertiesDashboardPhase1: React.FC = () => {
     abteilung: 0,
     status: 66,
     adresse: 132,
-    wohnung: 364,
-    qm: 428,
-    betten: 458,
-    rooms: 488,
+    wohnung: 328,
+    qm: 392,
+    betten: 422,
+    rooms: 452,
   } as const;
 
   return (
@@ -271,7 +271,9 @@ const PropertiesDashboardPhase1: React.FC = () => {
                   <td className={`${frozenCellBase}`} style={{ width: frozenWidths.adresse, minWidth: frozenWidths.adresse, maxWidth: frozenWidths.adresse, left: frozenLeft.adresse, backgroundColor: '#1C1F24' }}>
                     <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{row.adresse}</span>
                   </td>
-                  <td className={`${frozenCellBase}`} style={{ width: frozenWidths.wohnung, minWidth: frozenWidths.wohnung, maxWidth: frozenWidths.wohnung, left: frozenLeft.wohnung, backgroundColor: '#1C1F24' }}>{row.wohnung}</td>
+                  <td className={`${frozenCellBase}`} style={{ width: frozenWidths.wohnung, minWidth: frozenWidths.wohnung, maxWidth: frozenWidths.wohnung, left: frozenLeft.wohnung, backgroundColor: '#1C1F24' }}>
+                    <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{row.wohnung}</span>
+                  </td>
                   <td className={`${frozenCellBase} text-right`} style={{ width: frozenWidths.qm, minWidth: frozenWidths.qm, maxWidth: frozenWidths.qm, left: frozenLeft.qm, backgroundColor: '#1C1F24' }}>{row.qm}</td>
                   <td className={`${frozenCellBase} text-right`} style={{ width: frozenWidths.betten, minWidth: frozenWidths.betten, maxWidth: frozenWidths.betten, left: frozenLeft.betten, backgroundColor: '#1C1F24' }}>{row.betten}</td>
                   <td className={`${frozenCellBase} text-right ${leftZoneBoundaryClass}`} style={{ width: frozenWidths.rooms, minWidth: frozenWidths.rooms, maxWidth: frozenWidths.rooms, left: frozenLeft.rooms, backgroundColor: '#1C1F24' }}>{row.rooms}</td>
