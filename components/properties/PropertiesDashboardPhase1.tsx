@@ -93,7 +93,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
   }
 
   return (
-    <div className="p-6 space-y-4 text-white">
+    <div className="p-6 space-y-4 text-white pb-8">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xl font-semibold">Properties Dashboard</h2>
         <input
@@ -104,7 +104,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
         />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
           <h3 className="text-sm font-semibold text-gray-300 mb-3">Summary</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
@@ -132,6 +132,28 @@ const PropertiesDashboardPhase1: React.FC = () => {
             <div>
               <div className="text-gray-400">Average Price Per Rooms</div>
               <div className="font-semibold">{formatCurrency(monthData.summary.averagePricePerRoom)}</div>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-gray-300 mb-3">Monthly Totals</h3>
+          <div className="grid grid-cols-1 gap-2 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">Occupied Room-Nights</span>
+              <span className="font-semibold">{monthData.summary.occupiedRoomNights}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">Not Occupied Room-Nights</span>
+              <span className="font-semibold">{monthData.summary.notOccupiedRoomNights}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">Not Occupied Room-Nights because of OOO</span>
+              <span className="font-semibold">{monthData.summary.oooRoomNights}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">Total Room-Nights</span>
+              <span className="font-semibold">{monthData.summary.totalRoomNights}</span>
             </div>
           </div>
         </section>

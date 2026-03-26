@@ -82,6 +82,12 @@ export function buildDashboardMonthData(input: BuildDashboardMonthDataInput): Da
   const totalRoomsAcrossApartments = rows.reduce((sum, row) => sum + Math.max(0, Number(row.rooms) || 0), 0);
   const dailyMetrics = computeDailyMetrics(rows, days, totalRoomsAcrossApartments);
   const monthlyKpis = computeMonthlyDashboardKpis(rows, days.length);
+  const monthlyTotals = {
+    occupiedRoomNights: dailyMetrics.reduce((sum, day) => sum + day.occupiedRoomNights, 0),
+    notOccupiedRoomNights: dailyMetrics.reduce((sum, day) => sum + day.notOccupiedRoomNights, 0),
+    oooRoomNights: dailyMetrics.reduce((sum, day) => sum + day.oooRoomNights, 0),
+    totalRoomNights: dailyMetrics.reduce((sum, day) => sum + day.totalRoomNights, 0),
+  };
 
   const summary: MonthlyDashboardSummary = {
     apartments: rows.length,
@@ -90,10 +96,13 @@ export function buildDashboardMonthData(input: BuildDashboardMonthDataInput): Da
     active: input.properties.filter((p) => (p.apartmentStatus ?? 'active') === 'active').length,
     employee: input.properties.filter((p) => p.apartmentStatus === 'rented_worker').length,
     inPreparation: input.properties.filter((p) => p.apartmentStatus === 'preparation').length,
-    oooRoomNights: dailyMetrics.reduce((sum, day) => sum + day.oooRoomNights, 0),
+    oooRoomNights: monthlyTotals.oooRoomNights,
     rentedPctAvailableApartments: monthlyKpis.rentedPctAvailableApartments,
     rentedPctAvailableRooms: monthlyKpis.rentedPctAvailableRooms,
     averagePricePerRoom: monthlyKpis.averagePricePerRoom,
+    occupiedRoomNights: monthlyTotals.occupiedRoomNights,
+    notOccupiedRoomNights: monthlyTotals.notOccupiedRoomNights,
+    totalRoomNights: monthlyTotals.totalRoomNights,
   };
 
   return {

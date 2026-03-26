@@ -11307,7 +11307,7 @@ ${internalCompany} Team`;
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden bg-[#0D1117]">
+      <div className={`flex-1 bg-[#0D1117] ${activeDepartment === 'properties' && propertiesTab === 'dashboard' ? 'overflow-y-auto' : 'overflow-hidden'}`}>
         {activeDepartment === 'admin' && renderAdminContent()}
         {activeDepartment === 'properties' && (propertiesTab === 'dashboard' ? <PropertiesDashboardPhase1 /> : renderPropertiesContent())}
         {activeDepartment === 'facility' && renderFacilityContent()}

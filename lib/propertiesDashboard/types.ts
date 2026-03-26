@@ -41,6 +41,9 @@ export interface MonthlyDashboardSummary {
   rentedPctAvailableApartments: number;
   rentedPctAvailableRooms: number;
   averagePricePerRoom: number;
+  occupiedRoomNights: number;
+  notOccupiedRoomNights: number;
+  totalRoomNights: number;
 }
 
 export interface DashboardMonthData {
