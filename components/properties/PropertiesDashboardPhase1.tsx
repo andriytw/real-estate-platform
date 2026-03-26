@@ -20,7 +20,7 @@ function formatCurrency(value: number): string {
 
 function formatCompactNumber(value: number | null | undefined): string {
   const safe = Number.isFinite(value) ? Number(value) : 0;
-  return safe.toFixed(2).replace(/\.?0+$/, '').replace('.', ',');
+  return String(Math.round(safe));
 }
 
 function formatCellCurrency(value: number): string {
@@ -106,6 +106,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
   const frozenHeaderBase = 'px-1 py-1 border-b border-gray-700 sticky z-20 overflow-hidden';
   const frozenCellBase = 'px-1 py-1 border-b border-gray-800 sticky z-10 overflow-hidden';
   const leftZoneBoundaryClass = 'shadow-[1px_0_0_0_rgba(55,65,81,1)]';
+  const dailyDayCellClass = 'w-[36px] min-w-[36px] max-w-[36px] whitespace-nowrap text-center';
   const wohnungWidth = (() => {
     const maxChars = monthData.rows.reduce((max, row) => Math.max(max, String(row.wohnung ?? '').length), 0);
     const estimated = maxChars * 8 + 14;
@@ -216,7 +217,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
               <tr className="text-gray-400">
                 <th className="text-left p-2 border-b border-r border-gray-700 sticky left-0 bg-[#1C1F24] z-10">Metric \\ Day</th>
                 {monthData.days.map((_, i) => (
-                  <th key={`kpi-day-${i}`} className="p-2 border-b border-r border-gray-800 last:border-r-0 border-gray-700">{i + 1}</th>
+                  <th key={`kpi-day-${i}`} className={`p-2 border-b border-r border-gray-800 last:border-r-0 border-gray-700 ${dailyDayCellClass}`}>{i + 1}</th>
                 ))}
               </tr>
             </thead>
@@ -225,7 +226,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
                 <tr key={label}>
                   <td className="p-2 border-b border-r border-gray-800 text-gray-300 sticky left-0 bg-[#1C1F24] z-10 whitespace-nowrap">{label}</td>
                   {monthData.dailyMetrics.map((day) => (
-                    <td key={`${label}-${day.dayOfMonth}`} className="p-2 border-b border-r border-gray-800 last:border-r-0 text-center whitespace-nowrap">
+                    <td key={`${label}-${day.dayOfMonth}`} className={`p-2 border-b border-r border-gray-800 last:border-r-0 whitespace-nowrap ${dailyDayCellClass}`}>
                       {format(day)}
                     </td>
                   ))}
