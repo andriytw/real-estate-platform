@@ -93,9 +93,27 @@ const PropertiesDashboardPhase1: React.FC = () => {
     return <div className="p-6 text-gray-300">Invalid month selected.</div>;
   }
 
-  const frozenHeaderBase = 'px-1 py-1 border-b border-gray-700 sticky z-40 overflow-hidden';
-  const frozenCellBase = 'px-1 py-1 border-b border-gray-800 sticky z-30 overflow-hidden';
+  const frozenHeaderBase = 'px-1 py-1 border-b border-gray-700 sticky z-20 overflow-hidden';
+  const frozenCellBase = 'px-1 py-1 border-b border-gray-800 sticky z-10 overflow-hidden';
   const leftZoneBoundaryClass = 'shadow-[1px_0_0_0_rgba(55,65,81,1)]';
+  const frozenWidths = {
+    abteilung: 66,
+    status: 66,
+    adresse: 232,
+    wohnung: 64,
+    qm: 30,
+    betten: 30,
+    rooms: 30,
+  } as const;
+  const frozenLeft = {
+    abteilung: 0,
+    status: 66,
+    adresse: 132,
+    wohnung: 364,
+    qm: 428,
+    betten: 458,
+    rooms: 488,
+  } as const;
 
   return (
     <div className="p-6 space-y-4 text-white pb-8">
@@ -211,29 +229,29 @@ const PropertiesDashboardPhase1: React.FC = () => {
           <table className="min-w-[1520px] text-xs border-separate border-spacing-0 table-fixed">
             <thead>
               <tr className="text-gray-400">
-                <th className={`${frozenHeaderBase} text-left w-[72px] min-w-[72px] max-w-[72px]`} style={{ left: 0, backgroundColor: '#1C1F24' }}>Abteilung</th>
-                <th className={`${frozenHeaderBase} text-left w-[72px] min-w-[72px] max-w-[72px]`} style={{ left: 72, backgroundColor: '#1C1F24' }}>Status</th>
-                <th className={`${frozenHeaderBase} text-left w-[250px] min-w-[250px] max-w-[250px]`} style={{ left: 144, backgroundColor: '#1C1F24' }}>Adresse</th>
-                <th className={`${frozenHeaderBase} text-left w-[70px] min-w-[70px] max-w-[70px]`} style={{ left: 394, backgroundColor: '#1C1F24' }}>Wohnung</th>
+                <th className={`${frozenHeaderBase} text-left`} style={{ width: frozenWidths.abteilung, minWidth: frozenWidths.abteilung, maxWidth: frozenWidths.abteilung, left: frozenLeft.abteilung, backgroundColor: '#1C1F24' }}>Abteilung</th>
+                <th className={`${frozenHeaderBase} text-left`} style={{ width: frozenWidths.status, minWidth: frozenWidths.status, maxWidth: frozenWidths.status, left: frozenLeft.status, backgroundColor: '#1C1F24' }}>Status</th>
+                <th className={`${frozenHeaderBase} text-left`} style={{ width: frozenWidths.adresse, minWidth: frozenWidths.adresse, maxWidth: frozenWidths.adresse, left: frozenLeft.adresse, backgroundColor: '#1C1F24' }}>Adresse</th>
+                <th className={`${frozenHeaderBase} text-left`} style={{ width: frozenWidths.wohnung, minWidth: frozenWidths.wohnung, maxWidth: frozenWidths.wohnung, left: frozenLeft.wohnung, backgroundColor: '#1C1F24' }}>Wohnung</th>
                 <th
-                  className={`${frozenHeaderBase} text-right w-[34px] min-w-[34px] max-w-[34px]`}
-                  style={{ left: 464, backgroundColor: '#1C1F24' }}
+                  className={`${frozenHeaderBase} text-right`}
+                  style={{ width: frozenWidths.qm, minWidth: frozenWidths.qm, maxWidth: frozenWidths.qm, left: frozenLeft.qm, backgroundColor: '#1C1F24' }}
                   title="QM"
                   aria-label="QM"
                 >
                   <span className="inline-flex justify-end w-full"><Ruler className="w-3.5 h-3.5 text-gray-400" /></span>
                 </th>
                 <th
-                  className={`${frozenHeaderBase} text-right w-[34px] min-w-[34px] max-w-[34px]`}
-                  style={{ left: 498, backgroundColor: '#1C1F24' }}
+                  className={`${frozenHeaderBase} text-right`}
+                  style={{ width: frozenWidths.betten, minWidth: frozenWidths.betten, maxWidth: frozenWidths.betten, left: frozenLeft.betten, backgroundColor: '#1C1F24' }}
                   title="Betten"
                   aria-label="Betten"
                 >
                   <span className="inline-flex justify-end w-full"><Bed className="w-3.5 h-3.5 text-gray-400" /></span>
                 </th>
                 <th
-                  className={`${frozenHeaderBase} text-right w-[34px] min-w-[34px] max-w-[34px] ${leftZoneBoundaryClass}`}
-                  style={{ left: 532, backgroundColor: '#1C1F24' }}
+                  className={`${frozenHeaderBase} text-right ${leftZoneBoundaryClass}`}
+                  style={{ width: frozenWidths.rooms, minWidth: frozenWidths.rooms, maxWidth: frozenWidths.rooms, left: frozenLeft.rooms, backgroundColor: '#1C1F24' }}
                   title="Rooms"
                   aria-label="Rooms"
                 >
@@ -242,27 +260,27 @@ const PropertiesDashboardPhase1: React.FC = () => {
                 {monthData.days.map((_, i) => (
                   <th key={`matrix-day-${i}`} className="px-1.5 py-1 border-b border-gray-700 w-[56px] min-w-[56px] max-w-[56px] text-center whitespace-nowrap bg-[#1C1F24]">{i + 1}</th>
                 ))}
-                <th className="px-1.5 py-1 border-b border-gray-700 sticky right-0 bg-[#1C1F24] z-30">Occupancy % of Operational Days</th>
+                <th className="px-1.5 py-1 border-b border-gray-700 sticky right-0 bg-[#1C1F24] z-10">Occupancy % of Operational Days</th>
               </tr>
             </thead>
             <tbody>
               {monthData.rows.map((row) => (
                 <tr key={row.apartmentId}>
-                  <td className={`${frozenCellBase} w-[72px] min-w-[72px] max-w-[72px]`} style={{ left: 0, backgroundColor: '#1C1F24' }}>{row.abteilung || '—'}</td>
-                  <td className={`${frozenCellBase} w-[72px] min-w-[72px] max-w-[72px]`} style={{ left: 72, backgroundColor: '#1C1F24' }}>{row.statusLabel}</td>
-                  <td className={`${frozenCellBase} w-[250px] min-w-[250px] max-w-[250px]`} style={{ left: 144, backgroundColor: '#1C1F24' }}>
+                  <td className={`${frozenCellBase}`} style={{ width: frozenWidths.abteilung, minWidth: frozenWidths.abteilung, maxWidth: frozenWidths.abteilung, left: frozenLeft.abteilung, backgroundColor: '#1C1F24' }}>{row.abteilung || '—'}</td>
+                  <td className={`${frozenCellBase}`} style={{ width: frozenWidths.status, minWidth: frozenWidths.status, maxWidth: frozenWidths.status, left: frozenLeft.status, backgroundColor: '#1C1F24' }}>{row.statusLabel}</td>
+                  <td className={`${frozenCellBase}`} style={{ width: frozenWidths.adresse, minWidth: frozenWidths.adresse, maxWidth: frozenWidths.adresse, left: frozenLeft.adresse, backgroundColor: '#1C1F24' }}>
                     <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{row.adresse}</span>
                   </td>
-                  <td className={`${frozenCellBase} w-[70px] min-w-[70px] max-w-[70px]`} style={{ left: 394, backgroundColor: '#1C1F24' }}>{row.wohnung}</td>
-                  <td className={`${frozenCellBase} text-right w-[34px] min-w-[34px] max-w-[34px]`} style={{ left: 464, backgroundColor: '#1C1F24' }}>{row.qm}</td>
-                  <td className={`${frozenCellBase} text-right w-[34px] min-w-[34px] max-w-[34px]`} style={{ left: 498, backgroundColor: '#1C1F24' }}>{row.betten}</td>
-                  <td className={`${frozenCellBase} text-right w-[34px] min-w-[34px] max-w-[34px] ${leftZoneBoundaryClass}`} style={{ left: 532, backgroundColor: '#1C1F24' }}>{row.rooms}</td>
+                  <td className={`${frozenCellBase}`} style={{ width: frozenWidths.wohnung, minWidth: frozenWidths.wohnung, maxWidth: frozenWidths.wohnung, left: frozenLeft.wohnung, backgroundColor: '#1C1F24' }}>{row.wohnung}</td>
+                  <td className={`${frozenCellBase} text-right`} style={{ width: frozenWidths.qm, minWidth: frozenWidths.qm, maxWidth: frozenWidths.qm, left: frozenLeft.qm, backgroundColor: '#1C1F24' }}>{row.qm}</td>
+                  <td className={`${frozenCellBase} text-right`} style={{ width: frozenWidths.betten, minWidth: frozenWidths.betten, maxWidth: frozenWidths.betten, left: frozenLeft.betten, backgroundColor: '#1C1F24' }}>{row.betten}</td>
+                  <td className={`${frozenCellBase} text-right ${leftZoneBoundaryClass}`} style={{ width: frozenWidths.rooms, minWidth: frozenWidths.rooms, maxWidth: frozenWidths.rooms, left: frozenLeft.rooms, backgroundColor: '#1C1F24' }}>{row.rooms}</td>
                   {row.dayCells.map((cell, idx) => (
                     <td key={`${row.apartmentId}-${idx}`} className={`px-1.5 py-1 border-b border-gray-800 text-center w-[56px] min-w-[56px] max-w-[56px] whitespace-nowrap relative z-0 ${statusClass(cell.kind)}`}>
                       {cell.kind === 'ooo' ? 'OOO' : formatCellCurrency(cell.amountNet)}
                     </td>
                   ))}
-                  <td className="px-1.5 py-1 border-b border-gray-800 text-right sticky right-0 bg-[#1C1F24] z-30">
+                  <td className="px-1.5 py-1 border-b border-gray-800 text-right sticky right-0 bg-[#1C1F24] z-10">
                     {formatPct(row.occupancyPctOperationalDays)}
                   </td>
                 </tr>
