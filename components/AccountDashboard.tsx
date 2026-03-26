@@ -83,6 +83,7 @@ import { propertyMeterService, type PropertyMeterReadingRow, type PropertyMeterR
 import { propertyMediaService, type PropertyMediaAssetRow, type PropertyMediaAssetType } from '../services/propertyMediaService';
 import { ApartmentStatisticsSection } from './ApartmentStatisticsSection';
 import { VirtualDocumentsManager } from './VirtualDocumentsManager';
+import PropertiesDashboardPhase1 from './properties/PropertiesDashboardPhase1';
 
 const METER_UNIT_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: 'Одиниця' },
@@ -205,7 +206,7 @@ type Department = 'admin' | 'properties' | 'facility' | 'accounting' | 'sales' |
 type FacilityTab = 'overview' | 'calendar' | 'messages' | 'warehouse';
 type AccountingTab = 'dashboard' | 'invoices' | 'expenses' | 'calendar' | 'banking';
 type SalesTab = 'dashboard' | 'leads' | 'calendar' | 'offers' | 'reservations' | 'proformas' | 'requests' | 'history' | 'chat'; 
-type PropertiesTab = 'list' | 'units';
+type PropertiesTab = 'dashboard' | 'list' | 'units';
 
 type PaymentTileKey = 'from_company2_to_company1' | 'from_company1_to_owner' | 'owner_control';
 type PaymentTileState = {
@@ -592,7 +593,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     }
   }, [worker, activeDepartment]);
 
-  const [propertiesTab, setPropertiesTab] = useState<PropertiesTab>('list');
+  const [propertiesTab, setPropertiesTab] = useState<PropertiesTab>('dashboard');
   const [facilityTab, setFacilityTab] = useState<FacilityTab>('overview');
   const [accountingTab, setAccountingTab] = useState<AccountingTab>('dashboard');
   const [salesTab, setSalesTab] = useState<SalesTab>('leads');
@@ -11039,6 +11040,12 @@ ${internalCompany} Team`;
           
           {expandedSections.properties && (
               <div className="ml-4 space-y-1 border-l border-gray-700 pl-3 my-1">
+                <button
+                    onClick={() => { setActiveDepartment('properties'); setPropertiesTab('dashboard'); }}
+                    className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${activeDepartment === 'properties' && propertiesTab === 'dashboard' ? 'text-emerald-500 font-bold bg-emerald-500/10' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                    Dashboard
+                </button>
                 <button 
                     onClick={() => { setActiveDepartment('properties'); setPropertiesTab('list'); }} 
                     className={`w-full text-left px-2 py-1.5 text-xs rounded-md transition-colors ${activeDepartment === 'properties' && propertiesTab === 'list' ? 'text-emerald-500 font-bold bg-emerald-500/10' : 'text-gray-500 hover:text-gray-300'}`}
@@ -11302,7 +11309,7 @@ ${internalCompany} Team`;
 
       <div className="flex-1 overflow-hidden bg-[#0D1117]">
         {activeDepartment === 'admin' && renderAdminContent()}
-        {activeDepartment === 'properties' && renderPropertiesContent()}
+        {activeDepartment === 'properties' && (propertiesTab === 'dashboard' ? <PropertiesDashboardPhase1 /> : renderPropertiesContent())}
         {activeDepartment === 'facility' && renderFacilityContent()}
         {activeDepartment === 'accounting' && renderAccountingContent()}
         {activeDepartment === 'sales' && renderSalesContent()}
