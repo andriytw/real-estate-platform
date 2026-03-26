@@ -106,6 +106,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
   const frozenHeaderBase = 'px-1 py-1 border-b border-gray-700 sticky z-20 overflow-hidden';
   const frozenCellBase = 'px-1 py-1 border-b border-gray-800 sticky z-10 overflow-hidden';
   const leftZoneBoundaryClass = 'shadow-[1px_0_0_0_rgba(55,65,81,1)]';
+  const dailyLabelCellClass = 'p-2 border-b border-r border-gray-800 text-gray-300 sticky left-0 bg-[#1C1F24] z-10 whitespace-nowrap';
   const dailyDayCellClass = 'w-[56px] min-w-[56px] max-w-[56px] whitespace-nowrap text-center';
   const wohnungWidth = (() => {
     const maxChars = monthData.rows.reduce((max, row) => Math.max(max, String(row.wohnung ?? '').length), 0);
@@ -198,42 +199,56 @@ const PropertiesDashboardPhase1: React.FC = () => {
         </section>
       </div>
 
-      <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
+      <section className="space-y-4">
         <h3 className="text-sm font-semibold text-gray-300 mb-3">Daily KPI Rows</h3>
         <div className="overflow-x-auto">
           {(() => {
-            const dailyRows: Array<{ label: string; format: (d: DailyDashboardMetrics) => string }> = [
+            const tile1Rows: Array<{ label: string; format: (d: DailyDashboardMetrics) => string }> = [
               { label: 'Rented % of Available Apartments', format: (d) => formatPctCompact(d.rentedPctAvailableApartments) },
               { label: 'Rented % of Available Rooms', format: (d) => formatPctCompact(d.rentedPctAvailableRooms) },
               { label: 'Average Price Per Rooms', format: (d) => formatCompactNumber(d.averagePricePerRoom) },
+            ];
+            const tile2Rows: Array<{ label: string; format: (d: DailyDashboardMetrics) => string }> = [
               { label: 'Occupied Room-Nights', format: (d) => String(d.occupiedRoomNights) },
               { label: 'Not occupied Room-Nights', format: (d) => String(d.notOccupiedRoomNights) },
               { label: 'Not occupied Room-Nights because of OOO', format: (d) => String(d.oooRoomNights) },
               { label: 'Total Room-Nights', format: (d) => String(d.totalRoomNights) },
             ];
-            return (
-          <table className="min-w-[1200px] text-xs border-separate border-spacing-0">
-            <thead>
-              <tr className="text-gray-400">
-                <th className="text-left p-2 border-b border-r border-gray-700 sticky left-0 bg-[#1C1F24] z-10">Metric \\ Day</th>
-                {monthData.days.map((_, i) => (
-                  <th key={`kpi-day-${i}`} className={`p-2 border-b border-r border-gray-800 last:border-r-0 border-gray-700 ${dailyDayCellClass}`}>{i + 1}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {dailyRows.map(({ label, format }) => (
-                <tr key={label}>
-                  <td className="p-2 border-b border-r border-gray-800 text-gray-300 sticky left-0 bg-[#1C1F24] z-10 whitespace-nowrap">{label}</td>
-                  {monthData.dailyMetrics.map((day) => (
-                    <td key={`${label}-${day.dayOfMonth}`} className={`p-2 border-b border-r border-gray-800 last:border-r-0 whitespace-nowrap ${dailyDayCellClass}`}>
-                      {format(day)}
-                    </td>
+            const renderDailyTable = (rows: Array<{ label: string; format: (d: DailyDashboardMetrics) => string }>) => (
+              <table className="w-full text-xs border-separate border-spacing-0">
+                <thead>
+                  <tr className="text-gray-400">
+                    <th className="text-left p-2 border-b border-r border-gray-700 sticky left-0 bg-[#1C1F24] z-10">Metric \\ Day</th>
+                    {monthData.days.map((_, i) => (
+                      <th key={`kpi-day-${i}`} className={`p-2 border-b border-r border-gray-800 last:border-r-0 border-gray-700 ${dailyDayCellClass}`}>{i + 1}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(({ label, format }) => (
+                    <tr key={label}>
+                      <td className={dailyLabelCellClass}>{label}</td>
+                      {monthData.dailyMetrics.map((day) => (
+                        <td key={`${label}-${day.dayOfMonth}`} className={`p-2 border-b border-r border-gray-800 last:border-r-0 whitespace-nowrap ${dailyDayCellClass}`}>
+                          {format(day)}
+                        </td>
+                      ))}
+                    </tr>
                   ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                </tbody>
+              </table>
+            );
+            return (
+              <div className="min-w-[1200px] space-y-4">
+                <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
+                  <h4 className="text-xs font-semibold text-gray-300 mb-3">Daily KPI Rows — Tile 1</h4>
+                  {renderDailyTable(tile1Rows)}
+                </section>
+                <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
+                  <h4 className="text-xs font-semibold text-gray-300 mb-3">Daily KPI Rows — Tile 2</h4>
+                  {renderDailyTable(tile2Rows)}
+                </section>
+              </div>
             );
           })()}
         </div>
