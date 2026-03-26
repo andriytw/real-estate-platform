@@ -96,24 +96,29 @@ const PropertiesDashboardPhase1: React.FC = () => {
   const frozenHeaderBase = 'px-1 py-1 border-b border-gray-700 sticky z-20 overflow-hidden';
   const frozenCellBase = 'px-1 py-1 border-b border-gray-800 sticky z-10 overflow-hidden';
   const leftZoneBoundaryClass = 'shadow-[1px_0_0_0_rgba(55,65,81,1)]';
+  const wohnungWidth = useMemo(() => {
+    const maxChars = monthData.rows.reduce((max, row) => Math.max(max, String(row.wohnung ?? '').length), 0);
+    const estimated = maxChars * 8 + 14;
+    return Math.min(160, Math.max(64, estimated));
+  }, [monthData.rows]);
   const frozenWidths = {
     abteilung: 66,
     status: 66,
     adresse: 196,
-    wohnung: 64,
+    wohnung: wohnungWidth,
     qm: 30,
     betten: 30,
     rooms: 30,
-  } as const;
+  };
   const frozenLeft = {
     abteilung: 0,
-    status: 66,
-    adresse: 132,
-    wohnung: 328,
-    qm: 392,
-    betten: 422,
-    rooms: 452,
-  } as const;
+    status: frozenWidths.abteilung,
+    adresse: frozenWidths.abteilung + frozenWidths.status,
+    wohnung: frozenWidths.abteilung + frozenWidths.status + frozenWidths.adresse,
+    qm: frozenWidths.abteilung + frozenWidths.status + frozenWidths.adresse + frozenWidths.wohnung,
+    betten: frozenWidths.abteilung + frozenWidths.status + frozenWidths.adresse + frozenWidths.wohnung + frozenWidths.qm,
+    rooms: frozenWidths.abteilung + frozenWidths.status + frozenWidths.adresse + frozenWidths.wohnung + frozenWidths.qm + frozenWidths.betten,
+  };
 
   return (
     <div className="p-6 space-y-4 text-white pb-8">
