@@ -9,8 +9,18 @@ function formatPct(value: number): string {
   return `${(Math.max(0, value) * 100).toFixed(2)}%`;
 }
 
+function formatPctCompact(value: number | null | undefined): string {
+  const safe = Number.isFinite(value) ? Number(value) : 0;
+  return String(Math.round(Math.max(0, safe) * 100));
+}
+
 function formatCurrency(value: number): string {
   return `${value.toFixed(2).replace('.', ',')} €`;
+}
+
+function formatCompactNumber(value: number | null | undefined): string {
+  const safe = Number.isFinite(value) ? Number(value) : 0;
+  return safe.toFixed(2).replace(/\.?0+$/, '').replace('.', ',');
 }
 
 function formatCellCurrency(value: number): string {
@@ -192,30 +202,30 @@ const PropertiesDashboardPhase1: React.FC = () => {
         <div className="overflow-x-auto">
           {(() => {
             const dailyRows: Array<{ label: string; format: (d: DailyDashboardMetrics) => string }> = [
-              { label: 'Rented % of Available Apartments', format: (d) => formatPct(d.rentedPctAvailableApartments) },
-              { label: 'Rented % of Available Rooms', format: (d) => formatPct(d.rentedPctAvailableRooms) },
-              { label: 'Average Price Per Rooms', format: (d) => formatCurrency(d.averagePricePerRoom) },
+              { label: 'Rented % of Available Apartments', format: (d) => formatPctCompact(d.rentedPctAvailableApartments) },
+              { label: 'Rented % of Available Rooms', format: (d) => formatPctCompact(d.rentedPctAvailableRooms) },
+              { label: 'Average Price Per Rooms', format: (d) => formatCompactNumber(d.averagePricePerRoom) },
               { label: 'Occupied Room-Nights', format: (d) => String(d.occupiedRoomNights) },
               { label: 'Not occupied Room-Nights', format: (d) => String(d.notOccupiedRoomNights) },
               { label: 'Not occupied Room-Nights because of OOO', format: (d) => String(d.oooRoomNights) },
               { label: 'Total Room-Nights', format: (d) => String(d.totalRoomNights) },
             ];
             return (
-          <table className="min-w-[1200px] text-xs border-collapse">
+          <table className="min-w-[1200px] text-xs border-separate border-spacing-0">
             <thead>
               <tr className="text-gray-400">
-                <th className="text-left p-2 border-b border-gray-700">Metric \\ Day</th>
+                <th className="text-left p-2 border-b border-r border-gray-700 sticky left-0 bg-[#1C1F24] z-10">Metric \\ Day</th>
                 {monthData.days.map((_, i) => (
-                  <th key={`kpi-day-${i}`} className="p-2 border-b border-gray-700">{i + 1}</th>
+                  <th key={`kpi-day-${i}`} className="p-2 border-b border-r border-gray-800 last:border-r-0 border-gray-700">{i + 1}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {dailyRows.map(({ label, format }) => (
                 <tr key={label}>
-                  <td className="p-2 border-b border-gray-800 text-gray-300 sticky left-0 bg-[#1C1F24]">{label}</td>
+                  <td className="p-2 border-b border-r border-gray-800 text-gray-300 sticky left-0 bg-[#1C1F24] z-10 whitespace-nowrap">{label}</td>
                   {monthData.dailyMetrics.map((day) => (
-                    <td key={`${label}-${day.dayOfMonth}`} className="p-2 border-b border-gray-800 text-center">
+                    <td key={`${label}-${day.dayOfMonth}`} className="p-2 border-b border-r border-gray-800 last:border-r-0 text-center whitespace-nowrap">
                       {format(day)}
                     </td>
                   ))}
