@@ -11,7 +11,7 @@ function formatPct(value: number): string {
 
 function formatPctCompact(value: number | null | undefined): string {
   const safe = Number.isFinite(value) ? Number(value) : 0;
-  return String(Math.round(Math.max(0, safe) * 100));
+  return (Math.max(0, safe) * 100).toFixed(2).replace('.', ',');
 }
 
 function formatCurrency(value: number): string {
@@ -20,7 +20,7 @@ function formatCurrency(value: number): string {
 
 function formatCompactNumber(value: number | null | undefined): string {
   const safe = Number.isFinite(value) ? Number(value) : 0;
-  return String(Math.round(safe));
+  return safe.toFixed(2).replace('.', ',');
 }
 
 function formatCellCurrency(value: number): string {
@@ -106,7 +106,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
   const frozenHeaderBase = 'px-1 py-1 border-b border-gray-700 sticky z-20 overflow-hidden';
   const frozenCellBase = 'px-1 py-1 border-b border-gray-800 sticky z-10 overflow-hidden';
   const leftZoneBoundaryClass = 'shadow-[1px_0_0_0_rgba(55,65,81,1)]';
-  const dailyDayCellClass = 'w-[36px] min-w-[36px] max-w-[36px] whitespace-nowrap text-center';
+  const dailyDayCellClass = 'w-[56px] min-w-[56px] max-w-[56px] whitespace-nowrap text-center';
   const wohnungWidth = (() => {
     const maxChars = monthData.rows.reduce((max, row) => Math.max(max, String(row.wohnung ?? '').length), 0);
     const estimated = maxChars * 8 + 14;
