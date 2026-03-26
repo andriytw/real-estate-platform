@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Bed, LayoutGrid, Ruler } from 'lucide-react';
 import { bookingsService, invoicesService, offersService, propertiesService, reservationsService } from '../../services/supabaseService';
 import type { Booking, InvoiceData, OfferData, Property, Reservation } from '../../types';
 import { buildDashboardMonthData } from '../../lib/propertiesDashboard/selectors';
@@ -13,7 +14,7 @@ function formatCurrency(value: number): string {
 }
 
 function formatCellCurrency(value: number): string {
-  return value > 0 ? formatCurrency(value) : '- €';
+  return value > 0 ? String(Math.round(value)) : '-';
 }
 
 function statusClass(kind: 'ooo' | 'zero' | 'value'): string {
@@ -206,35 +207,56 @@ const PropertiesDashboardPhase1: React.FC = () => {
           <table className="min-w-[1600px] text-xs border-collapse">
             <thead>
               <tr className="text-gray-400">
-                <th className="p-2 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[90px]" style={{ left: 0 }}>Abteilung</th>
-                <th className="p-2 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[90px]" style={{ left: 90 }}>Status</th>
-                <th className="p-2 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[180px]" style={{ left: 180 }}>Adresse</th>
-                <th className="p-2 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[90px]" style={{ left: 360 }}>Wohnung</th>
-                <th className="p-2 border-b border-gray-700 text-right sticky bg-[#1C1F24] z-20 w-[52px]" style={{ left: 450 }}>QM</th>
-                <th className="p-2 border-b border-gray-700 text-right sticky bg-[#1C1F24] z-20 w-[60px]" style={{ left: 502 }}>Betten</th>
-                <th className="p-2 border-b border-gray-700 text-right sticky bg-[#1C1F24] z-20 w-[58px]" style={{ left: 562 }}>Rooms</th>
+                <th className="px-1.5 py-1 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[88px]" style={{ left: 0 }}>Abteilung</th>
+                <th className="px-1.5 py-1 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[88px]" style={{ left: 88 }}>Status</th>
+                <th className="px-1.5 py-1 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[170px]" style={{ left: 176 }}>Adresse</th>
+                <th className="px-1.5 py-1 border-b border-gray-700 text-left sticky bg-[#1C1F24] z-20 w-[86px]" style={{ left: 346 }}>Wohnung</th>
+                <th
+                  className="px-1.5 py-1 border-b border-gray-700 text-right sticky bg-[#1C1F24] z-20 w-[50px]"
+                  style={{ left: 432 }}
+                  title="QM"
+                  aria-label="QM"
+                >
+                  <span className="inline-flex justify-end w-full"><Ruler className="w-3.5 h-3.5 text-gray-400" /></span>
+                </th>
+                <th
+                  className="px-1.5 py-1 border-b border-gray-700 text-right sticky bg-[#1C1F24] z-20 w-[56px]"
+                  style={{ left: 482 }}
+                  title="Betten"
+                  aria-label="Betten"
+                >
+                  <span className="inline-flex justify-end w-full"><Bed className="w-3.5 h-3.5 text-gray-400" /></span>
+                </th>
+                <th
+                  className="px-1.5 py-1 border-b border-gray-700 text-right sticky bg-[#1C1F24] z-20 w-[54px]"
+                  style={{ left: 538 }}
+                  title="Rooms"
+                  aria-label="Rooms"
+                >
+                  <span className="inline-flex justify-end w-full"><LayoutGrid className="w-3.5 h-3.5 text-gray-400" /></span>
+                </th>
                 {monthData.days.map((_, i) => (
-                  <th key={`matrix-day-${i}`} className="p-2 border-b border-gray-700">{i + 1}</th>
+                  <th key={`matrix-day-${i}`} className="px-1.5 py-1 border-b border-gray-700 w-[56px] min-w-[56px] max-w-[56px] text-center whitespace-nowrap">{i + 1}</th>
                 ))}
-                <th className="p-2 border-b border-gray-700 sticky right-0 bg-[#1C1F24]">Occupancy % of Operational Days</th>
+                <th className="px-1.5 py-1 border-b border-gray-700 sticky right-0 bg-[#1C1F24]">Occupancy % of Operational Days</th>
               </tr>
             </thead>
             <tbody>
               {monthData.rows.map((row) => (
                 <tr key={row.apartmentId}>
-                  <td className="p-2 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[90px]" style={{ left: 0 }}>{row.abteilung || '—'}</td>
-                  <td className="p-2 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[90px]" style={{ left: 90 }}>{row.statusLabel}</td>
-                  <td className="p-2 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[180px]" style={{ left: 180 }}>{row.adresse}</td>
-                  <td className="p-2 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[90px]" style={{ left: 360 }}>{row.wohnung}</td>
-                  <td className="p-2 border-b border-gray-800 text-right sticky bg-[#1C1F24] z-10 w-[52px]" style={{ left: 450 }}>{row.qm}</td>
-                  <td className="p-2 border-b border-gray-800 text-right sticky bg-[#1C1F24] z-10 w-[60px]" style={{ left: 502 }}>{row.betten}</td>
-                  <td className="p-2 border-b border-gray-800 text-right sticky bg-[#1C1F24] z-10 w-[58px]" style={{ left: 562 }}>{row.rooms}</td>
+                  <td className="px-1.5 py-1 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[88px]" style={{ left: 0 }}>{row.abteilung || '—'}</td>
+                  <td className="px-1.5 py-1 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[88px]" style={{ left: 88 }}>{row.statusLabel}</td>
+                  <td className="px-1.5 py-1 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[170px]" style={{ left: 176 }}>{row.adresse}</td>
+                  <td className="px-1.5 py-1 border-b border-gray-800 sticky bg-[#1C1F24] z-10 w-[86px]" style={{ left: 346 }}>{row.wohnung}</td>
+                  <td className="px-1.5 py-1 border-b border-gray-800 text-right sticky bg-[#1C1F24] z-10 w-[50px]" style={{ left: 432 }}>{row.qm}</td>
+                  <td className="px-1.5 py-1 border-b border-gray-800 text-right sticky bg-[#1C1F24] z-10 w-[56px]" style={{ left: 482 }}>{row.betten}</td>
+                  <td className="px-1.5 py-1 border-b border-gray-800 text-right sticky bg-[#1C1F24] z-10 w-[54px]" style={{ left: 538 }}>{row.rooms}</td>
                   {row.dayCells.map((cell, idx) => (
-                    <td key={`${row.apartmentId}-${idx}`} className={`p-2 border-b border-gray-800 text-center ${statusClass(cell.kind)}`}>
+                    <td key={`${row.apartmentId}-${idx}`} className={`px-1.5 py-1 border-b border-gray-800 text-center w-[56px] min-w-[56px] max-w-[56px] whitespace-nowrap ${statusClass(cell.kind)}`}>
                       {cell.kind === 'ooo' ? 'OOO' : formatCellCurrency(cell.amountNet)}
                     </td>
                   ))}
-                  <td className="p-2 border-b border-gray-800 text-right sticky right-0 bg-[#1C1F24]">
+                  <td className="px-1.5 py-1 border-b border-gray-800 text-right sticky right-0 bg-[#1C1F24]">
                     {formatPct(row.occupancyPctOperationalDays)}
                   </td>
                 </tr>
