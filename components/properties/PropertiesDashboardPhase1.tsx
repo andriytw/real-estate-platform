@@ -568,9 +568,30 @@ const PropertiesDashboardPhase1: React.FC = () => {
                 <th className={`${frozenHeaderBase} text-left`} style={{ width: frozenWidths.status, minWidth: frozenWidths.status, maxWidth: frozenWidths.status, left: frozenLeft.status, backgroundColor: '#1C1F24' }}>Status</th>
                 <th className={`${frozenHeaderBase} text-left`} style={{ width: frozenWidths.adresse, minWidth: frozenWidths.adresse, maxWidth: frozenWidths.adresse, left: frozenLeft.adresse, backgroundColor: '#1C1F24' }}>Adresse</th>
                 <th className={`${frozenHeaderBase} text-left`} style={{ width: frozenWidths.wohnung, minWidth: frozenWidths.wohnung, maxWidth: frozenWidths.wohnung, left: frozenLeft.wohnung, backgroundColor: '#1C1F24' }}>Wohnung</th>
-                <th className={`${frozenHeaderBase} text-right`} style={{ width: frozenWidths.qm, minWidth: frozenWidths.qm, maxWidth: frozenWidths.qm, left: frozenLeft.qm, backgroundColor: '#1C1F24' }}>QM</th>
-                <th className={`${frozenHeaderBase} text-right`} style={{ width: frozenWidths.betten, minWidth: frozenWidths.betten, maxWidth: frozenWidths.betten, left: frozenLeft.betten, backgroundColor: '#1C1F24' }}>Betten</th>
-                <th className={`${frozenHeaderBase} text-right ${leftZoneBoundaryClass}`} style={{ width: frozenWidths.rooms, minWidth: frozenWidths.rooms, maxWidth: frozenWidths.rooms, left: frozenLeft.rooms, backgroundColor: '#1C1F24' }}>Rooms</th>
+                <th
+                  className={`${frozenHeaderBase} text-right`}
+                  style={{ width: frozenWidths.qm, minWidth: frozenWidths.qm, maxWidth: frozenWidths.qm, left: frozenLeft.qm, backgroundColor: '#1C1F24' }}
+                  title="QM"
+                  aria-label="QM"
+                >
+                  <span className="inline-flex justify-end w-full"><Ruler className="w-3.5 h-3.5 text-gray-400" /></span>
+                </th>
+                <th
+                  className={`${frozenHeaderBase} text-right`}
+                  style={{ width: frozenWidths.betten, minWidth: frozenWidths.betten, maxWidth: frozenWidths.betten, left: frozenLeft.betten, backgroundColor: '#1C1F24' }}
+                  title="Betten"
+                  aria-label="Betten"
+                >
+                  <span className="inline-flex justify-end w-full"><Bed className="w-3.5 h-3.5 text-gray-400" /></span>
+                </th>
+                <th
+                  className={`${frozenHeaderBase} text-right ${leftZoneBoundaryClass}`}
+                  style={{ width: frozenWidths.rooms, minWidth: frozenWidths.rooms, maxWidth: frozenWidths.rooms, left: frozenLeft.rooms, backgroundColor: '#1C1F24' }}
+                  title="Rooms"
+                  aria-label="Rooms"
+                >
+                  <span className="inline-flex justify-end w-full"><LayoutGrid className="w-3.5 h-3.5 text-gray-400" /></span>
+                </th>
 
                 <th className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[160px]">Collected for Apartment</th>
                 <th className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[140px]">Price per Room</th>
