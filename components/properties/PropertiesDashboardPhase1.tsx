@@ -34,6 +34,14 @@ function statusClass(kind: 'ooo' | 'zero' | 'value'): string {
 }
 
 type DailyFillScale = 'none' | 'pct100' | 'rowMax';
+type DailyRowConfig = {
+  label: string;
+  format: (d: DailyDashboardMetrics) => string;
+  value: (d: DailyDashboardMetrics) => number | null | undefined;
+  fillScale: DailyFillScale;
+  fillEnabled: boolean;
+  fillOpacityClass?: string;
+};
 
 function toFiniteNonNegative(value: number | null | undefined): number {
   const n = Number(value);
@@ -218,81 +226,67 @@ const PropertiesDashboardPhase1: React.FC = () => {
       <section className="space-y-4">
         <h3 className="text-sm font-semibold text-gray-300 mb-3">Daily KPI Rows</h3>
         {(() => {
-          const tile1Rows: Array<{
-            label: string;
-            format: (d: DailyDashboardMetrics) => string;
-            value: (d: DailyDashboardMetrics) => number | null | undefined;
-            fillScale: DailyFillScale;
-            fillToneClass: string;
-          }> = [
+          const tile1Rows: DailyRowConfig[] = [
             {
               label: 'Rented % of Available Apartments',
               format: (d) => formatPctCompact(d.rentedPctAvailableApartments),
               value: (d) => (Number(d.rentedPctAvailableApartments) || 0) * 100,
               fillScale: 'pct100',
-              fillToneClass: 'bg-cyan-300/12',
+              fillEnabled: true,
+              fillOpacityClass: 'bg-emerald-400/12',
             },
             {
               label: 'Rented % of Available Rooms',
               format: (d) => formatPctCompact(d.rentedPctAvailableRooms),
               value: (d) => (Number(d.rentedPctAvailableRooms) || 0) * 100,
               fillScale: 'pct100',
-              fillToneClass: 'bg-sky-300/12',
+              fillEnabled: true,
+              fillOpacityClass: 'bg-emerald-400/11',
             },
             {
               label: 'Average Price Per Rooms',
               format: (d) => formatCompactNumber(d.averagePricePerRoom),
               value: (d) => d.averagePricePerRoom,
               fillScale: 'rowMax',
-              fillToneClass: 'bg-violet-300/12',
+              fillEnabled: true,
+              fillOpacityClass: 'bg-emerald-400/10',
             },
           ];
-          const tile2Rows: Array<{
-            label: string;
-            format: (d: DailyDashboardMetrics) => string;
-            value: (d: DailyDashboardMetrics) => number | null | undefined;
-            fillScale: DailyFillScale;
-            fillToneClass: string;
-          }> = [
+          const tile2Rows: DailyRowConfig[] = [
             {
               label: 'Occupied Room-Nights',
               format: (d) => String(d.occupiedRoomNights),
               value: (d) => d.occupiedRoomNights,
               fillScale: 'rowMax',
-              fillToneClass: 'bg-emerald-300/12',
+              fillEnabled: true,
+              fillOpacityClass: 'bg-emerald-400/12',
             },
             {
               label: 'Not occupied Room-Nights',
               format: (d) => String(d.notOccupiedRoomNights),
               value: (d) => d.notOccupiedRoomNights,
               fillScale: 'rowMax',
-              fillToneClass: 'bg-amber-300/10',
+              fillEnabled: true,
+              fillOpacityClass: 'bg-emerald-400/10',
             },
             {
               label: 'Not occupied Room-Nights because of OOO',
               format: (d) => String(d.oooRoomNights),
               value: (d) => d.oooRoomNights,
               fillScale: 'rowMax',
-              fillToneClass: 'bg-slate-300/10',
+              fillEnabled: true,
+              fillOpacityClass: 'bg-emerald-400/9',
             },
             {
               label: 'Total Room-Nights',
               format: (d) => String(d.totalRoomNights),
               value: (d) => d.totalRoomNights,
               fillScale: 'none',
-              fillToneClass: 'bg-slate-200/6',
+              fillEnabled: false,
+              fillOpacityClass: 'bg-emerald-400/6',
             },
           ];
-          const renderDailyTile = (
-            title: string,
-            rows: Array<{
-              label: string;
-              format: (d: DailyDashboardMetrics) => string;
-              value: (d: DailyDashboardMetrics) => number | null | undefined;
-              fillScale: DailyFillScale;
-              fillToneClass: string;
-            }>
-          ) => (
+          const renderDailyTile = (title: string, rows: DailyRowConfig[]) => (
             <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4 overflow-hidden">
               <h4 className="text-xs font-semibold text-gray-300 mb-3">{title}</h4>
               <div className="flex items-start">
@@ -322,20 +316,20 @@ const PropertiesDashboardPhase1: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map(({ label, format, value, fillScale, fillToneClass }) => {
+                      {rows.map(({ label, format, value, fillScale, fillEnabled, fillOpacityClass }) => {
                         const rowMax = fillScale === 'rowMax'
                           ? monthData.dailyMetrics.reduce((max, day) => Math.max(max, toFiniteNonNegative(value(day))), 0)
                           : 100;
                         return (
                         <tr key={label}>
                           {monthData.dailyMetrics.map((day) => {
-                            const ratio = computeFillRatio(value(day), fillScale, rowMax);
+                            const ratio = fillEnabled ? computeFillRatio(value(day), fillScale, rowMax) : 0;
                             return (
                               <td key={`${title}-${label}-${day.dayOfMonth}`} className={`p-2 border-b border-r border-gray-800 last:border-r-0 whitespace-nowrap relative overflow-hidden ${dailyDayCellClass}`}>
                                 {ratio > 0 && (
                                   <span
                                     aria-hidden="true"
-                                    className={`pointer-events-none absolute left-[1px] right-[1px] bottom-0 ${fillToneClass}`}
+                                    className={`pointer-events-none absolute left-[1px] right-[1px] bottom-0 ${fillOpacityClass ?? 'bg-emerald-400/10'}`}
                                     style={{ height: `${ratio * 100}%` }}
                                   />
                                 )}
