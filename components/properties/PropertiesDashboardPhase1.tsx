@@ -248,10 +248,10 @@ const PropertiesDashboardPhase1: React.FC = () => {
     monthlyRoomsPct < 83.0
       ? 'text-red-400'
       : monthlyRoomsPct < 85.5
-      ? 'text-yellow-300'
+      ? 'text-amber-300'
       : monthlyRoomsPct < 90.0
       ? 'text-emerald-400'
-      : 'text-amber-300';
+      : 'text-cyan-300';
 
   const commitPlanningPrice = useCallback(async (propertyId: string, draft: string) => {
     const parsed = Number(draft.replace(',', '.'));
