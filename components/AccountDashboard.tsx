@@ -874,6 +874,25 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const [rentIncreaseFormError, setRentIncreaseFormError] = useState<string | null>(null);
   const [isAddingRentIncrease, setIsAddingRentIncrease] = useState(false);
   const selectedProperty = useMemo(() => properties.find(p => p.id === selectedPropertyId) || properties[0] || null, [properties, selectedPropertyId]);
+  const handleStatsPlanningPriceChange = useCallback(async (value: number) => {
+    if (!selectedProperty?.id) return;
+    const normalized = Math.max(0, Number.isFinite(value) ? value : 0);
+    const rounded = Math.round(normalized * 100) / 100;
+    const previous = selectedProperty.planningPricePerRoom ?? 0;
+
+    setProperties((prev) =>
+      prev.map((p) => (p.id === selectedProperty.id ? { ...p, planningPricePerRoom: rounded } : p))
+    );
+    try {
+      const updated = await propertiesService.update(selectedProperty.id, { planningPricePerRoom: rounded });
+      setProperties((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    } catch (e) {
+      setProperties((prev) =>
+        prev.map((p) => (p.id === selectedProperty.id ? { ...p, planningPricePerRoom: previous } : p))
+      );
+      alert(e instanceof Error ? e.message : 'Failed to save planning price per room');
+    }
+  }, [selectedProperty]);
 
   // Enrich selected property with getById (apartment_group etc.) so details card has full data without extending getAll
   useEffect(() => {
@@ -1212,7 +1231,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
-  const [statsPricePerRoomNight, setStatsPricePerRoomNight] = useState<number>(0);
   const [propertyTaskComments, setPropertyTaskComments] = useState<Record<string, string>>({});
   const facilityTasksLoadedRef = useRef(false);
 
@@ -9543,8 +9561,8 @@ ${internalCompany} Team`;
                 utilitiesCost={utilitiesCostFromMeters}
                 selectedMonth={statsSelectedMonth}
                 onSelectedMonthChange={setStatsSelectedMonth}
-                pricePerRoomNight={statsPricePerRoomNight}
-                onPricePerRoomNightChange={setStatsPricePerRoomNight}
+                pricePerRoomNight={Number(selectedProperty?.planningPricePerRoom ?? 0)}
+                onPricePerRoomNightChange={handleStatsPlanningPriceChange}
                 formatCurrency={formatCurrencyEUR}
                 showDebug={import.meta.env.DEV}
               />

@@ -508,7 +508,7 @@ export function ApartmentStatisticsSection({
             <input
               type="number"
               min={0}
-              step={1}
+              step={0.01}
               value={pricePerRoomNight || ''}
               onChange={(e) => onPricePerRoomNightChange(Number(e.target.value) || 0)}
               className="w-24 bg-[#1C1F24] border border-gray-600 rounded px-2 py-1 text-white text-sm tabular-nums"

@@ -457,6 +457,8 @@ export interface Property {
   district: string;
   price: number;
   pricePerSqm: number;
+  /** Persistent planning model: monthly planning price per room-night (DB: planning_price_per_room). */
+  planningPricePerRoom?: number;
   rooms: number;
   area: number;
   image: string;

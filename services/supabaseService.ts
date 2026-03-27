@@ -3318,6 +3318,7 @@ function transformPropertyFromDB(db: any): Property {
     country: db.country || 'Ukraine',
     price: db.price != null ? parseFloat(db.price) : undefined,
     pricePerSqm: db.price_per_sqm != null ? parseFloat(db.price_per_sqm) : undefined,
+    planningPricePerRoom: db.planning_price_per_room != null ? parseFloat(db.planning_price_per_room) : 0,
     rooms: db.rooms || 0,
     area: db.area != null ? parseFloat(db.area) : 0,
     image: db.image || '',
@@ -3412,6 +3413,7 @@ function transformPropertyToDB(property: Property): any {
   if (property.country !== undefined) result.country = property.country;
   if (property.price !== undefined) result.price = property.price;
   if (property.pricePerSqm !== undefined) result.price_per_sqm = property.pricePerSqm;
+  if (property.planningPricePerRoom !== undefined) result.planning_price_per_room = property.planningPricePerRoom;
   if (property.rooms !== undefined) result.rooms = property.rooms;
   if (property.area !== undefined) result.area = property.area;
   if (property.image !== undefined) result.image = property.image;
