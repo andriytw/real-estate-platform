@@ -981,6 +981,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         id: r.id,
         validFrom: r.valid_from,
         validTo: r.valid_to ? r.valid_to : '∞',
+        createdAt: r.created_at,
         km, mietsteuer, unternehmenssteuer, bk, hk, muell, strom, gas, wasser,
         warm: warmFrom(km, bk, hk, mietsteuer, unternehmenssteuer, muell, strom, gas, wasser)
       };

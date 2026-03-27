@@ -5,6 +5,7 @@ import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '..
 import type { Booking, InvoiceData, OfferData, Property, RentTimelineRowDB, Reservation } from '../../types';
 import { buildDashboardMonthData } from '../../lib/propertiesDashboard/selectors';
 import type { DailyDashboardMetrics } from '../../lib/propertiesDashboard/types';
+import { resolveOwnerDueForMonth } from '../../lib/ownerDueResolver';
 
 function formatPct(value: number): string {
   return `${(Math.max(0, value) * 100).toFixed(2)}%`;
@@ -61,30 +62,6 @@ interface ApartmentFinancialRow {
   totalCost: number;
 }
 
-function parseISODate(s: string): Date {
-  const [y, m, d] = s.slice(0, 10).split('-').map(Number);
-  return new Date(y, (m || 1) - 1, d || 1);
-}
-
-function monthStart(yyyyMm: string): Date {
-  const [y, m] = yyyyMm.split('-').map(Number);
-  return new Date(y, (m || 1) - 1, 1);
-}
-
-function monthEnd(yyyyMm: string): Date {
-  const start = monthStart(yyyyMm);
-  start.setMonth(start.getMonth() + 1);
-  start.setDate(0);
-  return start;
-}
-
-function overlapDays(rangeStart: Date, rangeEnd: Date, monthStartDate: Date, monthEndDate: Date): number {
-  const start = new Date(Math.max(rangeStart.getTime(), monthStartDate.getTime()));
-  const end = new Date(Math.min(rangeEnd.getTime(), monthEndDate.getTime()));
-  if (start > end) return 0;
-  return Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
-}
-
 function expenseInvoiceLineAmount(item: PropertyExpenseItemWithDocument): number {
   return item.line_total != null
     ? Number(item.line_total)
@@ -110,53 +87,6 @@ const OWNER_DUE_COMPONENT_DEFS: Array<{ key: keyof Pick<RentTimelineRowDB, 'km' 
   { key: 'mietsteuer', label: 'Mietsteuer' },
   { key: 'unternehmenssteuer', label: 'Unternehmenssteuer' },
 ];
-
-/**
- * Same proration as legacy inline owner-due reduce; full float precision.
- * Returns null when the row does not overlap the selected month.
- */
-function computeOwnerDueContribution(
-  rentRow: RentTimelineRowDB,
-  monthStartDate: Date,
-  monthEndExclusive: Date
-): {
-  proratedTotal: number;
-  overlap: number;
-  rowDays: number;
-  components: Record<string, number>;
-} | null {
-  const von = rentRow.valid_from ? parseISODate(rentRow.valid_from) : monthStartDate;
-  const bisStr = rentRow.valid_to && rentRow.valid_to !== '∞' ? rentRow.valid_to : '9999-12-31';
-  const bis = parseISODate(bisStr);
-  const rowDays = Math.max(1, Math.floor((bis.getTime() - von.getTime()) / (24 * 60 * 60 * 1000)) + 1);
-  const overlap = overlapDays(von, bis, monthStartDate, monthEndExclusive);
-  if (overlap <= 0) return null;
-
-  const km = Number(rentRow.km) || 0;
-  const bk = Number(rentRow.bk) || 0;
-  const hk = Number(rentRow.hk) || 0;
-  const muell = Number(rentRow.muell) || 0;
-  const strom = Number(rentRow.strom) || 0;
-  const gas = Number(rentRow.gas) || 0;
-  const wasser = Number(rentRow.wasser) || 0;
-  const mietsteuer = Number(rentRow.mietsteuer) || 0;
-  const unternehmenssteuer = Number(rentRow.unternehmenssteuer) || 0;
-  const rowTotal = km + bk + hk + muell + strom + gas + wasser + mietsteuer + unternehmenssteuer;
-  const proratedTotal = rowDays >= 28 && overlap >= 28 ? rowTotal : rowTotal * (overlap / rowDays);
-  const factor = rowDays >= 28 && overlap >= 28 ? 1 : overlap / rowDays;
-  const components: Record<string, number> = {
-    km: km * factor,
-    bk: bk * factor,
-    hk: hk * factor,
-    muell: muell * factor,
-    strom: strom * factor,
-    gas: gas * factor,
-    wasser: wasser * factor,
-    mietsteuer: mietsteuer * factor,
-    unternehmenssteuer: unternehmenssteuer * factor,
-  };
-  return { proratedTotal, overlap, rowDays, components };
-}
 
 /** Display-only: adjust last rounded part so displayed parts sum to the same 2dp as targetTotal. */
 function reconcileDisplayCurrencyParts(amounts: number[], targetTotal: number): number[] {
@@ -271,21 +201,43 @@ const PropertiesDashboardPhase1: React.FC = () => {
 
   const dashboardMonthContext = useMemo(() => {
     const monthKey = selectedMonth;
-    const monthStartDate = monthStart(monthKey);
-    const monthEndDate = monthEnd(monthKey);
-    const monthEndExclusive = new Date(monthEndDate);
-    monthEndExclusive.setDate(monthEndExclusive.getDate() + 1);
     const [y, m] = monthKey.split('-').map(Number);
     const monthLabel =
       Number.isFinite(y) && Number.isFinite(m) && m >= 1 && m <= 12
         ? new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
         : monthKey;
-    return { monthKey, monthStartDate, monthEndDate, monthEndExclusive, monthLabel };
+    return { monthKey, monthLabel };
   }, [selectedMonth]);
+
+  const ownerDueResolvedByApartment = useMemo(() => {
+    const out: Record<string, ReturnType<typeof resolveOwnerDueForMonth>> = {};
+    const { monthKey } = dashboardMonthContext;
+    for (const [apartmentId, rows] of Object.entries(rentRowsByPropertyId)) {
+      out[apartmentId] = resolveOwnerDueForMonth(
+        rows.map((r) => ({
+          id: String(r.id),
+          valid_from: r.valid_from,
+          valid_to: r.valid_to,
+          created_at: r.created_at,
+          km: r.km,
+          bk: r.bk,
+          hk: r.hk,
+          muell: r.muell,
+          strom: r.strom,
+          gas: r.gas,
+          wasser: r.wasser,
+          mietsteuer: r.mietsteuer,
+          unternehmenssteuer: r.unternehmenssteuer,
+        })),
+        monthKey
+      );
+    }
+    return out;
+  }, [dashboardMonthContext, rentRowsByPropertyId]);
 
   const apartmentFinancialRows = useMemo<ApartmentFinancialRow[]>(() => {
     if (!monthData) return [];
-    const { monthKey, monthStartDate: mStart, monthEndExclusive } = dashboardMonthContext;
+    const { monthKey } = dashboardMonthContext;
     const propertyById = new Map(properties.map((p) => [String(p.id), p]));
 
     return monthData.rows.map((row) => {
@@ -303,11 +255,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
         return Number.isFinite(line) ? sum + line : sum;
       }, 0);
 
-      const rentRows = rentRowsByPropertyId[row.apartmentId] ?? [];
-      const ownerDue = rentRows.reduce((sum, rentRow) => {
-        const c = computeOwnerDueContribution(rentRow, mStart, monthEndExclusive);
-        return c ? sum + c.proratedTotal : sum;
-      }, 0);
+      const ownerDue = ownerDueResolvedByApartment[row.apartmentId]?.total ?? 0;
 
       const totalCost = invoices + ownerDue;
       const difference = collectedForApartment - fullCapacityIncome;
@@ -333,7 +281,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
         totalCost,
       };
     });
-  }, [monthData, dashboardMonthContext, properties, expenseItemsByPropertyId, rentRowsByPropertyId]);
+  }, [monthData, dashboardMonthContext, properties, expenseItemsByPropertyId, ownerDueResolvedByApartment]);
 
   const expensesSummaryTotals = useMemo(() => {
     const invoices = apartmentFinancialRows.reduce((s, r) => s + r.invoices, 0);
@@ -342,7 +290,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
   }, [apartmentFinancialRows]);
 
   const apartmentExpenseModalRows = useMemo(() => {
-    const { monthKey, monthStartDate: mStart, monthEndExclusive } = dashboardMonthContext;
+    const { monthKey } = dashboardMonthContext;
     return apartmentFinancialRows.map((finRow) => {
       const items = expenseItemsByPropertyId[finRow.apartmentId] ?? [];
       const monthItems = items.filter((item) => invoiceItemInSelectedMonth(item, monthKey));
@@ -355,22 +303,22 @@ const PropertiesDashboardPhase1: React.FC = () => {
       }));
 
       const rentRows = rentRowsByPropertyId[finRow.apartmentId] ?? [];
-      const ownerDueBlocks = rentRows
-        .map((rentRow) => {
-          const c = computeOwnerDueContribution(rentRow, mStart, monthEndExclusive);
-          if (!c) return null;
+      const rentRowById = new Map(rentRows.map((r) => [String(r.id), r]));
+      const ownerDueBlocks = (ownerDueResolvedByApartment[finRow.apartmentId]?.blocks ?? [])
+        .map((block) => {
+          const sourceRow = rentRowById.get(String(block.row_id));
           const lineEntries: Array<{ label: string; raw: number }> = [];
           for (const def of OWNER_DUE_COMPONENT_DEFS) {
-            const raw = c.components[def.key] ?? 0;
+            const raw = block.components[def.key] ?? 0;
             if (Math.abs(raw) > 1e-12) lineEntries.push({ label: def.label, raw });
           }
           let displayLines: Array<{ label: string; displayAmount: string }>;
           if (lineEntries.length === 0) {
-            displayLines = [{ label: 'Total', displayAmount: formatCurrency(c.proratedTotal) }];
+            displayLines = [{ label: 'Total', displayAmount: formatCurrency(block.prorated_total) }];
           } else {
             const reconciled = reconcileDisplayCurrencyParts(
               lineEntries.map((e) => e.raw),
-              c.proratedTotal
+              block.prorated_total
             );
             displayLines = lineEntries.map((e, i) => ({
               label: e.label,
@@ -378,11 +326,11 @@ const PropertiesDashboardPhase1: React.FC = () => {
             }));
           }
           return {
-            rentRowId: rentRow.id,
-            validFrom: rentRow.valid_from,
-            validTo: rentRow.valid_to ?? '—',
-            tenantName: rentRow.tenant_name,
-            proratedTotal: c.proratedTotal,
+            rentRowId: block.row_id,
+            validFrom: block.segment_start,
+            validTo: block.segment_end,
+            tenantName: sourceRow?.tenant_name,
+            proratedTotal: block.prorated_total,
             displayLines,
           };
         })
@@ -400,7 +348,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
         ownerDueBlocks,
       };
     });
-  }, [apartmentFinancialRows, dashboardMonthContext, expenseItemsByPropertyId, rentRowsByPropertyId]);
+  }, [apartmentFinancialRows, dashboardMonthContext, expenseItemsByPropertyId, rentRowsByPropertyId, ownerDueResolvedByApartment]);
 
   const displayedApartmentExpenseRows = useMemo(() => {
     const rows = apartmentExpenseModalRows;

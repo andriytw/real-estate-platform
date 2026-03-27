@@ -8,6 +8,7 @@ import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { DonutCompositionCard, DonutGaugeCard, type DonutSegment } from './charts/DonutCard';
 import { CostSliceDetailsCard } from './charts/CostSliceDetailsCard';
 import { UserRound, Receipt, Wallet } from 'lucide-react';
+import { resolveOwnerDueForMonth } from '../lib/ownerDueResolver';
 
 // --- Data types (minimal for aggregation) ---
 interface PaymentLike {
@@ -26,8 +27,10 @@ interface ReservationLike {
   end?: string;
 }
 interface RentRowLike {
+  id?: string;
   validFrom: string;
   validTo: string;
+  createdAt?: string;
   km?: number;
   bk?: number;
   hk?: number;
@@ -151,6 +154,55 @@ export function ApartmentStatisticsSection({
   const maxRoomNights = roomsCount * operationalDays;
   const plan = pricePerRoomNight * maxRoomNights;
 
+  // --- Last 6 months for table ---
+  const last6Months = useMemo(() => {
+    const [y, m] = selectedMonth.split('-').map(Number);
+    const out: string[] = [];
+    for (let i = 5; i >= 0; i--) {
+      let month = m - i;
+      let year = y;
+      while (month < 1) {
+        month += 12;
+        year -= 1;
+      }
+      while (month > 12) {
+        month -= 12;
+        year += 1;
+      }
+      out.push(`${year}-${String(month).padStart(2, '0')}`);
+    }
+    return out;
+  }, [selectedMonth]);
+
+  const normalizedOwnerDueRows = useMemo(
+    () =>
+      rentTimelineRows.map((r, idx) => ({
+        id: String(r.id ?? `row-${idx}`),
+        valid_from: r.validFrom,
+        valid_to: r.validTo && r.validTo !== '∞' ? r.validTo : null,
+        created_at: r.createdAt ?? null,
+        km: r.km,
+        bk: r.bk,
+        hk: r.hk,
+        muell: r.muell,
+        strom: r.strom,
+        gas: r.gas,
+        wasser: r.wasser,
+        mietsteuer: r.mietsteuer,
+        unternehmenssteuer: r.unternehmenssteuer,
+      })),
+    [rentTimelineRows]
+  );
+
+  const ownerDueByMonth = useMemo(() => {
+    const out: Record<string, ReturnType<typeof resolveOwnerDueForMonth>> = {};
+    const months = new Set<string>([selectedMonth, ...last6Months]);
+    for (const mm of months) {
+      out[mm] = resolveOwnerDueForMonth(normalizedOwnerDueRows, mm);
+    }
+    return out;
+  }, [selectedMonth, last6Months, normalizedOwnerDueRows]);
+
   // --- Aggregation for selected month ---
   const agg = useMemo(() => {
     const mStart = monthStart(selectedMonth);
@@ -183,30 +235,7 @@ export function ApartmentStatisticsSection({
       }
     }
 
-    let ownerDue = 0;
-    for (const r of rentTimelineRows) {
-      const von = r.validFrom ? parseISODate(r.validFrom) : mStart;
-      const bisStr = r.validTo && r.validTo !== '∞' ? r.validTo : '9999-12-31';
-      const bis = parseISODate(bisStr);
-      const rowDays = Math.max(1, Math.floor((bis.getTime() - von.getTime()) / (24 * 60 * 60 * 1000)) + 1);
-      const overlap = overlapDays(von, bis, mStart, mEndInclusive);
-      const rowTotal =
-        Number(r.warm) ||
-        (Number(r.km) || 0) +
-          (Number(r.bk) || 0) +
-          (Number(r.hk) || 0) +
-          (Number(r.muell) || 0) +
-          (Number(r.strom) || 0) +
-          (Number(r.gas) || 0) +
-          (Number(r.wasser) || 0) +
-          (Number(r.mietsteuer) || 0) +
-          (Number(r.unternehmenssteuer) || 0);
-      if (rowDays >= 28 && overlap >= 28) {
-        ownerDue += rowTotal;
-      } else {
-        ownerDue += rowTotal * (overlap / rowDays);
-      }
-    }
+    const ownerDue = ownerDueByMonth[selectedMonth]?.total ?? 0;
 
     let invoiceExpenses = 0;
     for (const item of expenseItems) {
@@ -259,6 +288,7 @@ export function ApartmentStatisticsSection({
     plan,
     roomsCount,
     pricePerRoomNight,
+    ownerDueByMonth,
   ]);
 
   const {
@@ -358,38 +388,18 @@ export function ApartmentStatisticsSection({
   }, [selectedMonth, expenseItems]);
 
   const ownerBreakdownRows = useMemo(() => {
-    const mStart = monthStart(selectedMonth);
-    const mEnd = monthEnd(selectedMonth);
-    const mEndInclusive = new Date(mEnd);
-    mEndInclusive.setDate(mEndInclusive.getDate() + 1);
+    const components = ownerDueByMonth[selectedMonth]?.component_totals ?? {};
     const buckets: Record<string, number> = {
-      Kaltmiete: 0,
-      Betriebskosten: 0,
-      Heizkosten: 0,
-      Müll: 0,
-      Strom: 0,
-      Gas: 0,
-      Wasser: 0,
-      Mietsteuer: 0,
-      Unternehmenssteuer: 0,
+      Kaltmiete: Number(components.km) || 0,
+      Betriebskosten: Number(components.bk) || 0,
+      Heizkosten: Number(components.hk) || 0,
+      Müll: Number(components.muell) || 0,
+      Strom: Number(components.strom) || 0,
+      Gas: Number(components.gas) || 0,
+      Wasser: Number(components.wasser) || 0,
+      Mietsteuer: Number(components.mietsteuer) || 0,
+      Unternehmenssteuer: Number(components.unternehmenssteuer) || 0,
     };
-    for (const r of rentTimelineRows) {
-      const von = r.validFrom ? parseISODate(r.validFrom) : mStart;
-      const bisStr = r.validTo && r.validTo !== '∞' ? r.validTo : '9999-12-31';
-      const bis = parseISODate(bisStr);
-      const rowDays = Math.max(1, Math.floor((bis.getTime() - von.getTime()) / (24 * 60 * 60 * 1000)) + 1);
-      const overlap = overlapDays(von, bis, mStart, mEndInclusive);
-      const ratio = rowDays >= 28 && overlap >= 28 ? 1 : overlap / rowDays;
-      buckets.Kaltmiete += (Number(r.km) || 0) * ratio;
-      buckets.Betriebskosten += (Number(r.bk) || 0) * ratio;
-      buckets.Heizkosten += (Number(r.hk) || 0) * ratio;
-      buckets.Müll += (Number(r.muell) || 0) * ratio;
-      buckets.Strom += (Number(r.strom) || 0) * ratio;
-      buckets.Gas += (Number(r.gas) || 0) * ratio;
-      buckets.Wasser += (Number(r.wasser) || 0) * ratio;
-      buckets.Mietsteuer += (Number(r.mietsteuer) || 0) * ratio;
-      buckets.Unternehmenssteuer += (Number(r.unternehmenssteuer) || 0) * ratio;
-    }
     const order = [
       'Kaltmiete',
       'Betriebskosten',
@@ -404,7 +414,7 @@ export function ApartmentStatisticsSection({
     return order
       .filter((label) => (buckets[label] ?? 0) > 0)
       .map((label) => ({ label, amount: buckets[label] ?? 0 }));
-  }, [selectedMonth, rentTimelineRows]);
+  }, [selectedMonth, ownerDueByMonth]);
 
   const ownerRows = useMemo(() => {
     if (ownerBreakdownRows.length > 0) {
@@ -466,26 +476,6 @@ export function ApartmentStatisticsSection({
       collectedBreakdownWarning: warning,
     };
   }, [propertyPayments, selectedMonth, collected, formatCurrency]);
-
-  // --- Last 6 months for table ---
-  const last6Months = useMemo(() => {
-    const [y, m] = selectedMonth.split('-').map(Number);
-    const out: string[] = [];
-    for (let i = 5; i >= 0; i--) {
-      let month = m - i;
-      let year = y;
-      while (month < 1) {
-        month += 12;
-        year -= 1;
-      }
-      while (month > 12) {
-        month -= 12;
-        year += 1;
-      }
-      out.push(`${year}-${String(month).padStart(2, '0')}`);
-    }
-    return out;
-  }, [selectedMonth]);
 
   return (
     <div className="space-y-6">
@@ -714,18 +704,7 @@ export function ApartmentStatisticsSection({
                 const dateStr = typeof p.date === 'string' ? p.date.slice(0, 10) : p.date ? String(p.date).slice(0, 10) : '';
                 if (dateStr && dateStr.slice(0, 7) === mm) coll += Number(p.totalGross ?? 0) || 0;
               }
-              let own = 0;
-              for (const r of rentTimelineRows) {
-                const von = r.validFrom ? parseISODate(r.validFrom) : mStart;
-                const bisStr = r.validTo && r.validTo !== '∞' ? r.validTo : '9999-12-31';
-                const bis = parseISODate(bisStr);
-                const rowDays = Math.max(1, Math.floor((bis.getTime() - von.getTime()) / (24 * 60 * 60 * 1000)) + 1);
-                const overlap = overlapDays(von, bis, mStart, mEndInc);
-                const rowTotal =
-                  Number(r.warm) ||
-                  (Number(r.km) || 0) + (Number(r.bk) || 0) + (Number(r.hk) || 0) + (Number(r.muell) || 0) + (Number(r.strom) || 0) + (Number(r.gas) || 0) + (Number(r.wasser) || 0) + (Number(r.mietsteuer) || 0) + (Number(r.unternehmenssteuer) || 0);
-                own += rowDays >= 28 && overlap >= 28 ? rowTotal : rowTotal * (overlap / rowDays);
-              }
+              const own = ownerDueByMonth[mm]?.total ?? 0;
               let inv = 0;
               for (const item of expenseItems) {
                 const dateStr = (item.invoice_date ?? '').toString().slice(0, 10);
