@@ -1389,9 +1389,9 @@ export const propertiesService = {
   async getAll(lightweight = false): Promise<Property[]> {
     try {
       // For Marketplace/public views, only load essential fields for faster loading
-      const selectFields = lightweight 
+      const selectFields = lightweight
         ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip, zweckentfremdung_flag, zweckentfremdung_updated_at, cover_photo_asset_id, lat, lng, details, archived_at, archived_by'
-        : '*';
+        : '*, apartment_group:apartment_groups(id, name)';
       
       const { data, error } = await supabase
         .from('properties')

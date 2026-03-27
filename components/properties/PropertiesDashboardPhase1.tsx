@@ -314,7 +314,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
     const propertyById = new Map(properties.map((p) => [String(p.id), p]));
     return apartmentFinancialRows.map((finRow) => {
       const property = propertyById.get(finRow.apartmentId);
-      const normalizedGroup = normalizeModalIdentityLabel(finRow.abteilung);
+      const normalizedGroup = normalizeModalIdentityLabel(property?.apartmentGroupName);
       const normalizedOperator = operatingCompanyLabel(property);
       const propertyTitle = normalizeModalIdentityLabel(property?.title);
       const items = expenseItemsByPropertyId[finRow.apartmentId] ?? [];
@@ -389,13 +389,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
     const qNorm = apartmentExpenseModalSearch.trim().toLowerCase();
     const filtered = rows.filter((block) => {
       if (qNorm !== '') {
-        const haystack = [
-          block.normalizedGroup,
-          block.normalizedOperator,
-          `${block.abteilung ?? ''}`,
-          `${block.adresse ?? ''}`,
-          `${block.wohnung ?? ''}`,
-        ]
+        const haystack = [block.normalizedGroup, block.normalizedOperator, `${block.adresse ?? ''}`, `${block.wohnung ?? ''}`]
           .join(' ')
           .toLowerCase();
         if (!haystack.includes(qNorm)) return false;
@@ -1100,13 +1094,12 @@ const PropertiesDashboardPhase1: React.FC = () => {
                       <span className="flex h-full shrink-0 items-center justify-center text-gray-500">
                         {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </span>
-                      <div className="min-w-0 truncate text-sm space-y-0.5">
-                        <div className="text-xs text-gray-400 truncate">
-                          <span>{block.normalizedGroup}</span>
+                      <div className="min-w-0 text-sm">
+                        <div className="min-w-0 truncate whitespace-nowrap">
+                          <span className="text-gray-400">{block.normalizedGroup}</span>
                           <span className="text-gray-600"> · </span>
-                          <span>{block.normalizedOperator}</span>
-                        </div>
-                        <div className="min-w-0 truncate">
+                          <span className="text-gray-400">{block.normalizedOperator}</span>
+                          <span className="text-gray-600"> · </span>
                           <span className="text-gray-300">{block.adresse || '—'}</span>
                           <span className="text-gray-500"> · </span>
                           <span className="text-white">{block.wohnung || '—'}</span>
