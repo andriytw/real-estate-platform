@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bed, LayoutGrid, Ruler } from 'lucide-react';
+import { Bed, ChevronDown, ChevronRight, LayoutGrid, Ruler, X } from 'lucide-react';
 import { bookingsService, invoicesService, offersService, propertiesService, rentTimelineService, reservationsService } from '../../services/supabaseService';
 import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '../../services/propertyExpenseService';
 import type { Booking, InvoiceData, OfferData, Property, RentTimelineRowDB, Reservation } from '../../types';
@@ -85,6 +85,90 @@ function overlapDays(rangeStart: Date, rangeEnd: Date, monthStartDate: Date, mon
   return Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
 }
 
+function expenseInvoiceLineAmount(item: PropertyExpenseItemWithDocument): number {
+  return item.line_total != null
+    ? Number(item.line_total)
+    : (Number(item.unit_price) || 0) * (Number(item.quantity) || 0);
+}
+
+/** Invoice month filter: `monthKey` is `YYYY-MM`, same as `<input type="month">`. */
+function invoiceItemInSelectedMonth(item: PropertyExpenseItemWithDocument, monthKey: string): boolean {
+  const raw = (item.invoice_date ?? '').toString().trim();
+  const ymd = raw.slice(0, 10);
+  if (!ymd || ymd.length < 7) return false;
+  return ymd.slice(0, 7) === monthKey;
+}
+
+const OWNER_DUE_COMPONENT_DEFS: Array<{ key: keyof Pick<RentTimelineRowDB, 'km' | 'bk' | 'hk' | 'muell' | 'strom' | 'gas' | 'wasser' | 'mietsteuer' | 'unternehmenssteuer'>; label: string }> = [
+  { key: 'km', label: 'Kaltmiete' },
+  { key: 'bk', label: 'Betriebskosten' },
+  { key: 'hk', label: 'Heizkosten' },
+  { key: 'muell', label: 'Müll' },
+  { key: 'strom', label: 'Strom' },
+  { key: 'gas', label: 'Gas' },
+  { key: 'wasser', label: 'Wasser' },
+  { key: 'mietsteuer', label: 'Mietsteuer' },
+  { key: 'unternehmenssteuer', label: 'Unternehmenssteuer' },
+];
+
+/**
+ * Same proration as legacy inline owner-due reduce; full float precision.
+ * Returns null when the row does not overlap the selected month.
+ */
+function computeOwnerDueContribution(
+  rentRow: RentTimelineRowDB,
+  monthStartDate: Date,
+  monthEndExclusive: Date
+): {
+  proratedTotal: number;
+  overlap: number;
+  rowDays: number;
+  components: Record<string, number>;
+} | null {
+  const von = rentRow.valid_from ? parseISODate(rentRow.valid_from) : monthStartDate;
+  const bisStr = rentRow.valid_to && rentRow.valid_to !== '∞' ? rentRow.valid_to : '9999-12-31';
+  const bis = parseISODate(bisStr);
+  const rowDays = Math.max(1, Math.floor((bis.getTime() - von.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+  const overlap = overlapDays(von, bis, monthStartDate, monthEndExclusive);
+  if (overlap <= 0) return null;
+
+  const km = Number(rentRow.km) || 0;
+  const bk = Number(rentRow.bk) || 0;
+  const hk = Number(rentRow.hk) || 0;
+  const muell = Number(rentRow.muell) || 0;
+  const strom = Number(rentRow.strom) || 0;
+  const gas = Number(rentRow.gas) || 0;
+  const wasser = Number(rentRow.wasser) || 0;
+  const mietsteuer = Number(rentRow.mietsteuer) || 0;
+  const unternehmenssteuer = Number(rentRow.unternehmenssteuer) || 0;
+  const rowTotal = km + bk + hk + muell + strom + gas + wasser + mietsteuer + unternehmenssteuer;
+  const proratedTotal = rowDays >= 28 && overlap >= 28 ? rowTotal : rowTotal * (overlap / rowDays);
+  const factor = rowDays >= 28 && overlap >= 28 ? 1 : overlap / rowDays;
+  const components: Record<string, number> = {
+    km: km * factor,
+    bk: bk * factor,
+    hk: hk * factor,
+    muell: muell * factor,
+    strom: strom * factor,
+    gas: gas * factor,
+    wasser: wasser * factor,
+    mietsteuer: mietsteuer * factor,
+    unternehmenssteuer: unternehmenssteuer * factor,
+  };
+  return { proratedTotal, overlap, rowDays, components };
+}
+
+/** Display-only: adjust last rounded part so displayed parts sum to the same 2dp as targetTotal. */
+function reconcileDisplayCurrencyParts(amounts: number[], targetTotal: number): number[] {
+  if (amounts.length === 0) return [];
+  const target = Math.round(targetTotal * 100) / 100;
+  const rounded = amounts.map((a) => Math.round(a * 100) / 100);
+  const sum = rounded.reduce((s, x) => s + x, 0);
+  const drift = Math.round((target - sum) * 100) / 100;
+  rounded[rounded.length - 1] = Math.round((rounded[rounded.length - 1] + drift) * 100) / 100;
+  return rounded;
+}
+
 const PropertiesDashboardPhase1: React.FC = () => {
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
@@ -101,6 +185,8 @@ const PropertiesDashboardPhase1: React.FC = () => {
   const [editingPlanningCell, setEditingPlanningCell] = useState<{ propertyId: string; draft: string } | null>(null);
   const [savingPlanningFor, setSavingPlanningFor] = useState<string | null>(null);
   const [planningSaveError, setPlanningSaveError] = useState<string | null>(null);
+  const [expensesModalOpen, setExpensesModalOpen] = useState(false);
+  const [expandedExpenseApartments, setExpandedExpenseApartments] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -158,12 +244,23 @@ const PropertiesDashboardPhase1: React.FC = () => {
     });
   }, [selectedMonth, properties, bookings, reservations, offers, proformas]);
 
+  const dashboardMonthContext = useMemo(() => {
+    const monthKey = selectedMonth;
+    const monthStartDate = monthStart(monthKey);
+    const monthEndDate = monthEnd(monthKey);
+    const monthEndExclusive = new Date(monthEndDate);
+    monthEndExclusive.setDate(monthEndExclusive.getDate() + 1);
+    const [y, m] = monthKey.split('-').map(Number);
+    const monthLabel =
+      Number.isFinite(y) && Number.isFinite(m) && m >= 1 && m <= 12
+        ? new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+        : monthKey;
+    return { monthKey, monthStartDate, monthEndDate, monthEndExclusive, monthLabel };
+  }, [selectedMonth]);
+
   const apartmentFinancialRows = useMemo<ApartmentFinancialRow[]>(() => {
     if (!monthData) return [];
-    const mStart = monthStart(selectedMonth);
-    const mEnd = monthEnd(selectedMonth);
-    const mEndInclusive = new Date(mEnd);
-    mEndInclusive.setDate(mEndInclusive.getDate() + 1);
+    const { monthKey, monthStartDate: mStart, monthEndExclusive } = dashboardMonthContext;
     const propertyById = new Map(properties.map((p) => [String(p.id), p]));
 
     return monthData.rows.map((row) => {
@@ -176,32 +273,15 @@ const PropertiesDashboardPhase1: React.FC = () => {
 
       const items = expenseItemsByPropertyId[row.apartmentId] ?? [];
       const invoices = items.reduce((sum, item) => {
-        const dateStr = (item.invoice_date ?? '').toString().slice(0, 10);
-        if (!dateStr || dateStr.slice(0, 7) !== selectedMonth) return sum;
-        const line = item.line_total != null ? Number(item.line_total) : (Number(item.unit_price) || 0) * (Number(item.quantity) || 0);
+        if (!invoiceItemInSelectedMonth(item, monthKey)) return sum;
+        const line = expenseInvoiceLineAmount(item);
         return Number.isFinite(line) ? sum + line : sum;
       }, 0);
 
       const rentRows = rentRowsByPropertyId[row.apartmentId] ?? [];
       const ownerDue = rentRows.reduce((sum, rentRow) => {
-        const von = rentRow.valid_from ? parseISODate(rentRow.valid_from) : mStart;
-        const bisStr = rentRow.valid_to && rentRow.valid_to !== '∞' ? rentRow.valid_to : '9999-12-31';
-        const bis = parseISODate(bisStr);
-        const rowDays = Math.max(1, Math.floor((bis.getTime() - von.getTime()) / (24 * 60 * 60 * 1000)) + 1);
-        const overlap = overlapDays(von, bis, mStart, mEndInclusive);
-        if (overlap <= 0) return sum;
-        const rowTotal =
-          (Number(rentRow.km) || 0) +
-          (Number(rentRow.bk) || 0) +
-          (Number(rentRow.hk) || 0) +
-          (Number(rentRow.muell) || 0) +
-          (Number(rentRow.strom) || 0) +
-          (Number(rentRow.gas) || 0) +
-          (Number(rentRow.wasser) || 0) +
-          (Number(rentRow.mietsteuer) || 0) +
-          (Number(rentRow.unternehmenssteuer) || 0);
-        const prorated = rowDays >= 28 && overlap >= 28 ? rowTotal : rowTotal * (overlap / rowDays);
-        return sum + prorated;
+        const c = computeOwnerDueContribution(rentRow, mStart, monthEndExclusive);
+        return c ? sum + c.proratedTotal : sum;
       }, 0);
 
       const totalCost = invoices + ownerDue;
@@ -228,7 +308,74 @@ const PropertiesDashboardPhase1: React.FC = () => {
         totalCost,
       };
     });
-  }, [monthData, selectedMonth, properties, expenseItemsByPropertyId, rentRowsByPropertyId]);
+  }, [monthData, dashboardMonthContext, properties, expenseItemsByPropertyId, rentRowsByPropertyId]);
+
+  const expensesSummaryTotals = useMemo(() => {
+    const invoices = apartmentFinancialRows.reduce((s, r) => s + r.invoices, 0);
+    const ownerDue = apartmentFinancialRows.reduce((s, r) => s + r.ownerDue, 0);
+    return { invoices, ownerDue, totalExpenses: invoices + ownerDue };
+  }, [apartmentFinancialRows]);
+
+  const apartmentExpenseModalRows = useMemo(() => {
+    const { monthKey, monthStartDate: mStart, monthEndExclusive } = dashboardMonthContext;
+    return apartmentFinancialRows.map((finRow) => {
+      const items = expenseItemsByPropertyId[finRow.apartmentId] ?? [];
+      const monthItems = items.filter((item) => invoiceItemInSelectedMonth(item, monthKey));
+      const invoiceLines = monthItems.map((item) => ({
+        id: item.id,
+        invoiceNumber: item.invoice_number ?? item.property_expense_documents?.invoice_number ?? null,
+        invoiceDate: (item.invoice_date ?? item.property_expense_documents?.invoice_date ?? null) as string | null,
+        vendor: item.vendor ?? item.property_expense_documents?.vendor ?? null,
+        amount: expenseInvoiceLineAmount(item),
+      }));
+
+      const rentRows = rentRowsByPropertyId[finRow.apartmentId] ?? [];
+      const ownerDueBlocks = rentRows
+        .map((rentRow) => {
+          const c = computeOwnerDueContribution(rentRow, mStart, monthEndExclusive);
+          if (!c) return null;
+          const lineEntries: Array<{ label: string; raw: number }> = [];
+          for (const def of OWNER_DUE_COMPONENT_DEFS) {
+            const raw = c.components[def.key] ?? 0;
+            if (Math.abs(raw) > 1e-12) lineEntries.push({ label: def.label, raw });
+          }
+          let displayLines: Array<{ label: string; displayAmount: string }>;
+          if (lineEntries.length === 0) {
+            displayLines = [{ label: 'Total', displayAmount: formatCurrency(c.proratedTotal) }];
+          } else {
+            const reconciled = reconcileDisplayCurrencyParts(
+              lineEntries.map((e) => e.raw),
+              c.proratedTotal
+            );
+            displayLines = lineEntries.map((e, i) => ({
+              label: e.label,
+              displayAmount: formatCurrency(reconciled[i]),
+            }));
+          }
+          return {
+            rentRowId: rentRow.id,
+            validFrom: rentRow.valid_from,
+            validTo: rentRow.valid_to ?? '—',
+            tenantName: rentRow.tenant_name,
+            proratedTotal: c.proratedTotal,
+            displayLines,
+          };
+        })
+        .filter((b): b is NonNullable<typeof b> => b !== null);
+
+      return {
+        apartmentId: finRow.apartmentId,
+        abteilung: finRow.abteilung,
+        adresse: finRow.adresse,
+        wohnung: finRow.wohnung,
+        invoices: finRow.invoices,
+        ownerDue: finRow.ownerDue,
+        totalCost: finRow.totalCost,
+        invoiceLines,
+        ownerDueBlocks,
+      };
+    });
+  }, [apartmentFinancialRows, dashboardMonthContext, expenseItemsByPropertyId, rentRowsByPropertyId]);
 
   const apartmentPerformanceSummary = useMemo(() => {
     const collected = apartmentFinancialRows.reduce((sum, row) => sum + row.collectedForApartment, 0);
@@ -281,6 +428,29 @@ const PropertiesDashboardPhase1: React.FC = () => {
       setSavingPlanningFor((cur) => (cur === propertyId ? null : cur));
     }
   }, [properties]);
+
+  const toggleExpenseApartmentExpand = useCallback((id: string) => {
+    setExpandedExpenseApartments((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!expensesModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExpensesModalOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [expensesModalOpen]);
 
   if (loading) {
     return <div className="p-6 text-gray-300">Loading Properties Dashboard...</div>;
@@ -335,7 +505,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
         />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
         <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
           <h3 className="text-sm font-semibold text-gray-300 mb-3">Summary</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
@@ -410,6 +580,29 @@ const PropertiesDashboardPhase1: React.FC = () => {
             </div>
           </div>
         </section>
+
+        <button
+          type="button"
+          onClick={() => setExpensesModalOpen(true)}
+          className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4 text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:ring-offset-2 focus:ring-offset-[#0D1117] hover:border-gray-600 transition-colors"
+        >
+          <h3 className="text-sm font-semibold text-gray-300 mb-3">Apartment Expenses Summary</h3>
+          <div className="grid grid-cols-1 gap-2 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">Invoices</span>
+              <span className="font-semibold">{formatCurrency(expensesSummaryTotals.invoices)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">Owner Due</span>
+              <span className="font-semibold">{formatCurrency(expensesSummaryTotals.ownerDue)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">Total Expenses</span>
+              <span className="font-semibold text-emerald-200">{formatCurrency(expensesSummaryTotals.totalExpenses)}</span>
+            </div>
+          </div>
+          <p className="mt-3 text-[11px] text-gray-500">Click for full breakdown</p>
+        </button>
       </div>
 
       <section className="space-y-4">
@@ -697,6 +890,150 @@ const PropertiesDashboardPhase1: React.FC = () => {
           </table>
         </div>
       </section>
+
+      {expensesModalOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-start justify-center p-4 pt-8 sm:pt-12 bg-black/70"
+          role="presentation"
+          onClick={() => setExpensesModalOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="expenses-modal-title"
+            className="relative w-full max-w-5xl max-h-[85vh] overflow-y-auto rounded-xl border border-gray-800 bg-[#1C1F24] p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setExpensesModalOpen(false)}
+              className="absolute right-4 top-4 rounded-md p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <h2 id="expenses-modal-title" className="text-lg font-semibold text-white pr-10">
+              Apartment Expenses Breakdown
+            </h2>
+            <p className="mt-1 text-sm text-gray-400">{dashboardMonthContext.monthLabel}</p>
+
+            <div className="mt-6 grid grid-cols-1 gap-2 rounded-lg border border-gray-800 bg-[#0D1117]/50 p-4 text-sm sm:grid-cols-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-gray-400">Invoices</span>
+                <span className="font-semibold tabular-nums">{formatCurrency(expensesSummaryTotals.invoices)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-gray-400">Owner Due</span>
+                <span className="font-semibold tabular-nums">{formatCurrency(expensesSummaryTotals.ownerDue)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-gray-400">Total Expenses</span>
+                <span className="font-semibold tabular-nums text-emerald-200">{formatCurrency(expensesSummaryTotals.totalExpenses)}</span>
+              </div>
+            </div>
+
+            <div className="mt-8 space-y-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">By apartment</h3>
+              {apartmentExpenseModalRows.map((block) => {
+                const expanded = expandedExpenseApartments.has(block.apartmentId);
+                return (
+                  <div key={block.apartmentId} className="rounded-lg border border-gray-800 bg-[#0D1117]/40">
+                    <button
+                      type="button"
+                      onClick={() => toggleExpenseApartmentExpand(block.apartmentId)}
+                      className="flex w-full items-start gap-2 px-3 py-3 text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500/40"
+                    >
+                      <span className="mt-0.5 shrink-0 text-gray-500">
+                        {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                          <span className="font-medium text-white">{block.abteilung || '—'}</span>
+                          <span className="text-gray-500">·</span>
+                          <span className="truncate text-gray-300">{block.adresse}</span>
+                          <span className="text-gray-500">·</span>
+                          <span className="text-gray-200">{block.wohnung}</span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-4 text-xs sm:text-sm">
+                          <span className="text-gray-400">
+                            Owner Due: <span className="font-semibold text-white tabular-nums">{formatCurrency(block.ownerDue)}</span>
+                          </span>
+                          <span className="text-gray-400">
+                            Invoices: <span className="font-semibold text-white tabular-nums">{formatCurrency(block.invoices)}</span>
+                          </span>
+                          <span className="text-gray-400">
+                            Total Expenses: <span className="font-semibold text-emerald-100 tabular-nums">{formatCurrency(block.totalCost)}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                    {expanded && (
+                      <div className="space-y-4 border-t border-gray-800 px-3 pb-4 pt-2 pl-10">
+                        <div>
+                          <div className="text-xs font-semibold text-gray-500">Owner Due</div>
+                          {block.ownerDueBlocks.length === 0 ? (
+                            <p className="mt-2 text-sm text-gray-500">No owner-due rows overlapping this month.</p>
+                          ) : (
+                            <ul className="mt-2 space-y-3">
+                              {block.ownerDueBlocks.map((ob) => (
+                                <li key={ob.rentRowId} className="rounded border border-gray-800/80 bg-[#1C1F24] p-3 text-sm">
+                                  <div className="flex flex-wrap justify-between gap-2 text-gray-300">
+                                    <span className="text-xs text-gray-500">
+                                      {ob.validFrom} → {ob.validTo}
+                                      {ob.tenantName ? ` · ${ob.tenantName}` : ''}
+                                    </span>
+                                    <span className="font-semibold tabular-nums text-white">{formatCurrency(ob.proratedTotal)}</span>
+                                  </div>
+                                  <ul className="mt-2 space-y-1 pl-2 text-xs text-gray-400">
+                                    {ob.displayLines.map((ln, idx) => (
+                                      <li key={`${ob.rentRowId}-${idx}`} className="flex justify-between gap-4">
+                                        <span>{ln.label}</span>
+                                        <span className="tabular-nums text-gray-200">{ln.displayAmount}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-xs font-semibold text-gray-500">Invoices</div>
+                          {block.invoiceLines.length === 0 ? (
+                            <p className="mt-2 text-sm text-gray-500">No invoice lines for this month.</p>
+                          ) : (
+                            <ul className="mt-2 space-y-2">
+                              {block.invoiceLines.map((inv) => (
+                                <li
+                                  key={inv.id}
+                                  className="flex flex-col gap-0.5 rounded border border-gray-800/80 bg-[#1C1F24] px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between"
+                                >
+                                  <div className="text-gray-300">
+                                    <span className="font-medium text-white">{inv.invoiceNumber ?? '—'}</span>
+                                    <span className="text-gray-500"> · </span>
+                                    <span>{inv.invoiceDate ? String(inv.invoiceDate).slice(0, 10) : '—'}</span>
+                                    {inv.vendor ? (
+                                      <>
+                                        <span className="text-gray-500"> · </span>
+                                        <span className="text-gray-400">{inv.vendor}</span>
+                                      </>
+                                    ) : null}
+                                  </div>
+                                  <span className="shrink-0 font-semibold tabular-nums text-emerald-100">{formatCurrency(inv.amount)}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
