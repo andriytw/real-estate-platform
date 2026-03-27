@@ -171,7 +171,7 @@ function reconcileDisplayCurrencyParts(amounts: number[], targetTotal: number): 
 
 /** Shared grid for Apartment Expenses Breakdown modal: col1 fixed 2.25rem, identity flexible, three fixed financial columns. */
 const MODAL_EXPENSES_BREAKDOWN_GRID =
-  'grid w-full min-w-0 grid-cols-[2.25rem_minmax(0,1fr)_11rem_11rem_12rem] gap-x-3 items-center';
+  'grid w-full min-w-0 grid-cols-[2.25rem_minmax(0,1fr)_12rem_12rem_14rem] gap-x-3 items-center';
 
 function ModalExpenseFinancialCell({
   label,
@@ -183,9 +183,9 @@ function ModalExpenseFinancialCell({
   valueClassName?: string;
 }) {
   return (
-    <div className="min-w-0 shrink-0">
-      <div className="flex items-center justify-between gap-2 whitespace-nowrap">
-        <span className="min-w-0 shrink text-gray-400">{label}</span>
+    <div className="min-w-0 overflow-hidden">
+      <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+        <span className="min-w-0 flex-1 truncate text-left text-gray-400">{label}</span>
         <span className={`shrink-0 text-right font-semibold tabular-nums ${valueClassName}`}>{valueFormatted}</span>
       </div>
     </div>
