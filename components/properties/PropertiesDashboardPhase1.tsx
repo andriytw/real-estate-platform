@@ -187,6 +187,8 @@ const PropertiesDashboardPhase1: React.FC = () => {
   const [planningSaveError, setPlanningSaveError] = useState<string | null>(null);
   const [expensesModalOpen, setExpensesModalOpen] = useState(false);
   const [expandedExpenseApartments, setExpandedExpenseApartments] = useState<Set<string>>(new Set());
+  const [apartmentExpenseModalSearch, setApartmentExpenseModalSearch] = useState('');
+  const [apartmentExpenseModalStreetSort, setApartmentExpenseModalStreetSort] = useState<'default' | 'asc' | 'desc'>('default');
 
   useEffect(() => {
     let cancelled = false;
@@ -376,6 +378,28 @@ const PropertiesDashboardPhase1: React.FC = () => {
       };
     });
   }, [apartmentFinancialRows, dashboardMonthContext, expenseItemsByPropertyId, rentRowsByPropertyId]);
+
+  const displayedApartmentExpenseRows = useMemo(() => {
+    const rows = apartmentExpenseModalRows;
+    const qNorm = apartmentExpenseModalSearch.trim().toLowerCase();
+    const filtered =
+      qNorm === ''
+        ? rows.slice()
+        : rows.filter((block) => {
+            const haystack = [`${block.abteilung ?? ''}`, `${block.adresse ?? ''}`, `${block.wohnung ?? ''}`].join(' ').toLowerCase();
+            return haystack.includes(qNorm);
+          });
+    if (apartmentExpenseModalStreetSort === 'default') {
+      return filtered;
+    }
+    return filtered.slice().sort((a, b) => {
+      const cmp = (a.adresse ?? '').localeCompare(b.adresse ?? '', undefined, { sensitivity: 'base' });
+      if (cmp !== 0) {
+        return apartmentExpenseModalStreetSort === 'asc' ? cmp : -cmp;
+      }
+      return a.apartmentId.localeCompare(b.apartmentId);
+    });
+  }, [apartmentExpenseModalRows, apartmentExpenseModalSearch, apartmentExpenseModalStreetSort]);
 
   const apartmentPerformanceSummary = useMemo(() => {
     const collected = apartmentFinancialRows.reduce((sum, row) => sum + row.collectedForApartment, 0);
@@ -901,23 +925,51 @@ const PropertiesDashboardPhase1: React.FC = () => {
             role="dialog"
             aria-modal="true"
             aria-labelledby="expenses-modal-title"
-            className="relative w-full max-w-5xl max-h-[85vh] overflow-y-auto rounded-xl border border-gray-800 bg-[#1C1F24] p-6 shadow-xl"
+            className="relative w-full max-w-7xl max-h-[85vh] overflow-y-auto rounded-xl border border-gray-800 bg-[#1C1F24] p-6 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              type="button"
-              onClick={() => setExpensesModalOpen(false)}
-              className="absolute right-4 top-4 rounded-md p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-              aria-label="Close"
-            >
-              <X className="h-5 w-5" />
-            </button>
-            <h2 id="expenses-modal-title" className="text-lg font-semibold text-white pr-10">
-              Apartment Expenses Breakdown
-            </h2>
-            <p className="mt-1 text-sm text-gray-400">{dashboardMonthContext.monthLabel}</p>
+            <div className="flex flex-wrap items-start gap-3 border-b border-gray-800 pb-4 mb-4 sm:flex-nowrap sm:items-center sm:justify-between sm:gap-4">
+              <div className="min-w-0 shrink basis-full sm:max-w-[min(100%,24rem)] sm:basis-auto">
+                <h2 id="expenses-modal-title" className="text-lg font-semibold text-white">
+                  Apartment Expenses Breakdown
+                </h2>
+                <p className="mt-0.5 text-sm text-gray-400">{dashboardMonthContext.monthLabel}</p>
+              </div>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:flex-[1_1_auto] sm:justify-end">
+                <input
+                  id="expenses-modal-search"
+                  type="search"
+                  value={apartmentExpenseModalSearch}
+                  onChange={(e) => setApartmentExpenseModalSearch(e.target.value)}
+                  placeholder="Search by street..."
+                  aria-label="Search apartments"
+                  className="min-w-[10rem] max-w-full flex-1 rounded-md border border-gray-700 bg-[#0D1117] px-2.5 py-1.5 text-sm text-white placeholder:text-gray-500 focus:border-emerald-500/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+                />
+                <label htmlFor="expenses-modal-sort" className="sr-only">
+                  Sort by street
+                </label>
+                <select
+                  id="expenses-modal-sort"
+                  value={apartmentExpenseModalStreetSort}
+                  onChange={(e) => setApartmentExpenseModalStreetSort(e.target.value as 'default' | 'asc' | 'desc')}
+                  className="shrink-0 rounded-md border border-gray-700 bg-[#0D1117] px-2 py-1.5 text-sm text-white focus:border-emerald-500/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+                >
+                  <option value="default">Street (default)</option>
+                  <option value="asc">Street A–Z</option>
+                  <option value="desc">Street Z–A</option>
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExpensesModalOpen(false)}
+                className="shrink-0 rounded-md p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
-            <div className="mt-6 grid grid-cols-1 gap-2 rounded-lg border border-gray-800 bg-[#0D1117]/50 p-4 text-sm sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2 rounded-lg border border-gray-800 bg-[#0D1117]/50 p-4 text-sm sm:grid-cols-3">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-gray-400">Invoices</span>
                 <span className="font-semibold tabular-nums">{formatCurrency(expensesSummaryTotals.invoices)}</span>
@@ -932,9 +984,16 @@ const PropertiesDashboardPhase1: React.FC = () => {
               </div>
             </div>
 
-            <div className="mt-8 space-y-3">
+            <div className="mt-6 space-y-3">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">By apartment</h3>
-              {apartmentExpenseModalRows.map((block) => {
+              {displayedApartmentExpenseRows.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  {apartmentExpenseModalRows.length === 0
+                    ? 'No apartments for this month.'
+                    : 'No apartments match your search.'}
+                </p>
+              ) : null}
+              {displayedApartmentExpenseRows.map((block) => {
                 const expanded = expandedExpenseApartments.has(block.apartmentId);
                 return (
                   <div key={block.apartmentId} className="rounded-lg border border-gray-800 bg-[#0D1117]/40">
