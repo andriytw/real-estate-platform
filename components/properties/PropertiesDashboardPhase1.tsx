@@ -416,6 +416,21 @@ const PropertiesDashboardPhase1: React.FC = () => {
     apartmentExpenseModalOperatorFilter,
   ]);
 
+  const expensesModalVisibleTotals = useMemo(() => {
+    if (displayedApartmentExpenseRows.length === 0) {
+      return { ownerDue: 0, invoices: 0, totalExpenses: 0 };
+    }
+    let invoices = 0;
+    let ownerDue = 0;
+    let totalExpenses = 0;
+    for (const block of displayedApartmentExpenseRows) {
+      invoices += block.invoices;
+      ownerDue += block.ownerDue;
+      totalExpenses += block.totalCost;
+    }
+    return { invoices, ownerDue, totalExpenses };
+  }, [displayedApartmentExpenseRows]);
+
   const apartmentPerformanceSummary = useMemo(() => {
     const collected = apartmentFinancialRows.reduce((sum, row) => sum + row.collectedForApartment, 0);
     const fullCapacityIncome = apartmentFinancialRows.reduce((sum, row) => sum + row.fullCapacityIncome, 0);
@@ -1059,15 +1074,15 @@ const PropertiesDashboardPhase1: React.FC = () => {
                 <div aria-hidden className="min-h-4 min-w-0" />
                 <ModalExpenseFinancialCell
                   label="Owner Due:"
-                  valueFormatted={formatCurrency(expensesSummaryTotals.ownerDue)}
+                  valueFormatted={formatCurrency(expensesModalVisibleTotals.ownerDue)}
                 />
                 <ModalExpenseFinancialCell
                   label="Invoices:"
-                  valueFormatted={formatCurrency(expensesSummaryTotals.invoices)}
+                  valueFormatted={formatCurrency(expensesModalVisibleTotals.invoices)}
                 />
                 <ModalExpenseFinancialCell
                   label="Total Expenses:"
-                  valueFormatted={formatCurrency(expensesSummaryTotals.totalExpenses)}
+                  valueFormatted={formatCurrency(expensesModalVisibleTotals.totalExpenses)}
                   valueClassName="text-emerald-200"
                 />
               </div>
