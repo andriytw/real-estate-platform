@@ -1095,14 +1095,19 @@ const PropertiesDashboardPhase1: React.FC = () => {
                         {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </span>
                       <div className="min-w-0 text-sm">
-                        <div className="min-w-0 truncate whitespace-nowrap">
-                          <span className="text-gray-400">{block.normalizedGroup}</span>
-                          <span className="text-gray-600"> · </span>
-                          <span className="text-gray-400">{block.normalizedOperator}</span>
-                          <span className="text-gray-600"> · </span>
-                          <span className="text-gray-300">{block.adresse || '—'}</span>
-                          <span className="text-gray-500"> · </span>
-                          <span className="text-white">{block.wohnung || '—'}</span>
+                        <div className="grid min-w-0 grid-cols-[10rem_10rem_minmax(0,1fr)_7.5rem] items-center gap-x-2 whitespace-nowrap">
+                          <span className="truncate text-gray-400" title={block.normalizedGroup}>
+                            {block.normalizedGroup}
+                          </span>
+                          <span className="truncate text-gray-400" title={block.normalizedOperator}>
+                            {block.normalizedOperator}
+                          </span>
+                          <span className="truncate text-gray-300" title={block.adresse || '—'}>
+                            {block.adresse || '—'}
+                          </span>
+                          <span className="truncate text-white" title={block.wohnung || '—'}>
+                            {block.wohnung || '—'}
+                          </span>
                         </div>
                       </div>
                       <ModalExpenseFinancialCell label="Owner Due:" valueFormatted={formatCurrency(block.ownerDue)} />
