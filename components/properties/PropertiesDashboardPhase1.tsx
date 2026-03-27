@@ -169,6 +169,29 @@ function reconcileDisplayCurrencyParts(amounts: number[], targetTotal: number): 
   return rounded;
 }
 
+/** Shared grid for Apartment Expenses Breakdown modal: col1 fixed 2.25rem, identity flexible, three fixed financial columns. */
+const MODAL_EXPENSES_BREAKDOWN_GRID =
+  'grid w-full min-w-0 grid-cols-[2.25rem_minmax(0,1fr)_11rem_11rem_12rem] gap-x-3 items-center';
+
+function ModalExpenseFinancialCell({
+  label,
+  valueFormatted,
+  valueClassName = 'text-white',
+}: {
+  label: string;
+  valueFormatted: string;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="min-w-0 shrink-0">
+      <div className="flex items-center justify-between gap-2 whitespace-nowrap">
+        <span className="min-w-0 shrink text-gray-400">{label}</span>
+        <span className={`shrink-0 text-right font-semibold tabular-nums ${valueClassName}`}>{valueFormatted}</span>
+      </div>
+    </div>
+  );
+}
+
 const PropertiesDashboardPhase1: React.FC = () => {
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
@@ -925,7 +948,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
             role="dialog"
             aria-modal="true"
             aria-labelledby="expenses-modal-title"
-            className="relative w-full max-w-7xl max-h-[85vh] overflow-y-auto rounded-xl border border-gray-800 bg-[#1C1F24] p-6 shadow-xl"
+            className="relative w-full max-w-[90rem] max-h-[85vh] overflow-y-auto overflow-x-auto rounded-xl border border-gray-800 bg-[#1C1F24] p-6 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex flex-wrap items-start gap-3 border-b border-gray-800 pb-4 mb-4 sm:flex-nowrap sm:items-center sm:justify-between sm:gap-4">
@@ -969,18 +992,23 @@ const PropertiesDashboardPhase1: React.FC = () => {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-2 rounded-lg border border-gray-800 bg-[#0D1117]/50 p-4 text-sm sm:grid-cols-3">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-gray-400">Invoices</span>
-                <span className="font-semibold tabular-nums">{formatCurrency(expensesSummaryTotals.invoices)}</span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-gray-400">Owner Due</span>
-                <span className="font-semibold tabular-nums">{formatCurrency(expensesSummaryTotals.ownerDue)}</span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-gray-400">Total Expenses</span>
-                <span className="font-semibold tabular-nums text-emerald-200">{formatCurrency(expensesSummaryTotals.totalExpenses)}</span>
+            <div className="min-w-0 rounded-lg border border-gray-800 bg-[#0D1117]/50 p-4 text-sm">
+              <div className={MODAL_EXPENSES_BREAKDOWN_GRID}>
+                <div aria-hidden className="h-4 w-full shrink-0" />
+                <div aria-hidden className="min-h-4 min-w-0" />
+                <ModalExpenseFinancialCell
+                  label="Owner Due:"
+                  valueFormatted={formatCurrency(expensesSummaryTotals.ownerDue)}
+                />
+                <ModalExpenseFinancialCell
+                  label="Invoices:"
+                  valueFormatted={formatCurrency(expensesSummaryTotals.invoices)}
+                />
+                <ModalExpenseFinancialCell
+                  label="Total Expenses:"
+                  valueFormatted={formatCurrency(expensesSummaryTotals.totalExpenses)}
+                  valueClassName="text-emerald-200"
+                />
               </div>
             </div>
 
@@ -1000,29 +1028,23 @@ const PropertiesDashboardPhase1: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => toggleExpenseApartmentExpand(block.apartmentId)}
-                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500/40"
+                      className={`w-full px-3 py-2.5 text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500/40 ${MODAL_EXPENSES_BREAKDOWN_GRID}`}
                     >
-                      <span className="shrink-0 text-gray-500">
+                      <span className="flex h-full shrink-0 items-center justify-center text-gray-500">
                         {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </span>
-                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 md:flex-nowrap md:gap-x-4">
-                        <div className="min-w-0 flex-1 truncate text-sm">
-                          <span className="text-gray-300">{block.adresse || '—'}</span>
-                          <span className="text-gray-500"> · </span>
-                          <span className="text-white">{block.wohnung || '—'}</span>
-                        </div>
-                        <div className="flex min-w-0 flex-shrink-0 flex-wrap items-baseline gap-x-4 gap-y-1 text-xs tabular-nums sm:text-sm md:flex-nowrap md:whitespace-nowrap">
-                          <span className="text-gray-400">
-                            Owner Due: <span className="font-semibold text-white">{formatCurrency(block.ownerDue)}</span>
-                          </span>
-                          <span className="text-gray-400">
-                            Invoices: <span className="font-semibold text-white">{formatCurrency(block.invoices)}</span>
-                          </span>
-                          <span className="text-gray-400">
-                            Total Expenses: <span className="font-semibold text-emerald-100">{formatCurrency(block.totalCost)}</span>
-                          </span>
-                        </div>
+                      <div className="min-w-0 truncate text-sm">
+                        <span className="text-gray-300">{block.adresse || '—'}</span>
+                        <span className="text-gray-500"> · </span>
+                        <span className="text-white">{block.wohnung || '—'}</span>
                       </div>
+                      <ModalExpenseFinancialCell label="Owner Due:" valueFormatted={formatCurrency(block.ownerDue)} />
+                      <ModalExpenseFinancialCell label="Invoices:" valueFormatted={formatCurrency(block.invoices)} />
+                      <ModalExpenseFinancialCell
+                        label="Total Expenses:"
+                        valueFormatted={formatCurrency(block.totalCost)}
+                        valueClassName="text-emerald-200"
+                      />
                     </button>
                     {expanded && (
                       <div className="space-y-4 border-t border-gray-800 px-3 pb-4 pt-2 pl-10">
