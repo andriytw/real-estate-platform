@@ -19,6 +19,13 @@ function formatCurrency(value: number): string {
   return `${value.toFixed(2).replace('.', ',')} €`;
 }
 
+function formatSignedCurrency(value: number): string {
+  const safe = Number.isFinite(value) ? value : 0;
+  if (Math.abs(safe) < 1e-9) return formatCurrency(0);
+  if (safe > 0) return `+${formatCurrency(safe)}`;
+  return formatCurrency(-Math.abs(safe));
+}
+
 function formatCompactNumber(value: number | null | undefined): string {
   const safe = Number.isFinite(value) ? Number(value) : 0;
   return safe.toFixed(2).replace('.', ',');
@@ -236,6 +243,16 @@ const PropertiesDashboardPhase1: React.FC = () => {
     };
   }, [apartmentFinancialRows]);
 
+  const monthlyRoomsPct = (monthData?.summary.rentedPctAvailableRooms ?? 0) * 100;
+  const monthlyRoomsPctColorClass =
+    monthlyRoomsPct < 83.0
+      ? 'text-red-400'
+      : monthlyRoomsPct < 85.5
+      ? 'text-yellow-300'
+      : monthlyRoomsPct < 90.0
+      ? 'text-emerald-400'
+      : 'text-amber-300';
+
   const commitPlanningPrice = useCallback(async (propertyId: string, draft: string) => {
     const parsed = Number(draft.replace(',', '.'));
     if (!Number.isFinite(parsed) || parsed < 0) {
@@ -334,18 +351,18 @@ const PropertiesDashboardPhase1: React.FC = () => {
 
         <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
           <h3 className="text-sm font-semibold text-gray-300 mb-3">Monthly KPI</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-            <div>
-              <div className="text-gray-400">Rented % of Available Apartments</div>
-              <div className="font-semibold">{formatPct(monthData.summary.rentedPctAvailableApartments)}</div>
+          <div className="grid grid-cols-1 gap-2 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">Rented % of Available Apartments</span>
+              <span className="font-semibold">{formatPct(monthData.summary.rentedPctAvailableApartments)}</span>
             </div>
-            <div>
-              <div className="text-gray-400">Rented % of Available Rooms</div>
-              <div className="font-semibold">{formatPct(monthData.summary.rentedPctAvailableRooms)}</div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">Rented % of Available Rooms</span>
+              <span className={`font-semibold ${monthlyRoomsPctColorClass}`}>{formatPct(monthData.summary.rentedPctAvailableRooms)}</span>
             </div>
-            <div>
-              <div className="text-gray-400">Average Price Per Rooms</div>
-              <div className="font-semibold">{formatCurrency(monthData.summary.averagePricePerRoom)}</div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">Average Price Per Rooms</span>
+              <span className="font-semibold">{formatCurrency(monthData.summary.averagePricePerRoom)}</span>
             </div>
           </div>
         </section>
@@ -376,7 +393,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
           <h3 className="text-sm font-semibold text-gray-300 mb-3">Apartment Performance Summary</h3>
           <div className="grid grid-cols-1 gap-2 text-sm">
             <div className="flex items-center justify-between gap-3">
-              <span className="text-gray-400">Collected for Apartment</span>
+              <span className="text-gray-400">Collected from all apartments</span>
               <span className="font-semibold">{formatCurrency(apartmentPerformanceSummary.collected)}</span>
             </div>
             <div className="flex items-center justify-between gap-3">
@@ -385,7 +402,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-gray-400">Difference</span>
-              <span className="font-semibold">{formatCurrency(apartmentPerformanceSummary.difference)}</span>
+              <span className="font-semibold">{formatSignedCurrency(apartmentPerformanceSummary.difference)}</span>
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-gray-400">% of Plan Fulfillment</span>
