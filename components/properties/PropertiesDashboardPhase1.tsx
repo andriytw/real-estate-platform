@@ -1000,28 +1000,26 @@ const PropertiesDashboardPhase1: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => toggleExpenseApartmentExpand(block.apartmentId)}
-                      className="flex w-full items-start gap-2 px-3 py-3 text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500/40"
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500/40"
                     >
-                      <span className="mt-0.5 shrink-0 text-gray-500">
+                      <span className="shrink-0 text-gray-500">
                         {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                          <span className="font-medium text-white">{block.abteilung || '—'}</span>
-                          <span className="text-gray-500">·</span>
-                          <span className="truncate text-gray-300">{block.adresse}</span>
-                          <span className="text-gray-500">·</span>
-                          <span className="text-gray-200">{block.wohnung}</span>
+                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 md:flex-nowrap md:gap-x-4">
+                        <div className="min-w-0 flex-1 truncate text-sm">
+                          <span className="text-gray-300">{block.adresse || '—'}</span>
+                          <span className="text-gray-500"> · </span>
+                          <span className="text-white">{block.wohnung || '—'}</span>
                         </div>
-                        <div className="mt-2 flex flex-wrap gap-4 text-xs sm:text-sm">
+                        <div className="flex min-w-0 flex-shrink-0 flex-wrap items-baseline gap-x-4 gap-y-1 text-xs tabular-nums sm:text-sm md:flex-nowrap md:whitespace-nowrap">
                           <span className="text-gray-400">
-                            Owner Due: <span className="font-semibold text-white tabular-nums">{formatCurrency(block.ownerDue)}</span>
+                            Owner Due: <span className="font-semibold text-white">{formatCurrency(block.ownerDue)}</span>
                           </span>
                           <span className="text-gray-400">
-                            Invoices: <span className="font-semibold text-white tabular-nums">{formatCurrency(block.invoices)}</span>
+                            Invoices: <span className="font-semibold text-white">{formatCurrency(block.invoices)}</span>
                           </span>
                           <span className="text-gray-400">
-                            Total Expenses: <span className="font-semibold text-emerald-100 tabular-nums">{formatCurrency(block.totalCost)}</span>
+                            Total Expenses: <span className="font-semibold text-emerald-100">{formatCurrency(block.totalCost)}</span>
                           </span>
                         </div>
                       </div>
