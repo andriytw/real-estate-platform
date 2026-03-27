@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bed, ChevronDown, ChevronRight, LayoutGrid, Ruler, X } from 'lucide-react';
+import { Bed, ChevronDown, ChevronRight, Download, Eye, LayoutGrid, Ruler, X } from 'lucide-react';
 import { bookingsService, invoicesService, offersService, propertiesService, rentTimelineService, reservationsService } from '../../services/supabaseService';
 import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '../../services/propertyExpenseService';
+import { buildExpenseInvoiceGroupsForMonth, pickExpenseInvoiceDocumentTarget } from '../../lib/propertyExpenseInvoiceGroups';
 import type { Booking, InvoiceData, OfferData, Property, RentTimelineRowDB, Reservation } from '../../types';
 import { buildDashboardMonthData } from '../../lib/propertiesDashboard/selectors';
 import type { DailyDashboardMetrics } from '../../lib/propertiesDashboard/types';
@@ -99,6 +100,22 @@ function reconcileDisplayCurrencyParts(amounts: number[], targetTotal: number): 
   return rounded;
 }
 
+function normalizeModalIdentityLabel(value: string | undefined | null): string {
+  const t = (value ?? '').trim();
+  return t === '' ? '—' : t;
+}
+
+function operatingCompanyLabel(property: Property | undefined): string {
+  const sc = (property?.secondCompany?.name ?? '').trim();
+  if (sc) return sc;
+  const tn = (property?.tenant?.name ?? '').trim();
+  return tn || '—';
+}
+
+function expenseInvoiceCompositeKey(apartmentId: string, groupKey: string): string {
+  return JSON.stringify({ apartmentId, groupKey });
+}
+
 /** Shared grid for Apartment Expenses Breakdown modal: col1 fixed 2.25rem, identity flexible, three fixed financial columns. */
 const MODAL_EXPENSES_BREAKDOWN_GRID =
   'grid w-full min-w-0 grid-cols-[2.25rem_minmax(0,1fr)_12rem_12rem_14rem] gap-x-3 items-center';
@@ -142,6 +159,9 @@ const PropertiesDashboardPhase1: React.FC = () => {
   const [expandedExpenseApartments, setExpandedExpenseApartments] = useState<Set<string>>(new Set());
   const [apartmentExpenseModalSearch, setApartmentExpenseModalSearch] = useState('');
   const [apartmentExpenseModalStreetSort, setApartmentExpenseModalStreetSort] = useState<'default' | 'asc' | 'desc'>('default');
+  const [apartmentExpenseModalGroupFilter, setApartmentExpenseModalGroupFilter] = useState<'all' | string>('all');
+  const [apartmentExpenseModalOperatorFilter, setApartmentExpenseModalOperatorFilter] = useState<'all' | string>('all');
+  const [expandedExpenseInvoiceKeys, setExpandedExpenseInvoiceKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -291,16 +311,15 @@ const PropertiesDashboardPhase1: React.FC = () => {
 
   const apartmentExpenseModalRows = useMemo(() => {
     const { monthKey } = dashboardMonthContext;
+    const propertyById = new Map(properties.map((p) => [String(p.id), p]));
     return apartmentFinancialRows.map((finRow) => {
+      const property = propertyById.get(finRow.apartmentId);
+      const normalizedGroup = normalizeModalIdentityLabel(finRow.abteilung);
+      const normalizedOperator = operatingCompanyLabel(property);
+      const propertyTitle = normalizeModalIdentityLabel(property?.title);
       const items = expenseItemsByPropertyId[finRow.apartmentId] ?? [];
       const monthItems = items.filter((item) => invoiceItemInSelectedMonth(item, monthKey));
-      const invoiceLines = monthItems.map((item) => ({
-        id: item.id,
-        invoiceNumber: item.invoice_number ?? item.property_expense_documents?.invoice_number ?? null,
-        invoiceDate: (item.invoice_date ?? item.property_expense_documents?.invoice_date ?? null) as string | null,
-        vendor: item.vendor ?? item.property_expense_documents?.vendor ?? null,
-        amount: expenseInvoiceLineAmount(item),
-      }));
+      const invoiceGroups = buildExpenseInvoiceGroupsForMonth(monthItems, expenseInvoiceLineAmount);
 
       const rentRows = rentRowsByPropertyId[finRow.apartmentId] ?? [];
       const rentRowById = new Map(rentRows.map((r) => [String(r.id), r]));
@@ -339,27 +358,52 @@ const PropertiesDashboardPhase1: React.FC = () => {
       return {
         apartmentId: finRow.apartmentId,
         abteilung: finRow.abteilung,
+        normalizedGroup,
+        normalizedOperator,
+        propertyTitle,
         adresse: finRow.adresse,
         wohnung: finRow.wohnung,
         invoices: finRow.invoices,
         ownerDue: finRow.ownerDue,
         totalCost: finRow.totalCost,
-        invoiceLines,
+        invoiceGroups,
         ownerDueBlocks,
       };
     });
-  }, [apartmentFinancialRows, dashboardMonthContext, expenseItemsByPropertyId, rentRowsByPropertyId, ownerDueResolvedByApartment]);
+  }, [apartmentFinancialRows, dashboardMonthContext, expenseItemsByPropertyId, properties, rentRowsByPropertyId, ownerDueResolvedByApartment]);
+
+  const modalGroupFilterOptions = useMemo(() => {
+    const uniq = new Set<string>();
+    for (const r of apartmentExpenseModalRows) uniq.add(r.normalizedGroup);
+    return [...uniq].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [apartmentExpenseModalRows]);
+
+  const modalOperatorFilterOptions = useMemo(() => {
+    const uniq = new Set<string>();
+    for (const r of apartmentExpenseModalRows) uniq.add(r.normalizedOperator);
+    return [...uniq].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [apartmentExpenseModalRows]);
 
   const displayedApartmentExpenseRows = useMemo(() => {
     const rows = apartmentExpenseModalRows;
     const qNorm = apartmentExpenseModalSearch.trim().toLowerCase();
-    const filtered =
-      qNorm === ''
-        ? rows.slice()
-        : rows.filter((block) => {
-            const haystack = [`${block.abteilung ?? ''}`, `${block.adresse ?? ''}`, `${block.wohnung ?? ''}`].join(' ').toLowerCase();
-            return haystack.includes(qNorm);
-          });
+    const filtered = rows.filter((block) => {
+      if (qNorm !== '') {
+        const haystack = [
+          block.normalizedGroup,
+          block.normalizedOperator,
+          `${block.abteilung ?? ''}`,
+          `${block.adresse ?? ''}`,
+          `${block.wohnung ?? ''}`,
+        ]
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(qNorm)) return false;
+      }
+      if (apartmentExpenseModalGroupFilter !== 'all' && block.normalizedGroup !== apartmentExpenseModalGroupFilter) return false;
+      if (apartmentExpenseModalOperatorFilter !== 'all' && block.normalizedOperator !== apartmentExpenseModalOperatorFilter) return false;
+      return true;
+    });
     if (apartmentExpenseModalStreetSort === 'default') {
       return filtered;
     }
@@ -370,7 +414,13 @@ const PropertiesDashboardPhase1: React.FC = () => {
       }
       return a.apartmentId.localeCompare(b.apartmentId);
     });
-  }, [apartmentExpenseModalRows, apartmentExpenseModalSearch, apartmentExpenseModalStreetSort]);
+  }, [
+    apartmentExpenseModalRows,
+    apartmentExpenseModalSearch,
+    apartmentExpenseModalStreetSort,
+    apartmentExpenseModalGroupFilter,
+    apartmentExpenseModalOperatorFilter,
+  ]);
 
   const apartmentPerformanceSummary = useMemo(() => {
     const collected = apartmentFinancialRows.reduce((sum, row) => sum + row.collectedForApartment, 0);
@@ -431,6 +481,43 @@ const PropertiesDashboardPhase1: React.FC = () => {
       else next.add(id);
       return next;
     });
+  }, []);
+
+  const toggleExpenseInvoiceExpand = useCallback((apartmentId: string, groupKey: string) => {
+    const composite = expenseInvoiceCompositeKey(apartmentId, groupKey);
+    setExpandedExpenseInvoiceKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(composite)) next.delete(composite);
+      else next.add(composite);
+      return next;
+    });
+  }, []);
+
+  const handleViewExpenseDocumentModal = useCallback(async (storagePath: string) => {
+    try {
+      const url = await propertyExpenseService.getDocumentSignedUrl(storagePath);
+      window.open(url, '_blank');
+    } catch (e) {
+      console.error(e);
+      alert('Could not open document.');
+    }
+  }, []);
+
+  const handleDownloadExpenseDocumentModal = useCallback(async (storagePath: string, fileName: string) => {
+    try {
+      const url = await propertyExpenseService.getDocumentSignedUrl(storagePath);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName || 'document';
+      a.rel = 'noopener noreferrer';
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      console.error(e);
+      alert('Could not download document.');
+    }
   }, []);
 
   useEffect(() => {
@@ -929,6 +1016,38 @@ const PropertiesDashboardPhase1: React.FC = () => {
                   <option value="asc">Street A–Z</option>
                   <option value="desc">Street Z–A</option>
                 </select>
+                <label htmlFor="expenses-modal-group" className="sr-only">
+                  Filter by apartment group
+                </label>
+                <select
+                  id="expenses-modal-group"
+                  value={apartmentExpenseModalGroupFilter}
+                  onChange={(e) => setApartmentExpenseModalGroupFilter(e.target.value)}
+                  className="shrink-0 max-w-[10rem] rounded-md border border-gray-700 bg-[#0D1117] px-2 py-1.5 text-sm text-white focus:border-emerald-500/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+                >
+                  <option value="all">All groups</option>
+                  {modalGroupFilterOptions.map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                </select>
+                <label htmlFor="expenses-modal-operator" className="sr-only">
+                  Filter by operator company
+                </label>
+                <select
+                  id="expenses-modal-operator"
+                  value={apartmentExpenseModalOperatorFilter}
+                  onChange={(e) => setApartmentExpenseModalOperatorFilter(e.target.value)}
+                  className="shrink-0 max-w-[12rem] rounded-md border border-gray-700 bg-[#0D1117] px-2 py-1.5 text-sm text-white focus:border-emerald-500/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+                >
+                  <option value="all">All companies</option>
+                  {modalOperatorFilterOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
               </div>
               <button
                 type="button"
@@ -966,7 +1085,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
                 <p className="text-sm text-gray-500">
                   {apartmentExpenseModalRows.length === 0
                     ? 'No apartments for this month.'
-                    : 'No apartments match your search.'}
+                    : 'No apartments match your search or filters.'}
                 </p>
               ) : null}
               {displayedApartmentExpenseRows.map((block) => {
@@ -981,10 +1100,17 @@ const PropertiesDashboardPhase1: React.FC = () => {
                       <span className="flex h-full shrink-0 items-center justify-center text-gray-500">
                         {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </span>
-                      <div className="min-w-0 truncate text-sm">
-                        <span className="text-gray-300">{block.adresse || '—'}</span>
-                        <span className="text-gray-500"> · </span>
-                        <span className="text-white">{block.wohnung || '—'}</span>
+                      <div className="min-w-0 truncate text-sm space-y-0.5">
+                        <div className="text-xs text-gray-400 truncate">
+                          <span>{block.normalizedGroup}</span>
+                          <span className="text-gray-600"> · </span>
+                          <span>{block.normalizedOperator}</span>
+                        </div>
+                        <div className="min-w-0 truncate">
+                          <span className="text-gray-300">{block.adresse || '—'}</span>
+                          <span className="text-gray-500"> · </span>
+                          <span className="text-white">{block.wohnung || '—'}</span>
+                        </div>
                       </div>
                       <ModalExpenseFinancialCell label="Owner Due:" valueFormatted={formatCurrency(block.ownerDue)} />
                       <ModalExpenseFinancialCell label="Invoices:" valueFormatted={formatCurrency(block.invoices)} />
@@ -1026,29 +1152,105 @@ const PropertiesDashboardPhase1: React.FC = () => {
                         </div>
                         <div>
                           <div className="text-xs font-semibold text-gray-500">Invoices</div>
-                          {block.invoiceLines.length === 0 ? (
-                            <p className="mt-2 text-sm text-gray-500">No invoice lines for this month.</p>
+                          {block.invoiceGroups.length === 0 ? (
+                            <p className="mt-2 text-sm text-gray-500">No invoices for this month.</p>
                           ) : (
                             <ul className="mt-2 space-y-2">
-                              {block.invoiceLines.map((inv) => (
-                                <li
-                                  key={inv.id}
-                                  className="flex flex-col gap-0.5 rounded border border-gray-800/80 bg-[#1C1F24] px-3 py-2 text-xs sm:flex-row sm:items-center sm:justify-between"
-                                >
-                                  <div className="text-gray-300">
-                                    <span className="font-medium text-white">{inv.invoiceNumber ?? '—'}</span>
-                                    <span className="text-gray-500"> · </span>
-                                    <span>{inv.invoiceDate ? String(inv.invoiceDate).slice(0, 10) : '—'}</span>
-                                    {inv.vendor ? (
-                                      <>
-                                        <span className="text-gray-500"> · </span>
-                                        <span className="text-gray-400">{inv.vendor}</span>
-                                      </>
+                              {block.invoiceGroups.map((g) => {
+                                const composite = expenseInvoiceCompositeKey(block.apartmentId, g.key);
+                                const invExpanded = expandedExpenseInvoiceKeys.has(composite);
+                                const first = g.items[0];
+                                const docTarget = pickExpenseInvoiceDocumentTarget(g.items);
+                                const invDateRaw = first.property_expense_documents?.invoice_date ?? first.invoice_date;
+                                const invDate = invDateRaw ? String(invDateRaw).slice(0, 10) : '—';
+                                const invNum =
+                                  first.property_expense_documents?.invoice_number ?? first.invoice_number ?? '—';
+                                const vendor = first.vendor ?? first.property_expense_documents?.vendor ?? '—';
+                                return (
+                                  <li key={g.key} className="overflow-hidden rounded border border-gray-800/80 bg-[#1C1F24] text-xs">
+                                    <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleExpenseInvoiceExpand(block.apartmentId, g.key)}
+                                        className="shrink-0 p-1 text-gray-400 hover:bg-gray-800 hover:text-white rounded"
+                                        aria-expanded={invExpanded}
+                                        aria-label={invExpanded ? 'Collapse invoice' : 'Expand invoice'}
+                                      >
+                                        {invExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                      </button>
+                                      <div className="min-w-0 flex-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-gray-300">
+                                        <span className="text-gray-500 whitespace-nowrap">{invDate}</span>
+                                        <span className="font-medium text-white">{invNum}</span>
+                                        <span className="text-gray-400 min-w-0 truncate max-w-[12rem]" title={vendor}>
+                                          {vendor}
+                                        </span>
+                                        <span className="text-gray-500 truncate max-w-[10rem]" title={block.propertyTitle}>
+                                          {block.propertyTitle}
+                                        </span>
+                                      </div>
+                                      <div className="flex shrink-0 items-center gap-1">
+                                        {docTarget ? (
+                                          <>
+                                            <button
+                                              type="button"
+                                              aria-label="Preview document"
+                                              title="Preview"
+                                              onClick={() => handleViewExpenseDocumentModal(docTarget.storagePath)}
+                                              className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded"
+                                            >
+                                              <Eye className="h-4 w-4" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              aria-label="Download document"
+                                              title="Download"
+                                              onClick={() =>
+                                                handleDownloadExpenseDocumentModal(docTarget.storagePath, docTarget.fileName)
+                                              }
+                                              className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded"
+                                            >
+                                              <Download className="h-4 w-4" />
+                                            </button>
+                                          </>
+                                        ) : (
+                                          <span className="text-[10px] text-gray-600 px-1" title="No document attached">
+                                            No doc
+                                          </span>
+                                        )}
+                                        <span className="ml-1 font-semibold tabular-nums text-emerald-100">{formatCurrency(g.total)}</span>
+                                      </div>
+                                    </div>
+                                    {invExpanded ? (
+                                      <div className="border-t border-gray-800 px-2 pb-2 pt-1">
+                                        <table className="w-full text-left text-[11px] border-separate border-spacing-0">
+                                          <thead className="text-gray-500">
+                                            <tr>
+                                              <th className="py-1 pr-2 font-semibold">Category</th>
+                                              <th className="py-1 pr-2 font-semibold">Article</th>
+                                              <th className="py-1 pr-2 font-semibold">Name</th>
+                                              <th className="py-1 pr-2 font-semibold text-right">Qty</th>
+                                              <th className="py-1 font-semibold text-right">Unit price</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="text-gray-300">
+                                            {g.items.map((line) => (
+                                              <tr key={line.id} className="border-t border-gray-800/80">
+                                                <td className="py-1 pr-2 align-top">{line.property_expense_categories?.name ?? '—'}</td>
+                                                <td className="py-1 pr-2 align-top">{line.article ?? '—'}</td>
+                                                <td className="py-1 pr-2 align-top">{line.name}</td>
+                                                <td className="py-1 pr-2 align-top text-right tabular-nums">{line.quantity}</td>
+                                                <td className="py-1 align-top text-right tabular-nums">
+                                                  {formatCurrency(Number(line.unit_price) || 0)}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
                                     ) : null}
-                                  </div>
-                                  <span className="shrink-0 font-semibold tabular-nums text-emerald-100">{formatCurrency(inv.amount)}</span>
-                                </li>
-                              ))}
+                                  </li>
+                                );
+                              })}
                             </ul>
                           )}
                         </div>

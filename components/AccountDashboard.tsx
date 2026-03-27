@@ -8078,30 +8078,25 @@ ${internalCompany} Team`;
                                                 <td className="p-3 text-gray-400 text-xs min-w-0 truncate" title={typeof vendor === 'string' ? vendor : ''}>{vendor}</td>
                                                 <td className="p-3 text-gray-400 text-xs">
                                                     {doc?.storage_path ? (
-                                                        <div className="flex flex-col gap-1">
-                                                            <span className="text-[10px] text-gray-500 truncate max-w-[80px]" title={doc.invoice_number || doc.file_name || ''}>
-                                                                {doc.invoice_number || doc.file_name || 'Документ'}
-                                                            </span>
-                                                            <div className="flex items-center gap-1">
-                                                                <button
-                                                                    type="button"
-                                                                    aria-label="Переглянути документ"
-                                                                    title="Переглянути"
-                                                                    onClick={() => handleViewExpenseDocument(doc.storage_path)}
-                                                                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
-                                                                >
-                                                                    <Eye className="w-4 h-4" />
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    aria-label="Скачати документ"
-                                                                    title="Скачати"
-                                                                    onClick={() => handleDownloadExpenseDocument(doc.storage_path, doc.file_name || 'document')}
-                                                                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
-                                                                >
-                                                                    <Download className="w-4 h-4" />
-                                                                </button>
-                                                            </div>
+                                                        <div className="flex items-center gap-1">
+                                                            <button
+                                                                type="button"
+                                                                aria-label="Переглянути документ"
+                                                                title="Переглянути"
+                                                                onClick={() => handleViewExpenseDocument(doc.storage_path)}
+                                                                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
+                                                            >
+                                                                <Eye className="w-4 h-4" />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                aria-label="Скачати документ"
+                                                                title="Скачати"
+                                                                onClick={() => handleDownloadExpenseDocument(doc.storage_path, doc.file_name || 'document')}
+                                                                className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded transition-colors"
+                                                            >
+                                                                <Download className="w-4 h-4" />
+                                                            </button>
                                                         </div>
                                                     ) : '—'}
                                                 </td>
