@@ -77,6 +77,28 @@ function daysInMonth(yyyyMm: string): number {
   return new Date(y, m, 0).getDate();
 }
 
+/** Display-only YYYY-MM → MM/YYYY. Malformed input returns original (no Date parsing). */
+function formatMonthTableLabel(yyyyMm: string): string {
+  const t = yyyyMm.trim();
+  const match = /^(\d{4})-(\d{2})$/.exec(t);
+  if (!match) return yyyyMm;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return yyyyMm;
+  return `${String(month).padStart(2, '0')}/${year}`;
+}
+
+const MONTHLY_TABLE_TH_SHARED =
+  'px-1.5 py-0.5 text-[10px] font-bold uppercase leading-tight text-gray-400 whitespace-nowrap align-middle';
+const MONTHLY_TABLE_TH_FIRST = `${MONTHLY_TABLE_TH_SHARED} text-left`;
+const MONTHLY_TABLE_TH = `${MONTHLY_TABLE_TH_SHARED} text-right`;
+const MONTHLY_TABLE_TD_MONTH =
+  'px-1.5 py-0.5 text-[11px] leading-tight text-left text-gray-300 whitespace-nowrap align-middle';
+const MONTHLY_TABLE_TD_NUM =
+  'px-1.5 py-0.5 text-[11px] leading-tight text-right text-white whitespace-nowrap tabular-nums align-middle';
+const MONTHLY_TABLE_TD_EMPTY =
+  'px-1.5 py-0.5 text-[11px] leading-tight text-gray-300 whitespace-nowrap align-middle';
+
 const COST_HOVER_HIDE_DELAY_MS = 140;
 const MAX_INVOICE_ROWS = 12;
 const COLLECTED_BREAKDOWN_MAX_ROWS = 12;
@@ -605,30 +627,30 @@ export function ApartmentStatisticsSection({
 
       {/* D) Monthly table (last 6 months) */}
       <div className="overflow-x-auto border border-gray-700 rounded-lg bg-[#16181D]">
-        <table className="w-full text-sm">
-          <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
+        <table className="w-full text-[11px] leading-tight">
+          <thead className="bg-[#23262b] border-b border-gray-700">
             <tr>
-              <th className="p-2 text-left font-bold text-xs uppercase">Month</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Rooms</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Op.Days</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">OOO</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Rented</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Empty</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Occupancy%</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Price/rn</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Plan</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Collected</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Diff</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">%Fulfill</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">ADR</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">ADR/rn</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Avg/op</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">OwnerDue</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Invoices</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Utilities</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Total Costs</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Net</th>
-              <th className="p-2 text-right font-bold text-xs uppercase">Inventory</th>
+              <th className={MONTHLY_TABLE_TH_FIRST}>Month</th>
+              <th className={MONTHLY_TABLE_TH}>Rooms</th>
+              <th className={MONTHLY_TABLE_TH}>Op.Days</th>
+              <th className={MONTHLY_TABLE_TH}>OOO</th>
+              <th className={MONTHLY_TABLE_TH}>Rented</th>
+              <th className={MONTHLY_TABLE_TH}>Empty</th>
+              <th className={MONTHLY_TABLE_TH}>Occupancy%</th>
+              <th className={MONTHLY_TABLE_TH}>Price/rn</th>
+              <th className={MONTHLY_TABLE_TH}>Plan</th>
+              <th className={MONTHLY_TABLE_TH}>Collected</th>
+              <th className={MONTHLY_TABLE_TH}>Diff</th>
+              <th className={MONTHLY_TABLE_TH}>%Fulfill</th>
+              <th className={MONTHLY_TABLE_TH}>ADR</th>
+              <th className={MONTHLY_TABLE_TH}>ADR/rn</th>
+              <th className={MONTHLY_TABLE_TH}>Avg/op</th>
+              <th className={MONTHLY_TABLE_TH}>OwnerDue</th>
+              <th className={MONTHLY_TABLE_TH}>Invoices</th>
+              <th className={MONTHLY_TABLE_TH}>Utilities</th>
+              <th className={MONTHLY_TABLE_TH}>Total Costs</th>
+              <th className={MONTHLY_TABLE_TH}>Net</th>
+              <th className={MONTHLY_TABLE_TH}>Inventory</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-700/50">
@@ -636,8 +658,8 @@ export function ApartmentStatisticsSection({
               const perf = last6MonthsPerf[idx];
               if (!perf) {
                 return (
-                  <tr key={mm}>
-                    <td className="p-2 text-gray-300" colSpan={21}>
+                  <tr key={mm} className="hover:bg-[#1C1F24]">
+                    <td className={MONTHLY_TABLE_TD_EMPTY} colSpan={21}>
                       —
                     </td>
                   </tr>
@@ -669,27 +691,27 @@ export function ApartmentStatisticsSection({
               const netVal = coll - tot;
               return (
                 <tr key={mm} className="hover:bg-[#1C1F24]">
-                  <td className="p-2 text-gray-300">{mm}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{perf.rooms}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{opDays}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{ooo}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{rent}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{empty}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{occ.toFixed(1)}%</td>
-                  <td className="p-2 text-right text-white tabular-nums">{perf.planningPricePerRoom}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(planVal)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(coll)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(diff)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{pct.toFixed(1)}%</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(adrVal)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(roomAdrVal)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(avgOp)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(own)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(inv)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(util)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(tot)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(netVal)}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{formatCurrency(totalInventoryCost)}</td>
+                  <td className={MONTHLY_TABLE_TD_MONTH}>{formatMonthTableLabel(mm)}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{perf.rooms}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{opDays}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{ooo}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{rent}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{empty}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{occ.toFixed(1)}%</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{perf.planningPricePerRoom}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{formatCurrency(planVal)}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{formatCurrency(coll)}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{formatCurrency(diff)}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{pct.toFixed(1)}%</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{formatCurrency(adrVal)}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{formatCurrency(roomAdrVal)}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{formatCurrency(avgOp)}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{formatCurrency(own)}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{formatCurrency(inv)}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{formatCurrency(util)}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{formatCurrency(tot)}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{formatCurrency(netVal)}</td>
+                  <td className={MONTHLY_TABLE_TD_NUM}>{formatCurrency(totalInventoryCost)}</td>
                 </tr>
               );
             })}
