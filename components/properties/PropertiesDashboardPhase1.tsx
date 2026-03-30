@@ -5,6 +5,7 @@ import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '..
 import { buildExpenseInvoiceGroupsForMonth, pickExpenseInvoiceDocumentTarget } from '../../lib/propertyExpenseInvoiceGroups';
 import type { Booking, InvoiceData, OfferData, Property, RentTimelineRowDB, Reservation } from '../../types';
 import { buildDashboardMonthData } from '../../lib/propertiesDashboard/selectors';
+import { apartmentFinancialCoreFromMatrixRow } from '../../lib/propertiesDashboard/apartmentMonthlyPerformance';
 import type { DailyDashboardMetrics } from '../../lib/propertiesDashboard/types';
 import { resolveOwnerDueForMonth } from '../../lib/ownerDueResolver';
 
@@ -262,11 +263,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
 
     return monthData.rows.map((row) => {
       const property = propertyById.get(row.apartmentId);
-      const planningPricePerRoom = Math.max(0, Number(property?.planningPricePerRoom ?? 0));
-      const collectedForApartment = row.dayCells.reduce((sum, cell) => sum + (cell.kind === 'value' ? cell.amountNet : 0), 0);
-      const operationalDays = row.dayCells.reduce((sum, cell) => sum + (cell.kind === 'ooo' ? 0 : 1), 0);
-      const operationalRentableNights = operationalDays * Math.max(0, Number(row.rooms) || 0);
-      const fullCapacityIncome = planningPricePerRoom * operationalRentableNights;
+      const core = apartmentFinancialCoreFromMatrixRow(row, property);
 
       const items = expenseItemsByPropertyId[row.apartmentId] ?? [];
       const invoices = items.reduce((sum, item) => {
@@ -278,8 +275,6 @@ const PropertiesDashboardPhase1: React.FC = () => {
       const ownerDue = ownerDueResolvedByApartment[row.apartmentId]?.total ?? 0;
 
       const totalCost = invoices + ownerDue;
-      const difference = collectedForApartment - fullCapacityIncome;
-      const planFulfillment = fullCapacityIncome > 0 ? collectedForApartment / fullCapacityIncome : 0;
 
       return {
         apartmentId: row.apartmentId,
@@ -290,12 +285,12 @@ const PropertiesDashboardPhase1: React.FC = () => {
         qm: row.qm,
         betten: row.betten,
         rooms: row.rooms,
-        collectedForApartment,
-        planningPricePerRoom,
-        operationalRentableNights,
-        fullCapacityIncome,
-        difference,
-        planFulfillment: Number.isFinite(planFulfillment) ? planFulfillment : 0,
+        collectedForApartment: core.collectedForApartment,
+        planningPricePerRoom: core.planningPricePerRoom,
+        operationalRentableNights: core.operationalRentableNights,
+        fullCapacityIncome: core.fullCapacityIncome,
+        difference: core.difference,
+        planFulfillment: core.planFulfillment,
         invoices,
         ownerDue,
         totalCost,

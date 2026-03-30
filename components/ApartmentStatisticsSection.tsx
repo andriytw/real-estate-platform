@@ -1,31 +1,17 @@
 /**
  * 12. Apartment Statistics — donut dashboard + KPI + monthly table.
- * Client-side aggregation only; data from existing Unit Card blocks.
- * OOO = 0 (placeholder). pricePerRoomNight is one value for v1 (all 6 months).
+ * Monthly KPIs use the same canonical day-grid pipeline as Properties Dashboard.
  */
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { DonutCompositionCard, DonutGaugeCard, type DonutSegment } from './charts/DonutCard';
+import { DonutCompositionCard, DonutGaugeCard } from './charts/DonutCard';
 import { CostSliceDetailsCard } from './charts/CostSliceDetailsCard';
 import { UserRound, Receipt, Wallet } from 'lucide-react';
 import { resolveOwnerDueForMonth } from '../lib/ownerDueResolver';
+import { buildSingleApartmentMonthlyPerformanceFromDashboardModel } from '../lib/propertiesDashboard/apartmentMonthlyPerformance';
+import type { Booking, InvoiceData, OfferData, Property, Reservation } from '../types';
 
 // --- Data types (minimal for aggregation) ---
-interface PaymentLike {
-  date?: string | unknown;
-  totalGross?: number | string;
-  status?: string;
-  /** Optional: for Collected hover card booking-style row (caller may pass enriched data). */
-  bookingCheckIn?: string | null;
-  bookingCheckOut?: string | null;
-  tenantDisplayName?: string | null;
-  /** Optional: for payment-style row label (e.g. payer or invoice label). */
-  payerLabel?: string | null;
-}
-interface ReservationLike {
-  start?: string;
-  end?: string;
-}
 interface RentRowLike {
   id?: string;
   validFrom: string;
@@ -63,9 +49,13 @@ interface ExpenseItemLike {
 }
 
 export interface ApartmentStatisticsSectionProps {
+  /** Same inputs as Properties Dashboard month model for this apartment. */
+  dashboardProperty: Property;
+  dashboardBookings: Booking[];
+  dashboardReservations: Reservation[];
+  dashboardOffers: OfferData[];
+  dashboardProformas: InvoiceData[];
   roomsCount: number;
-  propertyPayments: PaymentLike[];
-  propertyReservations: ReservationLike[];
   rentTimelineRows: RentRowLike[];
   expenseItems: ExpenseItemLike[];
   totalInventoryCost: number;
@@ -81,40 +71,10 @@ export interface ApartmentStatisticsSectionProps {
 }
 
 // --- Helpers ---
-function parseISODate(s: string): Date {
-  const [y, m, d] = s.slice(0, 10).split('-').map(Number);
-  return new Date(y, (m || 1) - 1, d || 1);
-}
-function monthStart(yyyyMm: string): Date {
-  const [y, m] = yyyyMm.split('-').map(Number);
-  return new Date(y, (m || 1) - 1, 1);
-}
-function monthEnd(yyyyMm: string): Date {
-  const start = monthStart(yyyyMm);
-  start.setMonth(start.getMonth() + 1);
-  start.setDate(0);
-  return start;
-}
 function daysInMonth(yyyyMm: string): number {
-  return monthEnd(yyyyMm).getDate();
-}
-/** Nights between checkIn (inclusive) and checkOut (exclusive) */
-function nightsBetween(checkIn: string, checkOut: string): number {
-  const a = parseISODate(checkIn);
-  const b = parseISODate(checkOut);
-  const ms = b.getTime() - a.getTime();
-  return Math.max(0, Math.floor(ms / (24 * 60 * 60 * 1000)));
-}
-function overlapDays(
-  rangeStart: Date,
-  rangeEnd: Date,
-  monthStartDate: Date,
-  monthEndDate: Date
-): number {
-  const start = new Date(Math.max(rangeStart.getTime(), monthStartDate.getTime()));
-  const end = new Date(Math.min(rangeEnd.getTime(), monthEndDate.getTime()));
-  if (start > end) return 0;
-  return Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  const [y, m] = yyyyMm.split('-').map(Number);
+  if (!y || !m) return 31;
+  return new Date(y, m, 0).getDate();
 }
 
 const COST_HOVER_HIDE_DELAY_MS = 140;
@@ -134,9 +94,12 @@ interface InvoiceRowForPopover {
 }
 
 export function ApartmentStatisticsSection({
+  dashboardProperty,
+  dashboardBookings,
+  dashboardReservations,
+  dashboardOffers,
+  dashboardProformas,
   roomsCount,
-  propertyPayments,
-  propertyReservations,
   rentTimelineRows,
   expenseItems,
   totalInventoryCost,
@@ -148,11 +111,20 @@ export function ApartmentStatisticsSection({
   formatCurrency,
   showDebug = false,
 }: ApartmentStatisticsSectionProps) {
-  const daysOutOfOrder = 0; // TODO: wire to Sales Calendar OOO later
   const daysInMonthCount = useMemo(() => daysInMonth(selectedMonth), [selectedMonth]);
-  const operationalDays = Math.max(0, daysInMonthCount - daysOutOfOrder);
-  const maxRoomNights = roomsCount * operationalDays;
-  const plan = pricePerRoomNight * maxRoomNights;
+
+  const selectedMonthPerf = useMemo(
+    () =>
+      buildSingleApartmentMonthlyPerformanceFromDashboardModel({
+        property: dashboardProperty,
+        bookings: dashboardBookings,
+        reservations: dashboardReservations,
+        offers: dashboardOffers,
+        proformas: dashboardProformas,
+        monthKey: selectedMonth,
+      }),
+    [dashboardProperty, dashboardBookings, dashboardReservations, dashboardOffers, dashboardProformas, selectedMonth]
+  );
 
   // --- Last 6 months for table ---
   const last6Months = useMemo(() => {
@@ -203,37 +175,30 @@ export function ApartmentStatisticsSection({
     return out;
   }, [selectedMonth, last6Months, normalizedOwnerDueRows]);
 
-  // --- Aggregation for selected month ---
+  const last6MonthsPerf = useMemo(
+    () =>
+      last6Months.map((mm) =>
+        buildSingleApartmentMonthlyPerformanceFromDashboardModel({
+          property: dashboardProperty,
+          bookings: dashboardBookings,
+          reservations: dashboardReservations,
+          offers: dashboardOffers,
+          proformas: dashboardProformas,
+          monthKey: mm,
+        })
+      ),
+    [last6Months, dashboardProperty, dashboardBookings, dashboardReservations, dashboardOffers, dashboardProformas]
+  );
+
+  // --- Aggregation for selected month (canonical dashboard day-grid) ---
   const agg = useMemo(() => {
-    const mStart = monthStart(selectedMonth);
-    const mEnd = monthEnd(selectedMonth);
-    const mEndInclusive = new Date(mEnd);
-    mEndInclusive.setDate(mEndInclusive.getDate() + 1);
-
-    let daysRented = 0;
-    for (const res of propertyReservations) {
-      const start = res.start ?? '';
-      const end = res.end ?? '';
-      if (!start || !end) continue;
-      const resStart = parseISODate(start);
-      const resEnd = parseISODate(end);
-      daysRented += overlapDays(resStart, resEnd, mStart, mEndInclusive);
-    }
-    daysRented = Math.min(daysRented, operationalDays);
+    const perf = selectedMonthPerf;
+    const collected = perf?.collectedForApartment ?? 0;
+    const plan = perf?.fullCapacityIncome ?? 0;
+    const operationalDays = perf?.operationalDays ?? 0;
+    const daysOutOfOrder = perf?.oooDays ?? 0;
+    const daysRented = perf?.occupiedOperationalDays ?? 0;
     const daysEmpty = Math.max(0, operationalDays - daysRented);
-
-    const hasStatus = propertyPayments.some((p) => p.status != null);
-    const paidOnly = hasStatus ? propertyPayments.filter((p) => (p.status ?? '').toString().toLowerCase() === 'paid') : propertyPayments;
-    let collected = 0;
-    for (const p of paidOnly) {
-      const dateStr = typeof p.date === 'string' ? p.date.slice(0, 10) : p.date ? String(p.date).slice(0, 10) : '';
-      if (!dateStr) continue;
-      const [y, m] = dateStr.split('-');
-      if (y && m && `${y}-${m}` === selectedMonth) {
-        const amt = Number(p.totalGross ?? 0);
-        if (Number.isFinite(amt)) collected += amt;
-      }
-    }
 
     const ownerDue = ownerDueByMonth[selectedMonth]?.total ?? 0;
 
@@ -254,15 +219,18 @@ export function ApartmentStatisticsSection({
     const difference = collected - plan;
     const overPlan = Math.max(0, collected - plan);
     const adr = daysRented >= 1 ? collected / daysRented : 0;
-    const adrMax = pricePerRoomNight * roomsCount || 1;
-    const roomAdr = daysRented * roomsCount >= 1 ? collected / (daysRented * roomsCount) : 0;
+    const roomsForAdr = perf?.rooms ?? roomsCount;
+    const adrMax = pricePerRoomNight * roomsForAdr || 1;
+    const roomAdr = daysRented * roomsForAdr >= 1 ? collected / (daysRented * roomsForAdr) : 0;
     const avgRentable = operationalDays >= 1 ? collected / operationalDays : 0;
     const net = collected - totalCosts;
-    const occupancyPct = operationalDays > 0 ? (daysRented / operationalDays) * 100 : 0;
+    const occupancyPct = (perf?.occupancyPctOperationalDays ?? 0) * 100;
 
     return {
       daysRented,
       daysEmpty,
+      daysOutOfOrder,
+      operationalDays,
       collected,
       ownerDue,
       invoiceExpenses,
@@ -277,23 +245,16 @@ export function ApartmentStatisticsSection({
       avgRentable,
       net,
       occupancyPct,
+      plan,
+      maxRoomNights: perf?.operationalRentableNights ?? 0,
     };
-  }, [
-    selectedMonth,
-    propertyReservations,
-    operationalDays,
-    propertyPayments,
-    rentTimelineRows,
-    expenseItems,
-    plan,
-    roomsCount,
-    pricePerRoomNight,
-    ownerDueByMonth,
-  ]);
+  }, [selectedMonth, selectedMonthPerf, expenseItems, ownerDueByMonth, pricePerRoomNight, roomsCount]);
 
   const {
     daysRented,
     daysEmpty,
+    daysOutOfOrder,
+    operationalDays,
     collected,
     ownerDue,
     invoiceExpenses,
@@ -308,6 +269,8 @@ export function ApartmentStatisticsSection({
     avgRentable,
     net,
     occupancyPct,
+    plan,
+    maxRoomNights,
   } = agg;
 
   const formatPct = (n: number) => (Number.isFinite(n) ? n.toFixed(1) : '0') + '%';
@@ -437,30 +400,20 @@ export function ApartmentStatisticsSection({
       ? `+ ${totalInvoiceRowsForPopover - MAX_INVOICE_ROWS} more (open Invoices tile)`
       : undefined;
 
-  // Collected breakdown: SAME array and SAME filter as collected (so sum === collected within rounding)
+  // Collected breakdown: per-day confirmed revenue (same as dashboard day cells)
   const { collectedBreakdownRows, collectedBreakdownWarning } = useMemo(() => {
-    const hasStatus = propertyPayments.some((p) => p.status != null);
-    const paidOnly = hasStatus
-      ? propertyPayments.filter((p) => (p.status ?? '').toString().toLowerCase() === 'paid')
-      : propertyPayments;
+    const perf = selectedMonthPerf;
     const rows: { label: string; value: string; amount: number }[] = [];
     let sum = 0;
-    for (const p of paidOnly) {
-      const dateStr = typeof p.date === 'string' ? p.date.slice(0, 10) : p.date ? String(p.date).slice(0, 10) : '';
-      if (!dateStr) continue;
-      const [y, m] = dateStr.split('-');
-      if (!y || !m || `${y}-${m}` !== selectedMonth) continue;
-      const amount = Number(p.totalGross ?? 0);
-      if (!Number.isFinite(amount)) continue;
-      sum += amount;
-      const checkIn = (p as PaymentLike).bookingCheckIn ?? '';
-      const checkOut = (p as PaymentLike).bookingCheckOut ?? '';
-      const tenant = (p as PaymentLike).tenantDisplayName ?? '';
-      const hasBookingMeta = checkIn !== '' && checkOut !== '';
-      const label = hasBookingMeta
-        ? `${checkIn} → ${checkOut} • ${tenant || '—'}`
-        : `${dateStr} • ${(p as PaymentLike).payerLabel ?? 'Payment'}`;
-      rows.push({ label, value: formatCurrency(amount), amount });
+    if (perf) {
+      perf.monthDays.forEach((dayIso, i) => {
+        const cell = perf.matrixRow.dayCells[i];
+        if (cell?.kind === 'value' && Number(cell.amountNet) > 0) {
+          const amount = Number(cell.amountNet);
+          sum += amount;
+          rows.push({ label: dayIso, value: formatCurrency(amount), amount });
+        }
+      });
     }
     if (import.meta.env.DEV && rows.length > 0) {
       const diff = Math.abs(sum - collected);
@@ -475,7 +428,7 @@ export function ApartmentStatisticsSection({
       collectedBreakdownRows: capped.map((r) => ({ label: r.label, value: r.value })),
       collectedBreakdownWarning: warning,
     };
-  }, [propertyPayments, selectedMonth, collected, formatCurrency]);
+  }, [selectedMonthPerf, selectedMonth, collected, formatCurrency]);
 
   return (
     <div className="space-y-6">
@@ -679,31 +632,24 @@ export function ApartmentStatisticsSection({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-700/50">
-            {last6Months.map((mm) => {
-              const din = daysInMonth(mm);
-              const opDays = Math.max(0, din - 0);
-              const maxRn = roomsCount * opDays;
-              const planVal = pricePerRoomNight * maxRn;
-              const mStart = monthStart(mm);
-              const mEnd = monthEnd(mm);
-              const mEndInc = new Date(mEnd);
-              mEndInc.setDate(mEndInc.getDate() + 1);
-              let rent = 0;
-              for (const res of propertyReservations) {
-                const start = res.start ?? '';
-                const end = res.end ?? '';
-                if (!start || !end) continue;
-                rent += overlapDays(parseISODate(start), parseISODate(end), mStart, mEndInc);
+            {last6Months.map((mm, idx) => {
+              const perf = last6MonthsPerf[idx];
+              if (!perf) {
+                return (
+                  <tr key={mm}>
+                    <td className="p-2 text-gray-300" colSpan={21}>
+                      —
+                    </td>
+                  </tr>
+                );
               }
-              rent = Math.min(rent, opDays);
+              const coll = perf.collectedForApartment;
+              const planVal = perf.fullCapacityIncome;
+              const opDays = perf.operationalDays;
+              const ooo = perf.oooDays;
+              const rent = perf.occupiedOperationalDays;
               const empty = Math.max(0, opDays - rent);
-              const hasStatus = propertyPayments.some((p) => p.status != null);
-              const paid = hasStatus ? propertyPayments.filter((p) => (p.status ?? '').toString().toLowerCase() === 'paid') : propertyPayments;
-              let coll = 0;
-              for (const p of paid) {
-                const dateStr = typeof p.date === 'string' ? p.date.slice(0, 10) : p.date ? String(p.date).slice(0, 10) : '';
-                if (dateStr && dateStr.slice(0, 7) === mm) coll += Number(p.totalGross ?? 0) || 0;
-              }
+              const occ = perf.occupancyPctOperationalDays * 100;
               const own = ownerDueByMonth[mm]?.total ?? 0;
               let inv = 0;
               for (const item of expenseItems) {
@@ -718,20 +664,19 @@ export function ApartmentStatisticsSection({
               const diff = coll - planVal;
               const pct = planVal > 0 ? (coll / planVal) * 100 : 0;
               const adrVal = rent >= 1 ? coll / rent : 0;
-              const roomAdrVal = rent * roomsCount >= 1 ? coll / (rent * roomsCount) : 0;
+              const roomAdrVal = rent * perf.rooms >= 1 ? coll / (rent * perf.rooms) : 0;
               const avgOp = opDays >= 1 ? coll / opDays : 0;
-              const occ = opDays > 0 ? (rent / opDays) * 100 : 0;
               const netVal = coll - tot;
               return (
                 <tr key={mm} className="hover:bg-[#1C1F24]">
                   <td className="p-2 text-gray-300">{mm}</td>
-                  <td className="p-2 text-right text-white tabular-nums">{roomsCount}</td>
+                  <td className="p-2 text-right text-white tabular-nums">{perf.rooms}</td>
                   <td className="p-2 text-right text-white tabular-nums">{opDays}</td>
-                  <td className="p-2 text-right text-white tabular-nums">0</td>
+                  <td className="p-2 text-right text-white tabular-nums">{ooo}</td>
                   <td className="p-2 text-right text-white tabular-nums">{rent}</td>
                   <td className="p-2 text-right text-white tabular-nums">{empty}</td>
                   <td className="p-2 text-right text-white tabular-nums">{occ.toFixed(1)}%</td>
-                  <td className="p-2 text-right text-white tabular-nums">{pricePerRoomNight}</td>
+                  <td className="p-2 text-right text-white tabular-nums">{perf.planningPricePerRoom}</td>
                   <td className="p-2 text-right text-white tabular-nums">{formatCurrency(planVal)}</td>
                   <td className="p-2 text-right text-white tabular-nums">{formatCurrency(coll)}</td>
                   <td className="p-2 text-right text-white tabular-nums">{formatCurrency(diff)}</td>

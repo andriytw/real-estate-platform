@@ -4123,6 +4123,32 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       .sort((a, b) => (b.start ?? '').localeCompare(a.start ?? ''));
   }, [reservations, selectedPropertyId]);
 
+  /** Maps UI reservation rows to `Reservation` shape for Properties Dashboard month pipeline (Apartment Statistics). */
+  const reservationsForDashboardStats = useMemo((): Reservation[] => {
+    return reservations.map((r) => {
+      const row = r as {
+        id?: string | number;
+        propertyId?: string;
+        roomId?: string;
+        start?: string;
+        end?: string;
+        startDate?: string;
+        endDate?: string;
+        status?: Reservation['status'];
+      };
+      const pid = String(row.roomId ?? row.propertyId ?? '');
+      const start = row.start ?? row.startDate ?? '';
+      const end = row.end ?? row.endDate ?? '';
+      return {
+        id: String(row.id ?? ''),
+        propertyId: pid,
+        startDate: start,
+        endDate: end,
+        status: row.status ?? 'open',
+      };
+    });
+  }, [reservations]);
+
   const propertyRequests = useMemo(() => {
     const sid = selectedPropertyId != null ? String(selectedPropertyId) : null;
     if (!sid) return [];
@@ -9548,9 +9574,12 @@ ${internalCompany} Team`;
             {/* 12. Apartment Statistics */}
             <CollapsibleSection title="12. Apartment Statistics" defaultOpen={false}>
               <ApartmentStatisticsSection
+                dashboardProperty={selectedProperty}
+                dashboardBookings={confirmedBookings}
+                dashboardReservations={reservationsForDashboardStats}
+                dashboardOffers={offers}
+                dashboardProformas={proformas}
                 roomsCount={getRoomsCount(selectedProperty)}
-                propertyPayments={propertyPayments}
-                propertyReservations={propertyReservations}
                 rentTimelineRows={rentTimelineRows}
                 expenseItems={expenseItems}
                 totalInventoryCost={totalInventoryCost}
