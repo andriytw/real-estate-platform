@@ -124,7 +124,7 @@ const MODAL_EXPENSES_BREAKDOWN_GRID =
 
 /** Shared grid for Apartment Performance Breakdown modal: chevron + identity columns + KPI columns. */
 const MODAL_PERFORMANCE_BREAKDOWN_GRID =
-  'grid w-full min-w-0 grid-cols-[2.25rem_10rem_10rem_minmax(0,1fr)_7.5rem_7.5rem_11rem_11rem_11rem_10rem] gap-x-3 items-center';
+  'grid w-full min-w-0 grid-cols-[2.25rem_8rem_8rem_minmax(0,1fr)_6rem_6rem_8.5rem_8.5rem_8.5rem_7.5rem] gap-x-2 items-center';
 
 const PERFORMANCE_APT_HEADER_CELL_CLASS =
   'truncate text-[10px] font-semibold uppercase tracking-wide text-gray-500';
@@ -139,6 +139,9 @@ const PERFORMANCE_CONTRIB_META_CLASS = `${PERFORMANCE_CONTRIB_SEGMENT_CLASS} tex
 const PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS = `${PERFORMANCE_CONTRIB_SEGMENT_CLASS} text-gray-500`;
 const PERFORMANCE_CONTRIB_LINK_CLASS =
   'min-w-0 truncate whitespace-nowrap text-[11px] leading-tight text-emerald-200 hover:text-emerald-100 hover:underline underline-offset-2';
+
+const PERFORMANCE_CONTRIB_ROW_CLASS =
+  'grid min-w-[86rem] grid-cols-[9rem_9rem_12rem_4.5rem_7rem_12rem_1fr_1fr_8.5rem] gap-x-3 items-center';
 
 function fileNameFromUrl(href: string | undefined | null): string | null {
   if (!href) return null;
@@ -211,7 +214,6 @@ const PropertiesDashboardPhase1: React.FC = () => {
   const [expandedExpenseInvoiceKeys, setExpandedExpenseInvoiceKeys] = useState<Set<string>>(new Set());
   const [performanceModalOpen, setPerformanceModalOpen] = useState(false);
   const [expandedPerformanceApartments, setExpandedPerformanceApartments] = useState<Set<string>>(new Set());
-  const [expandedPerformanceProformas, setExpandedPerformanceProformas] = useState<Set<string>>(new Set());
   const [performanceModalSearch, setPerformanceModalSearch] = useState('');
   const [performanceModalStreetSort, setPerformanceModalStreetSort] = useState<'default' | 'asc' | 'desc'>('default');
   const [performanceModalGroupFilter, setPerformanceModalGroupFilter] = useState<'all' | string>('all');
@@ -528,24 +530,6 @@ const PropertiesDashboardPhase1: React.FC = () => {
     );
   }, [monthData, dashboardMonthContext, properties, bookings, reservations, offers, proformas]);
 
-  const togglePerformanceApartmentExpand = useCallback((apartmentId: string) => {
-    setExpandedPerformanceApartments((prev) => {
-      const next = new Set(prev);
-      if (next.has(apartmentId)) next.delete(apartmentId);
-      else next.add(apartmentId);
-      return next;
-    });
-  }, []);
-
-  const togglePerformanceProformaExpand = useCallback((proformaId: string) => {
-    setExpandedPerformanceProformas((prev) => {
-      const next = new Set(prev);
-      if (next.has(proformaId)) next.delete(proformaId);
-      else next.add(proformaId);
-      return next;
-    });
-  }, []);
-
   const ensureProformaDocsLoaded = useCallback(
     async (proformaId: string) => {
       setProformaDocBundlesById((prev) => {
@@ -598,6 +582,29 @@ const PropertiesDashboardPhase1: React.FC = () => {
       }
     },
     [proformas]
+  );
+
+  const togglePerformanceApartmentExpand = useCallback(
+    (apartmentId: string) => {
+      setExpandedPerformanceApartments((prev) => {
+        const next = new Set(prev);
+        const willExpand = !next.has(apartmentId);
+        if (willExpand) {
+          next.add(apartmentId);
+
+          // Preload docs once per proformaId when apartment becomes expanded.
+          const contributions = (contributionsByApartmentId as Map<string, any>).get(apartmentId) ?? [];
+          for (const c of contributions) {
+            const proformaId = String(c?.proforma?.id ?? '');
+            if (proformaId) void ensureProformaDocsLoaded(proformaId);
+          }
+        } else {
+          next.delete(apartmentId);
+        }
+        return next;
+      });
+    },
+    [contributionsByApartmentId, ensureProformaDocsLoaded]
   );
 
   const apartmentPerformanceModalRows = useMemo(() => {
@@ -1650,7 +1657,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
 
               <div
                 aria-hidden
-                className={`w-full rounded border border-gray-800 bg-[#0D1117]/40 px-3 py-1 ${MODAL_PERFORMANCE_BREAKDOWN_GRID}`}
+                className={`w-full rounded border border-gray-800 bg-[#0D1117]/40 px-2.5 py-1 ${MODAL_PERFORMANCE_BREAKDOWN_GRID}`}
               >
                 <span />
                 <span className={PERFORMANCE_APT_HEADER_CELL_CLASS}>Group</span>
@@ -1672,7 +1679,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => togglePerformanceApartmentExpand(row.apartmentId)}
-                      className={`w-full px-3 py-1.5 text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500/40 ${MODAL_PERFORMANCE_BREAKDOWN_GRID}`}
+                      className={`w-full px-2.5 py-1.5 text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500/40 ${MODAL_PERFORMANCE_BREAKDOWN_GRID}`}
                     >
                       <span className="flex h-full shrink-0 items-center justify-center text-gray-500">
                         {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -1704,158 +1711,134 @@ const PropertiesDashboardPhase1: React.FC = () => {
                           <div className="space-y-2">
                             {contributions.map((c: any) => {
                               const proformaId = String(c.proforma?.id ?? '');
-                              const proformaExpanded = expandedPerformanceProformas.has(proformaId);
                               const bundleState = proformaDocBundlesById[proformaId] ?? { status: 'idle' as const };
                               const overlapNights = Array.isArray(c.overlapDays) ? c.overlapDays.length : 0;
 
                               return (
-                                <div key={proformaId} className="rounded border border-gray-800/80 bg-[#1C1F24]">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (!proformaExpanded) void ensureProformaDocsLoaded(proformaId);
-                                      togglePerformanceProformaExpand(proformaId);
-                                    }}
-                                    className="w-full px-3 py-2 text-left hover:bg-white/[0.02] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500/30"
-                                  >
-                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                      <div className="min-w-0">
-                                        <div className="flex flex-wrap items-center gap-2 text-sm">
-                                          <span className="font-semibold text-white">
-                                            {c.proforma?.invoiceNumber ?? proformaId}
-                                          </span>
-                                          <span className="text-gray-400">{c.proforma?.clientName ?? '—'}</span>
-                                        </div>
-                                        <div className="mt-0.5 text-[11px] text-gray-500">
-                                          {c.interval?.startIso ?? '—'} → {c.interval?.endIsoExclusive ?? '—'} · {overlapNights} nights · nightly {formatCurrency(Number(c.nightlyNet) || 0)}
-                                          {c.proforma?.bookingId != null ? ` · booking ${String(c.proforma.bookingId)}` : ''}
-                                        </div>
-                                      </div>
-                                      <div className="shrink-0 text-right">
-                                        <div className="text-[11px] text-gray-500">Allocated (month)</div>
-                                        <div className="font-semibold tabular-nums text-emerald-100">
-                                          {formatCurrency(Number(c.allocatedNetForMonth) || 0)}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </button>
+                                <div key={proformaId} className="rounded border border-gray-800/80 bg-[#1C1F24] px-3 py-2">
+                                  <div className="overflow-x-auto">
+                                    <div className={PERFORMANCE_CONTRIB_ROW_CLASS}>
+                                      <span className={PERFORMANCE_CONTRIB_META_CLASS} title="Interval">
+                                        {c.interval?.startIso ?? '—'} → {c.interval?.endIsoExclusive ?? '—'}
+                                      </span>
+                                      <span className={PERFORMANCE_CONTRIB_META_CLASS} title="Proforma">
+                                        {c.proforma?.invoiceNumber ?? proformaId}
+                                      </span>
+                                      <span className={PERFORMANCE_CONTRIB_META_CLASS} title="Client">
+                                        {c.proforma?.clientName ?? '—'}
+                                      </span>
+                                      <span className={PERFORMANCE_CONTRIB_META_CLASS} title="Nights">
+                                        {overlapNights}n
+                                      </span>
+                                      <span className={PERFORMANCE_CONTRIB_META_CLASS} title="Nightly net">
+                                        {formatCurrency(Number(c.nightlyNet) || 0)}
+                                      </span>
 
-                                  {proformaExpanded ? (
-                                    <div className="border-t border-gray-800 px-3 py-2">
-                                      <div className="overflow-x-auto">
-                                        <div className="grid min-w-[68rem] grid-cols-[10rem_10rem_14rem_14rem_1fr_1fr] gap-x-4 items-center">
-                                          <span className={PERFORMANCE_CONTRIB_META_CLASS} title="Interval">
-                                            {c.interval?.startIso ?? '—'} → {c.interval?.endIsoExclusive ?? '—'}
-                                          </span>
-                                          <span className={PERFORMANCE_CONTRIB_META_CLASS} title="Proforma">
-                                            {c.proforma?.invoiceNumber ?? proformaId}
-                                          </span>
-                                          <span className={PERFORMANCE_CONTRIB_META_CLASS} title="Client">
-                                            {c.proforma?.clientName ?? '—'}
-                                          </span>
+                                      {/* Proforma doc slot */}
+                                      {bundleState.status === 'loaded' ? (
+                                        bundleState.bundle.proformaFileUrl ? (
+                                          <a
+                                            href={bundleState.bundle.proformaFileUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className={PERFORMANCE_CONTRIB_LINK_CLASS}
+                                            title={fileNameFromUrl(bundleState.bundle.proformaFileUrl) ?? 'Proforma'}
+                                          >
+                                            {fileNameFromUrl(bundleState.bundle.proformaFileUrl) ?? 'Proforma'}
+                                          </a>
+                                        ) : (
+                                          <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Proforma</span>
+                                        )
+                                      ) : bundleState.status === 'loading' ? (
+                                        <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Loading…</span>
+                                      ) : bundleState.status === 'error' ? (
+                                        <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Fetch failed</span>
+                                      ) : (
+                                        <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>—</span>
+                                      )}
 
-                                          {/* Proforma doc slot */}
-                                          {bundleState.status === 'loaded' ? (
-                                            bundleState.bundle.proformaFileUrl ? (
-                                              <a
-                                                href={bundleState.bundle.proformaFileUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className={PERFORMANCE_CONTRIB_LINK_CLASS}
-                                                title={fileNameFromUrl(bundleState.bundle.proformaFileUrl) ?? 'Proforma'}
-                                              >
-                                                {fileNameFromUrl(bundleState.bundle.proformaFileUrl) ?? 'Proforma'}
-                                              </a>
-                                            ) : (
-                                              <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Proforma</span>
-                                            )
-                                          ) : bundleState.status === 'loading' ? (
-                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Loading…</span>
-                                          ) : bundleState.status === 'error' ? (
-                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Fetch failed</span>
-                                          ) : (
-                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>—</span>
-                                          )}
+                                      {/* Invoice doc(s) slot */}
+                                      {bundleState.status === 'loaded' ? (
+                                        bundleState.bundle.invoices.length === 0 ? (
+                                          <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>No invoices</span>
+                                        ) : (
+                                          <span className="min-w-0 truncate whitespace-nowrap">
+                                            {bundleState.bundle.invoices.map((inv, idx) => {
+                                              const label = inv.invoiceNumber || fileNameFromUrl(inv.fileUrl) || 'Invoice';
+                                              const sep = idx === 0 ? '' : ', ';
+                                              return inv.fileUrl ? (
+                                                <span key={inv.id}>
+                                                  {sep}
+                                                  <a
+                                                    href={inv.fileUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className={PERFORMANCE_CONTRIB_LINK_CLASS}
+                                                    title={label}
+                                                  >
+                                                    {label}
+                                                  </a>
+                                                </span>
+                                              ) : (
+                                                <span key={inv.id} className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS} title={label}>
+                                                  {sep}
+                                                  {label}
+                                                </span>
+                                              );
+                                            })}
+                                          </span>
+                                        )
+                                      ) : bundleState.status === 'loading' ? (
+                                        <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Loading…</span>
+                                      ) : bundleState.status === 'error' ? (
+                                        <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Fetch failed</span>
+                                      ) : (
+                                        <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>—</span>
+                                      )}
 
-                                          {/* Invoice doc(s) slot */}
-                                          {bundleState.status === 'loaded' ? (
-                                            bundleState.bundle.invoices.length === 0 ? (
-                                              <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>No invoices</span>
-                                            ) : (
-                                              <span className="min-w-0 truncate whitespace-nowrap">
-                                                {bundleState.bundle.invoices.map((inv, idx) => {
-                                                  const label = inv.invoiceNumber || fileNameFromUrl(inv.fileUrl) || 'Invoice';
-                                                  const title = label;
-                                                  const sep = idx === 0 ? '' : ', ';
-                                                  return inv.fileUrl ? (
-                                                    <span key={inv.id}>
-                                                      {sep}
-                                                      <a
-                                                        href={inv.fileUrl}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className={PERFORMANCE_CONTRIB_LINK_CLASS}
-                                                        title={title}
-                                                      >
-                                                        {label}
-                                                      </a>
-                                                    </span>
-                                                  ) : (
-                                                    <span key={inv.id} className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS} title={title}>
-                                                      {sep}
+                                      {/* Payment proof doc(s) slot */}
+                                      {bundleState.status === 'loaded' ? (
+                                        bundleState.bundle.invoices.length === 0 ? (
+                                          <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>—</span>
+                                        ) : !bundleState.bundle.hasAnyProofs ? (
+                                          <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Invoices present, no payment proofs</span>
+                                        ) : (
+                                          <span className="min-w-0 truncate whitespace-nowrap">
+                                            {bundleState.bundle.invoices
+                                              .flatMap((inv) => bundleState.bundle.proofsByInvoiceId[inv.id] ?? [])
+                                              .map((p, idx) => {
+                                                const label = p.fileName ?? 'Payment Proof';
+                                                const sep = idx === 0 ? '' : ', ';
+                                                return (
+                                                  <span key={p.id}>
+                                                    {sep}
+                                                    <a
+                                                      href={p.href}
+                                                      target="_blank"
+                                                      rel="noopener noreferrer"
+                                                      className={PERFORMANCE_CONTRIB_LINK_CLASS}
+                                                      title={label}
+                                                    >
                                                       {label}
-                                                    </span>
-                                                  );
-                                                })}
-                                              </span>
-                                            )
-                                          ) : bundleState.status === 'loading' ? (
-                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Loading…</span>
-                                          ) : bundleState.status === 'error' ? (
-                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Fetch failed</span>
-                                          ) : (
-                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>—</span>
-                                          )}
+                                                    </a>
+                                                  </span>
+                                                );
+                                              })}
+                                          </span>
+                                        )
+                                      ) : bundleState.status === 'loading' ? (
+                                        <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Loading…</span>
+                                      ) : bundleState.status === 'error' ? (
+                                        <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Fetch failed</span>
+                                      ) : (
+                                        <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>—</span>
+                                      )}
 
-                                          {/* Payment proof doc(s) slot */}
-                                          {bundleState.status === 'loaded' ? (
-                                            bundleState.bundle.invoices.length === 0 ? (
-                                              <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>—</span>
-                                            ) : !bundleState.bundle.hasAnyProofs ? (
-                                              <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Invoices present, no payment proofs</span>
-                                            ) : (
-                                              <span className="min-w-0 truncate whitespace-nowrap">
-                                                {bundleState.bundle.invoices.flatMap((inv) => bundleState.bundle.proofsByInvoiceId[inv.id] ?? []).map((p, idx) => {
-                                                  const label = p.fileName ?? 'Payment Proof';
-                                                  const sep = idx === 0 ? '' : ', ';
-                                                  return (
-                                                    <span key={p.id}>
-                                                      {sep}
-                                                      <a
-                                                        href={p.href}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className={PERFORMANCE_CONTRIB_LINK_CLASS}
-                                                        title={label}
-                                                      >
-                                                        {label}
-                                                      </a>
-                                                    </span>
-                                                  );
-                                                })}
-                                              </span>
-                                            )
-                                          ) : bundleState.status === 'loading' ? (
-                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Loading…</span>
-                                          ) : bundleState.status === 'error' ? (
-                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Fetch failed</span>
-                                          ) : (
-                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>—</span>
-                                          )}
-                                        </div>
-                                      </div>
+                                      <span className="text-right tabular-nums text-[11px] font-semibold leading-tight text-emerald-100" title="Allocated (month)">
+                                        {formatCurrency(Number(c.allocatedNetForMonth) || 0)}
+                                      </span>
                                     </div>
-                                  ) : null}
+                                  </div>
                                 </div>
                               );
                             })}
