@@ -141,7 +141,7 @@ const PERFORMANCE_CONTRIB_LINK_CLASS =
   'min-w-0 truncate whitespace-nowrap text-[11px] leading-tight text-emerald-200 hover:text-emerald-100 hover:underline underline-offset-2';
 
 const PERFORMANCE_CONTRIB_ROW_CLASS =
-  'grid min-w-[86rem] grid-cols-[9rem_9rem_12rem_4.5rem_7rem_12rem_1fr_1fr_8.5rem] gap-x-3 items-center';
+  'grid min-w-[78rem] grid-cols-[9rem_9rem_12rem_4.5rem_7rem_1fr_1fr_8.5rem] gap-x-3 items-center';
 
 function fileNameFromUrl(href: string | undefined | null): string | null {
   if (!href) return null;
@@ -1746,29 +1746,6 @@ const PropertiesDashboardPhase1: React.FC = () => {
                                         {formatCurrency(Number(c.nightlyNet) || 0)}
                                       </span>
 
-                                      {/* Proforma doc slot */}
-                                      {bundleState.status === 'loaded' ? (
-                                        bundleState.bundle.proformaFileUrl ? (
-                                          <a
-                                            href={bundleState.bundle.proformaFileUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className={PERFORMANCE_CONTRIB_LINK_CLASS}
-                                            title={fileNameFromUrl(bundleState.bundle.proformaFileUrl) ?? 'Proforma'}
-                                          >
-                                            {fileNameFromUrl(bundleState.bundle.proformaFileUrl) ?? 'Proforma'}
-                                          </a>
-                                        ) : (
-                                          <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Proforma</span>
-                                        )
-                                      ) : bundleState.status === 'loading' ? (
-                                        <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Loading…</span>
-                                      ) : bundleState.status === 'error' ? (
-                                        <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Fetch failed</span>
-                                      ) : (
-                                        <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>—</span>
-                                      )}
-
                                       {/* Invoice doc(s) slot */}
                                       {bundleState.status === 'loaded' ? (
                                         bundleState.bundle.invoices.length === 0 ? (
@@ -1776,8 +1753,8 @@ const PropertiesDashboardPhase1: React.FC = () => {
                                         ) : (
                                           <span className="min-w-0 truncate whitespace-nowrap">
                                             {bundleState.bundle.invoices.map((inv, idx) => {
-                                              const label = inv.invoiceNumber || fileNameFromUrl(inv.fileUrl) || 'Invoice';
                                               const sep = idx === 0 ? '' : ', ';
+                                              const label = bundleState.bundle.invoices.length > 1 ? `Invoice ${idx + 1}` : 'Invoice';
                                               return inv.fileUrl ? (
                                                 <span key={inv.id}>
                                                   {sep}
@@ -1810,16 +1787,21 @@ const PropertiesDashboardPhase1: React.FC = () => {
 
                                       {/* Payment proof doc(s) slot */}
                                       {bundleState.status === 'loaded' ? (
-                                        bundleState.bundle.invoices.length === 0 ? (
-                                          <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>—</span>
-                                        ) : !bundleState.bundle.hasAnyProofs ? (
-                                          <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Invoices present, no payment proofs</span>
-                                        ) : (
-                                          <span className="min-w-0 truncate whitespace-nowrap">
-                                            {bundleState.bundle.invoices
-                                              .flatMap((inv) => bundleState.bundle.proofsByInvoiceId[inv.id] ?? [])
-                                              .map((p, idx) => {
-                                                const label = p.fileName ?? 'Payment Proof';
+                                        (() => {
+                                          const proofs = bundleState.bundle.invoices.flatMap(
+                                            (inv) => bundleState.bundle.proofsByInvoiceId[inv.id] ?? []
+                                          );
+                                          if (proofs.length === 0) {
+                                            return (
+                                              <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>
+                                                No confirmation document
+                                              </span>
+                                            );
+                                          }
+                                          return (
+                                            <span className="min-w-0 truncate whitespace-nowrap">
+                                              {proofs.map((p, idx) => {
+                                                const label = proofs.length > 1 ? `Confirmation ${idx + 1}` : 'Confirmation';
                                                 const sep = idx === 0 ? '' : ', ';
                                                 return (
                                                   <span key={p.id}>
@@ -1836,8 +1818,9 @@ const PropertiesDashboardPhase1: React.FC = () => {
                                                   </span>
                                                 );
                                               })}
-                                          </span>
-                                        )
+                                            </span>
+                                          );
+                                        })()
                                       ) : bundleState.status === 'loading' ? (
                                         <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Loading…</span>
                                       ) : bundleState.status === 'error' ? (
