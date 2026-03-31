@@ -126,6 +126,38 @@ const MODAL_EXPENSES_BREAKDOWN_GRID =
 const MODAL_PERFORMANCE_BREAKDOWN_GRID =
   'grid w-full min-w-0 grid-cols-[2.25rem_10rem_10rem_minmax(0,1fr)_7.5rem_7.5rem_11rem_11rem_11rem_10rem] gap-x-3 items-center';
 
+const PERFORMANCE_APT_HEADER_CELL_CLASS =
+  'truncate text-[10px] font-semibold uppercase tracking-wide text-gray-500';
+const PERFORMANCE_APT_CELL_CLASS = 'truncate text-[12px] leading-tight';
+const PERFORMANCE_APT_CELL_MUTED_CLASS = `${PERFORMANCE_APT_CELL_CLASS} text-gray-400`;
+const PERFORMANCE_APT_CELL_STREET_CLASS = `${PERFORMANCE_APT_CELL_CLASS} text-gray-300`;
+const PERFORMANCE_APT_CELL_UNIT_CLASS = `${PERFORMANCE_APT_CELL_CLASS} text-white`;
+const PERFORMANCE_APT_CELL_NUM_CLASS = 'text-right tabular-nums text-[12px] leading-tight text-white';
+
+const PERFORMANCE_CONTRIB_SEGMENT_CLASS = 'min-w-0 truncate whitespace-nowrap text-[11px] leading-tight';
+const PERFORMANCE_CONTRIB_META_CLASS = `${PERFORMANCE_CONTRIB_SEGMENT_CLASS} text-gray-400`;
+const PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS = `${PERFORMANCE_CONTRIB_SEGMENT_CLASS} text-gray-500`;
+const PERFORMANCE_CONTRIB_LINK_CLASS =
+  'min-w-0 truncate whitespace-nowrap text-[11px] leading-tight text-emerald-200 hover:text-emerald-100 hover:underline underline-offset-2';
+
+function fileNameFromUrl(href: string | undefined | null): string | null {
+  if (!href) return null;
+  try {
+    const url = new URL(href);
+    const last = url.pathname.split('/').filter(Boolean).pop() ?? '';
+    const decoded = decodeURIComponent(last);
+    return decoded || null;
+  } catch {
+    const last = String(href).split('?')[0]?.split('#')[0]?.split('/').filter(Boolean).pop() ?? '';
+    try {
+      const decoded = decodeURIComponent(last);
+      return decoded || null;
+    } catch {
+      return last || null;
+    }
+  }
+}
+
 function nextDayIso(isoDay: string): string {
   const [y, m, d] = isoDay.split('-').map(Number);
   const dt = new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + 1));
@@ -1616,6 +1648,22 @@ const PropertiesDashboardPhase1: React.FC = () => {
                 </p>
               ) : null}
 
+              <div
+                aria-hidden
+                className={`w-full rounded border border-gray-800 bg-[#0D1117]/40 px-3 py-1 ${MODAL_PERFORMANCE_BREAKDOWN_GRID}`}
+              >
+                <span />
+                <span className={PERFORMANCE_APT_HEADER_CELL_CLASS}>Group</span>
+                <span className={PERFORMANCE_APT_HEADER_CELL_CLASS}>Operator</span>
+                <span className={PERFORMANCE_APT_HEADER_CELL_CLASS}>Street</span>
+                <span className={PERFORMANCE_APT_HEADER_CELL_CLASS}>Unit</span>
+                <span className={`${PERFORMANCE_APT_HEADER_CELL_CLASS} text-right`}>Occupancy %</span>
+                <span className={`${PERFORMANCE_APT_HEADER_CELL_CLASS} text-right`}>Collected</span>
+                <span className={`${PERFORMANCE_APT_HEADER_CELL_CLASS} text-right`}>Plan</span>
+                <span className={`${PERFORMANCE_APT_HEADER_CELL_CLASS} text-right`}>Difference</span>
+                <span className={`${PERFORMANCE_APT_HEADER_CELL_CLASS} text-right`}>% Fulfill</span>
+              </div>
+
               {displayedApartmentPerformanceRows.map((row) => {
                 const expanded = expandedPerformanceApartments.has(row.apartmentId);
                 const contributions = (contributionsByApartmentId as Map<string, any>).get(row.apartmentId) ?? [];
@@ -1624,28 +1672,28 @@ const PropertiesDashboardPhase1: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => togglePerformanceApartmentExpand(row.apartmentId)}
-                      className={`w-full px-3 py-2.5 text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500/40 ${MODAL_PERFORMANCE_BREAKDOWN_GRID}`}
+                      className={`w-full px-3 py-1.5 text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500/40 ${MODAL_PERFORMANCE_BREAKDOWN_GRID}`}
                     >
                       <span className="flex h-full shrink-0 items-center justify-center text-gray-500">
                         {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </span>
-                      <span className="truncate text-gray-400" title={row.normalizedGroup}>
+                      <span className={PERFORMANCE_APT_CELL_MUTED_CLASS} title={row.normalizedGroup}>
                         {row.normalizedGroup}
                       </span>
-                      <span className="truncate text-gray-400" title={row.normalizedOperator}>
+                      <span className={PERFORMANCE_APT_CELL_MUTED_CLASS} title={row.normalizedOperator}>
                         {row.normalizedOperator}
                       </span>
-                      <span className="truncate text-gray-300" title={row.adresse || '—'}>
+                      <span className={PERFORMANCE_APT_CELL_STREET_CLASS} title={row.adresse || '—'}>
                         {row.adresse || '—'}
                       </span>
-                      <span className="truncate text-white" title={row.wohnung || '—'}>
+                      <span className={PERFORMANCE_APT_CELL_UNIT_CLASS} title={row.wohnung || '—'}>
                         {row.wohnung || '—'}
                       </span>
-                      <span className="text-right tabular-nums text-white">{formatPct(row.occupancyPct)}</span>
-                      <span className="text-right tabular-nums text-white">{formatCurrency(row.collected)}</span>
-                      <span className="text-right tabular-nums text-white">{formatCurrency(row.plan)}</span>
-                      <span className="text-right tabular-nums text-white">{formatSignedCurrency(row.difference)}</span>
-                      <span className="text-right tabular-nums text-white">{formatPct(row.planFulfillment)}</span>
+                      <span className={PERFORMANCE_APT_CELL_NUM_CLASS}>{formatPct(row.occupancyPct)}</span>
+                      <span className={PERFORMANCE_APT_CELL_NUM_CLASS}>{formatCurrency(row.collected)}</span>
+                      <span className={PERFORMANCE_APT_CELL_NUM_CLASS}>{formatCurrency(row.plan)}</span>
+                      <span className={PERFORMANCE_APT_CELL_NUM_CLASS}>{formatSignedCurrency(row.difference)}</span>
+                      <span className={PERFORMANCE_APT_CELL_NUM_CLASS}>{formatPct(row.planFulfillment)}</span>
                     </button>
 
                     {expanded ? (
@@ -1681,7 +1729,6 @@ const PropertiesDashboardPhase1: React.FC = () => {
                                         <div className="mt-0.5 text-[11px] text-gray-500">
                                           {c.interval?.startIso ?? '—'} → {c.interval?.endIsoExclusive ?? '—'} · {overlapNights} nights · nightly {formatCurrency(Number(c.nightlyNet) || 0)}
                                           {c.proforma?.bookingId != null ? ` · booking ${String(c.proforma.bookingId)}` : ''}
-                                          {c.proforma?.reservationId != null ? ` · reservation ${String(c.proforma.reservationId)}` : ''}
                                         </div>
                                       </div>
                                       <div className="shrink-0 text-right">
@@ -1694,98 +1741,119 @@ const PropertiesDashboardPhase1: React.FC = () => {
                                   </button>
 
                                   {proformaExpanded ? (
-                                    <div className="border-t border-gray-800 px-3 py-2 text-sm">
-                                      {bundleState.status === 'loading' ? (
-                                        <p className="text-gray-500">Loading documents…</p>
-                                      ) : bundleState.status === 'error' ? (
-                                        <p className="text-red-300">Failed to load documents: {bundleState.message}</p>
-                                      ) : bundleState.status === 'loaded' ? (
-                                        <div className="space-y-2">
-                                          <div className="flex flex-wrap items-center gap-2">
-                                            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Proforma</span>
-                                            {bundleState.bundle.proformaFileUrl ? (
+                                    <div className="border-t border-gray-800 px-3 py-2">
+                                      <div className="overflow-x-auto">
+                                        <div className="grid min-w-[68rem] grid-cols-[10rem_10rem_14rem_14rem_1fr_1fr] gap-x-4 items-center">
+                                          <span className={PERFORMANCE_CONTRIB_META_CLASS} title="Interval">
+                                            {c.interval?.startIso ?? '—'} → {c.interval?.endIsoExclusive ?? '—'}
+                                          </span>
+                                          <span className={PERFORMANCE_CONTRIB_META_CLASS} title="Proforma">
+                                            {c.proforma?.invoiceNumber ?? proformaId}
+                                          </span>
+                                          <span className={PERFORMANCE_CONTRIB_META_CLASS} title="Client">
+                                            {c.proforma?.clientName ?? '—'}
+                                          </span>
+
+                                          {/* Proforma doc slot */}
+                                          {bundleState.status === 'loaded' ? (
+                                            bundleState.bundle.proformaFileUrl ? (
                                               <a
                                                 href={bundleState.bundle.proformaFileUrl}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-gray-200 hover:border-gray-500"
+                                                className={PERFORMANCE_CONTRIB_LINK_CLASS}
+                                                title={fileNameFromUrl(bundleState.bundle.proformaFileUrl) ?? 'Proforma'}
                                               >
-                                                PDF
+                                                {fileNameFromUrl(bundleState.bundle.proformaFileUrl) ?? 'Proforma'}
                                               </a>
                                             ) : (
-                                              <span className="text-xs text-gray-500">No proforma PDF</span>
-                                            )}
-                                          </div>
+                                              <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Proforma</span>
+                                            )
+                                          ) : bundleState.status === 'loading' ? (
+                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Loading…</span>
+                                          ) : bundleState.status === 'error' ? (
+                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Fetch failed</span>
+                                          ) : (
+                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>—</span>
+                                          )}
 
-                                          <div>
-                                            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Invoices</div>
-                                            {bundleState.bundle.invoices.length === 0 ? (
-                                              <div className="text-sm text-gray-500">No invoices</div>
+                                          {/* Invoice doc(s) slot */}
+                                          {bundleState.status === 'loaded' ? (
+                                            bundleState.bundle.invoices.length === 0 ? (
+                                              <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>No invoices</span>
                                             ) : (
-                                              <ul className="mt-1 space-y-1">
-                                                {bundleState.bundle.invoices.map((inv) => (
-                                                  <li key={inv.id} className="flex flex-wrap items-center justify-between gap-2">
-                                                    <span className="text-gray-300">
-                                                      {inv.invoiceNumber || inv.id} {inv.date ? `· ${inv.date}` : ''}
-                                                    </span>
-                                                    {inv.fileUrl ? (
+                                              <span className="min-w-0 truncate whitespace-nowrap">
+                                                {bundleState.bundle.invoices.map((inv, idx) => {
+                                                  const label = inv.invoiceNumber || fileNameFromUrl(inv.fileUrl) || 'Invoice';
+                                                  const title = label;
+                                                  const sep = idx === 0 ? '' : ', ';
+                                                  return inv.fileUrl ? (
+                                                    <span key={inv.id}>
+                                                      {sep}
                                                       <a
                                                         href={inv.fileUrl}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-gray-200 hover:border-gray-500"
+                                                        className={PERFORMANCE_CONTRIB_LINK_CLASS}
+                                                        title={title}
                                                       >
-                                                        PDF
+                                                        {label}
                                                       </a>
-                                                    ) : (
-                                                      <span className="text-xs text-gray-500">No invoice PDF</span>
-                                                    )}
-                                                  </li>
-                                                ))}
-                                              </ul>
-                                            )}
-                                          </div>
-
-                                          <div>
-                                            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Payment proofs</div>
-                                            {bundleState.bundle.invoices.length > 0 && !bundleState.bundle.hasAnyProofs ? (
-                                              <div className="text-sm text-gray-500">Invoices present, no payment proofs</div>
-                                            ) : bundleState.bundle.invoices.length === 0 ? (
-                                              <div className="text-sm text-gray-500">—</div>
-                                            ) : (
-                                              <div className="mt-1 space-y-2">
-                                                {bundleState.bundle.invoices.map((inv) => {
-                                                  const proofs = bundleState.bundle.proofsByInvoiceId[inv.id] ?? [];
-                                                  return (
-                                                    <div key={inv.id} className="flex flex-wrap items-center gap-2">
-                                                      <span className="text-xs text-gray-500">
-                                                        {inv.invoiceNumber || inv.id}
-                                                      </span>
-                                                      {proofs.length === 0 ? (
-                                                        <span className="text-xs text-gray-500">No proofs</span>
-                                                      ) : (
-                                                        proofs.map((p) => (
-                                                          <a
-                                                            key={p.id}
-                                                            href={p.href}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-gray-200 hover:border-gray-500"
-                                                          >
-                                                            {p.fileName ?? 'Proof PDF'}
-                                                          </a>
-                                                        ))
-                                                      )}
-                                                    </div>
+                                                    </span>
+                                                  ) : (
+                                                    <span key={inv.id} className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS} title={title}>
+                                                      {sep}
+                                                      {label}
+                                                    </span>
                                                   );
                                                 })}
-                                              </div>
-                                            )}
-                                          </div>
+                                              </span>
+                                            )
+                                          ) : bundleState.status === 'loading' ? (
+                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Loading…</span>
+                                          ) : bundleState.status === 'error' ? (
+                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Fetch failed</span>
+                                          ) : (
+                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>—</span>
+                                          )}
+
+                                          {/* Payment proof doc(s) slot */}
+                                          {bundleState.status === 'loaded' ? (
+                                            bundleState.bundle.invoices.length === 0 ? (
+                                              <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>—</span>
+                                            ) : !bundleState.bundle.hasAnyProofs ? (
+                                              <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Invoices present, no payment proofs</span>
+                                            ) : (
+                                              <span className="min-w-0 truncate whitespace-nowrap">
+                                                {bundleState.bundle.invoices.flatMap((inv) => bundleState.bundle.proofsByInvoiceId[inv.id] ?? []).map((p, idx) => {
+                                                  const label = p.fileName ?? 'Payment Proof';
+                                                  const sep = idx === 0 ? '' : ', ';
+                                                  return (
+                                                    <span key={p.id}>
+                                                      {sep}
+                                                      <a
+                                                        href={p.href}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className={PERFORMANCE_CONTRIB_LINK_CLASS}
+                                                        title={label}
+                                                      >
+                                                        {label}
+                                                      </a>
+                                                    </span>
+                                                  );
+                                                })}
+                                              </span>
+                                            )
+                                          ) : bundleState.status === 'loading' ? (
+                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Loading…</span>
+                                          ) : bundleState.status === 'error' ? (
+                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>Fetch failed</span>
+                                          ) : (
+                                            <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>—</span>
+                                          )}
                                         </div>
-                                      ) : (
-                                        <p className="text-gray-500">—</p>
-                                      )}
+                                      </div>
                                     </div>
                                   ) : null}
                                 </div>
