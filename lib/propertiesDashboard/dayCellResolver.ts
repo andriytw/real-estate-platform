@@ -11,6 +11,23 @@ interface ResolverContext {
   monthToIsoExclusive: string;
 }
 
+export interface PaidProformaContribution {
+  propertyId: string;
+  proforma: InvoiceData;
+  /** Confirmed interval used for this paid proforma (booking/reservation/offer derived). */
+  interval: { startIso: string; endIsoExclusive: string };
+  /** Interval clamped to selected month. */
+  clamped: { startIso: string; endIsoExclusive: string };
+  /** Days in selected month that receive revenue allocation. */
+  overlapDays: string[];
+  /** Total nights in full confirmed interval (unclamped). */
+  fullIntervalNights: number;
+  /** Net per night used for allocation (same as buildConfirmedRevenueMap). */
+  nightlyNet: number;
+  /** Allocated net for the selected month (nightlyNet * overlapDays.length). */
+  allocatedNetForMonth: number;
+}
+
 function getPropertyIdForProforma(
   proforma: InvoiceData,
   ctx: { offers: OfferData[]; reservations: Reservation[]; bookings: Booking[] }
@@ -167,6 +184,35 @@ export function buildConfirmedRevenueMap(
   ctx: ResolverContext
 ): Map<string, Map<string, number>> {
   const result = new Map<string, Map<string, number>>();
+  const contributionsByProperty = buildPaidProformaContributionsByProperty(propertyIds, days, ctx);
+  for (const [propertyId, contributions] of contributionsByProperty) {
+    if (contributions.length === 0) continue;
+    if (!result.has(propertyId)) result.set(propertyId, new Map<string, number>());
+    const byDay = result.get(propertyId)!;
+    for (const c of contributions) {
+      for (const day of c.overlapDays) {
+        byDay.set(day, (byDay.get(day) || 0) + c.nightlyNet);
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Canonical revenue drilldown helper.
+ *
+ * Returns per-apartment (propertyId) contributing paid-proforma rows for the selected month,
+ * using the exact same lineage/proration semantics as `buildConfirmedRevenueMap`.
+ *
+ * Level-2 identity must remain grounded in the paid proforma (may be enriched with booking/reservation/offer identifiers).
+ */
+export function buildPaidProformaContributionsByProperty(
+  propertyIds: string[],
+  days: string[],
+  ctx: ResolverContext
+): Map<string, PaidProformaContribution[]> {
+  const out = new Map<string, PaidProformaContribution[]>();
   const allowed = new Set(propertyIds.map(String));
   const daysSet = new Set(days);
   const paidProformas = ctx.proformas.filter((p) => p.status === 'Paid');
@@ -200,14 +246,30 @@ export function buildConfirmedRevenueMap(
     });
     if (!Number.isFinite(nightlyNet) || nightlyNet <= 0) continue;
 
-    if (!result.has(propertyId)) result.set(propertyId, new Map<string, number>());
-    const byDay = result.get(propertyId)!;
-    for (const day of overlapDays) {
-      byDay.set(day, (byDay.get(day) || 0) + nightlyNet);
-    }
+    const entry: PaidProformaContribution = {
+      propertyId: String(propertyId),
+      proforma,
+      interval,
+      clamped,
+      overlapDays,
+      fullIntervalNights,
+      nightlyNet,
+      allocatedNetForMonth: nightlyNet * overlapDays.length,
+    };
+
+    if (!out.has(entry.propertyId)) out.set(entry.propertyId, []);
+    out.get(entry.propertyId)!.push(entry);
   }
 
-  return result;
+  for (const list of out.values()) {
+    list.sort((a, b) => {
+      const cmp = b.clamped.startIso.localeCompare(a.clamped.startIso);
+      if (cmp !== 0) return cmp;
+      return String(b.proforma.id).localeCompare(String(a.proforma.id));
+    });
+  }
+
+  return out;
 }
 
 export function resolveApartmentDayCell(

@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bed, ChevronDown, ChevronRight, Download, Eye, LayoutGrid, Ruler, X } from 'lucide-react';
-import { bookingsService, invoicesService, offersService, propertiesService, rentTimelineService, reservationsService } from '../../services/supabaseService';
+import { bookingsService, invoicesService, offersService, paymentProofsService, propertiesService, rentTimelineService, reservationsService } from '../../services/supabaseService';
 import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '../../services/propertyExpenseService';
 import { buildExpenseInvoiceGroupsForMonth, pickExpenseInvoiceDocumentTarget } from '../../lib/propertyExpenseInvoiceGroups';
 import type { Booking, InvoiceData, OfferData, Property, RentTimelineRowDB, Reservation } from '../../types';
 import { buildDashboardMonthData } from '../../lib/propertiesDashboard/selectors';
 import { apartmentFinancialCoreFromMatrixRow } from '../../lib/propertiesDashboard/apartmentMonthlyPerformance';
+import { buildPaidProformaContributionsByProperty } from '../../lib/propertiesDashboard/dayCellResolver';
 import type { DailyDashboardMetrics } from '../../lib/propertiesDashboard/types';
 import { resolveOwnerDueForMonth } from '../../lib/ownerDueResolver';
 
@@ -121,6 +122,19 @@ function expenseInvoiceCompositeKey(apartmentId: string, groupKey: string): stri
 const MODAL_EXPENSES_BREAKDOWN_GRID =
   'grid w-full min-w-0 grid-cols-[2.25rem_minmax(0,1fr)_12rem_12rem_14rem] gap-x-3 items-center';
 
+/** Shared grid for Apartment Performance Breakdown modal: chevron + identity columns + KPI columns. */
+const MODAL_PERFORMANCE_BREAKDOWN_GRID =
+  'grid w-full min-w-0 grid-cols-[2.25rem_10rem_10rem_minmax(0,1fr)_7.5rem_7.5rem_11rem_11rem_11rem_10rem] gap-x-3 items-center';
+
+function nextDayIso(isoDay: string): string {
+  const [y, m, d] = isoDay.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + 1));
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
 function ModalExpenseFinancialCell({
   label,
   valueFormatted,
@@ -163,6 +177,30 @@ const PropertiesDashboardPhase1: React.FC = () => {
   const [apartmentExpenseModalGroupFilter, setApartmentExpenseModalGroupFilter] = useState<'all' | string>('all');
   const [apartmentExpenseModalOperatorFilter, setApartmentExpenseModalOperatorFilter] = useState<'all' | string>('all');
   const [expandedExpenseInvoiceKeys, setExpandedExpenseInvoiceKeys] = useState<Set<string>>(new Set());
+  const [performanceModalOpen, setPerformanceModalOpen] = useState(false);
+  const [expandedPerformanceApartments, setExpandedPerformanceApartments] = useState<Set<string>>(new Set());
+  const [expandedPerformanceProformas, setExpandedPerformanceProformas] = useState<Set<string>>(new Set());
+  const [performanceModalSearch, setPerformanceModalSearch] = useState('');
+  const [performanceModalStreetSort, setPerformanceModalStreetSort] = useState<'default' | 'asc' | 'desc'>('default');
+  const [performanceModalGroupFilter, setPerformanceModalGroupFilter] = useState<'all' | string>('all');
+  const [performanceModalOperatorFilter, setPerformanceModalOperatorFilter] = useState<'all' | string>('all');
+  const [proformaDocBundlesById, setProformaDocBundlesById] = useState<
+    Record<
+      string,
+      | { status: 'idle' | 'loading' }
+      | {
+          status: 'loaded';
+          bundle: {
+            proformaId: string;
+            proformaFileUrl: string | null;
+            invoices: Array<{ id: string; invoiceNumber: string; date: string; fileUrl: string | null }>;
+            proofsByInvoiceId: Record<string, Array<{ id: string; fileName: string | null; href: string }>>;
+            hasAnyProofs: boolean;
+          };
+        }
+      | { status: 'error'; message: string }
+    >
+  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -439,6 +477,190 @@ const PropertiesDashboardPhase1: React.FC = () => {
     };
   }, [apartmentFinancialRows]);
 
+  const contributionsByApartmentId = useMemo(() => {
+    if (!monthData) return new Map();
+    const fromIso = monthData.days[0] ?? dashboardMonthContext.monthKey + '-01';
+    const lastDay = monthData.days[monthData.days.length - 1];
+    const toIsoExclusive = lastDay ? nextDayIso(lastDay) : fromIso;
+    return buildPaidProformaContributionsByProperty(
+      properties.map((p) => String(p.id)),
+      monthData.days,
+      {
+        bookings,
+        reservations,
+        offers,
+        proformas,
+        monthFromIso: fromIso,
+        monthToIsoExclusive: toIsoExclusive,
+      }
+    );
+  }, [monthData, dashboardMonthContext, properties, bookings, reservations, offers, proformas]);
+
+  const togglePerformanceApartmentExpand = useCallback((apartmentId: string) => {
+    setExpandedPerformanceApartments((prev) => {
+      const next = new Set(prev);
+      if (next.has(apartmentId)) next.delete(apartmentId);
+      else next.add(apartmentId);
+      return next;
+    });
+  }, []);
+
+  const togglePerformanceProformaExpand = useCallback((proformaId: string) => {
+    setExpandedPerformanceProformas((prev) => {
+      const next = new Set(prev);
+      if (next.has(proformaId)) next.delete(proformaId);
+      else next.add(proformaId);
+      return next;
+    });
+  }, []);
+
+  const ensureProformaDocsLoaded = useCallback(
+    async (proformaId: string) => {
+      setProformaDocBundlesById((prev) => {
+        const cur = prev[proformaId];
+        if (cur && (cur.status === 'loading' || cur.status === 'loaded')) return prev;
+        return { ...prev, [proformaId]: { status: 'loading' } };
+      });
+
+      try {
+        const invoices = await invoicesService.getInvoicesByProformaId(proformaId);
+        const normalizedInvoices = invoices.map((inv) => ({
+          id: String(inv.id),
+          invoiceNumber: String(inv.invoiceNumber ?? ''),
+          date: String(inv.date ?? ''),
+          fileUrl: inv.fileUrl ?? null,
+        }));
+
+        const proofsByInvoiceId: Record<string, Array<{ id: string; fileName: string | null; href: string }>> = {};
+        let hasAnyProofs = false;
+
+        for (const inv of normalizedInvoices) {
+          const proofs = await paymentProofsService.getByInvoiceId(inv.id);
+          const rows: Array<{ id: string; fileName: string | null; href: string }> = [];
+          for (const proof of proofs) {
+            const filePath = proof.filePath ?? '';
+            if (filePath.trim() === '') continue;
+            const href = await paymentProofsService.getPaymentProofSignedUrl(filePath);
+            rows.push({ id: String(proof.id), fileName: proof.fileName ?? null, href });
+          }
+          if (rows.length > 0) hasAnyProofs = true;
+          proofsByInvoiceId[inv.id] = rows;
+        }
+
+        setProformaDocBundlesById((prev) => ({
+          ...prev,
+          [proformaId]: {
+            status: 'loaded',
+            bundle: {
+              proformaId,
+              proformaFileUrl: proformas.find((p) => String(p.id) === String(proformaId))?.fileUrl ?? null,
+              invoices: normalizedInvoices,
+              proofsByInvoiceId,
+              hasAnyProofs,
+            },
+          },
+        }));
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        setProformaDocBundlesById((prev) => ({ ...prev, [proformaId]: { status: 'error', message } }));
+      }
+    },
+    [proformas]
+  );
+
+  const apartmentPerformanceModalRows = useMemo(() => {
+    const propertyById = new Map(properties.map((p) => [String(p.id), p]));
+    const occupancyByApartmentId = new Map<string, number>();
+    for (const r of monthData?.rows ?? []) {
+      occupancyByApartmentId.set(String(r.apartmentId), r.occupancyPctOperationalDays);
+    }
+
+    return apartmentFinancialRows.map((finRow) => {
+      const property = propertyById.get(finRow.apartmentId);
+      const normalizedGroup = normalizeModalIdentityLabel(property?.apartmentGroupName);
+      const normalizedOperator = operatingCompanyLabel(property);
+      const occupancyPct = occupancyByApartmentId.get(finRow.apartmentId) ?? 0;
+
+      return {
+        apartmentId: finRow.apartmentId,
+        normalizedGroup,
+        normalizedOperator,
+        adresse: finRow.adresse,
+        wohnung: finRow.wohnung,
+        occupancyPct,
+        collected: finRow.collectedForApartment,
+        plan: finRow.fullCapacityIncome,
+        difference: finRow.difference,
+        planFulfillment: finRow.planFulfillment,
+      };
+    });
+  }, [apartmentFinancialRows, monthData, properties]);
+
+  const performanceModalGroupFilterOptions = useMemo(() => {
+    const uniq = new Set<string>();
+    for (const r of apartmentPerformanceModalRows) uniq.add(r.normalizedGroup);
+    return [...uniq].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [apartmentPerformanceModalRows]);
+
+  const performanceModalOperatorFilterOptions = useMemo(() => {
+    const uniq = new Set<string>();
+    for (const r of apartmentPerformanceModalRows) uniq.add(r.normalizedOperator);
+    return [...uniq].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [apartmentPerformanceModalRows]);
+
+  const displayedApartmentPerformanceRows = useMemo(() => {
+    const rows = apartmentPerformanceModalRows;
+    const qNorm = performanceModalSearch.trim().toLowerCase();
+    const filtered = rows.filter((block) => {
+      if (qNorm !== '') {
+        const haystack = [block.normalizedGroup, block.normalizedOperator, `${block.adresse ?? ''}`, `${block.wohnung ?? ''}`]
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(qNorm)) return false;
+      }
+      if (performanceModalGroupFilter !== 'all' && block.normalizedGroup !== performanceModalGroupFilter) return false;
+      if (performanceModalOperatorFilter !== 'all' && block.normalizedOperator !== performanceModalOperatorFilter) return false;
+      return true;
+    });
+    if (performanceModalStreetSort === 'default') {
+      return filtered;
+    }
+    return filtered.slice().sort((a, b) => {
+      const cmp = (a.adresse ?? '').localeCompare(b.adresse ?? '', undefined, { sensitivity: 'base' });
+      if (cmp !== 0) {
+        return performanceModalStreetSort === 'asc' ? cmp : -cmp;
+      }
+      return a.apartmentId.localeCompare(b.apartmentId);
+    });
+  }, [
+    apartmentPerformanceModalRows,
+    performanceModalSearch,
+    performanceModalStreetSort,
+    performanceModalGroupFilter,
+    performanceModalOperatorFilter,
+  ]);
+
+  const performanceModalVisibleTotals = useMemo(() => {
+    if (displayedApartmentPerformanceRows.length === 0) {
+      return { collected: 0, plan: 0, difference: 0, planFulfillment: 0 };
+    }
+    let collected = 0;
+    let plan = 0;
+    let difference = 0;
+    for (const row of displayedApartmentPerformanceRows) {
+      collected += row.collected;
+      plan += row.plan;
+      difference += row.difference;
+    }
+    const planFulfillment = plan > 0 ? collected / plan : 0;
+    return {
+      collected,
+      plan,
+      difference,
+      planFulfillment: Number.isFinite(planFulfillment) ? planFulfillment : 0,
+    };
+  }, [displayedApartmentPerformanceRows]);
+
   const monthlyRoomsPct = (monthData?.summary.rentedPctAvailableRooms ?? 0) * 100;
   const monthlyRoomsPctColorClass =
     monthlyRoomsPct < 83.0
@@ -645,7 +867,11 @@ const PropertiesDashboardPhase1: React.FC = () => {
           </div>
         </section>
 
-        <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
+        <button
+          type="button"
+          onClick={() => setPerformanceModalOpen(true)}
+          className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4 text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:ring-offset-2 focus:ring-offset-[#0D1117] hover:border-gray-600 transition-colors"
+        >
           <h3 className="text-sm font-semibold text-gray-300 mb-3">Apartment Performance Summary</h3>
           <div className="grid grid-cols-1 gap-2 text-sm">
             <div className="flex items-center justify-between gap-3">
@@ -665,7 +891,8 @@ const PropertiesDashboardPhase1: React.FC = () => {
               <span className="font-semibold">{formatPct(apartmentPerformanceSummary.planFulfillment)}</span>
             </div>
           </div>
-        </section>
+          <p className="mt-3 text-[11px] text-gray-500">Click for full breakdown</p>
+        </button>
 
         <button
           type="button"
@@ -1264,6 +1491,310 @@ const PropertiesDashboardPhase1: React.FC = () => {
                         </div>
                       </div>
                     )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {performanceModalOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-start justify-center p-4 pt-8 sm:pt-12 bg-black/70"
+          role="presentation"
+          onClick={() => setPerformanceModalOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="performance-modal-title"
+            className="relative w-full max-w-[90rem] max-h-[85vh] overflow-y-auto overflow-x-auto rounded-xl border border-gray-800 bg-[#1C1F24] p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-wrap items-start gap-3 border-b border-gray-800 pb-4 mb-4 sm:flex-nowrap sm:items-center sm:justify-between sm:gap-4">
+              <div className="min-w-0 shrink basis-full sm:max-w-[min(100%,24rem)] sm:basis-auto">
+                <h2 id="performance-modal-title" className="text-lg font-semibold text-white">
+                  Apartment Performance Breakdown
+                </h2>
+                <p className="mt-0.5 text-sm text-gray-400">{dashboardMonthContext.monthLabel}</p>
+              </div>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:flex-[1_1_auto] sm:justify-end">
+                <input
+                  id="performance-modal-search"
+                  type="search"
+                  value={performanceModalSearch}
+                  onChange={(e) => setPerformanceModalSearch(e.target.value)}
+                  placeholder="Search by street..."
+                  aria-label="Search apartments"
+                  className="min-w-[10rem] max-w-full flex-1 rounded-md border border-gray-700 bg-[#0D1117] px-2.5 py-1.5 text-sm text-white placeholder:text-gray-500 focus:border-emerald-500/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+                />
+                <label htmlFor="performance-modal-sort" className="sr-only">
+                  Sort by street
+                </label>
+                <select
+                  id="performance-modal-sort"
+                  value={performanceModalStreetSort}
+                  onChange={(e) => setPerformanceModalStreetSort(e.target.value as 'default' | 'asc' | 'desc')}
+                  className="shrink-0 rounded-md border border-gray-700 bg-[#0D1117] px-2 py-1.5 text-sm text-white focus:border-emerald-500/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+                >
+                  <option value="default">Street (default)</option>
+                  <option value="asc">Street A–Z</option>
+                  <option value="desc">Street Z–A</option>
+                </select>
+                <label htmlFor="performance-modal-group" className="sr-only">
+                  Filter by apartment group
+                </label>
+                <select
+                  id="performance-modal-group"
+                  value={performanceModalGroupFilter}
+                  onChange={(e) => setPerformanceModalGroupFilter(e.target.value)}
+                  className="shrink-0 max-w-[10rem] rounded-md border border-gray-700 bg-[#0D1117] px-2 py-1.5 text-sm text-white focus:border-emerald-500/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+                >
+                  <option value="all">All groups</option>
+                  {performanceModalGroupFilterOptions.map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                </select>
+                <label htmlFor="performance-modal-operator" className="sr-only">
+                  Filter by operator company
+                </label>
+                <select
+                  id="performance-modal-operator"
+                  value={performanceModalOperatorFilter}
+                  onChange={(e) => setPerformanceModalOperatorFilter(e.target.value)}
+                  className="shrink-0 max-w-[12rem] rounded-md border border-gray-700 bg-[#0D1117] px-2 py-1.5 text-sm text-white focus:border-emerald-500/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/40"
+                >
+                  <option value="all">All companies</option>
+                  {performanceModalOperatorFilterOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPerformanceModalOpen(false)}
+                className="shrink-0 rounded-md p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="min-w-0 rounded-lg border border-gray-800 bg-[#0D1117]/50 p-4 text-sm">
+              <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-gray-400">Collected</span>
+                  <span className="font-semibold tabular-nums text-white">{formatCurrency(performanceModalVisibleTotals.collected)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-gray-400">Full Capacity Income</span>
+                  <span className="font-semibold tabular-nums text-white">{formatCurrency(performanceModalVisibleTotals.plan)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-gray-400">Difference</span>
+                  <span className="font-semibold tabular-nums text-white">{formatSignedCurrency(performanceModalVisibleTotals.difference)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-gray-400">% of Plan Fulfillment</span>
+                  <span className="font-semibold tabular-nums text-white">{formatPct(performanceModalVisibleTotals.planFulfillment)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">By apartment</h3>
+              {displayedApartmentPerformanceRows.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  {apartmentPerformanceModalRows.length === 0
+                    ? 'No apartments for this month.'
+                    : 'No apartments match your search or filters.'}
+                </p>
+              ) : null}
+
+              {displayedApartmentPerformanceRows.map((row) => {
+                const expanded = expandedPerformanceApartments.has(row.apartmentId);
+                const contributions = (contributionsByApartmentId as Map<string, any>).get(row.apartmentId) ?? [];
+                return (
+                  <div key={row.apartmentId} className="rounded-lg border border-gray-800 bg-[#0D1117]/40">
+                    <button
+                      type="button"
+                      onClick={() => togglePerformanceApartmentExpand(row.apartmentId)}
+                      className={`w-full px-3 py-2.5 text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500/40 ${MODAL_PERFORMANCE_BREAKDOWN_GRID}`}
+                    >
+                      <span className="flex h-full shrink-0 items-center justify-center text-gray-500">
+                        {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                      </span>
+                      <span className="truncate text-gray-400" title={row.normalizedGroup}>
+                        {row.normalizedGroup}
+                      </span>
+                      <span className="truncate text-gray-400" title={row.normalizedOperator}>
+                        {row.normalizedOperator}
+                      </span>
+                      <span className="truncate text-gray-300" title={row.adresse || '—'}>
+                        {row.adresse || '—'}
+                      </span>
+                      <span className="truncate text-white" title={row.wohnung || '—'}>
+                        {row.wohnung || '—'}
+                      </span>
+                      <span className="text-right tabular-nums text-white">{formatPct(row.occupancyPct)}</span>
+                      <span className="text-right tabular-nums text-white">{formatCurrency(row.collected)}</span>
+                      <span className="text-right tabular-nums text-white">{formatCurrency(row.plan)}</span>
+                      <span className="text-right tabular-nums text-white">{formatSignedCurrency(row.difference)}</span>
+                      <span className="text-right tabular-nums text-white">{formatPct(row.planFulfillment)}</span>
+                    </button>
+
+                    {expanded ? (
+                      <div className="space-y-3 border-t border-gray-800 px-3 pb-4 pt-3 pl-10">
+                        {contributions.length === 0 ? (
+                          <p className="text-sm text-gray-500">No confirmed paid proformas contribute to this month.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {contributions.map((c: any) => {
+                              const proformaId = String(c.proforma?.id ?? '');
+                              const proformaExpanded = expandedPerformanceProformas.has(proformaId);
+                              const bundleState = proformaDocBundlesById[proformaId] ?? { status: 'idle' as const };
+                              const overlapNights = Array.isArray(c.overlapDays) ? c.overlapDays.length : 0;
+
+                              return (
+                                <div key={proformaId} className="rounded border border-gray-800/80 bg-[#1C1F24]">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!proformaExpanded) void ensureProformaDocsLoaded(proformaId);
+                                      togglePerformanceProformaExpand(proformaId);
+                                    }}
+                                    className="w-full px-3 py-2 text-left hover:bg-white/[0.02] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500/30"
+                                  >
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                                          <span className="font-semibold text-white">
+                                            {c.proforma?.invoiceNumber ?? proformaId}
+                                          </span>
+                                          <span className="text-gray-400">{c.proforma?.clientName ?? '—'}</span>
+                                        </div>
+                                        <div className="mt-0.5 text-[11px] text-gray-500">
+                                          {c.interval?.startIso ?? '—'} → {c.interval?.endIsoExclusive ?? '—'} · {overlapNights} nights · nightly {formatCurrency(Number(c.nightlyNet) || 0)}
+                                          {c.proforma?.bookingId != null ? ` · booking ${String(c.proforma.bookingId)}` : ''}
+                                          {c.proforma?.reservationId != null ? ` · reservation ${String(c.proforma.reservationId)}` : ''}
+                                        </div>
+                                      </div>
+                                      <div className="shrink-0 text-right">
+                                        <div className="text-[11px] text-gray-500">Allocated (month)</div>
+                                        <div className="font-semibold tabular-nums text-emerald-100">
+                                          {formatCurrency(Number(c.allocatedNetForMonth) || 0)}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </button>
+
+                                  {proformaExpanded ? (
+                                    <div className="border-t border-gray-800 px-3 py-2 text-sm">
+                                      {bundleState.status === 'loading' ? (
+                                        <p className="text-gray-500">Loading documents…</p>
+                                      ) : bundleState.status === 'error' ? (
+                                        <p className="text-red-300">Failed to load documents: {bundleState.message}</p>
+                                      ) : bundleState.status === 'loaded' ? (
+                                        <div className="space-y-2">
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Proforma</span>
+                                            {bundleState.bundle.proformaFileUrl ? (
+                                              <a
+                                                href={bundleState.bundle.proformaFileUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-gray-200 hover:border-gray-500"
+                                              >
+                                                PDF
+                                              </a>
+                                            ) : (
+                                              <span className="text-xs text-gray-500">No proforma PDF</span>
+                                            )}
+                                          </div>
+
+                                          <div>
+                                            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Invoices</div>
+                                            {bundleState.bundle.invoices.length === 0 ? (
+                                              <div className="text-sm text-gray-500">No invoices</div>
+                                            ) : (
+                                              <ul className="mt-1 space-y-1">
+                                                {bundleState.bundle.invoices.map((inv) => (
+                                                  <li key={inv.id} className="flex flex-wrap items-center justify-between gap-2">
+                                                    <span className="text-gray-300">
+                                                      {inv.invoiceNumber || inv.id} {inv.date ? `· ${inv.date}` : ''}
+                                                    </span>
+                                                    {inv.fileUrl ? (
+                                                      <a
+                                                        href={inv.fileUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-gray-200 hover:border-gray-500"
+                                                      >
+                                                        PDF
+                                                      </a>
+                                                    ) : (
+                                                      <span className="text-xs text-gray-500">No invoice PDF</span>
+                                                    )}
+                                                  </li>
+                                                ))}
+                                              </ul>
+                                            )}
+                                          </div>
+
+                                          <div>
+                                            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Payment proofs</div>
+                                            {bundleState.bundle.invoices.length > 0 && !bundleState.bundle.hasAnyProofs ? (
+                                              <div className="text-sm text-gray-500">Invoices present, no payment proofs</div>
+                                            ) : bundleState.bundle.invoices.length === 0 ? (
+                                              <div className="text-sm text-gray-500">—</div>
+                                            ) : (
+                                              <div className="mt-1 space-y-2">
+                                                {bundleState.bundle.invoices.map((inv) => {
+                                                  const proofs = bundleState.bundle.proofsByInvoiceId[inv.id] ?? [];
+                                                  return (
+                                                    <div key={inv.id} className="flex flex-wrap items-center gap-2">
+                                                      <span className="text-xs text-gray-500">
+                                                        {inv.invoiceNumber || inv.id}
+                                                      </span>
+                                                      {proofs.length === 0 ? (
+                                                        <span className="text-xs text-gray-500">No proofs</span>
+                                                      ) : (
+                                                        proofs.map((p) => (
+                                                          <a
+                                                            key={p.id}
+                                                            href={p.href}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-gray-200 hover:border-gray-500"
+                                                          >
+                                                            {p.fileName ?? 'Proof PDF'}
+                                                          </a>
+                                                        ))
+                                                      )}
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <p className="text-gray-500">—</p>
+                                      )}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
