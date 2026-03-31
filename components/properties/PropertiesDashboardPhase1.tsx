@@ -1721,9 +1721,21 @@ const PropertiesDashboardPhase1: React.FC = () => {
                                       <span className={PERFORMANCE_CONTRIB_META_CLASS} title="Interval">
                                         {c.interval?.startIso ?? '—'} → {c.interval?.endIsoExclusive ?? '—'}
                                       </span>
-                                      <span className={PERFORMANCE_CONTRIB_META_CLASS} title="Proforma">
-                                        {c.proforma?.invoiceNumber ?? proformaId}
-                                      </span>
+                                      {bundleState.status === 'loaded' && bundleState.bundle.proformaFileUrl ? (
+                                        <a
+                                          href={bundleState.bundle.proformaFileUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className={PERFORMANCE_CONTRIB_LINK_CLASS}
+                                          title="Open proforma PDF"
+                                        >
+                                          {c.proforma?.invoiceNumber ?? proformaId}
+                                        </a>
+                                      ) : (
+                                        <span className={PERFORMANCE_CONTRIB_META_CLASS} title="Proforma">
+                                          {c.proforma?.invoiceNumber ?? proformaId}
+                                        </span>
+                                      )}
                                       <span className={PERFORMANCE_CONTRIB_META_CLASS} title="Client">
                                         {c.proforma?.clientName ?? '—'}
                                       </span>
