@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Save, Send, Search, Trash2 } from 'lucide-react';
+import { Bed, LayoutGrid, X, Save, Send, Search, Trash2 } from 'lucide-react';
 import {
   Lead,
   MultiApartmentOfferDraft,
@@ -52,6 +52,12 @@ function formatDateView(iso: string): string {
   const s = String(iso || '').trim();
   const [y, m, d] = s.split('-');
   return d && m && y ? `${d}.${m}.${y}` : s;
+}
+
+/** Show real 0; undefined/non-finite → em dash (not a silent 0). */
+function formatRoomsBedsCell(value: number | undefined): string {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return '—';
 }
 
 const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
@@ -534,7 +540,23 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="text-left text-gray-400 border-b border-gray-700">
-                    <th className="py-1.5 pr-2 font-medium">Address</th>
+                    <th className="py-1.5 pr-2 font-medium min-w-0">Address</th>
+                    <th
+                      className="py-1.5 px-1 font-medium w-[3.25rem] min-w-[3.25rem] max-w-[3.25rem] text-center"
+                      title="Rooms"
+                    >
+                      <span className="inline-flex items-center justify-center gap-0.5">
+                        <LayoutGrid className="w-3 h-3 text-gray-500 shrink-0" aria-hidden />
+                      </span>
+                    </th>
+                    <th
+                      className="py-1.5 px-1 font-medium w-[3.25rem] min-w-[3.25rem] max-w-[3.25rem] text-center"
+                      title="Beds"
+                    >
+                      <span className="inline-flex items-center justify-center gap-0.5">
+                        <Bed className="w-3 h-3 text-gray-500 shrink-0" aria-hidden />
+                      </span>
+                    </th>
                     <th className="py-1.5 px-2 font-medium w-24">Price / night</th>
                     <th className="py-1.5 px-2 font-medium w-16">Tax %</th>
                     <th className="py-1.5 px-2 font-medium w-14">Nights</th>
@@ -562,8 +584,20 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                     const showRemove = !directBookingMode || selectedApartments.length > 1;
                     return (
                       <tr key={apartment.propertyId} className="border-b border-gray-800/80">
-                        <td className="py-1.5 pr-2 text-white truncate max-w-[200px]" title={formatApartmentIdentificationLine(apartment)}>
+                        <td className="py-1.5 pr-2 text-white truncate min-w-0 max-w-[min(100%,14rem)]" title={formatApartmentIdentificationLine(apartment)}>
                           {formatApartmentIdentificationLine(apartment)}
+                        </td>
+                        <td className="py-1.5 px-1 w-[3.25rem] min-w-[3.25rem] max-w-[3.25rem] text-center">
+                          <span className="inline-flex items-center gap-0.5 justify-center tabular-nums text-gray-300" title="Rooms">
+                            <LayoutGrid className="w-3 h-3 text-gray-500 shrink-0" aria-hidden />
+                            <span>{formatRoomsBedsCell(apartment.rooms)}</span>
+                          </span>
+                        </td>
+                        <td className="py-1.5 px-1 w-[3.25rem] min-w-[3.25rem] max-w-[3.25rem] text-center">
+                          <span className="inline-flex items-center gap-0.5 justify-center tabular-nums text-gray-300" title="Beds">
+                            <Bed className="w-3 h-3 text-gray-500 shrink-0" aria-hidden />
+                            <span>{formatRoomsBedsCell(apartment.beds)}</span>
+                          </span>
                         </td>
                         <td className="py-1 px-2">
                           <input

@@ -89,6 +89,22 @@ export function buildMultiApartmentClientMessage(params: {
       : checkInFormatted
         ? `Requested stay: ${checkInFormatted}`
         : '';
+
+  let totalAreaM2 = 0;
+  let totalRooms = 0;
+  let totalBeds = 0;
+  for (const a of apartments) {
+    if (typeof a.area === 'number' && Number.isFinite(a.area)) totalAreaM2 += a.area;
+    if (typeof a.rooms === 'number' && Number.isFinite(a.rooms)) totalRooms += a.rooms;
+    if (typeof a.beds === 'number' && Number.isFinite(a.beds)) totalBeds += a.beds;
+  }
+  const roundedArea = Math.round(totalAreaM2 * 100) / 100;
+  const areaDisplay =
+    Number.isInteger(roundedArea) || Math.abs(roundedArea - Math.round(roundedArea)) < 1e-9
+      ? String(Math.round(roundedArea))
+      : roundedArea.toFixed(2).replace(/\.?0+$/, '');
+  const aggregateStatsBlock = `Total area: ${areaDisplay} m²\nTotal rooms: ${totalRooms}\nTotal beds: ${totalBeds}`;
+
   const totalSection =
     showTotal && combinedTotals
       ? `\nTotal: Net ${combinedTotals.net.toFixed(2)} € · VAT ${combinedTotals.vat.toFixed(2)} € · Kaution ${combinedTotals.kaution.toFixed(2)} € · Gross ${combinedTotals.gross.toFixed(2)} €\n\n`
@@ -99,6 +115,8 @@ export function buildMultiApartmentClientMessage(params: {
 thank you for your interest in the following apartments:
 
 ${requestedStayLine}
+
+${aggregateStatsBlock}
 
 ${apartmentBlocks.join('\n\n')}
 ${totalSection}Please find the offer attached.
