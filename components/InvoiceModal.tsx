@@ -4,6 +4,111 @@ import { X, Save, FileText, Download, Edit2, Check, Upload } from 'lucide-react'
 import { OfferData, InvoiceData, CompanyDetails, ReservationData } from '../types';
 import { INTERNAL_COMPANIES_DATA } from '../constants';
 import { propertiesService } from '../services/supabaseService';
+import { calculateOfferItemTotals } from '../utils/salesOfferFlow';
+
+/** Offer → proforma: use persisted Sales totals, or reconstruct from nightly/nights/taxRate/kaution (never from offer.price). */
+function resolveOfferProformaFinancials(offer: OfferData): {
+  totalNet: number;
+  taxAmount: number;
+  totalGross: number;
+} {
+  const kaution =
+    typeof offer.kaution === 'number' && Number.isFinite(offer.kaution) ? offer.kaution : 0;
+
+  const fullPersisted =
+    typeof offer.netTotal === 'number' &&
+    !Number.isNaN(offer.netTotal) &&
+    typeof offer.vatTotal === 'number' &&
+    !Number.isNaN(offer.vatTotal) &&
+    typeof offer.grossTotal === 'number' &&
+    !Number.isNaN(offer.grossTotal);
+
+  if (fullPersisted) {
+    return {
+      totalNet: Number(offer.netTotal!.toFixed(2)),
+      taxAmount: Number(offer.vatTotal!.toFixed(2)),
+      totalGross: Number(offer.grossTotal!.toFixed(2)),
+    };
+  }
+
+  const nightly =
+    typeof offer.nightlyPrice === 'number' && Number.isFinite(offer.nightlyPrice)
+      ? offer.nightlyPrice
+      : NaN;
+  const nights =
+    typeof offer.nights === 'number' && Number.isFinite(offer.nights) && offer.nights > 0
+      ? offer.nights
+      : NaN;
+
+  let taxRate =
+    typeof offer.taxRate === 'number' && Number.isFinite(offer.taxRate) ? offer.taxRate : NaN;
+  if (
+    Number.isNaN(taxRate) &&
+    typeof offer.netTotal === 'number' &&
+    typeof offer.vatTotal === 'number' &&
+    offer.netTotal > 0
+  ) {
+    taxRate = (offer.vatTotal / offer.netTotal) * 100;
+  }
+  if (Number.isNaN(taxRate)) {
+    taxRate = 0;
+  }
+
+  if (!Number.isNaN(nightly) && !Number.isNaN(nights)) {
+    const calc = calculateOfferItemTotals(nightly, taxRate, nights, kaution);
+    return {
+      totalNet: calc.netTotal,
+      taxAmount: calc.vatAmount,
+      totalGross: calc.grossTotal,
+    };
+  }
+
+  const net =
+    typeof offer.netTotal === 'number' && Number.isFinite(offer.netTotal)
+      ? Number(offer.netTotal.toFixed(2))
+      : 0;
+  const vat =
+    typeof offer.vatTotal === 'number' && Number.isFinite(offer.vatTotal)
+      ? Number(offer.vatTotal.toFixed(2))
+      : Number((net * (taxRate / 100)).toFixed(2));
+  const gross =
+    typeof offer.grossTotal === 'number' && Number.isFinite(offer.grossTotal)
+      ? Number(offer.grossTotal.toFixed(2))
+      : Number((net + vat + kaution).toFixed(2));
+
+  return { totalNet: net, taxAmount: vat, totalGross: gross };
+}
+
+function buildOfferAccommodationLineItem(
+  offer: OfferData,
+  totalNet: number,
+  dates: string
+): { description: string; quantity: number; unitPrice: number; total: number } {
+  const propertyLabel = offer.propertyId || '';
+  const qty =
+    typeof offer.nights === 'number' && Number.isFinite(offer.nights) && offer.nights > 0
+      ? offer.nights
+      : 1;
+  const lineTotal = Number(totalNet.toFixed(2));
+
+  let unitPrice: number;
+  if (typeof offer.nightlyPrice === 'number' && Number.isFinite(offer.nightlyPrice)) {
+    unitPrice = offer.nightlyPrice;
+    const product = Number((unitPrice * qty).toFixed(2));
+    if (Math.abs(product - lineTotal) > 0.02) {
+      unitPrice = Number((lineTotal / qty).toFixed(2));
+    }
+  } else {
+    unitPrice = Number((lineTotal / qty).toFixed(2));
+  }
+
+  return {
+    description: `Accommodation: ${propertyLabel} (${dates})`,
+    quantity: qty,
+    unitPrice: Number(unitPrice.toFixed(2)),
+    total: lineTotal,
+  };
+}
 
 const IM_COMPACT_NUMBER = 'invoice-modal-compact-number';
 const IM_ADD_NET = 'invoice-modal-add-net';
@@ -127,12 +232,40 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
         const companyData = INTERNAL_COMPANIES_DATA[companyKey] || INTERNAL_COMPANIES_DATA['Sotiso'];
         setSenderDetails(companyData);
 
-        // Parse price - підтримка як OfferData так і ReservationData
-        const priceString = typeof offer.price === 'string' ? offer.price.replace(/[^0-9.]/g, '') : String(offer.price || '0');
-        const priceVal = parseFloat(priceString) || 0;
-        const taxRate = 0.19; // 19%
-        const net = priceVal / (1 + taxRate);
-        const tax = priceVal - net;
+        const isReservation = 'roomId' in offer && 'start' in offer;
+
+        let net: number;
+        let tax: number;
+        let priceVal: number;
+        let lineItems: { description: string; quantity: number; unitPrice: number; total: number }[];
+
+        if (isReservation) {
+          // Reservation / booking: keep legacy gross-from-price split (excludes offer.price tax-base pitfalls)
+          const priceString =
+            typeof offer.price === 'string' ? offer.price.replace(/[^0-9.]/g, '') : String(offer.price || '0');
+          priceVal = parseFloat(priceString) || 0;
+          const taxRate = 0.19; // 19%
+          net = priceVal / (1 + taxRate);
+          tax = priceVal - net;
+          const dates = 'dates' in offer ? offer.dates : (`${(offer as any).start} to ${(offer as any).end}`);
+          lineItems = [
+            {
+              description: `Accommodation: ${offer.propertyId || (offer as any).roomId} (${dates})`,
+              quantity: 1,
+              unitPrice: Number(net.toFixed(2)),
+              total: Number(net.toFixed(2)),
+            },
+          ];
+        } else {
+          // OfferData: persisted Sales totals + rental line semantics (nightly × nights); never derive from offer.price
+          const offerData = offer as OfferData;
+          const { totalNet, taxAmount, totalGross } = resolveOfferProformaFinancials(offerData);
+          net = totalNet;
+          tax = taxAmount;
+          priceVal = totalGross;
+          const dates = offerData.dates;
+          lineItems = [buildOfferAccommodationLineItem(offerData, totalNet, dates)];
+        }
 
         // Визначити bookingId та offerIdSource
         // Покращена логіка для всіх випадків
@@ -180,9 +313,6 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
         if (!bookingId) {
         }
 
-        // Визначити dates - для резервації використати start/end, для offer - dates
-        const dates = 'dates' in offer ? offer.dates : (`${(offer as any).start} to ${(offer as any).end}`);
-
         const isProformaMode = !proforma;
         setInvoiceData({
           id: Date.now().toString(), // New ID
@@ -192,14 +322,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
           internalCompany: companyKey,
           clientName: offer.clientName || (offer as any).guest,
           clientAddress: offer.address || (offer as any).address || '',
-          items: [
-            {
-              description: `Accommodation: ${offer.propertyId || (offer as any).roomId} (${dates})`,
-              quantity: 1,
-              unitPrice: Number(net.toFixed(2)),
-              total: Number(net.toFixed(2))
-            }
-          ],
+          items: lineItems,
           totalNet: Number(net.toFixed(2)),
           taxAmount: Number(tax.toFixed(2)),
           totalGross: priceVal,
@@ -655,7 +778,13 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
                         <span>€{invoiceData.totalNet?.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-gray-600">
-                        <span>VAT (19%)</span>
+                        <span>
+                          {invoiceData.totalNet != null &&
+                          invoiceData.totalNet > 0 &&
+                          invoiceData.taxAmount != null
+                            ? `VAT (${(invoiceData.taxAmount / invoiceData.totalNet * 100).toFixed(0)}%)`
+                            : 'VAT'}
+                        </span>
                         <span>€{invoiceData.taxAmount?.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between font-bold text-xl border-t-2 border-gray-800 pt-2">
