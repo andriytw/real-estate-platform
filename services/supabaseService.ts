@@ -2521,7 +2521,9 @@ export const paymentProofsService = {
       .eq('invoice_id', invoiceId)
       .order('created_at', { ascending: false });
     if (error) throw error;
-    return (data || []).map(transformPaymentProofFromDB);
+    return (data || [])
+      .map(transformPaymentProofFromDB)
+      .filter((p) => p.state !== 'replaced');
   },
 
   /** Returns next suggested document number (e.g. PAY-2026-000001). */
@@ -2608,6 +2610,16 @@ export const paymentProofsService = {
         durationMs: Date.now() - t0,
       });
       throw e;
+    }
+  },
+
+  /** Remove object from payment-proofs bucket. Path must be storage object path (not a URL). */
+  async deletePaymentProofFile(filePath: string): Promise<void> {
+    const path = (filePath ?? '').trim();
+    if (!path) return;
+    const { error } = await supabase.storage.from(PAYMENT_PROOFS_BUCKET).remove([path]);
+    if (error) {
+      console.warn('[deletePaymentProofFile]', path, error.message);
     }
   },
 

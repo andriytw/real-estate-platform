@@ -2,8 +2,6 @@ import React, { useState, useRef } from 'react';
 import { X, Upload } from 'lucide-react';
 import { PaymentProof } from '../types';
 import { paymentProofsService } from '../services/supabaseService';
-import { supabase } from '../utils/supabase/client';
-import { safeGetSession } from '../lib/supabaseAuthGuard';
 
 const PAYMENT_PROOF_PDF_INPUT_ID = 'payment-proof-pdf-upload';
 
@@ -56,22 +54,16 @@ const PaymentProofPdfModal: React.FC<PaymentProofPdfModalProps> = ({
           fileUploadedAt: new Date().toISOString(),
         });
       } else {
-        const session = await safeGetSession();
-        const createdBy = session?.user?.id ?? undefined;
-        const newProof = await paymentProofsService.create({ invoiceId, createdBy });
-        const filePath = await paymentProofsService.uploadPaymentProofFile(pdfFile, invoiceId, newProof.id);
-        await paymentProofsService.update(newProof.id, {
+        const oldFilePath = proof.filePath?.trim();
+        const filePath = await paymentProofsService.uploadPaymentProofFile(pdfFile, invoiceId, proof.id);
+        await paymentProofsService.update(proof.id, {
           filePath,
           fileName: pdfFile.name || 'document.pdf',
           fileUploadedAt: new Date().toISOString(),
-          replacesProofId: proof.id,
         });
-        await paymentProofsService.update(proof.id, {
-          isCurrent: false,
-          state: 'replaced',
-          replacedByProofId: newProof.id,
-        });
-        await paymentProofsService.setCurrentProof(invoiceId, newProof.id);
+        if (oldFilePath && oldFilePath !== filePath) {
+          await paymentProofsService.deletePaymentProofFile(oldFilePath);
+        }
       }
       await onDone();
       handleClose();

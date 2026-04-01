@@ -10734,6 +10734,7 @@ ${internalCompany} Team`;
                                                             <td className="p-4 text-gray-500">—</td>
                                                             <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
                                                             <td className="px-2 py-2 text-gray-500">—</td>
+                                                            <td className="px-2 py-2 text-gray-500">—</td>
                                                             <td className="p-4">
                                                                 {proof.filePath ? (
                                                                     <ProofLink filePath={proof.filePath} label="PDF" />
@@ -10756,9 +10757,21 @@ ${internalCompany} Team`;
                                                             <td className="p-4 text-right">
                                                                 <div className="flex items-center justify-end gap-2 flex-wrap">
                                                                     {proof.filePath ? (
-                                                                        <button type="button" onClick={() => setPaymentProofModal({ mode: 'replace', proof })} className="px-2 py-1 rounded text-xs font-medium bg-white/10 hover:bg-white/15 text-white">Replace</button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setPaymentProofModal({ mode: 'replace', proof })}
+                                                                            className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium bg-white/10 hover:bg-white/15 text-white transition-colors"
+                                                                        >
+                                                                            Replace
+                                                                        </button>
                                                                     ) : (
-                                                                        <button type="button" onClick={() => setPaymentProofModal({ mode: 'add', proof })} className="px-2 py-1 rounded text-xs font-medium bg-white/10 hover:bg-white/15 text-white">Add PDF</button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setPaymentProofModal({ mode: 'add', proof })}
+                                                                            className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium bg-white/10 hover:bg-white/15 text-white transition-colors"
+                                                                        >
+                                                                            Add PDF
+                                                                        </button>
                                                                     )}
                                                                 </div>
                                                             </td>
