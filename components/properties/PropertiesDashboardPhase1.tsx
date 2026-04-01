@@ -3,7 +3,7 @@ import { Bed, ChevronDown, ChevronRight, Download, Eye, LayoutGrid, Ruler, X } f
 import { bookingsService, invoicesService, offersService, paymentProofsService, propertiesService, rentTimelineService, reservationsService } from '../../services/supabaseService';
 import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '../../services/propertyExpenseService';
 import { buildExpenseInvoiceGroupsForMonth, pickExpenseInvoiceDocumentTarget } from '../../lib/propertyExpenseInvoiceGroups';
-import type { Booking, InvoiceData, OfferData, Property, RentTimelineRowDB, Reservation } from '../../types';
+import type { Booking, InvoiceData, OfferData, PaymentProof, Property, RentTimelineRowDB, Reservation } from '../../types';
 import { buildDashboardMonthData } from '../../lib/propertiesDashboard/selectors';
 import { apartmentFinancialCoreFromMatrixRow } from '../../lib/propertiesDashboard/apartmentMonthlyPerformance';
 import { buildPaidProformaContributionsByProperty } from '../../lib/propertiesDashboard/dayCellResolver';
@@ -22,6 +22,85 @@ function formatPctCompact(value: number | null | undefined): string {
 function formatCurrency(value: number): string {
   return `${value.toFixed(2).replace('.', ',')} €`;
 }
+
+/** Last path segment from a URL or filesystem path. */
+function basenameFromUrlOrPath(urlOrPath: string): string {
+  try {
+    if (urlOrPath.includes('://')) {
+      const u = new URL(urlOrPath);
+      const parts = u.pathname.split('/').filter(Boolean);
+      return parts[parts.length - 1] ?? '';
+    }
+  } catch {
+    /* ignore */
+  }
+  const parts = urlOrPath.split(/[/\\]/).filter(Boolean);
+  return parts[parts.length - 1] ?? '';
+}
+
+/** True if basename looks like storage noise (uuid, timestamp_hash, long hex). */
+function isTechnicalBasename(name: string): boolean {
+  const withoutExt = name.replace(/\.[a-z0-9]+$/i, '').trim();
+  const base = withoutExt || name.trim();
+  if (!base) return true;
+  if (base.length >= 36 && /^[0-9a-f-]{36}$/i.test(base)) return true;
+  if (/^\d{10,}_[0-9a-f-]{8,}/i.test(base)) return true;
+  if (/^[0-9a-f]{24,}$/i.test(base)) return true;
+  if (base.length > 80) return true;
+  return false;
+}
+
+function invoicePerformanceDocLabel(invoiceNumber: string, fileUrl: string | null): string {
+  const num = invoiceNumber.trim();
+  if (num) return num;
+  if (fileUrl) {
+    const bn = basenameFromUrlOrPath(fileUrl);
+    if (bn && !isTechnicalBasename(bn)) return bn;
+  }
+  return 'Invoice';
+}
+
+function confirmationPerformanceDocLabel(p: {
+  documentNumber: string | null;
+  fileName: string | null;
+  filePath: string;
+}): string {
+  const doc = p.documentNumber?.trim();
+  if (doc) return doc;
+  const fn = p.fileName?.trim();
+  if (fn) return fn;
+  const fromPath = basenameFromUrlOrPath(p.filePath);
+  if (fromPath && !isTechnicalBasename(fromPath)) return fromPath;
+  return 'Confirmation document';
+}
+
+type PerformanceConfirmationProofRow = {
+  id: string;
+  href: string;
+  documentNumber: string | null;
+  fileName: string | null;
+  filePath: string;
+};
+
+async function paymentProofsToPerformanceRows(proofs: PaymentProof[]): Promise<PerformanceConfirmationProofRow[]> {
+  const rows: PerformanceConfirmationProofRow[] = [];
+  for (const proof of proofs) {
+    const filePath = proof.filePath ?? '';
+    if (filePath.trim() === '') continue;
+    const href = await paymentProofsService.getPaymentProofSignedUrl(filePath);
+    const doc = proof.documentNumber?.trim();
+    rows.push({
+      id: String(proof.id),
+      href,
+      documentNumber: doc ? doc : null,
+      fileName: proof.fileName ?? null,
+      filePath,
+    });
+  }
+  rows.sort((a, b) => a.id.localeCompare(b.id));
+  return rows;
+}
+
 
 function formatSignedCurrency(value: number): string {
   const safe = Number.isFinite(value) ? value : 0;
@@ -228,7 +307,8 @@ const PropertiesDashboardPhase1: React.FC = () => {
             proformaId: string;
             proformaFileUrl: string | null;
             invoices: Array<{ id: string; invoiceNumber: string; date: string; fileUrl: string | null }>;
-            proofsByInvoiceId: Record<string, Array<{ id: string; fileName: string | null; href: string }>>;
+            /** Merged payment proofs: proforma-linked first, then per-child order; deduped by proof id. */
+            confirmationProofsOrdered: PerformanceConfirmationProofRow[];
             hasAnyProofs: boolean;
           };
         }
@@ -547,21 +627,31 @@ const PropertiesDashboardPhase1: React.FC = () => {
           fileUrl: inv.fileUrl ?? null,
         }));
 
-        const proofsByInvoiceId: Record<string, Array<{ id: string; fileName: string | null; href: string }>> = {};
-        let hasAnyProofs = false;
+        const proformaProofsRaw = await paymentProofsService.getByInvoiceId(proformaId);
+        const proformaRows = await paymentProofsToPerformanceRows(proformaProofsRaw);
+
+        const seenProofIds = new Set<string>();
+        const confirmationProofsOrdered: PerformanceConfirmationProofRow[] = [];
+
+        for (const row of proformaRows) {
+          if (!seenProofIds.has(row.id)) {
+            seenProofIds.add(row.id);
+            confirmationProofsOrdered.push(row);
+          }
+        }
 
         for (const inv of normalizedInvoices) {
-          const proofs = await paymentProofsService.getByInvoiceId(inv.id);
-          const rows: Array<{ id: string; fileName: string | null; href: string }> = [];
-          for (const proof of proofs) {
-            const filePath = proof.filePath ?? '';
-            if (filePath.trim() === '') continue;
-            const href = await paymentProofsService.getPaymentProofSignedUrl(filePath);
-            rows.push({ id: String(proof.id), fileName: proof.fileName ?? null, href });
+          const childProofsRaw = await paymentProofsService.getByInvoiceId(inv.id);
+          const childRows = await paymentProofsToPerformanceRows(childProofsRaw);
+          for (const row of childRows) {
+            if (!seenProofIds.has(row.id)) {
+              seenProofIds.add(row.id);
+              confirmationProofsOrdered.push(row);
+            }
           }
-          if (rows.length > 0) hasAnyProofs = true;
-          proofsByInvoiceId[inv.id] = rows;
         }
+
+        const hasAnyProofs = confirmationProofsOrdered.length > 0;
 
         setProformaDocBundlesById((prev) => ({
           ...prev,
@@ -571,7 +661,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
               proformaId,
               proformaFileUrl: proformas.find((p) => String(p.id) === String(proformaId))?.fileUrl ?? null,
               invoices: normalizedInvoices,
-              proofsByInvoiceId,
+              confirmationProofsOrdered,
               hasAnyProofs,
             },
           },
@@ -1754,7 +1844,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
                                           <span className="min-w-0 truncate whitespace-nowrap">
                                             {bundleState.bundle.invoices.map((inv, idx) => {
                                               const sep = idx === 0 ? '' : ', ';
-                                              const label = bundleState.bundle.invoices.length > 1 ? `Invoice ${idx + 1}` : 'Invoice';
+                                              const label = invoicePerformanceDocLabel(inv.invoiceNumber, inv.fileUrl);
                                               return inv.fileUrl ? (
                                                 <span key={inv.id}>
                                                   {sep}
@@ -1788,9 +1878,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
                                       {/* Payment proof doc(s) slot */}
                                       {bundleState.status === 'loaded' ? (
                                         (() => {
-                                          const proofs = bundleState.bundle.invoices.flatMap(
-                                            (inv) => bundleState.bundle.proofsByInvoiceId[inv.id] ?? []
-                                          );
+                                          const proofs = bundleState.bundle.confirmationProofsOrdered;
                                           if (proofs.length === 0) {
                                             return (
                                               <span className={PERFORMANCE_CONTRIB_DOC_PLACEHOLDER_CLASS}>
@@ -1801,7 +1889,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
                                           return (
                                             <span className="min-w-0 truncate whitespace-nowrap">
                                               {proofs.map((p, idx) => {
-                                                const label = proofs.length > 1 ? `Confirmation ${idx + 1}` : 'Confirmation';
+                                                const label = confirmationPerformanceDocLabel(p);
                                                 const sep = idx === 0 ? '' : ', ';
                                                 return (
                                                   <span key={p.id}>
