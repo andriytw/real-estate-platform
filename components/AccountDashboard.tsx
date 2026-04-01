@@ -10719,60 +10719,6 @@ ${internalCompany} Team`;
                                     </tr>
                                     {expandedProformaIds.has(proforma.id) && (
                                         <>
-                                            {(proformaChildInvoices[proforma.id] ?? []).map(inv => (
-                                                <tr key={inv.id} className="text-sm text-gray-300 hover:bg-[#16181D]">
-                                                    <td className="p-4" />
-                                                    <td className="p-4 pl-8 font-mono">{inv.invoiceNumber}</td>
-                                                    <td className="p-4 text-gray-500">—</td>
-                                                    <td className="p-4" />
-                                                    <td className="px-2 py-2 tabular-nums">{formatDateEU(inv.date)}</td>
-                                                    <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
-                                                    <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
-                                                    <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
-                                                    <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
-                                                    <td className="p-4 text-gray-500">—</td>
-                                                    <td className="px-2 py-2 text-right tabular-nums">€{inv.totalGross?.toFixed(2) ?? '—'}</td>
-                                                    <td className="px-2 py-2 text-gray-500">—</td>
-                                                    <td className="p-4">
-                                                        {inv.fileUrl ? (
-                                                            <a href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className={DOC_LINK_PILL}>
-                                                                <FileText className="w-3.5 h-3.5" />
-                                                                PDF
-                                                            </a>
-                                                        ) : (
-                                                            <span className="text-gray-500">—</span>
-                                                        )}
-                                                    </td>
-                                                    <td className="p-4" />
-                                                    <td className="p-4 text-right">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleDeleteInvoice(inv, proforma.id)}
-                                                            className="inline-flex items-center gap-1.5 px-2 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded text-xs font-medium transition-colors"
-                                                            title="Delete invoice"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                            Delete
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                            <tr className="text-sm text-gray-400 hover:bg-[#16181D]">
-                                                <td className="p-4" />
-                                                <td className="p-4" />
-                                                <td className="p-4" />
-                                                <td colSpan={10} className="p-4 pl-8">
-                                                    <button
-                                                        type="button"
-                                                        disabled={lost}
-                                                        onClick={() => !lost && handleAddInvoiceToProforma(proforma)}
-                                                        className="text-left hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    >
-                                                        + Add invoice
-                                                    </button>
-                                                </td>
-                                                <td className="p-4" />
-                                            </tr>
                                             {[...(paymentProofsByInvoiceId[proforma.id] ?? [])]
                                                 .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                                                 .map(proof => (
@@ -10818,6 +10764,57 @@ ${internalCompany} Team`;
                                                             </td>
                                                         </tr>
                                                     ))}
+                                            {(proformaChildInvoices[proforma.id] ?? []).map(inv => (
+                                                <tr key={inv.id} className="text-sm text-gray-300 hover:bg-[#16181D]">
+                                                    <td className="p-4" />
+                                                    <td className="p-4 pl-8 font-mono">{inv.invoiceNumber}</td>
+                                                    <td className="p-4 text-gray-500">—</td>
+                                                    <td className="p-4" />
+                                                    <td className="px-2 py-2 tabular-nums">{formatDateEU(inv.date)}</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums text-gray-500">—</td>
+                                                    <td className="p-4 text-gray-500">—</td>
+                                                    <td className="px-2 py-2 text-right tabular-nums">€{inv.totalGross?.toFixed(2) ?? '—'}</td>
+                                                    <td className="px-2 py-2 text-gray-500">—</td>
+                                                    <td className="p-4">
+                                                        {inv.fileUrl ? (
+                                                            <a href={inv.fileUrl} target="_blank" rel="noopener noreferrer" className={DOC_LINK_PILL}>
+                                                                <FileText className="w-3.5 h-3.5" />
+                                                                PDF
+                                                            </a>
+                                                        ) : (
+                                                            <span className="text-gray-500">—</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-4" />
+                                                    <td className="p-4 text-right">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteInvoice(inv, proforma.id)}
+                                                            className="inline-flex items-center gap-1.5 px-2 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded text-xs font-medium transition-colors"
+                                                            title="Delete invoice"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                            Delete
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            <tr className="text-sm text-gray-400 hover:bg-[#16181D]">
+                                                <td className="p-4" />
+                                                <td colSpan={14} className="p-4 pl-8 text-left">
+                                                    <button
+                                                        type="button"
+                                                        disabled={lost}
+                                                        onClick={() => !lost && handleAddInvoiceToProforma(proforma)}
+                                                        className="text-left hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        + Add invoice
+                                                    </button>
+                                                </td>
+                                            </tr>
                                         </>
                                     )}
                                 </React.Fragment>

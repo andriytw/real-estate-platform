@@ -116,6 +116,25 @@ const IM_ADD_TAX = 'invoice-modal-add-tax-rate';
 const IM_PDF_UPLOAD = 'invoice-modal-pdf-upload';
 const IM_PDF_REPLACE = 'invoice-modal-pdf-replace';
 
+const ADD_INVOICE_TAX_OPTIONS = [0, 7, 19] as const;
+
+/** Map proforma-derived or legacy rate to nearest allowed select value (ties → lower). */
+function snapAddInvoiceTaxRateToPreset(rate: number): (typeof ADD_INVOICE_TAX_OPTIONS)[number] {
+  if (!Number.isFinite(rate)) return 19;
+  let best: (typeof ADD_INVOICE_TAX_OPTIONS)[number] = ADD_INVOICE_TAX_OPTIONS[0];
+  let bestDist = Math.abs(rate - best);
+  for (const v of ADD_INVOICE_TAX_OPTIONS) {
+    const d = Math.abs(rate - v);
+    if (d < bestDist) {
+      best = v;
+      bestDist = d;
+    } else if (d === bestDist && v < best) {
+      best = v;
+    }
+  }
+  return best;
+}
+
 interface InvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -345,7 +364,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
           proforma.totalNet != null && proforma.totalNet > 0 && proforma.taxAmount != null
             ? (proforma.taxAmount / proforma.totalNet) * 100
             : 19;
-        setAddInvoiceTaxRate(defaultTaxRate);
+        setAddInvoiceTaxRate(snapAddInvoiceTaxRateToPreset(defaultTaxRate));
         setAddInvoiceNetAmount(''); // Visually empty, not 0
         setInvoiceData({
           id: Date.now().toString(),
@@ -535,16 +554,19 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, onAbandonS
                     className="w-full bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-xs text-white font-mono"
                   />
                   <label htmlFor={IM_ADD_TAX} className="text-[10px] font-medium text-gray-400">Tax rate % <span className="text-red-400">*</span></label>
-                  <input
+                  <select
                     id={IM_ADD_TAX}
                     name={IM_ADD_TAX}
-                    type="number"
-                    min={0}
-                    step={0.01}
                     value={addInvoiceTaxRate}
-                    onChange={e => setAddInvoiceTaxRate(parseFloat(e.target.value) || 0)}
-                    className="w-full bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-xs text-white font-mono"
-                  />
+                    onChange={e => setAddInvoiceTaxRate(Number(e.target.value))}
+                    className="w-full bg-[#111315] border border-gray-700 rounded px-2 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                  >
+                    {ADD_INVOICE_TAX_OPTIONS.map((pct) => (
+                      <option key={pct} value={pct} className="bg-[#111315]">
+                        {pct}%
+                      </option>
+                    ))}
+                  </select>
                   {(() => {
                     const netNum = parseFloat(addInvoiceNetAmount);
                     const validNet = Number.isFinite(netNum) && netNum > 0;
