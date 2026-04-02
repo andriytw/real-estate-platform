@@ -329,6 +329,20 @@ const PropertiesDashboardPhase1: React.FC = () => {
   const [matrixSelEndIdx, setMatrixSelEndIdx] = useState<number | null>(null);
   const [matrixIsSelecting, setMatrixIsSelecting] = useState(false);
 
+  const monthData = useMemo(() => {
+    const [y, m] = selectedMonth.split('-').map(Number);
+    if (!y || !m) return null;
+    return buildDashboardMonthData({
+      properties,
+      bookings,
+      reservations,
+      offers,
+      proformas,
+      year: y,
+      monthIndex0: m - 1,
+    });
+  }, [selectedMonth, properties, bookings, reservations, offers, proformas]);
+
   const clearMatrixSelection = useCallback(() => {
     setMatrixSelectedApartmentId(null);
     setMatrixSelStartIdx(null);
@@ -569,20 +583,6 @@ const PropertiesDashboardPhase1: React.FC = () => {
       cancelled = true;
     };
   }, []);
-
-  const monthData = useMemo(() => {
-    const [y, m] = selectedMonth.split('-').map(Number);
-    if (!y || !m) return null;
-    return buildDashboardMonthData({
-      properties,
-      bookings,
-      reservations,
-      offers,
-      proformas,
-      year: y,
-      monthIndex0: m - 1,
-    });
-  }, [selectedMonth, properties, bookings, reservations, offers, proformas]);
 
   const dashboardMonthContext = useMemo(() => {
     const monthKey = selectedMonth;
