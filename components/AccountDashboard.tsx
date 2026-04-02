@@ -4028,6 +4028,36 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     }
   };
 
+  // Load reservations from database on mount
+  // Separate state for confirmed bookings (from bookings table)
+  const [confirmedBookings, setConfirmedBookings] = useState<Booking[]>([]);
+
+  // ===== OOO/BLOCK guard helpers (single source: bookings.type === 'BLOCK') =====
+  // Must be declared before any handler that references hasOooBlockOverlap / assertNoOooBlockOverlap.
+  // Otherwise production bundles can hit TDZ: Cannot access '…' before initialization.
+  const todayIsoForEffectiveStatus = useMemo(() => formatLocalDateYmd(new Date()), []);
+
+  const hasOooBlockOverlap = useCallback(
+    (propertyIdRaw: string | null | undefined, startRaw: string, endRaw: string): boolean =>
+      hasBlockOverlapForPropertyHalfOpen(propertyIdRaw, startRaw, endRaw, confirmedBookings),
+    [confirmedBookings]
+  );
+
+  const assertNoOooBlockOverlap = useCallback(
+    (propertyId: string | null | undefined, startIso: string, endIsoExclusive: string) => {
+      if (hasOooBlockOverlap(propertyId, startIso, endIsoExclusive)) {
+        throw new Error('Apartment is Out Of Order (OOO) for selected dates.');
+      }
+    },
+    [hasOooBlockOverlap]
+  );
+
+  const isPropertyOooToday = useCallback(
+    (propertyIdRaw: string | null | undefined): boolean =>
+      isPropertyBlockActiveOnDate(propertyIdRaw, todayIsoForEffectiveStatus, confirmedBookings),
+    [confirmedBookings, todayIsoForEffectiveStatus]
+  );
+
   const handleSaveOffer = async (newOffer: OfferData) => {
       try {
         // Guard: do not allow offers over OOO (BLOCK) dates
@@ -4056,34 +4086,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         setSalesTab('offers');
       }
   };
-
-  // Load reservations from database on mount
-  // Separate state for confirmed bookings (from bookings table)
-  const [confirmedBookings, setConfirmedBookings] = useState<Booking[]>([]);
-
-  // ===== OOO/BLOCK guard helpers (single source: bookings.type === 'BLOCK') =====
-  const todayIsoForEffectiveStatus = useMemo(() => formatLocalDateYmd(new Date()), []);
-
-  const hasOooBlockOverlap = useCallback(
-    (propertyIdRaw: string | null | undefined, startRaw: string, endRaw: string): boolean =>
-      hasBlockOverlapForPropertyHalfOpen(propertyIdRaw, startRaw, endRaw, confirmedBookings),
-    [confirmedBookings]
-  );
-
-  const assertNoOooBlockOverlap = useCallback(
-    (propertyId: string | null | undefined, startIso: string, endIsoExclusive: string) => {
-      if (hasOooBlockOverlap(propertyId, startIso, endIsoExclusive)) {
-        throw new Error('Apartment is Out Of Order (OOO) for selected dates.');
-      }
-    },
-    [hasOooBlockOverlap]
-  );
-
-  const isPropertyOooToday = useCallback(
-    (propertyIdRaw: string | null | undefined): boolean =>
-      isPropertyBlockActiveOnDate(propertyIdRaw, todayIsoForEffectiveStatus, confirmedBookings),
-    [confirmedBookings, todayIsoForEffectiveStatus]
-  );
 
   const stayOverviewContext = useMemo<StayOverviewStayContext>(
     () => ({
