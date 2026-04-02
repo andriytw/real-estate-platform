@@ -1639,6 +1639,19 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
           invoicesGuardTriggered = true;
         }
         const linkClass = 'font-mono font-semibold text-white cursor-pointer hover:underline';
+        const financialSnap = buildSalesBarSnapshot(booking, {
+          offers: offList,
+          invoices: invList,
+          properties: properties ?? [],
+        });
+        const kautionPopoverCls =
+          financialSnap.kautionTone === 'red'
+            ? 'text-red-400'
+            : financialSnap.kautionTone === 'green'
+              ? 'text-emerald-400'
+              : financialSnap.kautionTone === 'neutral'
+                ? 'text-amber-300/90'
+                : 'text-white';
         return (
           <div 
             className="fixed z-[100] bg-[#1F2937] border border-gray-700 text-white p-3 rounded-lg shadow-2xl pointer-events-auto min-w-[200px]"
@@ -1682,6 +1695,45 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
               <div className="flex justify-between mt-1">
                 <span className="text-gray-500">Guests:</span>
                 <span className="font-semibold text-white">{guestsCount}</span>
+              </div>
+            </div>
+            <div className="text-xs border-t border-gray-600 pt-2 mt-2">
+              <div className="text-gray-400 font-semibold mb-1.5">Формування ціни</div>
+              <div className="flex justify-between gap-2 mt-0.5">
+                <span className="text-gray-500 shrink-0">Ціна за кімнату за ніч</span>
+                <span className="font-mono font-semibold text-white text-right tabular-nums">
+                  {financialSnap.pricePerRoomNightDisplay}
+                </span>
+              </div>
+              <div className="flex justify-between gap-2 mt-0.5">
+                <span className="text-gray-500 shrink-0">Усі кімнати за ніч</span>
+                <span className="font-mono font-semibold text-white text-right tabular-nums">
+                  {financialSnap.pricePerNightDisplay}
+                </span>
+              </div>
+              <div className="flex justify-between gap-2 mt-0.5">
+                <span className="text-gray-500 shrink-0">Без ПДВ</span>
+                <span className="font-mono font-semibold text-white text-right tabular-nums">
+                  {financialSnap.netDisplay}
+                </span>
+              </div>
+              <div className="flex justify-between gap-2 mt-0.5">
+                <span className="text-gray-500 shrink-0">ПДВ</span>
+                <span className="font-mono font-semibold text-white text-right tabular-nums">
+                  {financialSnap.vatDisplay}
+                </span>
+              </div>
+              <div className="flex justify-between gap-2 mt-0.5">
+                <span className="text-gray-500 shrink-0">Загальна сума</span>
+                <span className="font-mono font-semibold text-white text-right tabular-nums">
+                  {financialSnap.grossDisplay}
+                </span>
+              </div>
+              <div className="flex justify-between gap-2 mt-1 pt-1 border-t border-gray-600/80">
+                <span className="text-gray-500 shrink-0">Каутіон</span>
+                <span className={`font-mono font-semibold text-right tabular-nums ${kautionPopoverCls}`}>
+                  {financialSnap.kautionDisplay}
+                </span>
               </div>
             </div>
             <div className="text-xs text-gray-400 border-t border-gray-600 pt-2 mt-2">
