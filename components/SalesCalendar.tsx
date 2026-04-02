@@ -11,6 +11,7 @@ import MultiApartmentOfferModal from './MultiApartmentOfferModal';
 import { getBookingColor, getBookingBorderStyle, getBookingStyle } from '../bookingUtils';
 import { useSalesAllBookings } from '../hooks/useSalesAllBookings';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
+import { resolveSalesStatusContext, getEffectiveSalesApartmentStatus } from '../lib/salesCalendarStatus';
 
 // Helper to normalize date strings for stacking key
 const normalizeDateKey = (v: string) => {
@@ -174,22 +175,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     adminEvents,
   });
 
-  // Effective status for display: if TODAY (local) overlaps a BLOCK booking, show OOO.
-  const todayKey = formatDateISO(new Date());
-  const oooTodayPropertyIds = React.useMemo(() => {
-    const set = new Set<string>();
-    for (const b of allBookings) {
-      if (String(b.type || '').toUpperCase() !== 'BLOCK') continue;
-      const pid = String((b.propertyId as any) ?? (b.roomId as any) ?? '').trim();
-      if (!pid) continue;
-      const s = normalizeDateKey(String(b.start ?? ''));
-      const e = normalizeDateKey(String(b.end ?? ''));
-      if (!s || !e || s >= e) continue;
-      if (s <= todayKey && todayKey < e) set.add(pid);
-    }
-    return set;
-  }, [allBookings, todayKey]);
-
   // State
   const [bookings, setBookings] = useState<Booking[]>([]); // Без демо-бронювань
 
@@ -213,6 +198,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [minPeopleFilter, setMinPeopleFilter] = useState<number | null>(null);
   const [minRoomsFilter, setMinRoomsFilter] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'ooo' | 'preparation' | 'rented_worker'>('all');
   const [availabilityStartDate, setAvailabilityStartDate] = useState('');
   const [availabilityEndDate, setAvailabilityEndDate] = useState('');
   const [showReservations, setShowReservations] = useState(true); // visibility toggle for reservation layer
@@ -246,6 +232,17 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const [showLeadSuggestions, setShowLeadSuggestions] = useState(false);
   const leadSearchRef = useRef<HTMLDivElement>(null);
 
+  const salesStatusContext = React.useMemo(
+    () =>
+      resolveSalesStatusContext({
+        availabilityStartDate,
+        availabilityEndDate,
+        calendarStartDate: startDate,
+        totalDays,
+      }),
+    [availabilityStartDate, availabilityEndDate, startDate, totalDays]
+  );
+
   // propertyById, roomsFromProperties, selectedApartmentPayloads must be declared before any useEffect that uses them (avoid TDZ)
   const propertyById = React.useMemo(
     () => new Map((properties || []).map((property) => [String(property.id), property])),
@@ -264,9 +261,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         area: p.details?.area ?? p.area ?? 0,
         termStatus: p.termStatus ?? undefined,
         department: p.apartmentGroupName ?? '',
-        status: oooTodayPropertyIds.has(String(p.id)) ? 'ooo' : (p.apartmentStatus ?? null),
+        status: getEffectiveSalesApartmentStatus(String(p.id), p.apartmentStatus, allBookings, salesStatusContext),
       })),
-    [properties, oooTodayPropertyIds]
+    [properties, allBookings, salesStatusContext]
   );
 
   const selectedApartmentPayloads = React.useMemo<SelectedApartmentData[]>(() => {
@@ -285,13 +282,13 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
           apartmentCode: property.title || property.id,
           apartmentGroupName: property.apartmentGroupName ?? null,
           marketplaceUrl: property.marketplaceUrl ?? null,
-          status: oooTodayPropertyIds.has(String(property.id)) ? 'ooo' : (property.apartmentStatus ?? null),
+          status: getEffectiveSalesApartmentStatus(String(property.id), property.apartmentStatus, allBookings, salesStatusContext),
           area: property.details?.area ?? property.area ?? 0,
           rooms: property.details?.rooms ?? property.rooms ?? 0,
           beds: property.details?.beds ?? 0,
         };
       });
-  }, [propertyById, selectedPropertyIds, oooTodayPropertyIds]);
+  }, [propertyById, selectedPropertyIds, allBookings, salesStatusContext]);
 
   // View Details Modal State
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
@@ -586,9 +583,16 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         (b) => String(b.roomId) !== String(r.id) || !datesOverlap(availabilityStart, availabilityEnd, normalizeDateKey(b.start), normalizeDateKey(b.end))
       );
 
-      return matchesCity && matchesGroup && matchesSearch && matchesPeople && matchesRooms && matchesAvailability;
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'ooo' && r.status === 'ooo') ||
+        (statusFilter === 'active' && r.status === 'active') ||
+        (statusFilter === 'preparation' && r.status === 'preparation') ||
+        (statusFilter === 'rented_worker' && r.status === 'rented_worker');
+
+      return matchesCity && matchesGroup && matchesSearch && matchesPeople && matchesRooms && matchesAvailability && matchesStatus;
     });
-  }, [roomsFromProperties, cityFilter, groupFilter, searchQuery, minPeopleFilter, minRoomsFilter, availabilityStartDate, availabilityEndDate, bookingsForAvailability]);
+  }, [roomsFromProperties, cityFilter, groupFilter, searchQuery, minPeopleFilter, minRoomsFilter, statusFilter, availabilityStartDate, availabilityEndDate, bookingsForAvailability]);
 
   const getRoomNameById = (roomId: string | undefined | null) => {
     if (!roomId) return '';
@@ -1079,6 +1083,18 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
               <option key={group} value={group}>{group === 'ALL' ? 'Усі групи' : group}</option>
             ))}
           </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+            className="bg-[#161B22] border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none min-w-[160px]"
+            title="Статус (з урахуванням OOO у вибраному контексті дат)"
+          >
+            <option value="all">Усі статуси</option>
+            <option value="active">Активна</option>
+            <option value="ooo">Out of order</option>
+            <option value="preparation">В підготовці</option>
+            <option value="rented_worker">Здана працівнику</option>
+          </select>
         </div>
         <div className="relative flex-1 min-w-[160px] max-w-[220px]">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
@@ -1324,7 +1340,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
                             {/* Bookings */}
                             {calendarBookings
-                              .filter(b => b.roomId === room.id)
+                              .filter(b => String(b.roomId) === String(room.id))
                               .map(booking => {
                                 const displayGuest = getDisplayGuest(booking);
                                 const bookingStartDate = parseDate(booking.start);
@@ -1365,16 +1381,16 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                     width = (bookingTotalDays - 1.3) * DAY_WIDTH;
                                 }
                                 
-                                // Determine if this is an offer bar, reservation (hold), or confirmed booking
+                                // Determine if this is an offer bar, reservation (hold), BLOCK, or confirmed guest booking
+                                const isBlock = String(booking.type || '').toUpperCase() === 'BLOCK';
                                 const isOffer = (booking as any).isOffer === true;
                                 const isReservation = (booking as any).isReservation === true;
-                                const isConfirmed = (booking as any).isConfirmed === true || (!isReservation && !isOffer);
                                 const reservationHasOffer = isReservation && (booking.status === 'offered' || (booking as any).status === 'offered');
                                 
                                 // Calculate dynamic top offset for stacking (offers and reservations use same stacking)
                                 const stackIndex = (stackIndexByReservationId.get(String(booking.id)) ?? 0);
                                 
-                                const useStripeLayout = isReservation || isOffer;
+                                const useStripeLayout = !isBlock && (isReservation || isOffer);
                                 const topPx = useStripeLayout
                                   ? BASE_TOP_PX + stackIndex * (STRIPE_H + STRIPE_GAP)
                                   : 4;
@@ -1412,7 +1428,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                         }}
                                         className={`
                                             absolute rounded-md text-[10px] text-white flex shadow-lg z-10 cursor-pointer items-center pointer-events-auto
-                                            ${isReservation || isOffer
+                                            ${isBlock
+                                                ? 'h-6 px-2 bg-amber-950/90 border border-amber-600/50 text-amber-100 hover:bg-amber-900/95'
+                                                : isReservation || isOffer
                                                 ? 'bg-sky-500/70 hover:bg-sky-500/85 ' + reservationBorderClass
                                                 : 'h-6 px-2 ' + getBookingColor(booking.status) + ' ' + getBookingBorderStyle(booking.status)
                                             } hover:scale-[1.01] transition-all duration-150
@@ -1468,7 +1486,13 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                                     )}
                                                 </div>
                                             );
-                                        })() : (
+                                        })() : isBlock ? (
+                                            <div className="flex items-center justify-center w-full h-full px-1 min-w-0" title="Out of order (blocked)">
+                                                <span className="font-bold text-[10px] truncate text-center">
+                                                    {width >= 88 ? 'OOO · blocked' : 'OOO'}
+                                                </span>
+                                            </div>
+                                        ) : (
                                             // Full confirmed booking: check-in, guest, nights/guests, check-out (single line)
                                             <div className="flex justify-between items-center w-full h-full px-2">
                                                 {/* Left: Check-in */}
@@ -1498,6 +1522,39 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       {/* --- HOVER TOOLTIP --- */}
       {hoveredBooking && !isDragging && !selectedBooking && (() => {
         const booking = hoveredBooking.booking;
+        if (String(booking.type || '').toUpperCase() === 'BLOCK') {
+          return (
+            <div
+              className="fixed z-[100] bg-[#1F2937] border border-amber-700/50 text-white p-3 rounded-lg shadow-2xl pointer-events-auto min-w-[200px]"
+              style={{ left: hoveredBooking.x + 15, top: hoveredBooking.y + 15 }}
+              onMouseEnter={() => {
+                if (hoverLeaveTimeoutRef.current) {
+                  clearTimeout(hoverLeaveTimeoutRef.current);
+                  hoverLeaveTimeoutRef.current = null;
+                }
+              }}
+              onMouseLeave={() => setHoveredBooking(null)}
+            >
+              <div className="flex justify-between items-center mb-2 border-b border-gray-600 pb-2">
+                <span className="font-bold text-amber-100">Out of order (blocked)</span>
+                <span className="text-xs font-bold text-amber-400">BLOCK</span>
+              </div>
+              <div className="text-xs text-gray-400 mb-2">
+                Property: {getRoomNameById(booking.roomId)}
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-gray-500 block">Start</span>
+                  <span className="font-bold text-amber-200/90">{booking.start}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-gray-500 block">End</span>
+                  <span className="font-bold text-amber-200/90">{booking.end}</span>
+                </div>
+              </div>
+            </div>
+          );
+        }
         const displayGuest = getDisplayGuest(booking);
         const bookingStartDate = parseDate(booking.start);
         const bookingEndDate = parseDate(booking.end);

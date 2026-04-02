@@ -31,7 +31,20 @@ export function useSalesAllBookings({
   adminEvents,
 }: UseSalesAllBookingsParams): { allBookings: Booking[] } {
   const confirmedBookingsWithColors = React.useMemo(
-    () => confirmedBookings.map(b => ({ ...b, color: getBookingStyle(b.status), isConfirmed: true })),
+    () =>
+      confirmedBookings.map((b) => {
+        const roomKey = b.roomId != null && String(b.roomId).trim() !== '' ? b.roomId : b.propertyId;
+        const canonical = roomKey != null ? String(roomKey) : undefined;
+        const propertyKey =
+          b.propertyId != null && String(b.propertyId).trim() !== '' ? String(b.propertyId) : canonical;
+        return {
+          ...b,
+          roomId: canonical ?? b.roomId,
+          propertyId: propertyKey ?? b.propertyId,
+          color: getBookingStyle(b.status),
+          isConfirmed: true as const,
+        };
+      }),
     [confirmedBookings]
   );
 

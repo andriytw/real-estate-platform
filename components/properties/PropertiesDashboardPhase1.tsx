@@ -343,6 +343,18 @@ const PropertiesDashboardPhase1: React.FC = () => {
     });
   }, [selectedMonth, properties, bookings, reservations, offers, proformas]);
 
+  const apartmentDisplayLabelById = useMemo(() => {
+    if (!monthData) return new Map<string, string>();
+    const m = new Map<string, string>();
+    for (const row of monthData.rows) {
+      const addr = String(row.adresse ?? '').trim();
+      const w = String(row.wohnung ?? '').trim();
+      const label = addr ? `${w} — ${addr}` : w;
+      m.set(row.apartmentId, label || row.apartmentId);
+    }
+    return m;
+  }, [monthData]);
+
   const clearMatrixSelection = useCallback(() => {
     setMatrixSelectedApartmentId(null);
     setMatrixSelStartIdx(null);
@@ -407,9 +419,10 @@ const PropertiesDashboardPhase1: React.FC = () => {
       return;
     }
 
+    const apartmentLabel = apartmentDisplayLabelById.get(propertyId) ?? propertyId;
     const msg = selectedRangeLabel
-      ? `Mark apartment ${propertyId} as OOO for ${selectedRangeLabel.startIso}–${selectedRangeLabel.endIso}?`
-      : `Mark apartment ${propertyId} as OOO for ${selection.startIso}–${selection.endIsoExclusive}?`;
+      ? `Mark apartment ${apartmentLabel} as OOO for ${selectedRangeLabel.startIso}–${selectedRangeLabel.endIso}?`
+      : `Mark apartment ${apartmentLabel} as OOO for ${selection.startIso}–${selection.endIsoExclusive}?`;
     if (!window.confirm(msg)) return;
 
     // Merge overlapping/adjacent blocks into one.
@@ -468,16 +481,17 @@ const PropertiesDashboardPhase1: React.FC = () => {
 
     clearMatrixSelection();
     await refreshBookings();
-  }, [buildBlockOpsForSelection, bookings, clearMatrixSelection, refreshBookings, selectedRangeLabel]);
+  }, [apartmentDisplayLabelById, buildBlockOpsForSelection, bookings, clearMatrixSelection, refreshBookings, selectedRangeLabel]);
 
   const applyClearOoo = useCallback(async () => {
     const ops = buildBlockOpsForSelection();
     if (!ops) return;
     const { propertyId, selection, existingBlocks } = ops;
 
+    const apartmentLabel = apartmentDisplayLabelById.get(propertyId) ?? propertyId;
     const msg = selectedRangeLabel
-      ? `Clear OOO for apartment ${propertyId} for ${selectedRangeLabel.startIso}–${selectedRangeLabel.endIso}?`
-      : `Clear OOO for apartment ${propertyId} for ${selection.startIso}–${selection.endIsoExclusive}?`;
+      ? `Clear OOO for apartment ${apartmentLabel} for ${selectedRangeLabel.startIso}–${selectedRangeLabel.endIso}?`
+      : `Clear OOO for apartment ${apartmentLabel} for ${selection.startIso}–${selection.endIsoExclusive}?`;
     if (!window.confirm(msg)) return;
 
     // Deterministic: trim/split only BLOCK-covered portion.
@@ -540,7 +554,7 @@ const PropertiesDashboardPhase1: React.FC = () => {
 
     clearMatrixSelection();
     await refreshBookings();
-  }, [buildBlockOpsForSelection, clearMatrixSelection, refreshBookings, selectedRangeLabel]);
+  }, [apartmentDisplayLabelById, buildBlockOpsForSelection, clearMatrixSelection, refreshBookings, selectedRangeLabel]);
 
   useEffect(() => {
     let cancelled = false;
