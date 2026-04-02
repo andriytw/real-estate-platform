@@ -1487,7 +1487,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                                     )}
                                                 </div>
                                             );
-                                        })(                                        ) : isBlock ? (
+                                        })() : isBlock ? (
                                             <div className="flex items-center justify-center w-full h-full px-1 min-w-0" title="Out of order (blocked)">
                                                 <span className="font-bold text-[10px] truncate text-center">
                                                     {width >= 88 ? 'OOO · blocked' : 'OOO'}
@@ -1509,33 +1509,21 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                                     ? 'text-amber-300/90'
                                                     : 'text-gray-300';
                                             const chip = 'shrink-0 rounded px-1 py-0.5 bg-black/25 text-[8px] leading-tight tabular-nums';
-                                            const tip = `${snap.tenant} · ${snap.nights ?? '—'}N · G:${snap.guestsDisplay} · ${snap.grossDisplay}`;
+                                            const tip = `${snap.tenant} · ${snap.nights ?? '—'}N · ${snap.guestsDisplay} · ${snap.grossDisplay} · K ${snap.kautionDisplay}`;
                                             return (
                                             <div
                                               className="flex flex-nowrap items-center gap-0.5 min-w-0 h-full w-full px-1 overflow-hidden"
                                               title={tip}
                                             >
-                                              {narrow ? (
-                                                <>
-                                                  <span className={`${chip} min-w-0 max-w-[42%] truncate font-semibold text-left`}>{snap.tenant}</span>
-                                                  <span className={chip}>{snap.nights ?? '—'}N</span>
-                                                  <span className={chip}>{snap.guestsDisplay}</span>
-                                                  <span className={chip}>{snap.grossDisplay}</span>
-                                                </>
-                                              ) : (
-                                                <>
-                                                  <span className={`${chip} min-w-0 max-w-[22%] truncate font-semibold`}>{snap.tenant}</span>
-                                                  <span className={chip}>{snap.nights ?? '—'}N</span>
-                                                  <span className={chip}>G:{snap.guestsDisplay}</span>
-                                                  <span className={chip}>€/n {snap.pricePerNightDisplay}</span>
-                                                  <span className={chip}>€/rm {snap.pricePerRoomNightDisplay}</span>
-                                                  <span className={chip}>€/d {snap.totalPerDayDisplay}</span>
-                                                  <span className={chip}>N {snap.netDisplay}</span>
-                                                  <span className={chip}>V {snap.vatDisplay}</span>
-                                                  <span className={chip}>G {snap.grossDisplay}</span>
-                                                  <span className={`${chip} ${kautionCls}`}>K {snap.kautionDisplay}</span>
-                                                </>
-                                              )}
+                                              <span
+                                                className={`${chip} min-w-0 truncate font-semibold text-left ${narrow ? 'max-w-[38%]' : 'max-w-[30%]'}`}
+                                              >
+                                                {snap.tenant}
+                                              </span>
+                                              <span className={chip}>{snap.nights ?? '—'}N</span>
+                                              <span className={chip}>{snap.guestsDisplay}</span>
+                                              <span className={chip}>{snap.grossDisplay}</span>
+                                              <span className={`${chip} ${kautionCls}`}>K {snap.kautionDisplay}</span>
                                             </div>
                                             );
                                         })()}
@@ -1591,10 +1579,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         const bookingEndDate = parseDate(booking.end);
         const nights = dateDiffInDays(bookingStartDate, bookingEndDate);
         const guestsCount = parseInt(booking.guests || '0') || 1;
-        const resList = reservations ?? [];
         const offList = offers ?? [];
         const invList = invoices ?? [];
-        const linkedReservation = resList.find(r => String(r.id) === String(booking.sourceReservationId));
         const linkedOffer = offList.find(o => String(o.id) === String(booking.sourceOfferId));
         const sourceInv = invList.find(i => i.id === booking.sourceInvoiceId);
         const proformaInv = sourceInv?.documentType === 'proforma' ? sourceInv : sourceInv?.proformaId ? invList.find(p => p.id === sourceInv.proformaId) : undefined;
@@ -1674,10 +1660,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
               </div>
             </div>
             <div className="text-xs text-gray-400 border-t border-gray-600 pt-2 mt-2">
-              <div className="flex justify-between items-center mt-1">
-                <span className="text-gray-500">Reservation:</span>
-                <span className="font-mono font-semibold text-white">{linkedReservation?.reservationNo ?? '—'}</span>
-              </div>
               <div className="flex justify-between items-center mt-1">
                 <span className="text-gray-500">Offer:</span>
                 <span className="font-mono font-semibold text-white">{linkedOffer?.offerNo ?? '—'}</span>
