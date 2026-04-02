@@ -12,6 +12,8 @@ export interface SalesBarSnapshot {
   tenant: string;
   nights: number | null;
   guestsDisplay: string;
+  /** Proforma document number (e.g. PRO-…), or — */
+  proformaDisplay: string;
   pricePerNightDisplay: string;
   pricePerRoomNightDisplay: string;
   totalPerDayDisplay: string;
@@ -65,19 +67,18 @@ export function buildSalesBarSnapshot(
     return String(g).trim();
   })();
 
+  const proformaDisplay = (() => {
+    const n = chain.proforma?.invoiceNumber;
+    const t = n != null ? String(n).trim() : '';
+    return t || '—';
+  })();
+
   const nightlyRaw =
     booking.pricePerNight != null && Number.isFinite(Number(booking.pricePerNight))
       ? Number(booking.pricePerNight)
       : offer?.nightlyPrice != null && Number.isFinite(Number(offer.nightlyPrice))
         ? Number(offer.nightlyPrice)
         : null;
-  const pricePerNightDisplay = fmtEuro(nightlyRaw);
-
-  const pid = String(booking.propertyId ?? booking.roomId ?? '').trim();
-  const property = pid ? ctx.properties.find((p) => String(p.id) === pid) : undefined;
-  const rooms = getRoomsCount(property ?? null);
-  const pricePerRoomNightDisplay =
-    nightlyRaw != null && rooms > 0 ? fmtEuro(nightlyRaw / rooms) : '—';
 
   const net =
     offer?.netTotal != null && Number.isFinite(Number(offer.netTotal))
@@ -98,6 +99,17 @@ export function buildSalesBarSnapshot(
         ? Number(inv.totalGross)
         : null;
 
+  const pricePerNightEffective =
+    nightlyRaw ??
+    (gross != null && nights != null && nights > 0 ? gross / nights : null);
+  const pricePerNightDisplay = fmtEuro(pricePerNightEffective);
+
+  const pid = String(booking.propertyId ?? booking.roomId ?? '').trim();
+  const property = pid ? ctx.properties.find((p) => String(p.id) === pid) : undefined;
+  const rooms = getRoomsCount(property ?? null);
+  const pricePerRoomNightDisplay =
+    pricePerNightEffective != null && rooms > 0 ? fmtEuro(pricePerNightEffective / rooms) : '—';
+
   const totalPerDayDisplay =
     gross != null && nights != null && nights > 0 ? fmtEuro(gross / nights) : '—';
 
@@ -116,6 +128,7 @@ export function buildSalesBarSnapshot(
     tenant,
     nights,
     guestsDisplay,
+    proformaDisplay,
     pricePerNightDisplay,
     pricePerRoomNightDisplay,
     totalPerDayDisplay,

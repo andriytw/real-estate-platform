@@ -118,6 +118,17 @@ const formatDateISO = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+/** European calendar date (DD.MM.YYYY) from ISO YYYY-MM-DD (or longer). */
+const formatDateEuropean = (dateString: string | undefined | null): string => {
+  if (dateString == null || typeof dateString !== 'string') return '—';
+  const d = dateString.slice(0, 10);
+  const parts = d.split('-');
+  if (parts.length !== 3) return '—';
+  const [y, m, day] = parts;
+  if (!y || !m || !day) return '—';
+  return `${String(day).padStart(2, '0')}.${String(m).padStart(2, '0')}.${y}`;
+};
+
 const dateDiffInDays = (date1: Date, date2: Date) => {
   const MS_PER_DAY = 1000 * 60 * 60 * 24;
   const diffTime = date2.getTime() - date1.getTime();
@@ -1509,20 +1520,34 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                                     ? 'text-amber-300/90'
                                                     : 'text-gray-300';
                                             const chip = 'shrink-0 rounded px-1 py-0.5 bg-black/25 text-[8px] leading-tight tabular-nums';
-                                            const tip = `${snap.tenant} · ${snap.nights ?? '—'}N · ${snap.guestsDisplay} · ${snap.grossDisplay} · K ${snap.kautionDisplay}`;
+                                            const dateFrom = formatDateEuropean(booking.start);
+                                            const dateTo = formatDateEuropean(booking.end);
+                                            const dateRangeLabel = `${dateFrom}–${dateTo}`;
+                                            const tip = `${snap.tenant} · ${dateRangeLabel} · ${snap.pricePerNightDisplay} · ${snap.grossDisplay} · ${snap.proformaDisplay} · K ${snap.kautionDisplay}`;
                                             return (
                                             <div
                                               className="flex flex-nowrap items-center gap-0.5 min-w-0 h-full w-full px-1 overflow-hidden"
                                               title={tip}
                                             >
                                               <span
-                                                className={`${chip} min-w-0 truncate font-semibold text-left ${narrow ? 'max-w-[38%]' : 'max-w-[30%]'}`}
+                                                className={`${chip} min-w-0 truncate font-semibold text-left ${narrow ? 'max-w-[32%]' : 'max-w-[24%]'}`}
                                               >
                                                 {snap.tenant}
                                               </span>
-                                              <span className={chip}>{snap.nights ?? '—'}N</span>
-                                              <span className={chip}>{snap.guestsDisplay}</span>
+                                              <span
+                                                className={`${chip} font-mono shrink-0 whitespace-nowrap`}
+                                                title={dateRangeLabel}
+                                              >
+                                                {dateRangeLabel}
+                                              </span>
+                                              <span className={`${chip} font-mono`}>{snap.pricePerNightDisplay}</span>
                                               <span className={chip}>{snap.grossDisplay}</span>
+                                              <span
+                                                className={`${chip} font-mono min-w-0 max-w-[20%] truncate`}
+                                                title={snap.proformaDisplay}
+                                              >
+                                                {snap.proformaDisplay}
+                                              </span>
                                               <span className={`${chip} ${kautionCls}`}>K {snap.kautionDisplay}</span>
                                             </div>
                                             );
