@@ -4714,6 +4714,12 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   };
 
   const handleDeleteBooking = async (bookingId: number | string) => {
+    const row = confirmedBookings.find((b) => String(b.id) === String(bookingId));
+    if (row && String(row.type || '').toUpperCase() === 'BLOCK') {
+      setToastMessage('OOO / блокування можна змінювати лише в Properties Dashboard (Apartment / Day Matrix).');
+      setTimeout(() => setToastMessage(null), 6000);
+      return;
+    }
     try {
       await bookingsService.delete(bookingId);
       await loadConfirmedBookings();
@@ -11442,7 +11448,11 @@ ${internalCompany} Team`;
 
       <div className={`relative z-0 flex-1 bg-[#0D1117] overflow-x-hidden ${activeDepartment === 'properties' && propertiesTab === 'dashboard' ? 'overflow-y-auto' : 'overflow-hidden'}`}>
         {activeDepartment === 'admin' && renderAdminContent()}
-        {activeDepartment === 'properties' && (propertiesTab === 'dashboard' ? <PropertiesDashboardPhase1 /> : renderPropertiesContent())}
+        {activeDepartment === 'properties' && (propertiesTab === 'dashboard' ? (
+          <PropertiesDashboardPhase1 onConfirmedBookingsChanged={loadConfirmedBookings} />
+        ) : (
+          renderPropertiesContent()
+        ))}
         {activeDepartment === 'facility' && renderFacilityContent()}
         {activeDepartment === 'accounting' && renderAccountingContent()}
         {activeDepartment === 'sales' && renderSalesContent()}

@@ -275,7 +275,14 @@ function ModalExpenseFinancialCell({
   );
 }
 
-const PropertiesDashboardPhase1: React.FC = () => {
+interface PropertiesDashboardPhase1Props {
+  /** After BLOCK/OOO mutations, refresh parent `confirmedBookings` so Sales Calendar updates immediately. */
+  onConfirmedBookingsChanged?: () => void | Promise<void>;
+}
+
+const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
+  onConfirmedBookingsChanged,
+}) => {
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
   const [loading, setLoading] = useState(true);
@@ -481,7 +488,16 @@ const PropertiesDashboardPhase1: React.FC = () => {
 
     clearMatrixSelection();
     await refreshBookings();
-  }, [apartmentDisplayLabelById, buildBlockOpsForSelection, bookings, clearMatrixSelection, refreshBookings, selectedRangeLabel]);
+    await onConfirmedBookingsChanged?.();
+  }, [
+    apartmentDisplayLabelById,
+    buildBlockOpsForSelection,
+    bookings,
+    clearMatrixSelection,
+    onConfirmedBookingsChanged,
+    refreshBookings,
+    selectedRangeLabel,
+  ]);
 
   const applyClearOoo = useCallback(async () => {
     const ops = buildBlockOpsForSelection();
@@ -554,7 +570,15 @@ const PropertiesDashboardPhase1: React.FC = () => {
 
     clearMatrixSelection();
     await refreshBookings();
-  }, [apartmentDisplayLabelById, buildBlockOpsForSelection, clearMatrixSelection, refreshBookings, selectedRangeLabel]);
+    await onConfirmedBookingsChanged?.();
+  }, [
+    apartmentDisplayLabelById,
+    buildBlockOpsForSelection,
+    clearMatrixSelection,
+    onConfirmedBookingsChanged,
+    refreshBookings,
+    selectedRangeLabel,
+  ]);
 
   useEffect(() => {
     let cancelled = false;

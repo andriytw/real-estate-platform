@@ -12,6 +12,7 @@ import { getBookingColor, getBookingBorderStyle, getBookingStyle } from '../book
 import { useSalesAllBookings } from '../hooks/useSalesAllBookings';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
 import { resolveSalesStatusContext, getEffectiveSalesApartmentStatus } from '../lib/salesCalendarStatus';
+import { buildSalesBarSnapshot, SALES_BAR_NARROW_MAX_PX } from '../utils/salesBarSnapshot';
 
 // Helper to normalize date strings for stacking key
 const normalizeDateKey = (v: string) => {
@@ -1486,28 +1487,58 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                                     )}
                                                 </div>
                                             );
-                                        })() : isBlock ? (
+                                        })(                                        ) : isBlock ? (
                                             <div className="flex items-center justify-center w-full h-full px-1 min-w-0" title="Out of order (blocked)">
                                                 <span className="font-bold text-[10px] truncate text-center">
                                                     {width >= 88 ? 'OOO · blocked' : 'OOO'}
                                                 </span>
                                             </div>
-                                        ) : (
-                                            // Full confirmed booking: check-in, guest, nights/guests, check-out (single line)
-                                            <div className="flex justify-between items-center w-full h-full px-2">
-                                                {/* Left: Check-in */}
-                                                <span className="font-mono text-[9px] font-bold opacity-80 shrink-0">{booking.checkInTime}</span>
-                                                
-                                                {/* Center: guest + nights|guests on one line */}
-                                                <div className="flex items-center justify-center flex-1 px-1 min-w-0 gap-1 overflow-hidden">
-                                                    <span className="font-bold text-[10px] truncate text-center whitespace-nowrap">{displayGuest}</span>
-                                                    <span className="text-[8px] opacity-80 shrink-0 whitespace-nowrap">{nights}N | {parseInt(booking.guests || '0')}G</span>
-                                                </div>
-
-                                                {/* Right: Check-out */}
-                                                <span className="font-mono text-[9px] font-bold opacity-80 shrink-0">{booking.checkOutTime}</span>
+                                        ) : (() => {
+                                            const snap = buildSalesBarSnapshot(booking, {
+                                              offers: offers ?? [],
+                                              invoices: invoices ?? [],
+                                              properties: properties ?? [],
+                                            });
+                                            const narrow = width < SALES_BAR_NARROW_MAX_PX;
+                                            const kautionCls =
+                                              snap.kautionTone === 'red'
+                                                ? 'text-red-400'
+                                                : snap.kautionTone === 'green'
+                                                  ? 'text-emerald-400'
+                                                  : snap.kautionTone === 'neutral'
+                                                    ? 'text-amber-300/90'
+                                                    : 'text-gray-300';
+                                            const chip = 'shrink-0 rounded px-1 py-0.5 bg-black/25 text-[8px] leading-tight tabular-nums';
+                                            const tip = `${snap.tenant} · ${snap.nights ?? '—'}N · G:${snap.guestsDisplay} · ${snap.grossDisplay}`;
+                                            return (
+                                            <div
+                                              className="flex flex-nowrap items-center gap-0.5 min-w-0 h-full w-full px-1 overflow-hidden"
+                                              title={tip}
+                                            >
+                                              {narrow ? (
+                                                <>
+                                                  <span className={`${chip} min-w-0 max-w-[42%] truncate font-semibold text-left`}>{snap.tenant}</span>
+                                                  <span className={chip}>{snap.nights ?? '—'}N</span>
+                                                  <span className={chip}>{snap.guestsDisplay}</span>
+                                                  <span className={chip}>{snap.grossDisplay}</span>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <span className={`${chip} min-w-0 max-w-[22%] truncate font-semibold`}>{snap.tenant}</span>
+                                                  <span className={chip}>{snap.nights ?? '—'}N</span>
+                                                  <span className={chip}>G:{snap.guestsDisplay}</span>
+                                                  <span className={chip}>€/n {snap.pricePerNightDisplay}</span>
+                                                  <span className={chip}>€/rm {snap.pricePerRoomNightDisplay}</span>
+                                                  <span className={chip}>€/d {snap.totalPerDayDisplay}</span>
+                                                  <span className={chip}>N {snap.netDisplay}</span>
+                                                  <span className={chip}>V {snap.vatDisplay}</span>
+                                                  <span className={chip}>G {snap.grossDisplay}</span>
+                                                  <span className={`${chip} ${kautionCls}`}>K {snap.kautionDisplay}</span>
+                                                </>
+                                              )}
                                             </div>
-                                        )}
+                                            );
+                                        })()}
                                     </div>
                                 );
                             })}
@@ -2007,6 +2038,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
           setSelectedBooking(null);
         } : undefined}
         onDeleteBooking={onDeleteBooking ? async (bookingId: number | string) => {
+          const row = confirmedBookings.find((b) => String(b.id) === String(bookingId));
+          if (row && String(row.type || '').toUpperCase() === 'BLOCK') return;
           await onDeleteBooking(bookingId);
           setSelectedBooking(null);
         } : undefined}

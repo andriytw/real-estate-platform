@@ -236,6 +236,8 @@ ${selectedInternalCompany} Team`;
 
   if (!isOpen || !booking) return null;
 
+  const isBlockBooking = String(booking.type || '').toUpperCase() === 'BLOCK';
+
   const handleSaveDraft = () => {
     if (onConvertToOffer) {
       onConvertToOffer('Draft', selectedInternalCompany, clientEmail, clientPhone, clientMessage);
@@ -333,7 +335,8 @@ ${selectedInternalCompany} Team`;
   const protocolRowEnabled =
     Boolean(propertyIdForProtocol) &&
     isBookingConfirmedForProtocol(booking, ctxNormalized) &&
-    !isViewingOffer;
+    !isViewingOffer &&
+    !isBlockBooking;
 
   const finalInv = resolvedChain.finalInvoice;
   const invoiceSameAsProforma = Boolean(
@@ -456,8 +459,12 @@ ${selectedInternalCompany} Team`;
       <div className="bg-[#1C1F24] w-full max-w-4xl max-h-[90vh] min-h-0 flex flex-col rounded-xl border border-gray-700 shadow-2xl animate-in zoom-in duration-200">
         <div className="px-3 py-2 border-b border-gray-800 bg-[#23262b] flex justify-between items-center gap-2 shrink-0 z-10">
           <div className="min-w-0 flex-1">
-            <h3 className="text-base font-bold text-white leading-tight">Stay overview</h3>
-            <p className="text-[10px] text-gray-500 mt-0.5">Technical IDs in Technical info</p>
+            <h3 className="text-base font-bold text-white leading-tight">
+              {isBlockBooking ? 'Out of order (blocked)' : 'Stay overview'}
+            </h3>
+            <p className="text-[10px] text-gray-500 mt-0.5">
+              {isBlockBooking ? 'OOO керується з Properties Dashboard' : 'Technical IDs in Technical info'}
+            </p>
           </div>
           <button
             type="button"
@@ -469,6 +476,11 @@ ${selectedInternalCompany} Team`;
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-2">
+          {isBlockBooking && (
+            <div className="text-[11px] text-amber-100/95 bg-amber-950/55 border border-amber-700/45 rounded-lg px-2 py-1.5">
+              OOO / блокування можна змінювати лише в Properties Dashboard (Apartment / Day Matrix).
+            </div>
+          )}
           {/* Status strip */}
           <div className="flex flex-wrap items-center gap-1.5">
             <span
@@ -965,7 +977,7 @@ ${selectedInternalCompany} Team`;
                   </button>
                 ) : null;
               })()}
-            {onDeleteBooking && !isViewingOffer && !(booking as any)?.isReservation && (
+            {onDeleteBooking && !isViewingOffer && !(booking as any)?.isReservation && !isBlockBooking && (
               <button
                 type="button"
                 onClick={async () => {
