@@ -1,4 +1,6 @@
 import type { Booking, InvoiceData, OfferData, Property, Reservation } from '../../types';
+import { formatLocalDateYmd } from '../localDate';
+import { isPropertyBlockActiveOnDate } from '../oooBlocks';
 import { getRoomsCount } from '../../utils/propertyStats';
 import { monthRangeIso } from './date';
 import { buildConfirmedRevenueMap, buildDailyOooMap, resolveApartmentDayCell } from './dayCellResolver';
@@ -43,6 +45,7 @@ interface BuildDashboardMonthDataInput {
 export function buildDashboardMonthData(input: BuildDashboardMonthDataInput): DashboardMonthData {
   const { fromIso, toIsoExclusive, days } = monthRangeIso(input.year, input.monthIndex0);
   const propertyIds = input.properties.map((p) => String(p.id));
+  const todayStr = formatLocalDateYmd(new Date());
 
   const oooByProperty = buildDailyOooMap(propertyIds, days, input.bookings);
   const revenueByProperty = buildConfirmedRevenueMap(propertyIds, days, {
@@ -62,10 +65,13 @@ export function buildDashboardMonthData(input: BuildDashboardMonthDataInput): Da
       })
     );
 
+    const effectiveApartmentStatus =
+      isPropertyBlockActiveOnDate(String(property.id), todayStr, input.bookings) ? 'ooo' : property.apartmentStatus;
+
     const rowBase: DashboardApartmentMatrixRow = {
       apartmentId: String(property.id),
       abteilung: String(property.apartmentGroupName ?? '').trim(),
-      statusLabel: statusLabel(property.apartmentStatus),
+      statusLabel: statusLabel(effectiveApartmentStatus),
       adresse: String(property.address ?? ''),
       wohnung: getWohnung(property),
       qm: getArea(property),

@@ -84,6 +84,8 @@ import { propertyMediaService, type PropertyMediaAssetRow, type PropertyMediaAss
 import { ApartmentStatisticsSection } from './ApartmentStatisticsSection';
 import { VirtualDocumentsManager } from './VirtualDocumentsManager';
 import PropertiesDashboardPhase1 from './properties/PropertiesDashboardPhase1';
+import { formatLocalDateYmd } from '../lib/localDate';
+import { hasBlockOverlapForPropertyHalfOpen, isPropertyBlockActiveOnDate } from '../lib/oooBlocks';
 
 const METER_UNIT_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: 'Одиниця' },
@@ -99,12 +101,6 @@ function parseDateAktOrendar(dateString: string): Date {
   const date = new Date(year, month - 1, day);
   date.setHours(0, 0, 0, 0);
   return date;
-}
-function formatDateISOAktOrendar(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
 }
 function dateDiffInDaysAktOrendar(date1: Date, date2: Date): number {
   const MS_PER_DAY = 1000 * 60 * 60 * 24;
@@ -4034,6 +4030,19 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
 
   const handleSaveOffer = async (newOffer: OfferData) => {
       try {
+        // Guard: do not allow offers over OOO (BLOCK) dates
+        const propertyId = String(newOffer.propertyId ?? '').trim();
+        const datesStr = String((newOffer as any).dates ?? '').trim();
+        if (propertyId && datesStr) {
+          const [sRaw, eRaw] = datesStr.split(/\s+to\s+/);
+          const start = (sRaw ?? '').slice(0, 10);
+          const end = (eRaw ?? '').slice(0, 10);
+          if (start && end && hasOooBlockOverlap(propertyId, start, end)) {
+            alert('Apartment is Out Of Order (OOO) for selected dates.');
+            return;
+          }
+        }
+
         // Remove id before creating (database will generate UUID)
         const { id, ...offerWithoutId } = newOffer;
         const savedOffer = await offersService.create(offerWithoutId);
@@ -4051,6 +4060,30 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   // Load reservations from database on mount
   // Separate state for confirmed bookings (from bookings table)
   const [confirmedBookings, setConfirmedBookings] = useState<Booking[]>([]);
+
+  // ===== OOO/BLOCK guard helpers (single source: bookings.type === 'BLOCK') =====
+  const todayIsoForEffectiveStatus = useMemo(() => formatLocalDateYmd(new Date()), []);
+
+  const hasOooBlockOverlap = useCallback(
+    (propertyIdRaw: string | null | undefined, startRaw: string, endRaw: string): boolean =>
+      hasBlockOverlapForPropertyHalfOpen(propertyIdRaw, startRaw, endRaw, confirmedBookings),
+    [confirmedBookings]
+  );
+
+  const assertNoOooBlockOverlap = useCallback(
+    (propertyId: string | null | undefined, startIso: string, endIsoExclusive: string) => {
+      if (hasOooBlockOverlap(propertyId, startIso, endIsoExclusive)) {
+        throw new Error('Apartment is Out Of Order (OOO) for selected dates.');
+      }
+    },
+    [hasOooBlockOverlap]
+  );
+
+  const isPropertyOooToday = useCallback(
+    (propertyIdRaw: string | null | undefined): boolean =>
+      isPropertyBlockActiveOnDate(propertyIdRaw, todayIsoForEffectiveStatus, confirmedBookings),
+    [confirmedBookings, todayIsoForEffectiveStatus]
+  );
 
   const stayOverviewContext = useMemo<StayOverviewStayContext>(
     () => ({
@@ -4276,7 +4309,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   }, []);
 
   const currentStay = useMemo((): Booking | null => {
-    const todayStr = formatDateISOAktOrendar(new Date());
+    const todayStr = formatLocalDateYmd(new Date());
     const matches = confirmedBookings.filter(
       (b) => b.propertyId === selectedPropertyId && b.start <= todayStr && b.end > todayStr
     );
@@ -4340,6 +4373,11 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         // Check for overlap with confirmed bookings before creating reservation
         const propertyId = reservation.propertyId || reservation.roomId;
         if (propertyId) {
+          // Guard: do not allow reservations over OOO (BLOCK) dates
+          if (hasOooBlockOverlap(propertyId, reservation.start, reservation.end)) {
+            alert('Apartment is Out Of Order (OOO) for selected dates.');
+            return;
+          }
           const hasOverlap = await checkBookingOverlap(propertyId, reservation.start, reservation.end);
           if (hasOverlap) {
             alert('This date range conflicts with a confirmed booking. Please choose different dates.');
@@ -4724,10 +4762,11 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
 
     let savedReservation: Reservation;
     try {
+      assertNoOooBlockOverlap(formData.propertyId, formData.checkIn, formData.checkOut);
       savedReservation = await reservationsService.create(reservationToSave);
     } catch (err) {
       console.error('Failed to create reservation from booking:', err);
-      alert('Failed to create reservation. Please try again.');
+      alert(err instanceof Error ? err.message : 'Failed to create reservation. Please try again.');
       return;
     }
 
@@ -4764,6 +4803,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     };
 
     try {
+      assertNoOooBlockOverlap(String(offerToCreate.propertyId), String(formData.checkIn), String(formData.checkOut));
       const savedOffer = await offersService.create(offerToCreate);
       setOffers((prev) => [savedOffer, ...prev]);
       setClientHistoryLead(null);
@@ -4772,7 +4812,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       setCreatedOfferId(savedOffer.id);
     } catch (err) {
       console.error('Failed to create offer from booking:', err);
-      alert('Failed to create offer from booking. Please try again.');
+      alert(err instanceof Error ? err.message : 'Failed to create offer from booking. Please try again.');
       return;
     }
   };
@@ -4791,6 +4831,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         return;
       }
       const apartment = draft.apartments[0];
+      // Guard: do not allow direct booking over OOO (BLOCK) dates
+      assertNoOooBlockOverlap(apartment.propertyId, draft.shared.checkIn, draft.shared.checkOut);
       const property = properties.find((p) => String(p.id) === String(apartment.propertyId));
       const managementName = property?.management?.name?.trim();
       const internalCompany = managementName && managementName.length > 0 ? managementName : 'Sotiso';
@@ -4917,6 +4959,10 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     const traceId = multiOfferIdempotencyKeyRef.current || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ma-${Date.now()}`);
     if (!multiOfferIdempotencyKeyRef.current) multiOfferIdempotencyKeyRef.current = traceId;
     try {
+      // Guard: do not allow creating multi-apartment offers over OOO (BLOCK) dates
+      for (const apt of draft.apartments || []) {
+        assertNoOooBlockOverlap(apt.propertyId, draft.shared.checkIn, draft.shared.checkOut);
+      }
       const { offers: created, leadId } = await commandPostJson<{ offers: OfferData[]; reservationIds: string[]; leadId: string | null }>(
         '/api/commands/create-multi-offer',
         { draft, mode },
@@ -4998,6 +5044,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
 
     let reservationId = item.reservationId || null;
     if (!reservationId) {
+      // Guard: do not allow reservation creation over OOO (BLOCK) dates
+      assertNoOooBlockOverlap(item.propertyId, header.startDate, header.endDate);
       const createdReservation = await reservationsService.create({
         propertyId: item.propertyId,
         startDate: header.startDate,
@@ -5023,6 +5071,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       : null;
 
     if (!legacyOffer) {
+      // Guard: do not allow offer creation over OOO (BLOCK) dates
+      assertNoOooBlockOverlap(item.propertyId, header.startDate, header.endDate);
       legacyOffer = await offersService.create({
         offerNo: header.offerNo,
         clientName: header.clientName,
@@ -5086,6 +5136,18 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
 
   const handleSaveOfferUpdate = async (updatedOffer: OfferData) => {
       try {
+        // Guard: do not allow offer save over OOO (BLOCK) dates
+        const propertyId = String(updatedOffer.propertyId ?? '').trim();
+        const datesStr = String((updatedOffer as any).dates ?? '').trim();
+        if (propertyId && datesStr) {
+          const [sRaw, eRaw] = datesStr.split(/\s+to\s+/);
+          const start = (sRaw ?? '').slice(0, 10);
+          const end = (eRaw ?? '').slice(0, 10);
+          if (start && end) {
+            assertNoOooBlockOverlap(propertyId, start, end);
+          }
+        }
+
         // Check if offer has a valid UUID (exists in database)
         const isValidUUID = (str: string | number | undefined): boolean => {
           if (!str) return false;
@@ -5141,6 +5203,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       try {
           // Use propertyId if available (UUID), otherwise fall back to roomId
           const propertyId = selectedReservation.propertyId || selectedReservation.roomId;
+          assertNoOooBlockOverlap(propertyId, selectedReservation.start, selectedReservation.end);
           
           const offerToCreate: Omit<OfferData, 'id'> = {
               clientName: selectedReservation.guest,
@@ -5190,7 +5253,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
           }
       } catch (error) {
           console.error('Error creating offer:', error);
-          alert('Failed to save offer to database. Please try again.');
+          alert(error instanceof Error ? error.message : 'Failed to save offer to database. Please try again.');
       }
   };
   
@@ -5198,6 +5261,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       if (!selectedReservation) return;
       
       try {
+          assertNoOooBlockOverlap(selectedReservation.propertyId || selectedReservation.roomId, selectedReservation.start, selectedReservation.end);
           // Generate default client message template
           const guestName = selectedReservation.guest || 'Guest';
           const checkInDate = selectedReservation.start 
@@ -5262,7 +5326,7 @@ ${internalCompany} Team`;
           });
       } catch (error) {
           console.error('Error creating offer:', error);
-          alert('Failed to save offer to database. Please try again.');
+          alert(error instanceof Error ? error.message : 'Failed to save offer to database. Please try again.');
       }
   };
   
@@ -7165,7 +7229,21 @@ ${internalCompany} Team`;
                                 <div className="pb-4 border-b border-gray-700"><span className="text-xs text-gray-500 block mb-1">Notiz</span><span className="text-sm text-white">{leaseTerm.note}</span></div>
                             )}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
-                                <div><span className="text-xs text-gray-500 block mb-1">Статус квартири</span><span className="text-sm font-medium text-white">{selectedProperty.apartmentStatus === 'ooo' ? 'Out of order' : selectedProperty.apartmentStatus === 'preparation' ? 'В підготовці' : selectedProperty.apartmentStatus === 'rented_worker' ? 'Здана працівнику' : 'Активна'}</span></div>
+                                <div>
+                                  <span className="text-xs text-gray-500 block mb-1">Статус квартири</span>
+                                  <span className="text-sm font-medium text-white">
+                                    {(() => {
+                                      const effective = isPropertyOooToday(selectedProperty.id) ? 'ooo' : (selectedProperty.apartmentStatus ?? 'active');
+                                      return effective === 'ooo'
+                                        ? 'Out of order'
+                                        : effective === 'preparation'
+                                          ? 'В підготовці'
+                                          : effective === 'rented_worker'
+                                            ? 'Здана працівнику'
+                                            : 'Активна';
+                                    })()}
+                                  </span>
+                                </div>
                             </div>
                             <div className="flex items-center justify-between mb-2">
                                 <span className="text-sm font-semibold text-white">Контрагенти</span>

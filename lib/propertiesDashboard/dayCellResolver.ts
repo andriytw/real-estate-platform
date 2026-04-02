@@ -142,6 +142,11 @@ function getNightlyNetForProforma(
   return getFallbackNightlyNet(proforma, ctx);
 }
 
+/**
+ * OOO (Out Of Order) days from `bookings` where `type === 'BLOCK'` only.
+ * Revenue (`buildConfirmedRevenueMap`) is driven by paid proformas, not raw booking rows;
+ * BLOCK rows are excluded from guest-stay semantics unless linked via a paid invoice (unlikely).
+ */
 export function buildDailyOooMap(
   propertyIds: string[],
   days: string[],

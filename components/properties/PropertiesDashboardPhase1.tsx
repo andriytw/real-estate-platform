@@ -9,6 +9,13 @@ import { apartmentFinancialCoreFromMatrixRow } from '../../lib/propertiesDashboa
 import { buildPaidProformaContributionsByProperty } from '../../lib/propertiesDashboard/dayCellResolver';
 import type { DailyDashboardMetrics } from '../../lib/propertiesDashboard/types';
 import { resolveOwnerDueForMonth } from '../../lib/ownerDueResolver';
+import {
+  blockBookingsForProperty,
+  inclusiveToExclusive,
+  nonBlockBookingsForProperty,
+  rangesOverlapExclusive,
+  type IsoDate,
+} from '../../lib/oooBlocks';
 
 function formatPct(value: number): string {
   return `${(Math.max(0, value) * 100).toFixed(2)}%`;
@@ -315,6 +322,211 @@ const PropertiesDashboardPhase1: React.FC = () => {
       | { status: 'error'; message: string }
     >
   >({});
+
+  // ===== OOO Matrix selection (single-row v1) =====
+  const [matrixSelectedApartmentId, setMatrixSelectedApartmentId] = useState<string | null>(null);
+  const [matrixSelStartIdx, setMatrixSelStartIdx] = useState<number | null>(null);
+  const [matrixSelEndIdx, setMatrixSelEndIdx] = useState<number | null>(null);
+  const [matrixIsSelecting, setMatrixIsSelecting] = useState(false);
+
+  const clearMatrixSelection = useCallback(() => {
+    setMatrixSelectedApartmentId(null);
+    setMatrixSelStartIdx(null);
+    setMatrixSelEndIdx(null);
+    setMatrixIsSelecting(false);
+  }, []);
+
+  useEffect(() => {
+    const onUp = () => setMatrixIsSelecting(false);
+    window.addEventListener('mouseup', onUp);
+    return () => window.removeEventListener('mouseup', onUp);
+  }, []);
+
+  const getMatrixSelectedRange = useCallback((): { apartmentId: string; startIdx: number; endIdx: number } | null => {
+    if (!matrixSelectedApartmentId) return null;
+    if (matrixSelStartIdx == null || matrixSelEndIdx == null) return null;
+    const startIdx = Math.min(matrixSelStartIdx, matrixSelEndIdx);
+    const endIdx = Math.max(matrixSelStartIdx, matrixSelEndIdx);
+    return { apartmentId: matrixSelectedApartmentId, startIdx, endIdx };
+  }, [matrixSelectedApartmentId, matrixSelStartIdx, matrixSelEndIdx]);
+
+  const selectedRange = getMatrixSelectedRange();
+  const selectedRangeLabel = useMemo(() => {
+    if (!monthData || !selectedRange) return null;
+    const startIso = (monthData.days[selectedRange.startIdx] ?? '').slice(0, 10);
+    const endIso = (monthData.days[selectedRange.endIdx] ?? '').slice(0, 10);
+    if (!startIso || !endIso) return null;
+    return { startIso, endIso };
+  }, [monthData, selectedRange]);
+
+  const refreshBookings = useCallback(async () => {
+    const b = await bookingsService.getAll();
+    setBookings(b);
+  }, []);
+
+  const buildBlockOpsForSelection = useCallback(() => {
+    if (!monthData || !selectedRange || !selectedRangeLabel) return null;
+    const propertyId = selectedRange.apartmentId;
+    const { startIso, endIso } = selectedRangeLabel;
+    const ex = inclusiveToExclusive(startIso as IsoDate, endIso as IsoDate);
+    const existingBlocks = blockBookingsForProperty(bookings, propertyId).map((b) => ({
+      id: String(b.id),
+      start: String(b.start).slice(0, 10) as IsoDate,
+      end: String(b.end).slice(0, 10) as IsoDate,
+      booking: b,
+    }));
+    return { propertyId, selection: ex, existingBlocks };
+  }, [monthData, selectedRange, selectedRangeLabel, bookings]);
+
+  const applyMarkAsOoo = useCallback(async () => {
+    const ops = buildBlockOpsForSelection();
+    if (!ops) return;
+    const { propertyId, selection, existingBlocks } = ops;
+
+    // Safety: do not allow OOO over occupied (non-BLOCK) bookings.
+    const nonBlocks = nonBlockBookingsForProperty(bookings, propertyId);
+    const overlapsOccupied = nonBlocks.some((b) =>
+      rangesOverlapExclusive(selection.startIso, selection.endIsoExclusive, String(b.start).slice(0, 10) as IsoDate, String(b.end).slice(0, 10) as IsoDate)
+    );
+    if (overlapsOccupied) {
+      alert('Cannot mark OOO: selection overlaps occupied/confirmed days.');
+      return;
+    }
+
+    const msg = selectedRangeLabel
+      ? `Mark apartment ${propertyId} as OOO for ${selectedRangeLabel.startIso}–${selectedRangeLabel.endIso}?`
+      : `Mark apartment ${propertyId} as OOO for ${selection.startIso}–${selection.endIsoExclusive}?`;
+    if (!window.confirm(msg)) return;
+
+    // Merge overlapping/adjacent blocks into one.
+    const touching = existingBlocks.filter((r) =>
+      // overlap or adjacency in exclusive semantics
+      r.start <= selection.endIsoExclusive && selection.startIso <= r.end
+    );
+    const newStart = [selection.startIso, ...touching.map((t) => t.start)].sort()[0] as IsoDate;
+    const newEnd = [selection.endIsoExclusive, ...touching.map((t) => t.end)].sort().slice(-1)[0] as IsoDate;
+
+    // Update first touching block or create new.
+    const keep = touching[0] ?? null;
+    const toDelete = touching.slice(1).map((t) => t.id);
+
+    if (keep) {
+      await bookingsService.update(keep.id, {
+        ...keep.booking,
+        start: newStart,
+        end: newEnd,
+        type: 'BLOCK',
+        propertyId,
+        roomId: propertyId,
+        guest: keep.booking.guest || 'OOO',
+        channel: keep.booking.channel || 'Internal',
+      } as any);
+    } else {
+      await bookingsService.create({
+        roomId: propertyId,
+        propertyId,
+        start: newStart,
+        end: newEnd,
+        guest: 'OOO',
+        color: '#374151',
+        checkInTime: '',
+        checkOutTime: '',
+        status: 'reserved',
+        price: '',
+        balance: '',
+        guests: '',
+        unit: '',
+        comments: '',
+        paymentAccount: '',
+        company: '',
+        ratePlan: '',
+        guarantee: '',
+        cancellationPolicy: '',
+        noShowPolicy: '',
+        channel: 'Internal',
+        type: 'BLOCK',
+      } as any);
+    }
+
+    for (const id of toDelete) {
+      await bookingsService.delete(id);
+    }
+
+    clearMatrixSelection();
+    await refreshBookings();
+  }, [buildBlockOpsForSelection, bookings, clearMatrixSelection, refreshBookings, selectedRangeLabel]);
+
+  const applyClearOoo = useCallback(async () => {
+    const ops = buildBlockOpsForSelection();
+    if (!ops) return;
+    const { propertyId, selection, existingBlocks } = ops;
+
+    const msg = selectedRangeLabel
+      ? `Clear OOO for apartment ${propertyId} for ${selectedRangeLabel.startIso}–${selectedRangeLabel.endIso}?`
+      : `Clear OOO for apartment ${propertyId} for ${selection.startIso}–${selection.endIsoExclusive}?`;
+    if (!window.confirm(msg)) return;
+
+    // Deterministic: trim/split only BLOCK-covered portion.
+    for (const blk of existingBlocks) {
+      if (!rangesOverlapExclusive(blk.start, blk.end, selection.startIso, selection.endIsoExclusive)) continue;
+
+      const bStart = blk.start;
+      const bEnd = blk.end;
+      const sStart = selection.startIso;
+      const sEnd = selection.endIsoExclusive;
+
+      // selection covers whole block => delete
+      if (sStart <= bStart && bEnd <= sEnd) {
+        await bookingsService.delete(blk.id);
+        continue;
+      }
+
+      // cut middle => split into [bStart, sStart) and [sEnd, bEnd)
+      if (bStart < sStart && sEnd < bEnd) {
+        await bookingsService.update(blk.id, { ...blk.booking, start: bStart, end: sStart } as any);
+        await bookingsService.create({
+          roomId: propertyId,
+          propertyId,
+          start: sEnd,
+          end: bEnd,
+          guest: 'OOO',
+          color: '#374151',
+          checkInTime: '',
+          checkOutTime: '',
+          status: 'reserved',
+          price: '',
+          balance: '',
+          guests: '',
+          unit: '',
+          comments: '',
+          paymentAccount: '',
+          company: '',
+          ratePlan: '',
+          guarantee: '',
+          cancellationPolicy: '',
+          noShowPolicy: '',
+          channel: 'Internal',
+          type: 'BLOCK',
+        } as any);
+        continue;
+      }
+
+      // trim left side: overlap at start => move start forward to sEnd
+      if (sStart <= bStart && sEnd < bEnd) {
+        await bookingsService.update(blk.id, { ...blk.booking, start: sEnd, end: bEnd } as any);
+        continue;
+      }
+
+      // trim right side: overlap at end => move end back to sStart
+      if (bStart < sStart && bEnd <= sEnd) {
+        await bookingsService.update(blk.id, { ...blk.booking, start: bStart, end: sStart } as any);
+        continue;
+      }
+    }
+
+    clearMatrixSelection();
+    await refreshBookings();
+  }, [buildBlockOpsForSelection, clearMatrixSelection, refreshBookings, selectedRangeLabel]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1137,7 +1349,37 @@ const PropertiesDashboardPhase1: React.FC = () => {
       </section>
 
       <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
-        <h3 className="text-sm font-semibold text-gray-300 mb-3">Apartment / Day Matrix</h3>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <h3 className="text-sm font-semibold text-gray-300">Apartment / Day Matrix</h3>
+          {selectedRange && selectedRangeLabel && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-gray-400 whitespace-nowrap">
+                Selected: {selectedRangeLabel.startIso}–{selectedRangeLabel.endIso}
+              </span>
+              <button
+                type="button"
+                onClick={applyMarkAsOoo}
+                className="px-2 py-1 rounded bg-gray-700/60 hover:bg-gray-700 text-gray-100"
+              >
+                Mark as OOO
+              </button>
+              <button
+                type="button"
+                onClick={applyClearOoo}
+                className="px-2 py-1 rounded bg-gray-700/60 hover:bg-gray-700 text-gray-100"
+              >
+                Clear OOO
+              </button>
+              <button
+                type="button"
+                onClick={clearMatrixSelection}
+                className="px-2 py-1 rounded bg-transparent hover:bg-gray-800 text-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-[1520px] text-xs border-separate border-spacing-0 table-fixed">
             <thead>
@@ -1190,11 +1432,50 @@ const PropertiesDashboardPhase1: React.FC = () => {
                   <td className={`${frozenCellBase} text-right`} style={{ width: frozenWidths.qm, minWidth: frozenWidths.qm, maxWidth: frozenWidths.qm, left: frozenLeft.qm, backgroundColor: '#1C1F24' }}>{row.qm}</td>
                   <td className={`${frozenCellBase} text-right`} style={{ width: frozenWidths.betten, minWidth: frozenWidths.betten, maxWidth: frozenWidths.betten, left: frozenLeft.betten, backgroundColor: '#1C1F24' }}>{row.betten}</td>
                   <td className={`${frozenCellBase} text-right ${leftZoneBoundaryClass}`} style={{ width: frozenWidths.rooms, minWidth: frozenWidths.rooms, maxWidth: frozenWidths.rooms, left: frozenLeft.rooms, backgroundColor: '#1C1F24' }}>{row.rooms}</td>
-                  {row.dayCells.map((cell, idx) => (
-                    <td key={`${row.apartmentId}-${idx}`} className={`px-1.5 py-1 border-b border-gray-800 text-center w-[56px] min-w-[56px] max-w-[56px] whitespace-nowrap relative z-0 ${statusClass(cell.kind)}`}>
-                      {cell.kind === 'ooo' ? 'OOO' : formatCellCurrency(cell.amountNet)}
-                    </td>
-                  ))}
+                  {row.dayCells.map((cell, idx) => {
+                    const isSelectedRow = selectedRange?.apartmentId === row.apartmentId;
+                    const s = isSelectedRow ? Math.min(selectedRange.startIdx, selectedRange.endIdx) : -1;
+                    const e = isSelectedRow ? Math.max(selectedRange.startIdx, selectedRange.endIdx) : -2;
+                    const inSel = isSelectedRow && idx >= s && idx <= e;
+                    const isSelEdge = inSel && (idx === s || idx === e);
+
+                    return (
+                      <td
+                        key={`${row.apartmentId}-${idx}`}
+                        className={[
+                          'px-1.5 py-1 border-b border-gray-800 text-center w-[56px] min-w-[56px] max-w-[56px] whitespace-nowrap relative z-0 select-none',
+                          statusClass(cell.kind),
+                          inSel ? 'outline outline-2 outline-purple-500/70 bg-purple-500/10' : '',
+                          isSelEdge ? 'outline-purple-400' : '',
+                        ].filter(Boolean).join(' ')}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setMatrixSelectedApartmentId(row.apartmentId);
+                          setMatrixSelStartIdx(idx);
+                          setMatrixSelEndIdx(idx);
+                          setMatrixIsSelecting(true);
+                        }}
+                        onMouseEnter={() => {
+                          if (!matrixIsSelecting) return;
+                          if (matrixSelectedApartmentId !== row.apartmentId) return;
+                          setMatrixSelEndIdx(idx);
+                        }}
+                        onClick={(e) => {
+                          if (!e.shiftKey) return;
+                          if (matrixSelectedApartmentId !== row.apartmentId || matrixSelStartIdx == null) {
+                            setMatrixSelectedApartmentId(row.apartmentId);
+                            setMatrixSelStartIdx(idx);
+                            setMatrixSelEndIdx(idx);
+                            return;
+                          }
+                          setMatrixSelEndIdx(idx);
+                        }}
+                        title={cell.kind === 'ooo' ? 'OOO — blocked' : undefined}
+                      >
+                        {cell.kind === 'ooo' ? 'OOO' : formatCellCurrency(cell.amountNet)}
+                      </td>
+                    );
+                  })}
                   <td className="px-1.5 py-1 border-b border-gray-800 text-right sticky right-0 bg-[#1C1F24] z-10">
                     {formatPct(row.occupancyPctOperationalDays)}
                   </td>

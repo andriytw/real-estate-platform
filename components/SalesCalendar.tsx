@@ -174,6 +174,22 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     adminEvents,
   });
 
+  // Effective status for display: if TODAY (local) overlaps a BLOCK booking, show OOO.
+  const todayKey = formatDateISO(new Date());
+  const oooTodayPropertyIds = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const b of allBookings) {
+      if (String(b.type || '').toUpperCase() !== 'BLOCK') continue;
+      const pid = String((b.propertyId as any) ?? (b.roomId as any) ?? '').trim();
+      if (!pid) continue;
+      const s = normalizeDateKey(String(b.start ?? ''));
+      const e = normalizeDateKey(String(b.end ?? ''));
+      if (!s || !e || s >= e) continue;
+      if (s <= todayKey && todayKey < e) set.add(pid);
+    }
+    return set;
+  }, [allBookings, todayKey]);
+
   // State
   const [bookings, setBookings] = useState<Booking[]>([]); // Без демо-бронювань
 
@@ -248,9 +264,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         area: p.details?.area ?? p.area ?? 0,
         termStatus: p.termStatus ?? undefined,
         department: p.apartmentGroupName ?? '',
-        status: p.apartmentStatus ?? null,
+        status: oooTodayPropertyIds.has(String(p.id)) ? 'ooo' : (p.apartmentStatus ?? null),
       })),
-    [properties]
+    [properties, oooTodayPropertyIds]
   );
 
   const selectedApartmentPayloads = React.useMemo<SelectedApartmentData[]>(() => {
@@ -269,13 +285,13 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
           apartmentCode: property.title || property.id,
           apartmentGroupName: property.apartmentGroupName ?? null,
           marketplaceUrl: property.marketplaceUrl ?? null,
-          status: property.apartmentStatus ?? null,
+          status: oooTodayPropertyIds.has(String(property.id)) ? 'ooo' : (property.apartmentStatus ?? null),
           area: property.details?.area ?? property.area ?? 0,
           rooms: property.details?.rooms ?? property.rooms ?? 0,
           beds: property.details?.beds ?? 0,
         };
       });
-  }, [propertyById, selectedPropertyIds]);
+  }, [propertyById, selectedPropertyIds, oooTodayPropertyIds]);
 
   // View Details Modal State
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
