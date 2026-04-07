@@ -4,7 +4,7 @@ import {
   registerShellDebugSnapshotGetter,
   buildAccountDashboardShellDebugSnapshot,
 } from '../lib/shellDebug';
-import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Ruler, Square, Download, LayoutGrid, Bed, MoreVertical, Archive, RotateCcw, History } from 'lucide-react';
+import { LayoutDashboard, Calendar, MessageSquare, Settings, LogOut, User, PieChart, TrendingUp, Users, CheckCircle2, AlertCircle, AlertTriangle, Clock, ArrowRight, Building, Briefcase, Mail, DollarSign, FileText, Calculator, ChevronDown, ChevronUp, ChevronRight, FileBox, Bookmark, X, Save, Building2, Phone, MapPin, Home, Search, Filter, Plus, Edit, Camera, BarChart3, Box, FolderOpen, Folder, File as FileIcon, Upload, Trash2, AreaChart, PenTool, DoorOpen, Wrench, Check, Zap, Droplet, Flame, Video, BookOpen, Eye, Paperclip, Square, Download, MoreVertical, Archive, RotateCcw, History } from 'lucide-react';
 import { useWorker } from '../contexts/WorkerContext';
 
 import AdminCalendar from './AdminCalendar';
@@ -187,6 +187,12 @@ import {
 } from '../types';
 import { euToIso, validateEuDate } from '../utils/leaseTermDates';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
+import {
+  getPropertyListPrimaryTitle,
+  getPropertyListSubtitleLine,
+  getPropertyListMetricsLine,
+  getPropertyListSearchParts,
+} from '../utils/propertyListCardLabels';
 import { formatApartmentIdentificationLine, buildMultiApartmentClientMessage } from '../utils/salesOfferFlow';
 import { getMarketplaceBaseUrl, getMarketplaceUrlForProperty } from '../utils/marketplaceUrl';
 import { PAGE_INSTANCE_ID } from '../utils/pageInstance';
@@ -219,12 +225,6 @@ function normalizeSearch(s: string) {
     .trim()
     .replaceAll("ß", "ss")
     .replaceAll("straße", "strasse");
-}
-
-function extractStreet(address?: string | null) {
-  if (!address) return "";
-  const firstPart = address.split(",")[0]?.trim() ?? "";
-  return firstPart.replace(/\s*\d.*$/, "").trim();
 }
 
 /** Build view payload for read-only offer modal. Stable sort by offerNo then id so apartment order is identical regardless of which row's View was clicked. */
@@ -597,6 +597,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
 
   const [properties, setProperties] = useState<Property[]>(initialProps);
   const [propertySearch, setPropertySearch] = useState('');
+  const [propertyGroupFilter, setPropertyGroupFilter] = useState<'all' | string>('all');
+  const [propertyListSort, setPropertyListSort] = useState<'asc' | 'desc'>('asc');
   const [archiveFilter, setArchiveFilter] = useState<'active' | 'archived'>('active');
   const [propertyMenuOpenId, setPropertyMenuOpenId] = useState<string | null>(null);
   const [archiveModalPropertyId, setArchiveModalPropertyId] = useState<string | null>(null);
@@ -914,18 +916,56 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     const q = normalizeSearch(propertySearch);
     if (!q) return properties;
     return properties.filter((p) => {
-      const addressStr = formatPropertyAddress(p);
-      const street = normalizeSearch(extractStreet(addressStr));
-      const title = normalizeSearch(p.title ?? "");
-      return street.includes(q) || title.includes(q);
+      const parts = getPropertyListSearchParts(p);
+      return parts.some((part) => normalizeSearch(part).includes(q));
     });
   }, [properties, propertySearch]);
 
+  const apartmentGroupsSortedByName = useMemo(
+    () =>
+      [...apartmentGroups].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+      ),
+    [apartmentGroups]
+  );
+
   const displayedProperties = useMemo(() => {
-    return filteredProperties.filter((p) =>
+    let list = filteredProperties.filter((p) =>
       archiveFilter === 'active' ? p.archivedAt == null : p.archivedAt != null
     );
-  }, [filteredProperties, archiveFilter]);
+    if (propertyGroupFilter !== 'all') {
+      list = list.filter((p) => p.apartmentGroupId === propertyGroupFilter);
+    }
+    const dir = propertyListSort === 'asc' ? 1 : -1;
+    return [...list].sort(
+      (a, b) =>
+        getPropertyListPrimaryTitle(a).localeCompare(
+          getPropertyListPrimaryTitle(b),
+          undefined,
+          { sensitivity: 'base' }
+        ) * dir
+    );
+  }, [filteredProperties, archiveFilter, propertyGroupFilter, propertyListSort]);
+
+  useEffect(() => {
+    if (activeDepartment !== 'properties' || propertiesTab !== 'dashboard') return;
+    if (apartmentGroupsLoaded) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await apartmentGroupsService.getAll();
+        if (!cancelled) {
+          setApartmentGroups(list);
+          setApartmentGroupsLoaded(true);
+        }
+      } catch (e) {
+        console.error('[AccountDashboard] apartment groups load', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDepartment, propertiesTab, apartmentGroupsLoaded]);
 
   const handleArchiveConfirm = useCallback(async (propertyId: string) => {
     try {
@@ -6500,12 +6540,16 @@ Hero Rooms Team`;
           <div className="w-full md:w-[350px] flex-shrink-0 border-r border-gray-800 p-4 space-y-3 bg-[#161B22] animate-pulse">
             <div className="h-10 rounded-lg bg-gray-800/60" />
             <div className="h-9 rounded-lg bg-gray-800/60" />
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="h-9 flex-1 rounded-md bg-gray-800/60" />
+              <div className="h-9 flex-1 rounded-md bg-gray-800/60" />
+            </div>
+            <div className="flex gap-2 rounded-lg border border-gray-800/80 p-0.5">
               <div className="h-8 flex-1 rounded-md bg-gray-800/60" />
               <div className="h-8 flex-1 rounded-md bg-gray-800/60" />
             </div>
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-24 rounded-xl bg-gray-800/60" />
+              <div key={i} className="h-20 rounded-xl bg-gray-800/60" />
             ))}
           </div>
           <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-[#0D1117] animate-pulse">
@@ -6539,7 +6583,7 @@ Hero Rooms Team`;
                     <Plus className="w-5 h-5" /> Додати квартиру
                 </button>
             </div>
-            <div className="relative mb-4">
+            <div className="relative mb-3">
                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                <input
                  id="property-search"
@@ -6547,20 +6591,58 @@ Hero Rooms Team`;
                  type="text"
                  value={propertySearch}
                  onChange={(e) => setPropertySearch(e.target.value)}
-                 placeholder="Search by street..."
-                 aria-label="Search properties by street"
+                 placeholder="Search street, unit, city…"
+                 aria-label="Search properties"
                  className="w-full bg-[#0D1117] border border-gray-700 rounded-lg py-2 pl-9 text-sm text-white focus:border-emerald-500 outline-none"
                />
             </div>
-            <div className="flex rounded-lg border border-gray-700 p-0.5 mb-4 bg-[#0D1117]">
+            <div className="flex flex-col sm:flex-row gap-2 mb-3">
+               <label className="sr-only" htmlFor="property-group-filter">Apartment group</label>
+               <select
+                 id="property-group-filter"
+                 value={propertyGroupFilter}
+                 onChange={(e) => setPropertyGroupFilter(e.target.value)}
+                 aria-label="Filter by apartment group"
+                 className="w-full min-w-0 flex-1 bg-[#0D1117] border border-gray-700 rounded-lg py-2 px-2 text-sm text-white focus:border-emerald-500 outline-none"
+               >
+                 <option value="all">All groups</option>
+                 {apartmentGroupsSortedByName.map((ag) => (
+                   <option key={ag.id} value={ag.id}>{ag.name}</option>
+                 ))}
+               </select>
+               <label className="sr-only" htmlFor="property-list-sort">Sort</label>
+               <select
+                 id="property-list-sort"
+                 value={propertyListSort}
+                 onChange={(e) => setPropertyListSort(e.target.value as 'asc' | 'desc')}
+                 aria-label="Sort property list"
+                 className="w-full min-w-0 flex-1 bg-[#0D1117] border border-gray-700 rounded-lg py-2 px-2 text-sm text-white focus:border-emerald-500 outline-none"
+               >
+                 <option value="asc">A → Z</option>
+                 <option value="desc">Z → A</option>
+               </select>
+            </div>
+            <div className="flex rounded-lg border border-gray-700 p-0.5 mb-3 bg-[#0D1117]">
                <button type="button" onClick={() => setArchiveFilter('active')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${archiveFilter === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'text-gray-500 hover:text-gray-300'}`}>Active</button>
                <button type="button" onClick={() => setArchiveFilter('archived')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${archiveFilter === 'archived' ? 'bg-emerald-500/20 text-emerald-400' : 'text-gray-500 hover:text-gray-300'}`}>Archived</button>
             </div>
-            {displayedProperties.map((prop) => (
-               <div key={prop.id} className={`cursor-pointer p-4 rounded-xl border transition-all duration-200 ${selectedPropertyId === prop.id ? 'bg-[#1C1F24] border-l-4 border-l-emerald-500 border-y-transparent border-r-transparent shadow-lg' : 'bg-[#1C1F24] border-gray-800 hover:bg-[#23262b] hover:border-gray-700'}`}>
-                  <div onClick={() => { setSelectedPropertyId(prop.id); setPropertyMenuOpenId(null); }} className="block">
-                     <div className="flex justify-between items-start mb-1">
-                        <h3 className="font-bold text-white text-sm">{prop.title}</h3>
+            {displayedProperties.map((prop) => {
+               const line1 = getPropertyListPrimaryTitle(prop) || '—';
+               const subtitle = getPropertyListSubtitleLine(prop);
+               const metrics = getPropertyListMetricsLine(prop);
+               return (
+               <div key={prop.id} className={`cursor-pointer px-3 py-2 rounded-xl border transition-all duration-200 ${selectedPropertyId === prop.id ? 'bg-[#1C1F24] border-l-4 border-l-emerald-500 border-y-transparent border-r-transparent shadow-lg' : 'bg-[#1C1F24] border-gray-800 hover:bg-[#23262b] hover:border-gray-700'}`}>
+                  <div onClick={() => { setSelectedPropertyId(prop.id); setPropertyMenuOpenId(null); }} className="block min-w-0">
+                     <div className="flex justify-between items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                           <h3 className="font-semibold text-white text-sm leading-snug truncate" title={line1}>{line1}</h3>
+                           {subtitle ? (
+                              <p className="text-xs text-gray-400 truncate mt-0.5 leading-snug" title={subtitle}>{subtitle}</p>
+                           ) : null}
+                           {metrics ? (
+                              <p className="text-[10px] text-gray-500 mt-0.5 leading-snug">{metrics}</p>
+                           ) : null}
+                        </div>
                         <div className="flex items-center gap-1 shrink-0">
                            {archiveFilter === 'archived' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-600/50 text-gray-400">Archived</span>}
                            {prop.zweckentfremdungFlag && <span className="text-amber-500" title="Zweckentfremdung Hinweis"><AlertTriangle className="w-4 h-4" /></span>}
@@ -6568,21 +6650,9 @@ Hero Rooms Team`;
                            <button type="button" onClick={(e) => { e.stopPropagation(); setPropertyMenuOpenId(prev => prev === prop.id ? null : prop.id); }} className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" aria-label="Actions"><MoreVertical className="w-4 h-4" /></button>
                         </div>
                      </div>
-                     <p className="text-xs text-gray-500 truncate mb-2">{formatPropertyAddress(prop)}</p>
-                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-gray-400">
-                        {(prop.details?.area != null && prop.details.area !== 0) && (
-                           <span className="flex items-center gap-1" title="Площа"><Ruler className="w-3 h-3 text-gray-500 shrink-0" /><span className="text-gray-300 font-medium">{prop.details.area} м²</span></span>
-                        )}
-                        {(prop.details?.rooms != null || prop.details?.beds != null) && (
-                           <span className="flex items-center gap-3">
-                              <span className="flex items-center gap-0.5" title="Кімнати"><LayoutGrid className="w-3 h-3 text-gray-500 shrink-0" /><span className="text-gray-300 font-medium">{prop.details.rooms ?? 0}</span></span>
-                              <span className="flex items-center gap-0.5" title="Ліжка"><Bed className="w-3 h-3 text-gray-500 shrink-0" /><span className="text-gray-300 font-medium">{prop.details.beds ?? 0}</span></span>
-                           </span>
-                        )}
-                     </div>
                   </div>
                   {propertyMenuOpenId === prop.id && (
-                     <div className="mt-2 pt-2 border-t border-gray-700 flex flex-col gap-0.5" onClick={(e) => e.stopPropagation()}>
+                     <div className="mt-1.5 pt-1.5 border-t border-gray-700 flex flex-col gap-0.5" onClick={(e) => e.stopPropagation()}>
                         {prop.archivedAt == null ? (
                            <button type="button" onClick={() => { setArchiveModalPropertyId(prop.id); setPropertyMenuOpenId(null); }} className="text-left px-3 py-1.5 text-xs text-amber-400 hover:bg-amber-500/10 rounded flex items-center gap-2"><Archive className="w-3.5 h-3.5" /> Archive…</button>
                         ) : (
@@ -6594,7 +6664,8 @@ Hero Rooms Team`;
                      </div>
                   )}
                </div>
-            ))}
+               );
+            })}
          </div>
 
          {/* Right Content - Details */}
