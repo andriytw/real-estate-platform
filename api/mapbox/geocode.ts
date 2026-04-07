@@ -3,7 +3,7 @@
  * Mapbox forward geocoding. Uses process.env only (no client env).
  */
 
-import { mapboxGeocodeSuggestionFromFeature } from '../../utils/mapboxAddressFromFeature';
+import { mapboxGeocodeSuggestionFromFeature } from '../../utils/mapboxAddressFromFeature.js';
 
 const MAPBOX_GEOCODE = 'https://api.mapbox.com/geocoding/v5/mapbox.places';
 
