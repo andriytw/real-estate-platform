@@ -4,6 +4,7 @@ import MarketSplitView from './MarketSplitView';
 import { Property } from '../types';
 import { getPropertyStats } from '../utils/propertyStats';
 import { fetchBlockedPropertyIds } from '../services/marketAvailabilityService';
+import { filterActiveProperties } from '../lib/propertyActive';
 
 interface MarketplaceProps {
   onListingClick: (listing: Property) => void;
@@ -18,7 +19,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: p
 
   /** Defensive: primary exclusion is active-only fetch in App; keep list/map/search in sync if parent ever passes archived rows. */
   const safeProperties = useMemo(
-    () => (propsProperties || []).filter((p) => p.archivedAt == null),
+    () => filterActiveProperties(propsProperties ?? []),
     [propsProperties]
   );
   const loading = propsLoading !== undefined ? propsLoading : false;

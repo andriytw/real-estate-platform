@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { CalendarEvent, Property, TaskType } from '../types';
 import { calendarEventsService, propertiesService } from '../services/supabaseService';
+import { filterActiveProperties } from '../lib/propertyActive';
 import { FACILITY_TASK_TYPES, ACCOUNTING_TASK_TYPES } from '../utils/taskColors';
 
 interface KanbanTaskModalProps {
@@ -41,8 +42,8 @@ export default function KanbanTaskModal({
 
   const loadProperties = async () => {
     try {
-      const props = await propertiesService.getAll();
-      setProperties(props);
+      const props = await propertiesService.getAll(true, { excludeArchived: true });
+      setProperties(filterActiveProperties(props));
     } catch (error) {
       console.error('Error loading properties:', error);
     }

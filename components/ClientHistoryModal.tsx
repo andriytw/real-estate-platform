@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { X, User, Mail, Phone, MapPin } from 'lucide-react';
 import type { Lead, Booking, InvoiceData, ReservationData, Property, CreateBookingFormData } from '../types';
 import { buildClientHistoryForLead, type ClientHistoryContext, type ClientHistory } from '../utils/clientHistory';
+import { filterActiveProperties } from '../lib/propertyActive';
 import { getPropertyDisplayLabel } from '../utils/formatPropertyAddress';
 import CreateBookingModal from './CreateBookingModal';
 
@@ -117,7 +118,7 @@ const ClientHistoryModal: React.FC<ClientHistoryModalProps> = ({ lead, onClose, 
         {showCreateBookingModal && (
           <CreateBookingModal
             lead={lead}
-            properties={context.properties}
+            properties={filterActiveProperties(context.properties)}
             onClose={() => setShowCreateBookingModal(false)}
             onSave={onCreateBooking ?? undefined}
           />

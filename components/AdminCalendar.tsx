@@ -15,6 +15,7 @@ import { effectiveDepartmentScope } from '../lib/permissions';
 import { _dbg } from '../lib/tabResumeCoalesce';
 import { safeGetUser } from '../lib/supabaseAuthGuard';
 import { getFacilityTaskPrimaryLine } from '../lib/facilityTaskCardDisplay';
+import { filterActiveProperties } from '../lib/propertyActive';
 
 type ViewMode = 'month' | 'week' | 'day';
 
@@ -51,7 +52,10 @@ interface AdminCalendarProps {
   onAddEvent: (event: CalendarEvent) => void;
   onUpdateEvent: (event: CalendarEvent) => void;
   showLegend?: boolean;
+  /** Full list including archived — historical label resolution, CSV export, task cards. */
   properties?: Property[];
+  /** Active inventory only — property dropdown and new-task flows. When omitted, derived from `properties`. */
+  operationalProperties?: Property[];
   categories?: TaskType[]; // Task categories for filtering
   onUpdateBookingStatus?: (bookingId: string | number, newStatus: BookingStatus) => void; // Callback for updating booking status
 }
@@ -78,7 +82,7 @@ function formatPropertyLabelAddressFirst(prop: Property): string {
   return `${getPropertyAddress(prop)} — ${prop.title}`;
 }
 
-const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpdateEvent, showLegend = true, properties, categories, onUpdateBookingStatus }) => {
+const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpdateEvent, showLegend = true, properties, operationalProperties: operationalPropertiesProp, categories, onUpdateBookingStatus }) => {
   const { worker: currentWorker } = useWorker();
   // Initialize with current date
   const now = new Date();
@@ -87,8 +91,11 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [weekAnchorDate, setWeekAnchorDate] = useState<Date>(() => new Date());
   
-  // Use passed properties or fallback to mock
-  const propertyList = properties || MOCK_PROPERTIES;
+  const propertyListFull = properties || MOCK_PROPERTIES;
+  const propertyListOperational = useMemo(
+    () => (operationalPropertiesProp !== undefined ? operationalPropertiesProp : filterActiveProperties(propertyListFull)),
+    [operationalPropertiesProp, propertyListFull]
+  );
   
   // Use passed categories or fallback to default
   const availableTaskTypes = categories || TASK_TYPES;
@@ -311,7 +318,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
       }
       const assigneeId = getCalendarEventAssigneeId(e);
       const assigneeName = getCalendarEventAssigneeName(e, (id) => workers.find((w) => w.id === id)?.name) || '';
-      const prop = e.propertyId ? propertyList.find(p => p.id === e.propertyId) : null;
+      const prop = e.propertyId ? propertyListFull.find(p => p.id === e.propertyId) : null;
       if (import.meta.env.DEV) {
         if (e.propertyId && !prop) console.warn('[CSV] property not found for task', e.id, 'propertyId', e.propertyId);
         if (assigneeId && !workers.find(w => w.id === assigneeId) && !e.assignee) console.warn('[CSV] worker not found for task', e.id, 'assigneeId', assigneeId);
@@ -723,7 +730,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
     e.stopPropagation();
     if (loadingWorkers) return;
     setDayToAdd(day);
-    setNewTaskProperty(propertyList[0]?.id || '');
+    setNewTaskProperty(propertyListOperational[0]?.id || '');
     setNewTaskType('Arbeit nach plan');
     setNewTaskAssignee(''); // Reset to empty (unassigned)
     setNewTaskComment('');
@@ -731,7 +738,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
   };
 
   const handleSaveTask = async () => {
-    const property = propertyList.find(p => p.id === newTaskProperty);
+    const property = propertyListOperational.find(p => p.id === newTaskProperty);
     if (!property) return;
 
     try {
@@ -1055,7 +1062,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
               {(() => {
                 const visible = getVisibleFacilityTasks(activeBucket);
                 const completedNoProperties = activeBucket === 'completed' && visible.length > 0 &&
-                  !visible.some(e => e.propertyId && propertyList.find(p => p.id === e.propertyId));
+                  !visible.some(e => e.propertyId && propertyListFull.find(p => p.id === e.propertyId));
                 const exportDisabled = loadingWorkers || properties == null || completedNoProperties;
                 return (
                   <>
@@ -1105,7 +1112,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                     {dayEvents.map(event => {
                       const assigneeId = getCalendarEventAssigneeId(event);
                       const assigneeName = getCalendarEventAssigneeName(event, (id) => workers.find((w) => w.id === id)?.name) || '—';
-                      const prop = event.propertyId ? propertyList.find(p => p.id === event.propertyId) : null;
+                      const prop = event.propertyId ? propertyListFull.find(p => p.id === event.propertyId) : null;
                       const addr = prop?.address ?? (prop as any)?.full_address ?? (prop as any)?.fullAddress ?? '';
                       const unit = prop?.title ?? '';
                       const addressUnit = (addr && unit) ? `${addr} — ${unit}` : addr || unit || event.locationText || '—';
@@ -1432,12 +1439,12 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                         isDoneTask(event) ? 'text-gray-500 line-through' : 'text-white'
                       }`}>
                          {!isAccountingCalendar && event.propertyId ? (() => {
-                           const prop = propertyList.find(p => p.id === event.propertyId);
+                           const prop = propertyListFull.find(p => p.id === event.propertyId);
                            return prop ? getFacilityTaskPrimaryLine(event, prop) : (event.title ?? '');
                          })() : event.title}
                       </div>
                       {!isAccountingCalendar && event.propertyId && (() => {
-                        const prop = propertyList.find(p => p.id === event.propertyId);
+                        const prop = propertyListFull.find(p => p.id === event.propertyId);
                         return prop ? <div className="text-[10px] opacity-70 truncate mb-0.5">{formatPropertyLabelAddressFirst(prop)}</div> : null;
                       })()}
                       <div className="flex justify-between items-center mt-1">
@@ -1508,7 +1515,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                            onChange={(e) => setNewTaskProperty(e.target.value)}
                            className="w-full appearance-none bg-[#111315] border border-gray-700 rounded-lg p-3 pl-3 pr-8 text-sm text-white focus:border-emerald-500 focus:outline-none"
                          >
-                           {propertyList.map(p => (
+                           {propertyListOperational.map(p => (
                               <option key={p.id} value={p.id}>{formatPropertyLabel(p)}</option>
                            ))}
                          </select>
@@ -1645,7 +1652,7 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                          isDoneTask(viewEvent) ? 'text-gray-500 line-through' : 'text-white'
                        }`}>
                          {!isAccountingCalendar && viewEvent.propertyId ? (() => {
-                           const prop = propertyList.find(p => p.id === viewEvent!.propertyId);
+                           const prop = propertyListFull.find(p => p.id === viewEvent!.propertyId);
                            const unitTitle = (prop?.title ?? '').trim().toLowerCase();
                            const eventTitle = (viewEvent.title ?? '').trim().toLowerCase();
                            const isDuplicate = unitTitle && eventTitle && eventTitle === unitTitle;
@@ -1654,11 +1661,11 @@ const AdminCalendar: React.FC<AdminCalendarProps> = ({ events, onAddEvent, onUpd
                          {isAccountingCalendar ? (viewEvent.status === 'archived' && <Archive className="w-4 h-4 text-gray-500" />) : (isDoneTask(viewEvent) && <CheckCircle2 className="w-4 h-4 text-gray-500" />)}
                        </h3>
                        {!isAccountingCalendar && viewEvent.propertyId && (() => {
-                         const prop = propertyList.find(p => p.id === viewEvent!.propertyId);
+                         const prop = propertyListFull.find(p => p.id === viewEvent!.propertyId);
                          return prop ? <p className="text-xs text-gray-400 mt-0.5 truncate">{formatPropertyLabelAddressFirst(prop)}</p> : null;
                        })()}
                        {(() => {
-                         const prop = propertyList.find(p => p.id === viewEvent.propertyId);
+                         const prop = propertyListFull.find(p => p.id === viewEvent.propertyId);
                          const unitTitle = (prop?.title ?? '').trim().toLowerCase();
                          const eventTitle = (viewEvent.title ?? '').trim().toLowerCase();
                          const titleShowsType = !isAccountingCalendar && !!viewEvent.propertyId && !!unitTitle && !!eventTitle && eventTitle === unitTitle;

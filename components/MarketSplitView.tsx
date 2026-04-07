@@ -5,6 +5,9 @@ import MarketMap, { type ListingForMap } from './MarketMap';
 import { haversineKm } from '../utils/haversine';
 import type { Property } from '../types';
 
+/** Set to true to show the sticky "Post a New Ad to Market" CTA on `/market`. */
+const SHOW_MARKET_POST_BUTTON = false;
+
 function validCoords(lat: number | null | undefined, lng: number | null | undefined): boolean {
   if (lat == null || lng == null) return false;
   return (
@@ -168,7 +171,7 @@ export default function MarketSplitView({
     <div className="h-full min-h-0 flex gap-4">
       <div className="w-[460px] max-w-[520px] shrink-0 min-h-0 flex flex-col border-r border-gray-800 bg-[#111315]">
         <div className="sticky top-0 z-10 bg-[#111315] pt-2 pb-2 px-4">
-          {onPostAdClick && (
+          {SHOW_MARKET_POST_BUTTON && onPostAdClick && (
             <button
               type="button"
               onClick={onPostAdClick}

@@ -85,6 +85,7 @@ import { ApartmentStatisticsSection } from './ApartmentStatisticsSection';
 import { VirtualDocumentsManager } from './VirtualDocumentsManager';
 import PropertiesDashboardPhase1 from './properties/PropertiesDashboardPhase1';
 import { formatLocalDateYmd } from '../lib/localDate';
+import { isActiveProperty } from '../lib/propertyActive';
 import { hasBlockOverlapForPropertyHalfOpen, isPropertyBlockActiveOnDate } from '../lib/oooBlocks';
 
 const METER_UNIT_OPTIONS: { value: string; label: string }[] = [
@@ -596,6 +597,10 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [properties, setProperties] = useState<Property[]>(initialProps);
+  const operationalProperties = useMemo(
+    () => properties.filter(isActiveProperty),
+    [properties]
+  );
   const [propertySearch, setPropertySearch] = useState('');
   const [propertyGroupFilter, setPropertyGroupFilter] = useState<'all' | string>('all');
   const [propertyListSort, setPropertyListSort] = useState<'asc' | 'desc'>('asc');
@@ -9835,6 +9840,7 @@ Hero Rooms Team`;
           onUpdateEvent={handleAccountingEventUpdate}
           showLegend={false}
           properties={properties}
+          operationalProperties={operationalProperties}
           categories={ACCOUNTING_TASK_TYPES}
       />;
     }
@@ -9922,6 +9928,7 @@ Hero Rooms Team`;
           onUpdateEvent={handleAdminEventUpdate}
           showLegend={true}
           properties={properties}
+          operationalProperties={operationalProperties}
           onUpdateBookingStatus={async (bookingId, newStatus) => {
             const reservation = reservations.find(r => r.id === bookingId || String(r.id) === String(bookingId));
             if (reservation) {
@@ -10441,7 +10448,7 @@ Hero Rooms Team`;
           offers={offers}
           confirmedBookings={confirmedBookings}
           adminEvents={adminEvents}
-          properties={properties}
+          properties={operationalProperties}
           invoices={invoices}
           leads={leads}
           onViewProforma={(proformaId) => {
@@ -11202,7 +11209,7 @@ Hero Rooms Team`;
           getPaymentProofSignedUrl={async (filePath) => { try { return await paymentProofsService.getPaymentProofSignedUrl(filePath); } catch { return null; } }}
           proofSignedUrlByInvoiceId={proofSignedUrlByInvoiceId}
           adminEvents={adminEvents}
-          properties={properties}
+          properties={operationalProperties}
           prefilledRequestData={selectedRequest ? {
             firstName: selectedRequest.firstName,
             lastName: selectedRequest.lastName,

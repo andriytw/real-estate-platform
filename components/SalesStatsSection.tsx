@@ -12,6 +12,7 @@ import { useSalesAllBookings } from '../hooks/useSalesAllBookings';
 import { paymentProofsService } from '../services/supabaseService';
 import { getPropertyDisplayLabel } from '../utils/formatPropertyAddress';
 import { X } from 'lucide-react';
+import { filterActiveProperties } from '../lib/propertyActive';
 
 export interface SalesStatsSectionProps {
   reservations: ReservationData[];
@@ -75,7 +76,7 @@ function getAvailablePropertiesForDate(
   properties: Property[],
   confirmedBookings: Booking[]
 ): Property[] {
-  const activeProperties = properties.filter((p) => p.archivedAt == null);
+  const activeProperties = filterActiveProperties(properties);
   const blockedIds = new Set(
     confirmedBookings
       .filter((b) => b.start <= dateStr && b.end > dateStr)

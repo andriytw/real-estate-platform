@@ -13,6 +13,7 @@ import { useSalesAllBookings } from '../hooks/useSalesAllBookings';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
 import { resolveSalesStatusContext, getEffectiveSalesApartmentStatus } from '../lib/salesCalendarStatus';
 import { buildSalesBarSnapshot, SALES_BAR_NARROW_MAX_PX } from '../utils/salesBarSnapshot';
+import { filterActiveProperties } from '../lib/propertyActive';
 
 // Helper to normalize date strings for stacking key
 const normalizeDateKey = (v: string) => {
@@ -178,6 +179,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   onOpenProformaFromCalendar,
   onOpenInvoiceFromCalendar,
 }) => {
+  const safeProperties = React.useMemo(
+    () => filterActiveProperties(properties ?? []),
+    [properties]
+  );
   // Calendar layer: only confirmed bookings (occupancy). Offers/reservations/proformas stay in their sections.
   const { allBookings } = useSalesAllBookings({
     reservations,
@@ -257,13 +262,13 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   // propertyById, roomsFromProperties, selectedApartmentPayloads must be declared before any useEffect that uses them (avoid TDZ)
   const propertyById = React.useMemo(
-    () => new Map((properties || []).map((property) => [String(property.id), property])),
-    [properties]
+    () => new Map(safeProperties.map((property) => [String(property.id), property])),
+    [safeProperties]
   );
 
   const roomsFromProperties = React.useMemo(
     () =>
-      (properties || []).map((p) => ({
+      safeProperties.map((p) => ({
         id: p.id,
         name: p.title,
         city: p.city,
@@ -275,7 +280,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         department: p.apartmentGroupName ?? '',
         status: getEffectiveSalesApartmentStatus(String(p.id), p.apartmentStatus, allBookings, salesStatusContext),
       })),
-    [properties, allBookings, salesStatusContext]
+    [safeProperties, allBookings, salesStatusContext]
   );
 
   const selectedApartmentPayloads = React.useMemo<SelectedApartmentData[]>(() => {
@@ -1508,7 +1513,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                             const snap = buildSalesBarSnapshot(booking, {
                                               offers: offers ?? [],
                                               invoices: invoices ?? [],
-                                              properties: properties ?? [],
+                                              properties: safeProperties,
                                             });
                                             const narrow = width < SALES_BAR_NARROW_MAX_PX;
                                             const kautionCls =
@@ -1642,7 +1647,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         const financialSnap = buildSalesBarSnapshot(booking, {
           offers: offList,
           invoices: invList,
-          properties: properties ?? [],
+          properties: safeProperties,
         });
         const kautionPopoverCls =
           financialSnap.kautionTone === 'red'

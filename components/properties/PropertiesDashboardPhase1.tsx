@@ -587,7 +587,7 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
       setError(null);
       try {
         const [p, b, r, o, pf] = await Promise.all([
-          propertiesService.getAll(),
+          propertiesService.getAll(false, { excludeArchived: true }),
           bookingsService.getAll(),
           reservationsService.getAll(),
           offersService.getAll(),
@@ -1195,14 +1195,35 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
         <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
           <h3 className="text-sm font-semibold text-gray-300 mb-3">Summary</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-            <div><span className="text-gray-400">Apartments:</span> {monthData.summary.apartments}</div>
-            <div><span className="text-gray-400">Rooms:</span> {monthData.summary.rooms}</div>
-            <div><span className="text-gray-400">Beds:</span> {monthData.summary.beds}</div>
-            <div><span className="text-gray-400">Active:</span> {monthData.summary.active}</div>
-            <div><span className="text-gray-400">Employee:</span> {monthData.summary.employee}</div>
-            <div><span className="text-gray-400">OOO:</span> {monthData.summary.oooRoomNights}</div>
-            <div><span className="text-gray-400">In preparation:</span> {monthData.summary.inPreparation}</div>
+          <div className="flex flex-col gap-2 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">Apartments</span>
+              <span className="font-semibold text-white">{monthData.summary.apartments}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">Rooms</span>
+              <span className="font-semibold text-white">{monthData.summary.rooms}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">Beds</span>
+              <span className="font-semibold text-white">{monthData.summary.beds}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">Active</span>
+              <span className="font-semibold text-white">{monthData.summary.active}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">Employee</span>
+              <span className="font-semibold text-white">{monthData.summary.employee}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">OOO</span>
+              <span className="font-semibold text-white">{monthData.summary.oooRoomNights}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-400">In preparation</span>
+              <span className="font-semibold text-white">{monthData.summary.inPreparation}</span>
+            </div>
           </div>
         </section>
 

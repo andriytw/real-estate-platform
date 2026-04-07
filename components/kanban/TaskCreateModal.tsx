@@ -6,6 +6,7 @@ import { isEligibleTaskAssignee } from './assigneeUtils';
 import { FACILITY_TASK_TYPES, ACCOUNTING_TASK_TYPES, getTaskTextColor } from '../../utils/taskColors';
 import { useWorker } from '../../contexts/WorkerContext';
 import { workerRoleLabelUk } from '../../lib/workerRoleLabels';
+import { filterActiveProperties } from '../../lib/propertyActive';
 
 interface TaskCreateModalProps {
   isOpen: boolean;
@@ -112,10 +113,10 @@ const TaskCreateModal: React.FC<TaskCreateModalProps> = ({
     try {
       const [workersData, propertiesData] = await Promise.all([
         workersService.getAssignableWorkers(),
-        propertiesService.getAll()
+        propertiesService.getAll(true, { excludeArchived: true })
       ]);
       setWorkers(workersData);
-      setProperties(propertiesData);
+      setProperties(filterActiveProperties(propertiesData));
     } catch (err) {
       console.error('Error loading data:', err);
     }
