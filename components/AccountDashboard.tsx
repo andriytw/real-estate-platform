@@ -112,6 +112,10 @@ function formatDateUAAktOrendar(iso: string): string {
   return d && m && y ? `${d}.${m}.${y}` : iso;
 }
 
+function sameId(a: string | number | null | undefined, b: string | number | null | undefined): boolean {
+  return String(a ?? '') === String(b ?? '');
+}
+
 function CollapsibleSection({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
@@ -876,7 +880,10 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   });
   const [rentIncreaseFormError, setRentIncreaseFormError] = useState<string | null>(null);
   const [isAddingRentIncrease, setIsAddingRentIncrease] = useState(false);
-  const selectedProperty = useMemo(() => properties.find(p => p.id === selectedPropertyId) || properties[0] || null, [properties, selectedPropertyId]);
+  const selectedProperty = useMemo(
+    () => properties.find((p) => sameId(p.id, selectedPropertyId)) ?? null,
+    [properties, selectedPropertyId]
+  );
   const handleStatsPlanningPriceChange = useCallback(async (value: number) => {
     if (!selectedProperty?.id) return;
     const normalized = Math.max(0, Number.isFinite(value) ? value : 0);
@@ -951,6 +958,20 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         ) * dir
     );
   }, [filteredProperties, archiveFilter, propertyGroupFilter, propertyListSort]);
+
+  // Keep list selection aligned with the visible left list (list + units tabs only; not dashboard).
+  useEffect(() => {
+    if (activeDepartment !== 'properties' || propertiesTab === 'dashboard') return;
+    if (displayedProperties.length === 0) {
+      const nextId = '';
+      if (!sameId(nextId, selectedPropertyId)) setSelectedPropertyId(nextId);
+      return;
+    }
+    const stillVisible = displayedProperties.some((p) => sameId(p.id, selectedPropertyId));
+    if (stillVisible) return;
+    const nextId = displayedProperties[0].id;
+    if (!sameId(nextId, selectedPropertyId)) setSelectedPropertyId(String(nextId));
+  }, [activeDepartment, propertiesTab, displayedProperties, selectedPropertyId]);
 
   useEffect(() => {
     if (activeDepartment !== 'properties' || propertiesTab !== 'dashboard') return;
