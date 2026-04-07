@@ -962,6 +962,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   // Keep list selection aligned with the visible left list (list + units tabs only; not dashboard).
   useEffect(() => {
     if (activeDepartment !== 'properties' || propertiesTab === 'dashboard') return;
+    if (isLoadingProperties || properties.length === 0) return;
     if (displayedProperties.length === 0) {
       const nextId = '';
       if (!sameId(nextId, selectedPropertyId)) setSelectedPropertyId(nextId);
@@ -971,7 +972,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     if (stillVisible) return;
     const nextId = displayedProperties[0].id;
     if (!sameId(nextId, selectedPropertyId)) setSelectedPropertyId(String(nextId));
-  }, [activeDepartment, propertiesTab, displayedProperties, selectedPropertyId]);
+  }, [activeDepartment, propertiesTab, displayedProperties, selectedPropertyId, isLoadingProperties, properties]);
 
   useEffect(() => {
     if (activeDepartment !== 'properties' || propertiesTab !== 'dashboard') return;
@@ -6561,6 +6562,47 @@ Hero Rooms Team`;
 
   const renderPropertiesContent = () => {
     if (!selectedProperty) {
+      if (isLoadingProperties) {
+        return (
+          <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-[#111315]" aria-busy="true">
+            <div className="w-full md:w-[350px] flex-shrink-0 border-r border-gray-800 p-4 space-y-3 bg-[#161B22] animate-pulse">
+              <div className="h-10 rounded-lg bg-gray-800/60" />
+              <div className="h-9 rounded-lg bg-gray-800/60" />
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="h-9 flex-1 rounded-md bg-gray-800/60" />
+                <div className="h-9 flex-1 rounded-md bg-gray-800/60" />
+              </div>
+              <div className="flex gap-2 rounded-lg border border-gray-800/80 p-0.5">
+                <div className="h-8 flex-1 rounded-md bg-gray-800/60" />
+                <div className="h-8 flex-1 rounded-md bg-gray-800/60" />
+              </div>
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-20 rounded-xl bg-gray-800/60" />
+              ))}
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-[#0D1117] animate-pulse">
+              <div className="h-64 rounded-xl bg-gray-800/60 mb-8" />
+              <div className="space-y-6">
+                <div className="h-32 rounded-xl bg-gray-800/60" />
+                <div className="h-48 rounded-xl bg-gray-800/60" />
+                <div className="h-40 rounded-xl bg-gray-800/60" />
+              </div>
+            </div>
+          </div>
+        );
+      }
+      if (displayedProperties.length === 0) {
+        return (
+          <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-[#111315] items-center justify-center p-8">
+            <div className="text-center max-w-md text-gray-400">
+              <p className="text-lg font-medium text-white mb-2">No properties to show</p>
+              <p className="text-sm">
+                Try another Active / Archived tab, clear search, or change the group filter. If the database has no rows yet, add a property first.
+              </p>
+            </div>
+          </div>
+        );
+      }
       return (
         <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-[#111315]" aria-busy="true">
           <div className="w-full md:w-[350px] flex-shrink-0 border-r border-gray-800 p-4 space-y-3 bg-[#161B22] animate-pulse">
