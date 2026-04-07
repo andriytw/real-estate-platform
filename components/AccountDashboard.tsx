@@ -5697,20 +5697,71 @@ ${internalCompany} Team`;
           const recipientPhone = linkedOffer?.phone?.trim() || undefined;
           const baseUrl = getMarketplaceBaseUrl().replace(/\/+$/, '');
           const brandedLink = `${baseUrl}/p/${savedInvoice.invoiceNumber}`;
-          const clientName = (savedInvoice.clientName || linkedOffer?.clientName || 'Guest').trim() || 'Guest';
-          const datesLine = (() => {
+          const fullName = (savedInvoice.clientName || linkedOffer?.clientName || '').trim();
+          const formatIsoToDdMmYyyy = (iso: string) => {
+            const s = iso.trim().slice(0, 10);
+            const parts = s.split('-');
+            if (parts.length !== 3) return s;
+            const [y, m, day] = parts;
+            if (!y || !m || !day) return s;
+            return `${String(day).padStart(2, '0')}.${String(m).padStart(2, '0')}.${y}`;
+          };
+          const requestedStayLine = (() => {
             const d = linkedOffer?.dates?.trim();
-            if (!d) return 'your stay';
+            if (!d) return '—';
             const parts = d.split(/\s+to\s+/i).map((s) => s.trim());
-            if (parts.length < 2) return 'your stay';
-            const formatD = (iso: string) => {
-              const [y, m, day] = iso.split('-');
-              return day && m && y ? `${day}.${m}.${y}` : iso;
-            };
-            return `${formatD(parts[0])} – ${formatD(parts[1])}`;
+            if (parts.length < 2) return '—';
+            return `${formatIsoToDdMmYyyy(parts[0])} – ${formatIsoToDdMmYyyy(parts[1])}`;
           })();
-          const totalStr = savedInvoice.totalGross != null ? savedInvoice.totalGross.toFixed(2) : '0.00';
-          const messageBody = `Hello ${clientName},\n\nplease find below the proforma invoice for your stay:\n${datesLine}\n\nProforma: ${savedInvoice.invoiceNumber}\nTotal: €${totalStr}`;
+          const pid = linkedOffer?.propertyId != null ? String(linkedOffer.propertyId).trim() : '';
+          const linkedProperty = pid ? properties.find((p) => String(p.id) === pid) : undefined;
+          const area =
+            linkedProperty != null
+              ? Number(linkedProperty.details?.area ?? linkedProperty.area ?? 0) || 0
+              : 0;
+          const rooms = linkedProperty != null ? getRoomsCount(linkedProperty) : 0;
+          const beds =
+            linkedProperty != null && linkedProperty.details?.beds != null
+              ? Number(linkedProperty.details.beds) || 0
+              : 0;
+          const netStr =
+            savedInvoice.totalNet != null && Number.isFinite(Number(savedInvoice.totalNet))
+              ? Number(savedInvoice.totalNet).toFixed(2)
+              : '0.00';
+          const vatStr =
+            savedInvoice.taxAmount != null && Number.isFinite(Number(savedInvoice.taxAmount))
+              ? Number(savedInvoice.taxAmount).toFixed(2)
+              : '0.00';
+          const grossStr =
+            savedInvoice.totalGross != null && Number.isFinite(Number(savedInvoice.totalGross))
+              ? Number(savedInvoice.totalGross).toFixed(2)
+              : '0.00';
+          const depositStr =
+            linkedOffer?.kaution != null && Number.isFinite(Number(linkedOffer.kaution))
+              ? Number(linkedOffer.kaution).toFixed(2)
+              : '0.00';
+          const greetingBlock = fullName
+            ? `Hello ${fullName},\n\nthank you for your request.`
+            : `Hello,\n\nthank you for your request.`;
+          const messageBody = `${greetingBlock}
+
+Please find your proforma invoice for the following stay:
+
+Requested stay: ${requestedStayLine}
+
+Total area: ${area} m²
+Total rooms: ${rooms}
+Total beds: ${beds}
+
+Total: Net ${netStr} € · VAT ${vatStr} € · Kaution ${depositStr} € · Gross ${grossStr} €
+
+You can view and download the proforma invoice here:
+${brandedLink}
+
+Please review the document and let us know if everything is correct.
+
+Best regards,
+Hero Rooms Team`;
           sendChannelResultPrefixRef.current = 'Proforma';
           sendChannelOnCloseRef.current = () => {
             setIsInvoiceModalOpen(false);
@@ -5724,11 +5775,10 @@ ${internalCompany} Team`;
           };
           setSendChannelPayload({
             messageBody,
-            documentLink: brandedLink,
-            subject: `Proforma ${savedInvoice.invoiceNumber}`,
+            documentLink: undefined,
+            subject: `Proforma Invoice ${savedInvoice.invoiceNumber}`,
             recipientEmail,
             recipientPhone,
-            proformaInvoiceId: String(savedInvoice.id),
           });
         } else {
           setIsInvoiceModalOpen(false);
@@ -12509,10 +12559,6 @@ ${internalCompany} Team`;
           const prefix = sendChannelResultPrefixRef.current || 'Offer';
           setToastMessage(`${prefix} saved and ${msg}`);
           setTimeout(() => setToastMessage(null), 5000);
-        }}
-        onErrorMessage={(msg) => {
-          setToastMessage(msg);
-          setTimeout(() => setToastMessage(null), 8000);
         }}
       />
       <ConfirmPaymentModal
