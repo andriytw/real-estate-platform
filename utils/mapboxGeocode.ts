@@ -4,11 +4,12 @@
  * Client-only: uses import.meta.env.NEXT_PUBLIC_MAPBOX_TOKEN (no process.env).
  */
 
-export interface GeocodeSuggestion {
-  label: string;
-  lat: number;
-  lng: number;
-}
+import {
+  mapboxGeocodeSuggestionFromFeature,
+  type GeocodeSuggestion,
+} from './mapboxAddressFromFeature';
+
+export type { GeocodeSuggestion };
 
 export async function fetchSuggestions(q: string, limit = 5): Promise<GeocodeSuggestion[]> {
   const trimmed = q.trim();
@@ -40,11 +41,7 @@ export async function fetchSuggestions(q: string, limit = 5): Promise<GeocodeSug
     if (!res.ok) return [];
     const data = await res.json();
     const features = Array.isArray(data.features) ? data.features : [];
-    return features.slice(0, limit).map((f: { place_name?: string; center?: [number, number] }) => ({
-      label: f.place_name || '',
-      lng: Array.isArray(f.center) && f.center.length >= 2 ? f.center[0] : 0,
-      lat: Array.isArray(f.center) && f.center.length >= 2 ? f.center[1] : 0,
-    }));
+    return features.slice(0, limit).map((f: unknown) => mapboxGeocodeSuggestionFromFeature(f));
   } catch {
     return [];
   }

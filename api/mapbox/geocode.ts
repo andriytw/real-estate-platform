@@ -3,6 +3,8 @@
  * Mapbox forward geocoding. Uses process.env only (no client env).
  */
 
+import { mapboxGeocodeSuggestionFromFeature } from '../../utils/mapboxAddressFromFeature';
+
 const MAPBOX_GEOCODE = 'https://api.mapbox.com/geocoding/v5/mapbox.places';
 
 export async function GET(request: Request) {
@@ -44,11 +46,7 @@ export async function GET(request: Request) {
     }
     const data = await res.json();
     const features = Array.isArray(data.features) ? data.features : [];
-    const suggestions = features.slice(0, limit).map((f: { place_name?: string; center?: [number, number] }) => ({
-      label: f.place_name || '',
-      lng: Array.isArray(f.center) && f.center.length >= 2 ? f.center[0] : 0,
-      lat: Array.isArray(f.center) && f.center.length >= 2 ? f.center[1] : 0,
-    }));
+    const suggestions = features.slice(0, limit).map((f: unknown) => mapboxGeocodeSuggestionFromFeature(f));
 
     return new Response(JSON.stringify(suggestions), {
       status: 200,

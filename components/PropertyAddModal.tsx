@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X } from 'lucide-react';
 import { Property } from '../types';
+import { fetchSuggestions, type GeocodeSuggestion } from '../utils/mapboxGeocode';
 
 interface PropertyAddModalProps {
   isOpen: boolean;
@@ -34,6 +35,72 @@ const defaultBuilding = {
   centralHeating: 'No'
 };
 
+const COUNTRY_OPTIONS = [
+  'Ukraine',
+  'Germany',
+  'Austria',
+  'Poland',
+  'Czech Republic',
+  'France',
+  'Italy',
+  'Spain',
+  'Netherlands',
+  'Belgium',
+  'Switzerland',
+  'United Kingdom',
+  'Romania',
+  'Hungary',
+  'Slovakia',
+  'Slovenia',
+  'Croatia',
+  'Bulgaria',
+  'Moldova',
+  'Turkey',
+  'Greece',
+  'Portugal',
+  'Sweden',
+  'Norway',
+  'Denmark',
+  'Finland',
+  'Estonia',
+  'Latvia',
+  'Lithuania',
+  'Other',
+] as const;
+
+function normalizeCountryKey(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '');
+}
+
+/** Map Mapbox country text to a value in COUNTRY_OPTIONS. */
+function matchCountryOption(suggested: string | undefined): string {
+  if (!suggested?.trim()) return 'Ukraine';
+  const t = suggested.trim();
+  const nt = normalizeCountryKey(t);
+  const exact = COUNTRY_OPTIONS.find((c) => normalizeCountryKey(c) === nt);
+  if (exact) return exact;
+  const partial = COUNTRY_OPTIONS.find(
+    (c) => nt.includes(normalizeCountryKey(c)) || normalizeCountryKey(c).includes(nt)
+  );
+  if (partial) return partial;
+  return 'Other';
+}
+
+function buildTitleSuggestion(s: GeocodeSuggestion): string {
+  const ci = s.city?.trim() || '';
+  const st = s.street?.trim() || '';
+  const hn = s.houseNumber?.trim() || '';
+  if (st && hn && ci) return `${st} ${hn}, ${ci}`;
+  if (st && ci) return `${st}, ${ci}`;
+  if (ci) return `Квартира, ${ci}`;
+  const first = s.label.split(',')[0]?.trim();
+  if (first) return first.slice(0, 200);
+  return '';
+}
+
 const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, onSave }) => {
   const [country, setCountry] = useState('Ukraine');
   const [zip, setZip] = useState('');
@@ -41,6 +108,19 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
   const [street, setStreet] = useState('');
   const [houseNumber, setHouseNumber] = useState('');
   const [title, setTitle] = useState('');
+  /** Once user edits the title field, never auto-overwrite from address picks. */
+  const [titleUserEdited, setTitleUserEdited] = useState(false);
+
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
+  const [coordsFromGeocodePick, setCoordsFromGeocodePick] = useState(false);
+
+  const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [streetSearchLoading, setStreetSearchLoading] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** After picking a suggestion, skip one debounced fetch so the list does not reopen from the new street value. */
+  const suppressNextStreetFetchRef = useRef(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -50,8 +130,84 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
       setStreet('');
       setHouseNumber('');
       setTitle('');
+      setTitleUserEdited(false);
+      setLat(null);
+      setLng(null);
+      setCoordsFromGeocodePick(false);
+      setSuggestions([]);
+      setSuggestionsOpen(false);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (suppressNextStreetFetchRef.current) {
+      suppressNextStreetFetchRef.current = false;
+      return;
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = street.trim();
+    if (q.length < 3) {
+      setSuggestions([]);
+      setSuggestionsOpen(false);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      setStreetSearchLoading(true);
+      const res = await fetchSuggestions(q, 5);
+      setSuggestions(res);
+      setSuggestionsOpen(true);
+      setStreetSearchLoading(false);
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [street]);
+
+  const applySuggestion = useCallback((s: GeocodeSuggestion) => {
+    suppressNextStreetFetchRef.current = true;
+    setSuggestionsOpen(false);
+    setSuggestions([]);
+
+    if (s.street?.trim()) {
+      setStreet(s.street.trim());
+    } else {
+      const part = s.label.split(',')[0]?.trim() || '';
+      setStreet(part);
+    }
+
+    if (s.houseNumber?.trim()) {
+      setHouseNumber(s.houseNumber.trim());
+    } else {
+      setHouseNumber('');
+    }
+
+    if (s.postcode?.trim()) setZip(s.postcode.trim());
+    if (s.city?.trim()) setCity(s.city.trim());
+    if (s.country?.trim()) setCountry(matchCountryOption(s.country));
+
+    const validCoords =
+      Number.isFinite(s.lat) &&
+      Number.isFinite(s.lng) &&
+      !(s.lat === 0 && s.lng === 0) &&
+      s.lat >= -90 &&
+      s.lat <= 90 &&
+      s.lng >= -180 &&
+      s.lng <= 180;
+    if (validCoords) {
+      setLat(s.lat);
+      setLng(s.lng);
+      setCoordsFromGeocodePick(true);
+    } else {
+      setLat(null);
+      setLng(null);
+      setCoordsFromGeocodePick(false);
+    }
+
+    if (!titleUserEdited) {
+      const next = buildTitleSuggestion(s);
+      if (next) setTitle(next);
+    }
+  }, [titleUserEdited]);
 
   const isAllValid =
     country.trim() !== '' &&
@@ -74,6 +230,14 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
     const address = `${st} ${hn}`;
     const fullAddress = [st, hn, z, ci, c].join(', ');
 
+    const hasValidCoords =
+      coordsFromGeocodePick &&
+      lat != null &&
+      lng != null &&
+      Number.isFinite(lat) &&
+      Number.isFinite(lng) &&
+      !(lat === 0 && lng === 0);
+
     const property: Property = {
       id: '',
       title: t,
@@ -94,6 +258,16 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
       building: defaultBuilding,
       inventory: [],
       meterReadings: [],
+      ...(hasValidCoords
+        ? {
+            lat,
+            lng,
+            geocoded_at: new Date().toISOString(),
+            geocode_provider: 'mapbox',
+            geocode_confidence: 'modal_pick',
+            geocode_failed_reason: null,
+          }
+        : {}),
     };
 
     onSave(property);
@@ -122,12 +296,18 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Країна</label>
-                <input
+                <select
                   className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
-                  placeholder="Ukraine"
                   value={country}
                   onChange={(e) => setCountry(e.target.value)}
-                />
+                  aria-label="Country"
+                >
+                  {COUNTRY_OPTIONS.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Поштовий код</label>
@@ -149,12 +329,35 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
               </div>
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Вулиця</label>
-                <input
-                  className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
-                  placeholder="вулиця Хрещатик"
-                  value={street}
-                  onChange={(e) => setStreet(e.target.value)}
-                />
+                <div className="relative">
+                  <input
+                    className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 pr-8 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                    placeholder="вулиця Хрещатик"
+                    value={street}
+                    onChange={(e) => setStreet(e.target.value)}
+                    onFocus={() => suggestions.length > 0 && setSuggestionsOpen(true)}
+                    onBlur={() => setTimeout(() => setSuggestionsOpen(false), 200)}
+                    autoComplete="off"
+                    aria-autocomplete="list"
+                    aria-expanded={suggestionsOpen}
+                  />
+                  {streetSearchLoading && (
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">…</span>
+                  )}
+                  {suggestionsOpen && suggestions.length > 0 && (
+                    <ul className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-gray-700 bg-[#1C1F24] shadow-xl">
+                      {suggestions.map((sug, i) => (
+                        <li
+                          key={`${sug.label}-${i}`}
+                          onMouseDown={() => applySuggestion(sug)}
+                          className="cursor-pointer border-b border-gray-800 px-3 py-2 text-sm text-white last:border-0 hover:bg-[#23262b]"
+                        >
+                          {sug.label}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Номер будинку</label>
@@ -177,7 +380,10 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
                 className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm font-bold text-white focus:border-emerald-500 focus:outline-none"
                 placeholder="Квартира 1, Львів"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  setTitleUserEdited(true);
+                  setTitle(e.target.value);
+                }}
               />
             </div>
           </div>
