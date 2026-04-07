@@ -85,7 +85,6 @@ import { ApartmentStatisticsSection } from './ApartmentStatisticsSection';
 import { VirtualDocumentsManager } from './VirtualDocumentsManager';
 import PropertiesDashboardPhase1 from './properties/PropertiesDashboardPhase1';
 import { formatLocalDateYmd } from '../lib/localDate';
-import { isActiveProperty } from '../lib/propertyActive';
 import { hasBlockOverlapForPropertyHalfOpen, isPropertyBlockActiveOnDate } from '../lib/oooBlocks';
 
 const METER_UNIT_OPTIONS: { value: string; label: string }[] = [
@@ -110,10 +109,6 @@ function dateDiffInDaysAktOrendar(date1: Date, date2: Date): number {
 function formatDateUAAktOrendar(iso: string): string {
   const [y, m, d] = iso.split('-');
   return d && m && y ? `${d}.${m}.${y}` : iso;
-}
-
-function sameId(a: string | number | null | undefined, b: string | number | null | undefined): boolean {
-  return String(a ?? '') === String(b ?? '');
 }
 
 function CollapsibleSection({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
@@ -601,10 +596,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [properties, setProperties] = useState<Property[]>(initialProps);
-  const operationalProperties = useMemo(
-    () => properties.filter(isActiveProperty),
-    [properties]
-  );
   const [propertySearch, setPropertySearch] = useState('');
   const [propertyGroupFilter, setPropertyGroupFilter] = useState<'all' | string>('all');
   const [propertyListSort, setPropertyListSort] = useState<'asc' | 'desc'>('asc');
@@ -881,7 +872,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const [rentIncreaseFormError, setRentIncreaseFormError] = useState<string | null>(null);
   const [isAddingRentIncrease, setIsAddingRentIncrease] = useState(false);
   const selectedProperty = useMemo(
-    () => properties.find((p) => sameId(p.id, selectedPropertyId)) ?? null,
+    () => properties.find((p) => p.id === selectedPropertyId) || properties[0] || null,
     [properties, selectedPropertyId]
   );
   const handleStatsPlanningPriceChange = useCallback(async (value: number) => {
@@ -958,21 +949,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         ) * dir
     );
   }, [filteredProperties, archiveFilter, propertyGroupFilter, propertyListSort]);
-
-  // Keep list selection aligned with the visible left list (list + units tabs only; not dashboard).
-  useEffect(() => {
-    if (activeDepartment !== 'properties' || propertiesTab === 'dashboard') return;
-    if (isLoadingProperties || properties.length === 0) return;
-    if (displayedProperties.length === 0) {
-      const nextId = '';
-      if (!sameId(nextId, selectedPropertyId)) setSelectedPropertyId(nextId);
-      return;
-    }
-    const stillVisible = displayedProperties.some((p) => sameId(p.id, selectedPropertyId));
-    if (stillVisible) return;
-    const nextId = displayedProperties[0].id;
-    if (!sameId(nextId, selectedPropertyId)) setSelectedPropertyId(String(nextId));
-  }, [activeDepartment, propertiesTab, displayedProperties, selectedPropertyId, isLoadingProperties, properties]);
 
   useEffect(() => {
     if (activeDepartment !== 'properties' || propertiesTab !== 'dashboard') return;
@@ -6561,48 +6537,7 @@ Hero Rooms Team`;
   };
 
   const renderPropertiesContent = () => {
-    if (!selectedProperty) {
-      if (isLoadingProperties) {
-        return (
-          <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-[#111315]" aria-busy="true">
-            <div className="w-full md:w-[350px] flex-shrink-0 border-r border-gray-800 p-4 space-y-3 bg-[#161B22] animate-pulse">
-              <div className="h-10 rounded-lg bg-gray-800/60" />
-              <div className="h-9 rounded-lg bg-gray-800/60" />
-              <div className="flex flex-col sm:flex-row gap-2">
-                <div className="h-9 flex-1 rounded-md bg-gray-800/60" />
-                <div className="h-9 flex-1 rounded-md bg-gray-800/60" />
-              </div>
-              <div className="flex gap-2 rounded-lg border border-gray-800/80 p-0.5">
-                <div className="h-8 flex-1 rounded-md bg-gray-800/60" />
-                <div className="h-8 flex-1 rounded-md bg-gray-800/60" />
-              </div>
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-20 rounded-xl bg-gray-800/60" />
-              ))}
-            </div>
-            <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-[#0D1117] animate-pulse">
-              <div className="h-64 rounded-xl bg-gray-800/60 mb-8" />
-              <div className="space-y-6">
-                <div className="h-32 rounded-xl bg-gray-800/60" />
-                <div className="h-48 rounded-xl bg-gray-800/60" />
-                <div className="h-40 rounded-xl bg-gray-800/60" />
-              </div>
-            </div>
-          </div>
-        );
-      }
-      if (displayedProperties.length === 0) {
-        return (
-          <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-[#111315] items-center justify-center p-8">
-            <div className="text-center max-w-md text-gray-400">
-              <p className="text-lg font-medium text-white mb-2">No properties to show</p>
-              <p className="text-sm">
-                Try another Active / Archived tab, clear search, or change the group filter. If the database has no rows yet, add a property first.
-              </p>
-            </div>
-          </div>
-        );
-      }
+    if (isLoadingProperties && properties.length === 0) {
       return (
         <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-[#111315]" aria-busy="true">
           <div className="w-full md:w-[350px] flex-shrink-0 border-r border-gray-800 p-4 space-y-3 bg-[#161B22] animate-pulse">
@@ -6631,7 +6566,11 @@ Hero Rooms Team`;
         </div>
       );
     }
-    const expense = selectedProperty.ownerExpense || { mortgage: 0, management: 0, taxIns: 0, reserve: 0 };
+    const showEmptyActive = archiveFilter === 'active' && displayedProperties.length === 0;
+    const expense =
+      !selectedProperty || showEmptyActive
+        ? { mortgage: 0, management: 0, taxIns: 0, reserve: 0 }
+        : selectedProperty.ownerExpense || { mortgage: 0, management: 0, taxIns: 0, reserve: 0 };
     const totalExpense = expense.mortgage + expense.management + expense.taxIns + expense.reserve;
     const totalInventoryCost = propertyInventoryItems.reduce((acc, item) => {
       const unitPrice = item.unit_price ?? 0;
@@ -6738,7 +6677,12 @@ Hero Rooms Team`;
 
          {/* Right Content - Details */}
          <div className="flex-1 overflow-y-auto p-6 md:p-8 bg-[#0D1117]">
-            
+            {showEmptyActive ? (
+              <div className="flex min-h-[240px] flex-1 items-center justify-center text-gray-400">No active properties</div>
+            ) : !selectedProperty ? (
+              <div className="flex min-h-[240px] flex-1 items-center justify-center text-gray-400">No properties</div>
+            ) : (
+            <>
             {/* Header */}
             <div className="relative h-64 rounded-xl overflow-hidden mb-8 group">
                {(() => {
@@ -9890,6 +9834,8 @@ Hero Rooms Team`;
               </div>
             </section>
 
+            </>
+            )}
          </div>
       </div>
     );
@@ -9903,7 +9849,6 @@ Hero Rooms Team`;
           onUpdateEvent={handleAccountingEventUpdate}
           showLegend={false}
           properties={properties}
-          operationalProperties={operationalProperties}
           categories={ACCOUNTING_TASK_TYPES}
       />;
     }
@@ -9991,7 +9936,6 @@ Hero Rooms Team`;
           onUpdateEvent={handleAdminEventUpdate}
           showLegend={true}
           properties={properties}
-          operationalProperties={operationalProperties}
           onUpdateBookingStatus={async (bookingId, newStatus) => {
             const reservation = reservations.find(r => r.id === bookingId || String(r.id) === String(bookingId));
             if (reservation) {
@@ -10511,7 +10455,7 @@ Hero Rooms Team`;
           offers={offers}
           confirmedBookings={confirmedBookings}
           adminEvents={adminEvents}
-          properties={operationalProperties}
+          properties={properties}
           invoices={invoices}
           leads={leads}
           onViewProforma={(proformaId) => {
@@ -11272,7 +11216,7 @@ Hero Rooms Team`;
           getPaymentProofSignedUrl={async (filePath) => { try { return await paymentProofsService.getPaymentProofSignedUrl(filePath); } catch { return null; } }}
           proofSignedUrlByInvoiceId={proofSignedUrlByInvoiceId}
           adminEvents={adminEvents}
-          properties={operationalProperties}
+          properties={properties}
           prefilledRequestData={selectedRequest ? {
             firstName: selectedRequest.firstName,
             lastName: selectedRequest.lastName,
