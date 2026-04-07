@@ -16,7 +16,11 @@ interface MarketplaceProps {
 const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: propsProperties, loading: propsLoading, error: propsError, coverPhotoUrlByPropertyId = {} }) => {
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
 
-  const properties = propsProperties || [];
+  /** Defensive: primary exclusion is active-only fetch in App; keep list/map/search in sync if parent ever passes archived rows. */
+  const safeProperties = useMemo(
+    () => (propsProperties || []).filter((p) => p.archivedAt == null),
+    [propsProperties]
+  );
   const loading = propsLoading !== undefined ? propsLoading : false;
   const error = propsError || null;
 
@@ -66,7 +70,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: p
   }, []);
 
   const filteredProperties = useMemo(() => {
-    let list = properties.filter((property) => {
+    let list = safeProperties.filter((property) => {
       let matchesPrice = true;
       if (priceFilter !== 'Any' && property.price != null) {
         matchesPrice = property.price <= parseInt(priceFilter, 10);
@@ -87,7 +91,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: p
       list = list.filter((p) => !blockedIds.has(p.id));
     }
     return list;
-  }, [properties, priceFilter, roomFilter, bedsFilter, blockedIds]);
+  }, [safeProperties, priceFilter, roomFilter, bedsFilter, blockedIds]);
 
   return (
     <div className="h-[100dvh] flex flex-col min-h-0 bg-[#111315] font-sans">
@@ -100,7 +104,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ onListingClick, properties: p
 
       <div className="flex-1 min-h-0 overflow-hidden">
         <MarketSplitView
-          properties={properties}
+          properties={safeProperties}
           filteredProperties={filteredProperties}
           coverPhotoUrlByPropertyId={coverPhotoUrlByPropertyId}
           loading={loading}

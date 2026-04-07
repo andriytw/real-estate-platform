@@ -1386,17 +1386,19 @@ export const apartmentGroupsService = {
 // ==================== PROPERTIES ====================
 export const propertiesService = {
   // Get all properties
-  async getAll(lightweight = false): Promise<Property[]> {
+  /** @param options.excludeArchived When true, only rows with archived_at IS NULL (same as dashboard "Active"). Default false keeps all existing callers unchanged. */
+  async getAll(lightweight = false, options?: { excludeArchived?: boolean }): Promise<Property[]> {
     try {
       // For Marketplace/public views, only load essential fields for faster loading
       const selectFields = lightweight
         ? 'id, title, address, city, district, country, price, rooms, area, image, images, status, full_address, description, zip, zweckentfremdung_flag, zweckentfremdung_updated_at, cover_photo_asset_id, lat, lng, details, archived_at, archived_by'
         : '*, apartment_group:apartment_groups(id, name)';
       
-      const { data, error } = await supabase
-        .from('properties')
-        .select(selectFields)
-        .order('created_at', { ascending: false });
+      let query = supabase.from('properties').select(selectFields);
+      if (options?.excludeArchived) {
+        query = query.is('archived_at', null);
+      }
+      const { data, error } = await query.order('created_at', { ascending: false });
       
       if (error) {
         console.error('❌ Supabase query error:', error);

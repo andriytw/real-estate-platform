@@ -57,6 +57,8 @@ const AppContent: React.FC = () => {
   // #endregion
   const { session, worker, loading: authLoading, profileLoadStatus, workerError, retryWorker, logout } = useWorker();
   const [properties, setProperties] = useState<Property[]>([]);
+  /** Active-only subset for public Marketplace (DB: archived_at IS NULL). Full `properties` still includes archived for account dashboard. */
+  const [marketplaceProperties, setMarketplaceProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
@@ -156,10 +158,14 @@ const AppContent: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      // Use lightweight mode for faster initial load (especially for Marketplace)
-      const data = await propertiesService.getAll(true);
+      // Full list for dashboard; active-only for Marketplace (same predicate as account Active tab: archived_at IS NULL).
+      const [data, marketData] = await Promise.all([
+        propertiesService.getAll(true),
+        propertiesService.getAll(true, { excludeArchived: true }),
+      ]);
 
       setProperties(data);
+      setMarketplaceProperties(marketData);
       setLoading(false);
       if (data.length > 0 && !selectedProperty) {
         setSelectedProperty(data[0]);
@@ -169,7 +175,7 @@ const AppContent: React.FC = () => {
       }
       void propertyMediaService
         .getCoverPhotoSignedUrlsForProperties(
-          data.map((p) => ({ id: p.id, cover_photo_asset_id: p.cover_photo_asset_id ?? null }))
+          marketData.map((p) => ({ id: p.id, cover_photo_asset_id: p.cover_photo_asset_id ?? null }))
         )
         .then((urls) => setCoverPhotoUrlByPropertyId(urls))
         .catch((e) => {
@@ -196,6 +202,7 @@ const AppContent: React.FC = () => {
         setError('Помилка підключення до бази даних. Перевірте налаштування.');
       }
       setProperties([]);
+      setMarketplaceProperties([]);
     } finally {
       setLoading(false);
     }
@@ -642,7 +649,7 @@ const AppContent: React.FC = () => {
         <div className="animate-fadeIn relative">
           <Marketplace 
             onListingClick={handleMarketListingClick} 
-            properties={properties}
+            properties={marketplaceProperties}
             loading={loading}
             error={error}
             coverPhotoUrlByPropertyId={coverPhotoUrlByPropertyId}
