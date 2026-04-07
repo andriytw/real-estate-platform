@@ -12,6 +12,7 @@
     "api/commands/create-multi-offer.ts": { "maxDuration": 30 },
     "api/commands/create-direct-booking.ts": { "maxDuration": 30 },
     "api/commands/save-invoice.ts": { "maxDuration": 60 },
-    "api/commands/confirm-payment.ts": { "maxDuration": 60 }
+    "api/commands/confirm-payment.ts": { "maxDuration": 60 },
+    "api/commands/send-proforma-email.ts": { "maxDuration": 60 }
   }
 }

@@ -5710,7 +5710,7 @@ ${internalCompany} Team`;
             return `${formatD(parts[0])} – ${formatD(parts[1])}`;
           })();
           const totalStr = savedInvoice.totalGross != null ? savedInvoice.totalGross.toFixed(2) : '0.00';
-          const messageBody = `Hello ${clientName},\n\nplease find below the proforma invoice for your stay:\n${datesLine}\n\nProforma: ${savedInvoice.invoiceNumber}\nTotal: €${totalStr}\n\nOpen PDF:`;
+          const messageBody = `Hello ${clientName},\n\nplease find below the proforma invoice for your stay:\n${datesLine}\n\nProforma: ${savedInvoice.invoiceNumber}\nTotal: €${totalStr}`;
           sendChannelResultPrefixRef.current = 'Proforma';
           sendChannelOnCloseRef.current = () => {
             setIsInvoiceModalOpen(false);
@@ -5728,6 +5728,7 @@ ${internalCompany} Team`;
             subject: `Proforma ${savedInvoice.invoiceNumber}`,
             recipientEmail,
             recipientPhone,
+            proformaInvoiceId: String(savedInvoice.id),
           });
         } else {
           setIsInvoiceModalOpen(false);
@@ -12508,6 +12509,10 @@ ${internalCompany} Team`;
           const prefix = sendChannelResultPrefixRef.current || 'Offer';
           setToastMessage(`${prefix} saved and ${msg}`);
           setTimeout(() => setToastMessage(null), 5000);
+        }}
+        onErrorMessage={(msg) => {
+          setToastMessage(msg);
+          setTimeout(() => setToastMessage(null), 8000);
         }}
       />
       <ConfirmPaymentModal
