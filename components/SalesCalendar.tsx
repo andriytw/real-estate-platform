@@ -219,6 +219,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const [availabilityStartDate, setAvailabilityStartDate] = useState('');
   const [availabilityEndDate, setAvailabilityEndDate] = useState('');
   const [showReservations, setShowReservations] = useState(true); // visibility toggle for reservation layer
+  /** Left list + grid row order (after filters). A→Z uses address column `details`, not unit title. */
+  const [availabilityListSort, setAvailabilityListSort] = useState<'streetAsc' | 'roomsAsc' | 'bedsAsc'>('streetAsc');
   const [hoveredBooking, setHoveredBooking] = useState<{booking: Booking, x: number, y: number} | null>(null);
   const [ugpLoadingBookingId, setUgpLoadingBookingId] = useState<string | number | null>(null);
   const hoverLeaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -610,6 +612,34 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
       return matchesCity && matchesGroup && matchesSearch && matchesPeople && matchesRooms && matchesAvailability && matchesStatus;
     });
   }, [roomsFromProperties, cityFilter, groupFilter, searchQuery, minPeopleFilter, minRoomsFilter, statusFilter, availabilityStartDate, availabilityEndDate, bookingsForAvailability]);
+
+  const sortedFilteredRooms = React.useMemo(() => {
+    const list = [...filteredRooms];
+    const addrKey = (r: (typeof filteredRooms)[number]) => (r.details || '').trim();
+    const cmpByStreet = (a: (typeof filteredRooms)[number], b: (typeof filteredRooms)[number]) =>
+      addrKey(a).localeCompare(addrKey(b), undefined, { sensitivity: 'base' });
+
+    switch (availabilityListSort) {
+      case 'streetAsc':
+        list.sort(cmpByStreet);
+        break;
+      case 'roomsAsc':
+        list.sort((a, b) => {
+          const dr = (Number(a.rooms) || 0) - (Number(b.rooms) || 0);
+          return dr !== 0 ? dr : cmpByStreet(a, b);
+        });
+        break;
+      case 'bedsAsc':
+        list.sort((a, b) => {
+          const db = (Number(a.beds) || 0) - (Number(b.beds) || 0);
+          return db !== 0 ? db : cmpByStreet(a, b);
+        });
+        break;
+      default:
+        list.sort(cmpByStreet);
+    }
+    return list;
+  }, [filteredRooms, availabilityListSort]);
 
   const getRoomNameById = (roomId: string | undefined | null) => {
     if (!roomId) return '';
@@ -1113,16 +1143,17 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
             <option value="rented_worker">Здана працівнику</option>
           </select>
         </div>
-        <div className="relative flex-1 min-w-[160px] max-w-[220px]">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Пошук об'єктів..."
-            className="w-full pl-9 pr-3 py-2 bg-[#161B22] border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-emerald-500"
-          />
-        </div>
+        <select
+          value={availabilityListSort}
+          onChange={(e) => setAvailabilityListSort(e.target.value as 'streetAsc' | 'roomsAsc' | 'bedsAsc')}
+          className="bg-[#161B22] border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:border-emerald-500 focus:outline-none min-w-[180px]"
+          title="Sort list"
+          aria-label="Sort apartments"
+        >
+          <option value="streetAsc">A → Z</option>
+          <option value="roomsAsc">Rooms: low to high</option>
+          <option value="bedsAsc">Beds: low to high</option>
+        </select>
         <select
           value={minRoomsFilter === null ? '' : minRoomsFilter}
           onChange={(e) => setMinRoomsFilter(e.target.value === '' ? null : Number(e.target.value))}
@@ -1208,7 +1239,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                     style={{ tableLayout: 'auto', width: 'max-content', minWidth: '100%' }}
                 >
                     <tbody>
-                        {filteredRooms.map(room => {
+                        {sortedFilteredRooms.map(room => {
                             const BASE_ROW_HEIGHT = 32;
                             const maxStack = maxStackForRoomId.get(room.id) ?? 0;
                             const extraHeight = maxStack > 0 ? (maxStack - 1) * (STRIPE_H + STRIPE_GAP) : 0;
@@ -1312,7 +1343,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                         />
                     )}
 
-                    {filteredRooms.map(room => {
+                    {sortedFilteredRooms.map(room => {
                         // Calculate row height: base 32px + extra for stacked reservations
                         const BASE_ROW_HEIGHT = 32;
                         const maxStack = maxStackForRoomId.get(room.id) ?? 0;
