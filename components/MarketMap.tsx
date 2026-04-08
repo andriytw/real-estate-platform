@@ -10,6 +10,11 @@ const DEFAULT_ZOOM = 10;
 const MAX_RAYS = 30;
 const ORIGIN_RADIUS_PX = 14;
 
+/** Stable grouping key for identical map coordinates (avoids float drift). */
+function listingCoordKey(lat: number, lng: number): string {
+  return `${lat.toFixed(6)},${lng.toFixed(6)}`;
+}
+
 export interface ListingForMap {
   id: string;
   lat: number;
@@ -176,6 +181,30 @@ export default function MarketMap({
     },
     [onSearchPointSelect, mapRef]
   );
+
+  /** One marker per coordinate; ids in original `listings` order (no sort). */
+  const groupedListingMarkers = useMemo(() => {
+    const buckets = new Map<string, { lat: number; lng: number; ids: string[] }>();
+    for (const item of listings) {
+      const k = listingCoordKey(item.lat, item.lng);
+      let b = buckets.get(k);
+      if (!b) {
+        b = { lat: item.lat, lng: item.lng, ids: [] };
+        buckets.set(k, b);
+      }
+      b.ids.push(item.id);
+    }
+    const seen = new Set<string>();
+    const ordered: { lat: number; lng: number; ids: string[]; count: number }[] = [];
+    for (const item of listings) {
+      const k = listingCoordKey(item.lat, item.lng);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const b = buckets.get(k);
+      if (b) ordered.push({ ...b, count: b.ids.length });
+    }
+    return ordered;
+  }, [listings]);
 
   const { raysLineGeoJson, rayLabels } = useMemo(() => {
     const empty = {
@@ -425,22 +454,37 @@ export default function MarketMap({
           style={{ width: '100%', height: '100%' }}
           mapStyle="mapbox://styles/mapbox/dark-v11"
         >
-        {listings.map((item) => {
-          const inRadius = !withinRadiusIds || withinRadiusIds.has(item.id);
+        {groupedListingMarkers.map((group) => {
+          const inRadius =
+            !withinRadiusIds || group.ids.some((id) => withinRadiusIds.has(id));
+          const isSelected =
+            selectedId != null && group.ids.includes(selectedId);
+          const idToSelect =
+            selectedId != null && group.ids.includes(selectedId)
+              ? selectedId
+              : group.ids[0];
           return (
             <Marker
-              key={item.id}
-              longitude={item.lng}
-              latitude={item.lat}
+              key={listingCoordKey(group.lat, group.lng)}
+              longitude={group.lng}
+              latitude={group.lat}
               anchor="center"
               onClick={(e) => {
                 e.originalEvent.stopPropagation();
-                onSelectMarker(item.id);
+                onSelectMarker(idToSelect);
               }}
               style={{ cursor: 'pointer' }}
             >
               <div className={`marker-wrap ${!inRadius ? 'marker-hidden' : ''}`}>
-                <div className={`marker-dot ${selectedId === item.id ? 'marker-dot-selected' : ''}`} />
+                <div
+                  className={`marker-dot ${isSelected ? 'marker-dot-selected' : ''}${
+                    group.count > 1 ? ' marker-dot-with-count' : ''
+                  }`}
+                >
+                  {group.count > 1 ? (
+                    <span className="marker-dot-count">{group.count}</span>
+                  ) : null}
+                </div>
               </div>
             </Marker>
           );
