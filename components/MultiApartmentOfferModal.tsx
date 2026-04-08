@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bed, LayoutGrid, X, Save, Send, Search, Trash2 } from 'lucide-react';
 import {
   Lead,
@@ -16,6 +16,15 @@ import {
   formatApartmentIdentificationLine,
 } from '../utils/salesOfferFlow';
 import { COMMAND_JSON_TIMEOUT_MS } from '../services/commandClient';
+import {
+  canonicalizeFromLegacy,
+  isValidInternationalPhoneForWhatsApp,
+  sanitizeInternationalPhoneInput,
+  toCanonicalStoredPhone,
+} from '../utils/internationalPhone';
+
+const PHONE_ERROR =
+  'Phone must be a valid international number (8–15 digits, country code included).';
 
 export type MultiApartmentOfferSubmitMode = 'draft' | 'send' | 'directBooking';
 
@@ -78,6 +87,11 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
   const [companyName, setCompanyName] = useState('');
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
+  /** DE +49 vs UA +380 — only auto-replaces prefix when field is empty or still the untouched auto-prefix. */
+  const [phoneRegion, setPhoneRegion] = useState<'DE' | 'UA'>('DE');
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const lastAutoPrefixRef = useRef('+49');
+  const phoneUserCustomizedRef = useRef(false);
   const [email, setEmail] = useState('');
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
@@ -100,7 +114,25 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
     setLastName(prefilledRequestData?.lastName || '');
     setCompanyName(prefilledRequestData?.companyName || '');
     setAddress('');
-    setPhone(prefilledRequestData?.phone || '');
+    setPhoneError(null);
+    const pref = prefilledRequestData?.phone?.trim();
+    if (pref) {
+      const canon = canonicalizeFromLegacy(pref);
+      setPhone(canon);
+      phoneUserCustomizedRef.current = true;
+      if (canon.startsWith('+380')) {
+        setPhoneRegion('UA');
+        lastAutoPrefixRef.current = '+380';
+      } else {
+        setPhoneRegion('DE');
+        lastAutoPrefixRef.current = '+49';
+      }
+    } else {
+      setPhone('+49');
+      phoneUserCustomizedRef.current = false;
+      setPhoneRegion('DE');
+      lastAutoPrefixRef.current = '+49';
+    }
     setEmail(prefilledRequestData?.email || '');
     setCheckIn(prefilledRequestData?.startDate || '');
     setCheckOut(prefilledRequestData?.endDate || '');
@@ -357,11 +389,58 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
       setCompanyName('');
     }
     setEmail(lead.email || '');
-    setPhone(lead.phone || '');
+    const lp = lead.phone?.trim();
+    if (lp) {
+      const canon = canonicalizeFromLegacy(lp);
+      setPhone(canon);
+      phoneUserCustomizedRef.current = true;
+      if (canon.startsWith('+380')) {
+        setPhoneRegion('UA');
+        lastAutoPrefixRef.current = '+380';
+      } else {
+        setPhoneRegion('DE');
+        lastAutoPrefixRef.current = '+49';
+      }
+    } else {
+      setPhone('+49');
+      phoneUserCustomizedRef.current = false;
+      setPhoneRegion('DE');
+      lastAutoPrefixRef.current = '+49';
+    }
+    setPhoneError(null);
     setAddress(lead.address || '');
     setLeadSearch(lead.name);
     setShowLeadDropdown(false);
     setSelectedLeadId(lead.id);
+  };
+
+  const handlePhoneInputChange = (raw: string) => {
+    const s = sanitizeInternationalPhoneInput(raw);
+    setPhone(s);
+    const canon = toCanonicalStoredPhone(s);
+    if (s === '' || s === lastAutoPrefixRef.current) {
+      phoneUserCustomizedRef.current = false;
+    } else {
+      phoneUserCustomizedRef.current = true;
+    }
+    if (!canon) {
+      setPhoneError(null);
+    } else if (!isValidInternationalPhoneForWhatsApp(canon)) {
+      setPhoneError(PHONE_ERROR);
+    } else {
+      setPhoneError(null);
+    }
+  };
+
+  const handlePhoneRegionChange = (region: 'DE' | 'UA') => {
+    const nextPrefix = region === 'DE' ? '+49' : '+380';
+    setPhoneRegion(region);
+    if (!phoneUserCustomizedRef.current || phone === '' || phone === lastAutoPrefixRef.current) {
+      setPhone(nextPrefix);
+      lastAutoPrefixRef.current = nextPrefix;
+      phoneUserCustomizedRef.current = false;
+      setPhoneError(null);
+    }
   };
 
   const handleSubmit = async (submitMode: MultiApartmentOfferSubmitMode) => {
@@ -382,6 +461,13 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
       return;
     }
 
+    const canonicalPhone = toCanonicalStoredPhone(sanitizeInternationalPhoneInput(phone));
+    if (canonicalPhone && !isValidInternationalPhoneForWhatsApp(canonicalPhone)) {
+      setPhoneError(PHONE_ERROR);
+      return;
+    }
+    setPhoneError(null);
+
     const draft: MultiApartmentOfferDraft = {
       shared: {
         clientType,
@@ -389,10 +475,10 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
         lastName,
         companyName,
         address,
-        phone,
+        phone: canonicalPhone,
         email,
         recipientEmail: email,
-        recipientPhone: phone,
+        recipientPhone: canonicalPhone,
         internalCompany: OFFER_BRAND,
         clientMessage,
         checkIn,
@@ -518,7 +604,30 @@ const MultiApartmentOfferModal: React.FC<MultiApartmentOfferModalProps> = ({
                   </>
                 )}
                 <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className="bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
+                <div className="flex flex-col gap-1 min-w-0">
+                  <div className="flex gap-1.5 items-center min-w-0">
+                    <select
+                      value={phoneRegion}
+                      onChange={(e) => handlePhoneRegionChange(e.target.value as 'DE' | 'UA')}
+                      className="shrink-0 bg-[#161B22] border border-gray-700 rounded px-1.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 max-w-[5.5rem]"
+                      aria-label="Phone country prefix"
+                    >
+                      <option value="DE">DE +49</option>
+                      <option value="UA">UA +380</option>
+                    </select>
+                    <input
+                      value={phone}
+                      onChange={(e) => handlePhoneInputChange(e.target.value)}
+                      placeholder="+4915112227771"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      className="min-w-0 flex-1 bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+                  {phoneError ? (
+                    <p className="text-xs text-amber-400/90 leading-tight">{phoneError}</p>
+                  ) : null}
+                </div>
                 <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address" className="col-span-2 bg-[#161B22] border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500" />
               </div>
             </section>

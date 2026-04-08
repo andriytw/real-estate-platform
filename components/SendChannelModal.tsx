@@ -1,5 +1,9 @@
 import React from 'react';
 import { X, Mail, MessageCircle } from 'lucide-react';
+import {
+  toWhatsAppDigits,
+  whatsappPhoneValidationMessage,
+} from '../utils/internationalPhone';
 
 export interface SendChannelPayload {
   messageBody: string;
@@ -15,6 +19,8 @@ interface SendChannelModalProps {
   payload: SendChannelPayload | null;
   /** Called with neutral result message after an action (e.g. "Offer saved and prepared for Email"). Parent shows toast. */
   onResultMessage?: (message: string) => void;
+  /** WhatsApp-only failures (invalid / missing phone). Parent should show toast. */
+  onError?: (message: string) => void;
 }
 
 /**
@@ -26,12 +32,19 @@ const SendChannelModal: React.FC<SendChannelModalProps> = ({
   onClose,
   payload,
   onResultMessage,
+  onError,
 }) => {
   if (!isOpen) return null;
 
+  const rawPhone = payload?.recipientPhone?.trim() ?? '';
+  const waDigits = rawPhone ? toWhatsAppDigits(rawPhone) : null;
+  const hasValidPhone = waDigits != null;
   const hasEmail = Boolean(payload?.recipientEmail?.trim());
-  const hasPhone = Boolean(payload?.recipientPhone?.trim());
-  const hasAny = hasEmail || hasPhone;
+  /** Show action buttons when there is at least email, a valid phone, or a phone string to hint validation. */
+  const hasAny = hasEmail || hasValidPhone || Boolean(rawPhone);
+
+  const buildText = () =>
+    [payload?.messageBody, payload?.documentLink].filter(Boolean).join('\n\n');
 
   const runEmail = () => {
     if (!payload?.recipientEmail?.trim()) return;
@@ -43,8 +56,12 @@ const SendChannelModal: React.FC<SendChannelModalProps> = ({
   };
 
   const runWhatsApp = () => {
-    const text = [payload?.messageBody, payload?.documentLink].filter(Boolean).join('\n\n');
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    const text = buildText();
+    if (!waDigits) {
+      onError?.(whatsappPhoneValidationMessage);
+      return;
+    }
+    window.open(`https://wa.me/${waDigits}?text=${encodeURIComponent(text)}`, '_blank');
     onResultMessage?.('Opened in WhatsApp');
     onClose();
   };
@@ -55,21 +72,36 @@ const SendChannelModal: React.FC<SendChannelModalProps> = ({
       return;
     }
     const body = [payload.messageBody, payload.documentLink].filter(Boolean).join('\n\n');
-    const text = [payload.messageBody, payload.documentLink].filter(Boolean).join('\n\n');
+    const text = buildText();
     const subject = payload.subject || 'Offer';
+
+    let didEmail = false;
     if (payload.recipientEmail?.trim()) {
       window.location.href = `mailto:${encodeURIComponent(payload.recipientEmail.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      didEmail = true;
     }
-    if (hasPhone) {
-      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+
+    if (waDigits) {
+      window.open(`https://wa.me/${waDigits}?text=${encodeURIComponent(text)}`, '_blank');
+      if (didEmail) {
+        onResultMessage?.('Prepared for Email and opened in WhatsApp');
+      } else {
+        onResultMessage?.('Opened in WhatsApp');
+      }
+    } else {
+      if (didEmail) {
+        onResultMessage?.(
+          `Prepared for Email. WhatsApp: ${whatsappPhoneValidationMessage}`
+        );
+      } else if (!payload.recipientEmail?.trim()) {
+        onResultMessage?.(
+          `Email could not be prepared (missing contact data). ${whatsappPhoneValidationMessage}`
+        );
+      } else {
+        onError?.(whatsappPhoneValidationMessage);
+      }
     }
-    if (payload.recipientEmail?.trim() && hasPhone) {
-      onResultMessage?.('Prepared for Email and opened in WhatsApp');
-    } else if (payload.recipientEmail?.trim()) {
-      onResultMessage?.('Prepared for Email. WhatsApp could not be prepared (missing contact data).');
-    } else if (hasPhone) {
-      onResultMessage?.('Opened in WhatsApp. Email could not be prepared (missing contact data).');
-    }
+
     onClose();
   };
 
@@ -105,7 +137,7 @@ const SendChannelModal: React.FC<SendChannelModalProps> = ({
               </button>
               <button
                 onClick={runWhatsApp}
-                disabled={!hasPhone}
+                disabled={!hasValidPhone}
                 className="flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20bd5a] disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg font-medium text-sm transition-colors"
               >
                 <MessageCircle className="w-4 h-4" />
@@ -113,13 +145,16 @@ const SendChannelModal: React.FC<SendChannelModalProps> = ({
               </button>
               <button
                 onClick={runBoth}
-                disabled={!hasAny}
+                disabled={!hasEmail && !hasValidPhone}
                 className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-lg font-medium text-sm transition-colors"
               >
                 <Mail className="w-4 h-4" />
                 <MessageCircle className="w-4 h-4" />
                 Email + WhatsApp
               </button>
+              {rawPhone && !hasValidPhone ? (
+                <p className="text-xs text-amber-400/90">{whatsappPhoneValidationMessage}</p>
+              ) : null}
             </div>
           )}
         </div>

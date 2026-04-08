@@ -12645,6 +12645,10 @@ Hero Rooms Team`;
           setToastMessage(`${prefix} saved and ${msg}`);
           setTimeout(() => setToastMessage(null), 5000);
         }}
+        onError={(msg) => {
+          setToastMessage(msg);
+          setTimeout(() => setToastMessage(null), 6000);
+        }}
       />
       <ConfirmPaymentModal
         isOpen={!!confirmPaymentModalProforma}
