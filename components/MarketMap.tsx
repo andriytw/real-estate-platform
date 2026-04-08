@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { ChevronDown } from 'lucide-react';
-import Map, { Marker, Source, Layer } from 'react-map-gl';
+import MapGL, { Marker, Source, Layer } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import './MarketMap.css';
 import { fetchSuggestions, type GeocodeSuggestion } from '../utils/mapboxGeocode';
@@ -435,7 +435,7 @@ export default function MarketMap({
       </div>
 
       <div ref={containerRef} className="w-full h-full min-h-0">
-        <Map
+        <MapGL
           onLoad={({ target }) => {
             if (mapRef && typeof mapRef === 'object') (mapRef as React.MutableRefObject<mapboxgl.Map | null>).current = target;
             setMapReady(true);
@@ -526,7 +526,7 @@ export default function MarketMap({
               <div className="ray-km-label">{label.km.toFixed(1)} km</div>
             </Marker>
           ))}
-        </Map>
+        </MapGL>
       </div>
     </div>
   );
