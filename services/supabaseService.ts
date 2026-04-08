@@ -3491,6 +3491,18 @@ function transformPropertyToDB(property: Property): any {
   if (property.archivedBy !== undefined) result.archived_by = property.archivedBy;
   if (property.apartmentGroupId !== undefined) result.apartment_group_id = property.apartmentGroupId;
 
+  // Keep `rooms` column aligned with `details.rooms` when the patch includes valid rooms
+  // (e.g. Card 2 sends only `details` + `amenities`). Skip if `rooms` missing/invalid — preserves partial updates.
+  if (property.details !== undefined) {
+    const dr = property.details.rooms;
+    if (dr !== undefined && dr !== null) {
+      const n = Number(dr);
+      if (Number.isFinite(n)) {
+        result.rooms = Math.max(0, Math.floor(n));
+      }
+    }
+  }
+
   return result;
 }
 
