@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X } from 'lucide-react';
-import { Property } from '../types';
+import { ApartmentGroup, Property } from '../types';
 import { fetchSuggestions, type GeocodeSuggestion } from '../utils/mapboxGeocode';
+import { apartmentGroupsService } from '../services/supabaseService';
 
 interface PropertyAddModalProps {
   isOpen: boolean;
@@ -111,6 +112,13 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
   /** Once user edits the title field, never auto-overwrite from address picks. */
   const [titleUserEdited, setTitleUserEdited] = useState(false);
 
+  // Core apartment fields (canonical fields used elsewhere in the app)
+  const [apartmentGroups, setApartmentGroups] = useState<ApartmentGroup[]>([]);
+  const [apartmentGroupId, setApartmentGroupId] = useState<string | null>(null);
+  const [areaInput, setAreaInput] = useState('');
+  const [bedsInput, setBedsInput] = useState('');
+  const [roomsInput, setRoomsInput] = useState('');
+
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [coordsFromGeocodePick, setCoordsFromGeocodePick] = useState(false);
@@ -131,12 +139,36 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
       setHouseNumber('');
       setTitle('');
       setTitleUserEdited(false);
+      setApartmentGroupId(null);
+      setAreaInput('');
+      setBedsInput('');
+      setRoomsInput('');
       setLat(null);
       setLng(null);
       setCoordsFromGeocodePick(false);
       setSuggestions([]);
       setSuggestionsOpen(false);
     }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let alive = true;
+    (async () => {
+      try {
+        const list = await apartmentGroupsService.getAll();
+        if (!alive) return;
+        setApartmentGroups(list);
+      } catch (e) {
+        // Keep modal usable even if groups fail to load
+        console.error('Failed to load apartment groups:', e);
+        if (!alive) return;
+        setApartmentGroups([]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -227,6 +259,28 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
     const t = title.trim();
     if (c === '' || z === '' || ci === '' || st === '' || hn === '' || t === '') return;
 
+    const parsedArea = (() => {
+      const raw = areaInput.trim();
+      if (raw === '') return 0;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return 0;
+      return Math.max(0, n);
+    })();
+    const parsedBeds = (() => {
+      const raw = bedsInput.trim();
+      if (raw === '') return 0;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return 0;
+      return Math.max(0, Math.floor(n));
+    })();
+    const parsedRooms = (() => {
+      const raw = roomsInput.trim();
+      if (raw === '') return 0;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return 0;
+      return Math.max(0, Math.floor(n));
+    })();
+
     const address = `${st} ${hn}`;
     const fullAddress = [st, hn, z, ci, c].join(', ');
 
@@ -249,15 +303,16 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
       fullAddress,
       price: 0,
       pricePerSqm: 0,
-      rooms: 0,
-      area: 0,
+      rooms: parsedRooms,
+      area: parsedArea,
       image: '',
       images: [],
       status: 'Available',
-      details: { ...defaultDetails, area: 0, rooms: 0 },
+      details: { ...defaultDetails, area: parsedArea, rooms: parsedRooms, beds: parsedBeds },
       building: defaultBuilding,
       inventory: [],
       meterReadings: [],
+      apartmentGroupId,
       ...(hasValidCoords
         ? {
             lat,
@@ -374,17 +429,77 @@ const PropertyAddModal: React.FC<PropertyAddModalProps> = ({ isOpen, onClose, on
           {/* Section B — Title */}
           <div>
             <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Назва</h4>
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">Назва</label>
-              <input
-                className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm font-bold text-white focus:border-emerald-500 focus:outline-none"
-                placeholder="Квартира 1, Львів"
-                value={title}
-                onChange={(e) => {
-                  setTitleUserEdited(true);
-                  setTitle(e.target.value);
-                }}
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-4 items-start">
+              <div className="sm:col-span-7">
+                <label className="text-xs text-gray-500 block mb-1">Назва</label>
+                <input
+                  className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm font-bold text-white focus:border-emerald-500 focus:outline-none"
+                  placeholder="Квартира 1, Львів"
+                  value={title}
+                  onChange={(e) => {
+                    setTitleUserEdited(true);
+                    setTitle(e.target.value);
+                  }}
+                />
+              </div>
+              <div className="sm:col-span-5 space-y-3">
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Група квартири</label>
+                  <select
+                    className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                    value={apartmentGroupId ?? ''}
+                    onChange={(e) => setApartmentGroupId(e.target.value === '' ? null : e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {apartmentGroups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-1 xs:grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Площа, м²</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.1}
+                      inputMode="decimal"
+                      className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                      placeholder="0"
+                      value={areaInput}
+                      onChange={(e) => setAreaInput(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Ліжка</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      inputMode="numeric"
+                      className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                      placeholder="0"
+                      value={bedsInput}
+                      onChange={(e) => setBedsInput(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Кімнати</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      inputMode="numeric"
+                      className="w-full bg-[#111315] border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                      placeholder="0"
+                      value={roomsInput}
+                      onChange={(e) => setRoomsInput(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
