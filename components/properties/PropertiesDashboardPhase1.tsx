@@ -1400,8 +1400,8 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
         />
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-5">
-        <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
+        <section className="flex h-full min-h-0 flex-col bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
           <h3 className="text-sm font-semibold text-gray-300 mb-3">Summary</h3>
           <div className="flex flex-col gap-2 text-sm">
             <div className="flex items-center justify-between gap-3">
@@ -1435,7 +1435,7 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
           </div>
         </section>
 
-        <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
+        <section className="flex h-full min-h-0 flex-col bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
           <h3 className="text-sm font-semibold text-gray-300 mb-3">Monthly KPI</h3>
           <div className="grid grid-cols-1 gap-2 text-sm">
             <div className="flex items-center justify-between gap-3">
@@ -1453,7 +1453,7 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
           </div>
         </section>
 
-        <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
+        <section className="flex h-full min-h-0 flex-col bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
           <h3 className="text-sm font-semibold text-gray-300 mb-3">Monthly Totals</h3>
           <div className="grid grid-cols-1 gap-2 text-sm">
             <div className="flex items-center justify-between gap-3">
@@ -1478,7 +1478,7 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
         <button
           type="button"
           onClick={() => setPerformanceModalOpen(true)}
-          className="flex w-full flex-col items-stretch justify-start bg-[#1C1F24] border border-gray-800 rounded-xl p-4 text-left focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:ring-offset-2 focus:ring-offset-[#0D1117] hover:border-gray-600 transition-colors"
+          className="flex h-full min-h-0 w-full flex-col items-stretch justify-start bg-[#1C1F24] border border-gray-800 rounded-xl p-4 text-left focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:ring-offset-2 focus:ring-offset-[#0D1117] hover:border-gray-600 transition-colors"
         >
           <h3 className="text-sm font-semibold text-gray-300 mb-3">Apartment Performance Summary</h3>
           <div className="grid grid-cols-1 gap-2 text-sm">
@@ -1499,13 +1499,13 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
               <span className="font-semibold">{formatPct(apartmentPerformanceSummary.planFulfillment)}</span>
             </div>
           </div>
-          <p className="mt-3 text-[11px] text-gray-500">Click for full breakdown</p>
+          <p className="mt-auto pt-3 text-[11px] text-gray-500">Click for full breakdown</p>
         </button>
 
         <button
           type="button"
           onClick={() => setExpensesModalOpen(true)}
-          className="flex w-full flex-col items-stretch justify-start bg-[#1C1F24] border border-gray-800 rounded-xl p-4 text-left focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:ring-offset-2 focus:ring-offset-[#0D1117] hover:border-gray-600 transition-colors"
+          className="flex h-full min-h-0 w-full flex-col items-stretch justify-start bg-[#1C1F24] border border-gray-800 rounded-xl p-4 text-left focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:ring-offset-2 focus:ring-offset-[#0D1117] hover:border-gray-600 transition-colors"
         >
           <h3 className="text-sm font-semibold text-gray-300 mb-3">Apartment Expenses Summary</h3>
           <div className="grid grid-cols-1 gap-2 text-sm">
@@ -1522,7 +1522,7 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
               <span className="font-semibold text-emerald-200">{formatCurrency(expensesSummaryTotals.totalExpenses)}</span>
             </div>
           </div>
-          <p className="mt-3 text-[11px] text-gray-500">Click for full breakdown</p>
+          <p className="mt-auto pt-3 text-[11px] text-gray-500">Click for full breakdown</p>
         </button>
       </div>
 
