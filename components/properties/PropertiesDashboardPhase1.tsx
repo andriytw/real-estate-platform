@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@radix-ui/react-tooltip';
 import { Bed, ChevronDown, ChevronRight, Download, Eye, LayoutGrid, Ruler, X } from 'lucide-react';
 import { bookingsService, invoicesService, offersService, paymentProofsService, propertiesService, rentTimelineService, reservationsService } from '../../services/supabaseService';
 import { propertyExpenseService, type PropertyExpenseItemWithDocument } from '../../services/propertyExpenseService';
@@ -7,7 +8,7 @@ import type { Booking, InvoiceData, OfferData, PaymentProof, Property, RentTimel
 import { buildDashboardMonthData } from '../../lib/propertiesDashboard/selectors';
 import { apartmentFinancialCoreFromMatrixRow } from '../../lib/propertiesDashboard/apartmentMonthlyPerformance';
 import { buildPaidProformaContributionsByProperty } from '../../lib/propertiesDashboard/dayCellResolver';
-import type { DailyDashboardMetrics } from '../../lib/propertiesDashboard/types';
+import type { DailyDashboardMetrics, DashboardApartmentMatrixRow } from '../../lib/propertiesDashboard/types';
 import { resolveOwnerDueForMonth } from '../../lib/ownerDueResolver';
 import {
   blockBookingsForProperty,
@@ -149,6 +150,162 @@ interface ApartmentFinancialRow {
   invoices: number;
   ownerDue: number;
   totalCost: number;
+}
+
+type MatrixSortKey = 'abteilung' | 'statusLabel' | 'adresse' | 'wohnung' | 'qm' | 'betten' | 'rooms' | 'occupancyPct';
+
+type FinancialSortKey =
+  | 'abteilung'
+  | 'statusLabel'
+  | 'adresse'
+  | 'wohnung'
+  | 'qm'
+  | 'betten'
+  | 'rooms'
+  | 'collectedForApartment'
+  | 'planningPricePerRoom'
+  | 'fullCapacityIncome'
+  | 'difference'
+  | 'planFulfillment'
+  | 'invoices'
+  | 'ownerDue'
+  | 'totalCost';
+
+function compareLocaleEmptyLast(a: string, b: string, asc: boolean): number {
+  const ae = !(a ?? '').trim();
+  const be = !(b ?? '').trim();
+  if (ae || be) {
+    if (ae && be) return 0;
+    if (ae) return 1;
+    if (be) return -1;
+  }
+  const c = (a ?? '').localeCompare(b ?? '', undefined, { sensitivity: 'base' });
+  return asc ? c : -c;
+}
+
+function compareNumberEmptyLast(a: number, b: number, asc: boolean): number {
+  const aBad = !Number.isFinite(a);
+  const bBad = !Number.isFinite(b);
+  if (aBad || bBad) {
+    if (aBad && bBad) return 0;
+    if (aBad) return 1;
+    if (bBad) return -1;
+  }
+  const c = a - b;
+  return asc ? c : -c;
+}
+
+function compareMatrixRow(a: DashboardApartmentMatrixRow, b: DashboardApartmentMatrixRow, key: MatrixSortKey, dir: 'asc' | 'desc'): number {
+  const asc = dir === 'asc';
+  let cmp = 0;
+  switch (key) {
+    case 'abteilung':
+      cmp = compareLocaleEmptyLast(a.abteilung ?? '', b.abteilung ?? '', asc);
+      break;
+    case 'statusLabel':
+      cmp = compareLocaleEmptyLast(a.statusLabel, b.statusLabel, asc);
+      break;
+    case 'adresse':
+      cmp = compareLocaleEmptyLast(a.adresse, b.adresse, asc);
+      break;
+    case 'wohnung':
+      cmp = compareLocaleEmptyLast(a.wohnung, b.wohnung, asc);
+      break;
+    case 'qm':
+      cmp = compareNumberEmptyLast(a.qm, b.qm, asc);
+      break;
+    case 'betten':
+      cmp = compareNumberEmptyLast(a.betten, b.betten, asc);
+      break;
+    case 'rooms':
+      cmp = compareNumberEmptyLast(a.rooms, b.rooms, asc);
+      break;
+    case 'occupancyPct':
+      cmp = compareNumberEmptyLast(a.occupancyPctOperationalDays, b.occupancyPctOperationalDays, asc);
+      break;
+    default:
+      cmp = 0;
+  }
+  if (cmp !== 0) return cmp;
+  return a.apartmentId.localeCompare(b.apartmentId);
+}
+
+function compareFinancialRow(a: ApartmentFinancialRow, b: ApartmentFinancialRow, key: FinancialSortKey, dir: 'asc' | 'desc'): number {
+  const asc = dir === 'asc';
+  let cmp = 0;
+  switch (key) {
+    case 'abteilung':
+      cmp = compareLocaleEmptyLast(a.abteilung ?? '', b.abteilung ?? '', asc);
+      break;
+    case 'statusLabel':
+      cmp = compareLocaleEmptyLast(a.statusLabel, b.statusLabel, asc);
+      break;
+    case 'adresse':
+      cmp = compareLocaleEmptyLast(a.adresse, b.adresse, asc);
+      break;
+    case 'wohnung':
+      cmp = compareLocaleEmptyLast(a.wohnung, b.wohnung, asc);
+      break;
+    case 'qm':
+      cmp = compareNumberEmptyLast(a.qm, b.qm, asc);
+      break;
+    case 'betten':
+      cmp = compareNumberEmptyLast(a.betten, b.betten, asc);
+      break;
+    case 'rooms':
+      cmp = compareNumberEmptyLast(a.rooms, b.rooms, asc);
+      break;
+    case 'collectedForApartment':
+      cmp = compareNumberEmptyLast(a.collectedForApartment, b.collectedForApartment, asc);
+      break;
+    case 'planningPricePerRoom':
+      cmp = compareNumberEmptyLast(a.planningPricePerRoom, b.planningPricePerRoom, asc);
+      break;
+    case 'fullCapacityIncome':
+      cmp = compareNumberEmptyLast(a.fullCapacityIncome, b.fullCapacityIncome, asc);
+      break;
+    case 'difference':
+      cmp = compareNumberEmptyLast(a.difference, b.difference, asc);
+      break;
+    case 'planFulfillment':
+      cmp = compareNumberEmptyLast(a.planFulfillment, b.planFulfillment, asc);
+      break;
+    case 'invoices':
+      cmp = compareNumberEmptyLast(a.invoices, b.invoices, asc);
+      break;
+    case 'ownerDue':
+      cmp = compareNumberEmptyLast(a.ownerDue, b.ownerDue, asc);
+      break;
+    case 'totalCost':
+      cmp = compareNumberEmptyLast(a.totalCost, b.totalCost, asc);
+      break;
+    default:
+      cmp = 0;
+  }
+  if (cmp !== 0) return cmp;
+  return a.apartmentId.localeCompare(b.apartmentId);
+}
+
+function TruncatingTooltipCell({ text, className = '' }: { text: string; className?: string }) {
+  const trimmed = (text ?? '').trim();
+  if (!trimmed) {
+    return <span className={`block min-w-0 truncate ${className}`}>—</span>;
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={`block min-w-0 cursor-default truncate ${className}`}>{trimmed}</span>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        align="start"
+        sideOffset={6}
+        className="z-[300] max-w-[min(90vw,28rem)] border border-gray-700 bg-[#1C1F24] px-2 py-1 text-xs leading-snug text-gray-100 shadow-lg"
+      >
+        {trimmed}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 function expenseInvoiceLineAmount(item: PropertyExpenseItemWithDocument): number {
@@ -335,6 +492,19 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
   const [matrixSelStartIdx, setMatrixSelStartIdx] = useState<number | null>(null);
   const [matrixSelEndIdx, setMatrixSelEndIdx] = useState<number | null>(null);
   const [matrixIsSelecting, setMatrixIsSelecting] = useState(false);
+
+  const [matrixAddressSearch, setMatrixAddressSearch] = useState('');
+  const [financialAddressSearch, setFinancialAddressSearch] = useState('');
+  const [matrixTableExpanded, setMatrixTableExpanded] = useState(false);
+  const [financialTableExpanded, setFinancialTableExpanded] = useState(false);
+  const [matrixTableSort, setMatrixTableSort] = useState<{ key: MatrixSortKey | null; dir: 'asc' | 'desc' }>({
+    key: null,
+    dir: 'asc',
+  });
+  const [financialTableSort, setFinancialTableSort] = useState<{ key: FinancialSortKey | null; dir: 'asc' | 'desc' }>({
+    key: null,
+    dir: 'asc',
+  });
 
   const monthData = useMemo(() => {
     const [y, m] = selectedMonth.split('-').map(Number);
@@ -699,6 +869,43 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
       };
     });
   }, [monthData, dashboardMonthContext, properties, expenseItemsByPropertyId, ownerDueResolvedByApartment]);
+
+  const filteredSortedMatrixRows = useMemo(() => {
+    if (!monthData) return [];
+    const q = matrixAddressSearch.trim().toLowerCase();
+    let rows = monthData.rows;
+    if (q) {
+      rows = rows.filter((r) => String(r.adresse ?? '').toLowerCase().includes(q));
+    }
+    if (!matrixTableSort.key) return rows;
+    const { key, dir } = matrixTableSort;
+    return [...rows].sort((a, b) => compareMatrixRow(a, b, key, dir));
+  }, [monthData, matrixAddressSearch, matrixTableSort]);
+
+  const filteredSortedFinancialRows = useMemo(() => {
+    const q = financialAddressSearch.trim().toLowerCase();
+    let rows = apartmentFinancialRows;
+    if (q) {
+      rows = rows.filter((r) => String(r.adresse ?? '').toLowerCase().includes(q));
+    }
+    if (!financialTableSort.key) return rows;
+    const { key, dir } = financialTableSort;
+    return [...rows].sort((a, b) => compareFinancialRow(a, b, key, dir));
+  }, [apartmentFinancialRows, financialAddressSearch, financialTableSort]);
+
+  const cycleMatrixSort = useCallback((key: MatrixSortKey) => {
+    setMatrixTableSort((prev) => {
+      if (prev.key !== key) return { key, dir: 'asc' };
+      return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+    });
+  }, []);
+
+  const cycleFinancialSort = useCallback((key: FinancialSortKey) => {
+    setFinancialTableSort((prev) => {
+      if (prev.key !== key) return { key, dir: 'asc' };
+      return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+    });
+  }, []);
 
   const expensesSummaryTotals = useMemo(() => {
     const invoices = apartmentFinancialRows.reduce((s, r) => s + r.invoices, 0);
@@ -1151,7 +1358,7 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
     return <div className="p-6 text-gray-300">Invalid month selected.</div>;
   }
 
-  const frozenHeaderBase = 'px-1 py-1 border-b border-gray-700 sticky z-20 overflow-hidden';
+  const frozenHeaderBase = 'px-1 py-1 border-b border-gray-700 sticky top-0 z-20 overflow-hidden';
   const frozenCellBase = 'px-1 py-1 border-b border-gray-800 sticky z-10 overflow-hidden';
   const leftZoneBoundaryClass = 'shadow-[1px_0_0_0_rgba(55,65,81,1)]';
   const dailyLabelCellClass = 'p-2 border-b border-r border-gray-800 text-gray-300 bg-[#1C1F24] whitespace-nowrap';
@@ -1181,6 +1388,7 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
   };
 
   return (
+    <TooltipProvider delayDuration={0} skipDelayDuration={0}>
     <div className="p-6 space-y-4 text-white pb-8">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xl font-semibold">Properties Dashboard</h2>
@@ -1408,89 +1616,150 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
       </section>
 
       <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <h3 className="text-sm font-semibold text-gray-300">Apartment / Day Matrix</h3>
-          {selectedRange && selectedRangeLabel && (
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-gray-400 whitespace-nowrap">
-                Selected: {selectedRangeLabel.startIso}–{selectedRangeLabel.endIso}
-              </span>
-              <button
-                type="button"
-                onClick={applyMarkAsOoo}
-                className="px-2 py-1 rounded bg-gray-700/60 hover:bg-gray-700 text-gray-100"
-              >
-                Mark as OOO
-              </button>
-              <button
-                type="button"
-                onClick={applyClearOoo}
-                className="px-2 py-1 rounded bg-gray-700/60 hover:bg-gray-700 text-gray-100"
-              >
-                Clear OOO
-              </button>
-              <button
-                type="button"
-                onClick={clearMatrixSelection}
-                className="px-2 py-1 rounded bg-transparent hover:bg-gray-800 text-gray-300"
-              >
-                Cancel
-              </button>
-            </div>
-          )}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3 justify-between">
+          <h3 className="text-sm font-semibold text-gray-300 shrink-0">Apartment / Day Matrix</h3>
+          <div className="flex flex-wrap items-center gap-2 justify-end min-w-0">
+            <input
+              type="search"
+              value={matrixAddressSearch}
+              onChange={(e) => setMatrixAddressSearch(e.target.value)}
+              placeholder="Search by street..."
+              aria-label="Search matrix by address"
+              className="w-40 max-w-full rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-white placeholder:text-gray-500"
+            />
+            <button
+              type="button"
+              onClick={() => setMatrixTableExpanded((v) => !v)}
+              className="shrink-0 rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-gray-300 hover:bg-gray-800"
+            >
+              {matrixTableExpanded ? 'Compact' : 'Expand'}
+            </button>
+            {selectedRange && selectedRangeLabel && (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-gray-400 whitespace-nowrap">
+                  Selected: {selectedRangeLabel.startIso}–{selectedRangeLabel.endIso}
+                </span>
+                <button
+                  type="button"
+                  onClick={applyMarkAsOoo}
+                  className="px-2 py-1 rounded bg-gray-700/60 hover:bg-gray-700 text-gray-100"
+                >
+                  Mark as OOO
+                </button>
+                <button
+                  type="button"
+                  onClick={applyClearOoo}
+                  className="px-2 py-1 rounded bg-gray-700/60 hover:bg-gray-700 text-gray-100"
+                >
+                  Clear OOO
+                </button>
+                <button
+                  type="button"
+                  onClick={clearMatrixSelection}
+                  className="px-2 py-1 rounded bg-transparent hover:bg-gray-800 text-gray-300"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         <div className="overflow-x-auto">
+          <div
+            className={`overflow-y-auto min-h-0 ${matrixTableExpanded ? 'max-h-[min(70vh,42rem)]' : 'max-h-[280px]'}`}
+          >
           <table className="min-w-[1520px] text-xs border-separate border-spacing-0 table-fixed">
             <thead>
               <tr className="text-gray-400">
-                <th className={`${frozenHeaderBase} text-left`} style={{ width: frozenWidths.abteilung, minWidth: frozenWidths.abteilung, maxWidth: frozenWidths.abteilung, left: frozenLeft.abteilung, backgroundColor: '#1C1F24' }}>Abteilung</th>
-                <th className={`${frozenHeaderBase} text-left`} style={{ width: frozenWidths.status, minWidth: frozenWidths.status, maxWidth: frozenWidths.status, left: frozenLeft.status, backgroundColor: '#1C1F24' }}>Status</th>
-                <th className={`${frozenHeaderBase} text-left`} style={{ width: frozenWidths.adresse, minWidth: frozenWidths.adresse, maxWidth: frozenWidths.adresse, left: frozenLeft.adresse, backgroundColor: '#1C1F24' }}>Adresse</th>
-                <th className={`${frozenHeaderBase} text-left`} style={{ width: frozenWidths.wohnung, minWidth: frozenWidths.wohnung, maxWidth: frozenWidths.wohnung, left: frozenLeft.wohnung, backgroundColor: '#1C1F24' }}>Wohnung</th>
                 <th
-                  className={`${frozenHeaderBase} text-right`}
+                  className={`${frozenHeaderBase} text-left cursor-pointer select-none hover:bg-gray-800/40`}
+                  style={{ width: frozenWidths.abteilung, minWidth: frozenWidths.abteilung, maxWidth: frozenWidths.abteilung, left: frozenLeft.abteilung, backgroundColor: '#1C1F24' }}
+                  onClick={() => cycleMatrixSort('abteilung')}
+                >
+                  Abteilung
+                </th>
+                <th
+                  className={`${frozenHeaderBase} text-left cursor-pointer select-none hover:bg-gray-800/40`}
+                  style={{ width: frozenWidths.status, minWidth: frozenWidths.status, maxWidth: frozenWidths.status, left: frozenLeft.status, backgroundColor: '#1C1F24' }}
+                  onClick={() => cycleMatrixSort('statusLabel')}
+                >
+                  Status
+                </th>
+                <th
+                  className={`${frozenHeaderBase} text-left cursor-pointer select-none hover:bg-gray-800/40`}
+                  style={{ width: frozenWidths.adresse, minWidth: frozenWidths.adresse, maxWidth: frozenWidths.adresse, left: frozenLeft.adresse, backgroundColor: '#1C1F24' }}
+                  onClick={() => cycleMatrixSort('adresse')}
+                >
+                  Adresse
+                </th>
+                <th
+                  className={`${frozenHeaderBase} text-left cursor-pointer select-none hover:bg-gray-800/40`}
+                  style={{ width: frozenWidths.wohnung, minWidth: frozenWidths.wohnung, maxWidth: frozenWidths.wohnung, left: frozenLeft.wohnung, backgroundColor: '#1C1F24' }}
+                  onClick={() => cycleMatrixSort('wohnung')}
+                >
+                  Wohnung
+                </th>
+                <th
+                  className={`${frozenHeaderBase} text-right cursor-pointer select-none hover:bg-gray-800/40`}
                   style={{ width: frozenWidths.qm, minWidth: frozenWidths.qm, maxWidth: frozenWidths.qm, left: frozenLeft.qm, backgroundColor: '#1C1F24' }}
                   title="QM"
                   aria-label="QM"
+                  onClick={() => cycleMatrixSort('qm')}
                 >
                   <span className="inline-flex justify-end w-full"><Ruler className="w-3.5 h-3.5 text-gray-400" /></span>
                 </th>
                 <th
-                  className={`${frozenHeaderBase} text-right`}
+                  className={`${frozenHeaderBase} text-right cursor-pointer select-none hover:bg-gray-800/40`}
                   style={{ width: frozenWidths.betten, minWidth: frozenWidths.betten, maxWidth: frozenWidths.betten, left: frozenLeft.betten, backgroundColor: '#1C1F24' }}
                   title="Betten"
                   aria-label="Betten"
+                  onClick={() => cycleMatrixSort('betten')}
                 >
                   <span className="inline-flex justify-end w-full"><Bed className="w-3.5 h-3.5 text-gray-400" /></span>
                 </th>
                 <th
-                  className={`${frozenHeaderBase} text-right ${leftZoneBoundaryClass}`}
+                  className={`${frozenHeaderBase} text-right cursor-pointer select-none hover:bg-gray-800/40 ${leftZoneBoundaryClass}`}
                   style={{ width: frozenWidths.rooms, minWidth: frozenWidths.rooms, maxWidth: frozenWidths.rooms, left: frozenLeft.rooms, backgroundColor: '#1C1F24' }}
                   title="Rooms"
                   aria-label="Rooms"
+                  onClick={() => cycleMatrixSort('rooms')}
                 >
                   <span className="inline-flex justify-end w-full"><LayoutGrid className="w-3.5 h-3.5 text-gray-400" /></span>
                 </th>
                 {monthData.days.map((_, i) => (
-                  <th key={`matrix-day-${i}`} className="px-1.5 py-1 border-b border-gray-700 w-[56px] min-w-[56px] max-w-[56px] text-center whitespace-nowrap bg-[#1C1F24]">{i + 1}</th>
+                  <th
+                    key={`matrix-day-${i}`}
+                    className="px-1.5 py-1 border-b border-gray-700 sticky top-0 z-[15] w-[56px] min-w-[56px] max-w-[56px] text-center whitespace-nowrap bg-[#1C1F24]"
+                  >
+                    {i + 1}
+                  </th>
                 ))}
-                <th className="px-1.5 py-1 border-b border-gray-700 sticky right-0 bg-[#1C1F24] z-10">Occupancy % of Operational Days</th>
+                <th
+                  className="px-1.5 py-1 border-b border-gray-700 sticky top-0 right-0 bg-[#1C1F24] z-[25] cursor-pointer select-none text-left hover:bg-gray-800/40 whitespace-nowrap"
+                  onClick={() => cycleMatrixSort('occupancyPct')}
+                >
+                  Occupancy % of Operational Days
+                </th>
               </tr>
             </thead>
             <tbody>
-              {monthData.rows.map((row) => (
+              {filteredSortedMatrixRows.map((row) => (
                 <tr key={row.apartmentId}>
-                  <td className={`${frozenCellBase}`} style={{ width: frozenWidths.abteilung, minWidth: frozenWidths.abteilung, maxWidth: frozenWidths.abteilung, left: frozenLeft.abteilung, backgroundColor: '#1C1F24' }}>{row.abteilung || '—'}</td>
-                  <td className={`${frozenCellBase}`} style={{ width: frozenWidths.status, minWidth: frozenWidths.status, maxWidth: frozenWidths.status, left: frozenLeft.status, backgroundColor: '#1C1F24' }}>{row.statusLabel}</td>
-                  <td className={`${frozenCellBase}`} style={{ width: frozenWidths.adresse, minWidth: frozenWidths.adresse, maxWidth: frozenWidths.adresse, left: frozenLeft.adresse, backgroundColor: '#1C1F24' }}>
-                    <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{row.adresse}</span>
+                  <td className={`${frozenCellBase} min-w-0`} style={{ width: frozenWidths.abteilung, minWidth: frozenWidths.abteilung, maxWidth: frozenWidths.abteilung, left: frozenLeft.abteilung, backgroundColor: '#1C1F24' }}>
+                    <TruncatingTooltipCell text={row.abteilung || ''} />
                   </td>
-                  <td className={`${frozenCellBase}`} style={{ width: frozenWidths.wohnung, minWidth: frozenWidths.wohnung, maxWidth: frozenWidths.wohnung, left: frozenLeft.wohnung, backgroundColor: '#1C1F24' }}>
-                    <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{row.wohnung}</span>
+                  <td className={`${frozenCellBase} min-w-0`} style={{ width: frozenWidths.status, minWidth: frozenWidths.status, maxWidth: frozenWidths.status, left: frozenLeft.status, backgroundColor: '#1C1F24' }}>
+                    <TruncatingTooltipCell text={row.statusLabel} />
                   </td>
-                  <td className={`${frozenCellBase} text-right`} style={{ width: frozenWidths.qm, minWidth: frozenWidths.qm, maxWidth: frozenWidths.qm, left: frozenLeft.qm, backgroundColor: '#1C1F24' }}>{row.qm}</td>
-                  <td className={`${frozenCellBase} text-right`} style={{ width: frozenWidths.betten, minWidth: frozenWidths.betten, maxWidth: frozenWidths.betten, left: frozenLeft.betten, backgroundColor: '#1C1F24' }}>{row.betten}</td>
-                  <td className={`${frozenCellBase} text-right ${leftZoneBoundaryClass}`} style={{ width: frozenWidths.rooms, minWidth: frozenWidths.rooms, maxWidth: frozenWidths.rooms, left: frozenLeft.rooms, backgroundColor: '#1C1F24' }}>{row.rooms}</td>
+                  <td className={`${frozenCellBase} min-w-0`} style={{ width: frozenWidths.adresse, minWidth: frozenWidths.adresse, maxWidth: frozenWidths.adresse, left: frozenLeft.adresse, backgroundColor: '#1C1F24' }}>
+                    <TruncatingTooltipCell text={row.adresse} />
+                  </td>
+                  <td className={`${frozenCellBase} min-w-0`} style={{ width: frozenWidths.wohnung, minWidth: frozenWidths.wohnung, maxWidth: frozenWidths.wohnung, left: frozenLeft.wohnung, backgroundColor: '#1C1F24' }}>
+                    <TruncatingTooltipCell text={row.wohnung} />
+                  </td>
+                  <td className={`${frozenCellBase} text-right whitespace-nowrap tabular-nums`} style={{ width: frozenWidths.qm, minWidth: frozenWidths.qm, maxWidth: frozenWidths.qm, left: frozenLeft.qm, backgroundColor: '#1C1F24' }}>{row.qm}</td>
+                  <td className={`${frozenCellBase} text-right whitespace-nowrap tabular-nums`} style={{ width: frozenWidths.betten, minWidth: frozenWidths.betten, maxWidth: frozenWidths.betten, left: frozenLeft.betten, backgroundColor: '#1C1F24' }}>{row.betten}</td>
+                  <td className={`${frozenCellBase} text-right whitespace-nowrap tabular-nums ${leftZoneBoundaryClass}`} style={{ width: frozenWidths.rooms, minWidth: frozenWidths.rooms, maxWidth: frozenWidths.rooms, left: frozenLeft.rooms, backgroundColor: '#1C1F24' }}>{row.rooms}</td>
                   {row.dayCells.map((cell, idx) => {
                     const isSelectedRow = selectedRange?.apartmentId === row.apartmentId;
                     const s = isSelectedRow ? Math.min(selectedRange.startIdx, selectedRange.endIdx) : -1;
@@ -1535,87 +1804,181 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
                       </td>
                     );
                   })}
-                  <td className="px-1.5 py-1 border-b border-gray-800 text-right sticky right-0 bg-[#1C1F24] z-10">
+                  <td className="px-1.5 py-1 border-b border-gray-800 text-right sticky right-0 bg-[#1C1F24] z-10 whitespace-nowrap tabular-nums">
                     {formatPct(row.occupancyPctOperationalDays)}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </section>
 
       <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
-        <h3 className="text-sm font-semibold text-gray-300 mb-3">Apartment Financial Performance (Monthly)</h3>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3 justify-between">
+          <h3 className="text-sm font-semibold text-gray-300 shrink-0">Apartment Financial Performance (Monthly)</h3>
+          <div className="flex flex-wrap items-center gap-2 justify-end min-w-0">
+            <input
+              type="search"
+              value={financialAddressSearch}
+              onChange={(e) => setFinancialAddressSearch(e.target.value)}
+              placeholder="Search by street..."
+              aria-label="Search financial table by address"
+              className="w-40 max-w-full rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-white placeholder:text-gray-500"
+            />
+            <button
+              type="button"
+              onClick={() => setFinancialTableExpanded((v) => !v)}
+              className="shrink-0 rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-gray-300 hover:bg-gray-800"
+            >
+              {financialTableExpanded ? 'Compact' : 'Expand'}
+            </button>
+          </div>
+        </div>
         {planningSaveError && (
           <div className="mb-3 text-xs text-red-300 bg-red-900/20 border border-red-700/40 rounded px-2 py-1">
             {planningSaveError}
           </div>
         )}
         <div className="overflow-x-auto">
+          <div
+            className={`overflow-y-auto min-h-0 ${financialTableExpanded ? 'max-h-[min(70vh,42rem)]' : 'max-h-[280px]'}`}
+          >
           <table className="min-w-[2200px] text-xs border-separate border-spacing-0 table-fixed">
             <thead>
               <tr className="text-gray-400">
-                <th className={`${frozenHeaderBase} text-left`} style={{ width: frozenWidths.abteilung, minWidth: frozenWidths.abteilung, maxWidth: frozenWidths.abteilung, left: frozenLeft.abteilung, backgroundColor: '#1C1F24' }}>Abteilung</th>
-                <th className={`${frozenHeaderBase} text-left`} style={{ width: frozenWidths.status, minWidth: frozenWidths.status, maxWidth: frozenWidths.status, left: frozenLeft.status, backgroundColor: '#1C1F24' }}>Status</th>
-                <th className={`${frozenHeaderBase} text-left`} style={{ width: frozenWidths.adresse, minWidth: frozenWidths.adresse, maxWidth: frozenWidths.adresse, left: frozenLeft.adresse, backgroundColor: '#1C1F24' }}>Adresse</th>
-                <th className={`${frozenHeaderBase} text-left`} style={{ width: frozenWidths.wohnung, minWidth: frozenWidths.wohnung, maxWidth: frozenWidths.wohnung, left: frozenLeft.wohnung, backgroundColor: '#1C1F24' }}>Wohnung</th>
                 <th
-                  className={`${frozenHeaderBase} text-right`}
+                  className={`${frozenHeaderBase} text-left cursor-pointer select-none hover:bg-gray-800/40`}
+                  style={{ width: frozenWidths.abteilung, minWidth: frozenWidths.abteilung, maxWidth: frozenWidths.abteilung, left: frozenLeft.abteilung, backgroundColor: '#1C1F24' }}
+                  onClick={() => cycleFinancialSort('abteilung')}
+                >
+                  Abteilung
+                </th>
+                <th
+                  className={`${frozenHeaderBase} text-left cursor-pointer select-none hover:bg-gray-800/40`}
+                  style={{ width: frozenWidths.status, minWidth: frozenWidths.status, maxWidth: frozenWidths.status, left: frozenLeft.status, backgroundColor: '#1C1F24' }}
+                  onClick={() => cycleFinancialSort('statusLabel')}
+                >
+                  Status
+                </th>
+                <th
+                  className={`${frozenHeaderBase} text-left cursor-pointer select-none hover:bg-gray-800/40`}
+                  style={{ width: frozenWidths.adresse, minWidth: frozenWidths.adresse, maxWidth: frozenWidths.adresse, left: frozenLeft.adresse, backgroundColor: '#1C1F24' }}
+                  onClick={() => cycleFinancialSort('adresse')}
+                >
+                  Adresse
+                </th>
+                <th
+                  className={`${frozenHeaderBase} text-left cursor-pointer select-none hover:bg-gray-800/40`}
+                  style={{ width: frozenWidths.wohnung, minWidth: frozenWidths.wohnung, maxWidth: frozenWidths.wohnung, left: frozenLeft.wohnung, backgroundColor: '#1C1F24' }}
+                  onClick={() => cycleFinancialSort('wohnung')}
+                >
+                  Wohnung
+                </th>
+                <th
+                  className={`${frozenHeaderBase} text-right cursor-pointer select-none hover:bg-gray-800/40`}
                   style={{ width: frozenWidths.qm, minWidth: frozenWidths.qm, maxWidth: frozenWidths.qm, left: frozenLeft.qm, backgroundColor: '#1C1F24' }}
                   title="QM"
                   aria-label="QM"
+                  onClick={() => cycleFinancialSort('qm')}
                 >
                   <span className="inline-flex justify-end w-full"><Ruler className="w-3.5 h-3.5 text-gray-400" /></span>
                 </th>
                 <th
-                  className={`${frozenHeaderBase} text-right`}
+                  className={`${frozenHeaderBase} text-right cursor-pointer select-none hover:bg-gray-800/40`}
                   style={{ width: frozenWidths.betten, minWidth: frozenWidths.betten, maxWidth: frozenWidths.betten, left: frozenLeft.betten, backgroundColor: '#1C1F24' }}
                   title="Betten"
                   aria-label="Betten"
+                  onClick={() => cycleFinancialSort('betten')}
                 >
                   <span className="inline-flex justify-end w-full"><Bed className="w-3.5 h-3.5 text-gray-400" /></span>
                 </th>
                 <th
-                  className={`${frozenHeaderBase} text-right ${leftZoneBoundaryClass}`}
+                  className={`${frozenHeaderBase} text-right cursor-pointer select-none hover:bg-gray-800/40 ${leftZoneBoundaryClass}`}
                   style={{ width: frozenWidths.rooms, minWidth: frozenWidths.rooms, maxWidth: frozenWidths.rooms, left: frozenLeft.rooms, backgroundColor: '#1C1F24' }}
                   title="Rooms"
                   aria-label="Rooms"
+                  onClick={() => cycleFinancialSort('rooms')}
                 >
                   <span className="inline-flex justify-end w-full"><LayoutGrid className="w-3.5 h-3.5 text-gray-400" /></span>
                 </th>
 
-                <th className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[160px]">Collected for Apartment</th>
-                <th className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[140px]">Price per Room</th>
-                <th className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[170px]">Full Capacity Income</th>
-                <th className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[140px]">Difference</th>
-                <th className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[150px]">% of Plan Fulfillment</th>
-                <th className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[120px]">Invoices</th>
-                <th className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[120px]">Owner Due</th>
-                <th className="px-2 py-1 border-b border-gray-700 text-right min-w-[120px]">Total Cost</th>
+                <th
+                  className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[160px] sticky top-0 z-[15] bg-[#1C1F24] cursor-pointer select-none hover:bg-gray-800/40 whitespace-nowrap"
+                  onClick={() => cycleFinancialSort('collectedForApartment')}
+                >
+                  Collected for Apartment
+                </th>
+                <th
+                  className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[140px] sticky top-0 z-[15] bg-[#1C1F24] cursor-pointer select-none hover:bg-gray-800/40 whitespace-nowrap"
+                  onClick={() => cycleFinancialSort('planningPricePerRoom')}
+                >
+                  Price per Room
+                </th>
+                <th
+                  className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[170px] sticky top-0 z-[15] bg-[#1C1F24] cursor-pointer select-none hover:bg-gray-800/40 whitespace-nowrap"
+                  onClick={() => cycleFinancialSort('fullCapacityIncome')}
+                >
+                  Full Capacity Income
+                </th>
+                <th
+                  className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[140px] sticky top-0 z-[15] bg-[#1C1F24] cursor-pointer select-none hover:bg-gray-800/40 whitespace-nowrap"
+                  onClick={() => cycleFinancialSort('difference')}
+                >
+                  Difference
+                </th>
+                <th
+                  className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[150px] sticky top-0 z-[15] bg-[#1C1F24] cursor-pointer select-none hover:bg-gray-800/40 whitespace-nowrap"
+                  onClick={() => cycleFinancialSort('planFulfillment')}
+                >
+                  % of Plan Fulfillment
+                </th>
+                <th
+                  className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[120px] sticky top-0 z-[15] bg-[#1C1F24] cursor-pointer select-none hover:bg-gray-800/40 whitespace-nowrap"
+                  onClick={() => cycleFinancialSort('invoices')}
+                >
+                  Invoices
+                </th>
+                <th
+                  className="px-2 py-1 border-b border-gray-700 border-r border-gray-800 text-right min-w-[120px] sticky top-0 z-[15] bg-[#1C1F24] cursor-pointer select-none hover:bg-gray-800/40 whitespace-nowrap"
+                  onClick={() => cycleFinancialSort('ownerDue')}
+                >
+                  Owner Due
+                </th>
+                <th
+                  className="px-2 py-1 border-b border-gray-700 text-right min-w-[120px] sticky top-0 z-[15] bg-[#1C1F24] cursor-pointer select-none hover:bg-gray-800/40 whitespace-nowrap"
+                  onClick={() => cycleFinancialSort('totalCost')}
+                >
+                  Total Cost
+                </th>
               </tr>
             </thead>
             <tbody>
-              {apartmentFinancialRows.map((row) => {
+              {filteredSortedFinancialRows.map((row) => {
                 const isEditing = editingPlanningCell?.propertyId === row.apartmentId;
                 const isSaving = savingPlanningFor === row.apartmentId;
                 return (
                   <tr key={`financial-${row.apartmentId}`}>
-                    <td className={`${frozenCellBase}`} style={{ width: frozenWidths.abteilung, minWidth: frozenWidths.abteilung, maxWidth: frozenWidths.abteilung, left: frozenLeft.abteilung, backgroundColor: '#1C1F24' }}>{row.abteilung || '—'}</td>
-                    <td className={`${frozenCellBase}`} style={{ width: frozenWidths.status, minWidth: frozenWidths.status, maxWidth: frozenWidths.status, left: frozenLeft.status, backgroundColor: '#1C1F24' }}>{row.statusLabel}</td>
-                    <td className={`${frozenCellBase}`} style={{ width: frozenWidths.adresse, minWidth: frozenWidths.adresse, maxWidth: frozenWidths.adresse, left: frozenLeft.adresse, backgroundColor: '#1C1F24' }}>
-                      <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{row.adresse}</span>
+                    <td className={`${frozenCellBase} min-w-0`} style={{ width: frozenWidths.abteilung, minWidth: frozenWidths.abteilung, maxWidth: frozenWidths.abteilung, left: frozenLeft.abteilung, backgroundColor: '#1C1F24' }}>
+                      <TruncatingTooltipCell text={row.abteilung || ''} />
                     </td>
-                    <td className={`${frozenCellBase}`} style={{ width: frozenWidths.wohnung, minWidth: frozenWidths.wohnung, maxWidth: frozenWidths.wohnung, left: frozenLeft.wohnung, backgroundColor: '#1C1F24' }}>
-                      <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{row.wohnung}</span>
+                    <td className={`${frozenCellBase} min-w-0`} style={{ width: frozenWidths.status, minWidth: frozenWidths.status, maxWidth: frozenWidths.status, left: frozenLeft.status, backgroundColor: '#1C1F24' }}>
+                      <TruncatingTooltipCell text={row.statusLabel} />
                     </td>
-                    <td className={`${frozenCellBase} text-right`} style={{ width: frozenWidths.qm, minWidth: frozenWidths.qm, maxWidth: frozenWidths.qm, left: frozenLeft.qm, backgroundColor: '#1C1F24' }}>{row.qm}</td>
-                    <td className={`${frozenCellBase} text-right`} style={{ width: frozenWidths.betten, minWidth: frozenWidths.betten, maxWidth: frozenWidths.betten, left: frozenLeft.betten, backgroundColor: '#1C1F24' }}>{row.betten}</td>
-                    <td className={`${frozenCellBase} text-right ${leftZoneBoundaryClass}`} style={{ width: frozenWidths.rooms, minWidth: frozenWidths.rooms, maxWidth: frozenWidths.rooms, left: frozenLeft.rooms, backgroundColor: '#1C1F24' }}>{row.rooms}</td>
+                    <td className={`${frozenCellBase} min-w-0`} style={{ width: frozenWidths.adresse, minWidth: frozenWidths.adresse, maxWidth: frozenWidths.adresse, left: frozenLeft.adresse, backgroundColor: '#1C1F24' }}>
+                      <TruncatingTooltipCell text={row.adresse} />
+                    </td>
+                    <td className={`${frozenCellBase} min-w-0`} style={{ width: frozenWidths.wohnung, minWidth: frozenWidths.wohnung, maxWidth: frozenWidths.wohnung, left: frozenLeft.wohnung, backgroundColor: '#1C1F24' }}>
+                      <TruncatingTooltipCell text={row.wohnung} />
+                    </td>
+                    <td className={`${frozenCellBase} text-right whitespace-nowrap tabular-nums`} style={{ width: frozenWidths.qm, minWidth: frozenWidths.qm, maxWidth: frozenWidths.qm, left: frozenLeft.qm, backgroundColor: '#1C1F24' }}>{row.qm}</td>
+                    <td className={`${frozenCellBase} text-right whitespace-nowrap tabular-nums`} style={{ width: frozenWidths.betten, minWidth: frozenWidths.betten, maxWidth: frozenWidths.betten, left: frozenLeft.betten, backgroundColor: '#1C1F24' }}>{row.betten}</td>
+                    <td className={`${frozenCellBase} text-right whitespace-nowrap tabular-nums ${leftZoneBoundaryClass}`} style={{ width: frozenWidths.rooms, minWidth: frozenWidths.rooms, maxWidth: frozenWidths.rooms, left: frozenLeft.rooms, backgroundColor: '#1C1F24' }}>{row.rooms}</td>
 
-                    <td className="px-2 py-1 border-b border-r border-gray-800 text-right tabular-nums">{formatCurrency(row.collectedForApartment)}</td>
+                    <td className="px-2 py-1 border-b border-r border-gray-800 text-right tabular-nums whitespace-nowrap">{formatCurrency(row.collectedForApartment)}</td>
                     <td
-                      className="px-2 py-1 border-b border-r border-gray-800 text-right tabular-nums"
+                      className="px-2 py-1 border-b border-r border-gray-800 text-right tabular-nums whitespace-nowrap"
                       onDoubleClick={() =>
                         setEditingPlanningCell({
                           propertyId: row.apartmentId,
@@ -1657,19 +2020,20 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
                       )}
                       {isSaving && <span className="ml-1 text-[10px] text-gray-500">...</span>}
                     </td>
-                    <td className="px-2 py-1 border-b border-r border-gray-800 text-right tabular-nums">{formatCurrency(row.fullCapacityIncome)}</td>
-                    <td className="px-2 py-1 border-b border-r border-gray-800 text-right tabular-nums">{formatCurrency(row.difference)}</td>
-                    <td className="px-2 py-1 border-b border-r border-gray-800 text-right tabular-nums">
+                    <td className="px-2 py-1 border-b border-r border-gray-800 text-right tabular-nums whitespace-nowrap">{formatCurrency(row.fullCapacityIncome)}</td>
+                    <td className="px-2 py-1 border-b border-r border-gray-800 text-right tabular-nums whitespace-nowrap">{formatCurrency(row.difference)}</td>
+                    <td className="px-2 py-1 border-b border-r border-gray-800 text-right tabular-nums whitespace-nowrap">
                       {formatPct(row.planFulfillment > 0 ? row.planFulfillment : 0)}
                     </td>
-                    <td className="px-2 py-1 border-b border-r border-gray-800 text-right tabular-nums">{formatCurrency(row.invoices)}</td>
-                    <td className="px-2 py-1 border-b border-r border-gray-800 text-right tabular-nums">{formatCurrency(row.ownerDue)}</td>
-                    <td className="px-2 py-1 border-b border-gray-800 text-right tabular-nums">{formatCurrency(row.totalCost)}</td>
+                    <td className="px-2 py-1 border-b border-r border-gray-800 text-right tabular-nums whitespace-nowrap">{formatCurrency(row.invoices)}</td>
+                    <td className="px-2 py-1 border-b border-r border-gray-800 text-right tabular-nums whitespace-nowrap">{formatCurrency(row.ownerDue)}</td>
+                    <td className="px-2 py-1 border-b border-gray-800 text-right tabular-nums whitespace-nowrap">{formatCurrency(row.totalCost)}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          </div>
         </div>
       </section>
 
@@ -2277,6 +2641,7 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
         </div>
       )}
     </div>
+    </TooltipProvider>
   );
 };
 
