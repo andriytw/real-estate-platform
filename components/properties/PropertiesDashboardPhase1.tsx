@@ -412,7 +412,7 @@ function expenseInvoiceCompositeKey(apartmentId: string, groupKey: string): stri
 
 /** Shared grid for Apartment Expenses Breakdown modal: col1 fixed 2.25rem, identity flexible, three fixed financial columns. */
 const MODAL_EXPENSES_BREAKDOWN_GRID =
-  'grid w-full min-w-0 grid-cols-[2.25rem_minmax(0,1fr)_12rem_12rem_14rem] gap-x-3 items-center';
+  'grid w-full min-w-0 grid-cols-[2.25rem_minmax(0,1fr)_12rem_12rem_14rem] gap-x-2 items-center';
 
 /** Shared grid for Apartment Performance Breakdown modal: chevron + identity columns + KPI columns. */
 const MODAL_PERFORMANCE_BREAKDOWN_GRID =
@@ -466,14 +466,20 @@ function ModalExpenseFinancialCell({
   label,
   valueFormatted,
   valueClassName = 'text-white',
+  className = '',
+  innerClassName = '',
 }: {
   label: string;
   valueFormatted: string;
   valueClassName?: string;
+  /** Merged onto root wrapper (presentational only). */
+  className?: string;
+  /** Merged onto inner flex row; use e.g. text-[12px] leading-tight for compact apartment rows. */
+  innerClassName?: string;
 }) {
   return (
-    <div className="min-w-0 overflow-hidden">
-      <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+    <div className={`min-w-0 overflow-hidden ${className}`.trim()}>
+      <div className={`flex min-w-0 items-center gap-2 whitespace-nowrap ${innerClassName}`.trim()}>
         <span className="min-w-0 flex-1 truncate text-left text-gray-400">{label}</span>
         <span className={`shrink-0 text-right font-semibold tabular-nums ${valueClassName}`}>{valueFormatted}</span>
       </div>
@@ -2286,6 +2292,23 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
                     : 'No apartments match your search or filters.'}
                 </p>
               ) : null}
+
+              <div
+                aria-hidden
+                className={`w-full rounded border border-gray-800 bg-[#0D1117]/40 px-2.5 py-1 ${MODAL_EXPENSES_BREAKDOWN_GRID}`}
+              >
+                <span />
+                <div className="grid min-w-0 grid-cols-[10rem_10rem_minmax(0,1fr)_7.5rem] items-center gap-x-2">
+                  <span className={PERFORMANCE_APT_HEADER_CELL_CLASS}>Group</span>
+                  <span className={PERFORMANCE_APT_HEADER_CELL_CLASS}>Operator</span>
+                  <span className={PERFORMANCE_APT_HEADER_CELL_CLASS}>Street</span>
+                  <span className={PERFORMANCE_APT_HEADER_CELL_CLASS}>Unit</span>
+                </div>
+                <span className={`${PERFORMANCE_APT_HEADER_CELL_CLASS} text-right`}>Owner Due</span>
+                <span className={`${PERFORMANCE_APT_HEADER_CELL_CLASS} text-right`}>Invoices</span>
+                <span className={`${PERFORMANCE_APT_HEADER_CELL_CLASS} text-right`}>Total Exp.</span>
+              </div>
+
               {displayedApartmentExpenseRows.map((block) => {
                 const expanded = expandedExpenseApartments.has(block.apartmentId);
                 return (
@@ -2293,32 +2316,41 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
                     <button
                       type="button"
                       onClick={() => toggleExpenseApartmentExpand(block.apartmentId)}
-                      className={`w-full px-3 py-2.5 text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500/40 ${MODAL_EXPENSES_BREAKDOWN_GRID}`}
+                      className={`w-full px-2.5 py-1.5 text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500/40 ${MODAL_EXPENSES_BREAKDOWN_GRID}`}
                     >
                       <span className="flex h-full shrink-0 items-center justify-center text-gray-500">
                         {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </span>
-                      <div className="min-w-0 text-sm">
+                      <div className="min-w-0">
                         <div className="grid min-w-0 grid-cols-[10rem_10rem_minmax(0,1fr)_7.5rem] items-center gap-x-2 whitespace-nowrap">
-                          <span className="truncate text-gray-400" title={block.normalizedGroup}>
+                          <span className={PERFORMANCE_APT_CELL_MUTED_CLASS} title={block.normalizedGroup}>
                             {block.normalizedGroup}
                           </span>
-                          <span className="truncate text-gray-400" title={block.normalizedOperator}>
+                          <span className={PERFORMANCE_APT_CELL_MUTED_CLASS} title={block.normalizedOperator}>
                             {block.normalizedOperator}
                           </span>
-                          <span className="truncate text-gray-300" title={block.adresse || '—'}>
+                          <span className={PERFORMANCE_APT_CELL_STREET_CLASS} title={block.adresse || '—'}>
                             {block.adresse || '—'}
                           </span>
-                          <span className="truncate text-white" title={block.wohnung || '—'}>
+                          <span className={PERFORMANCE_APT_CELL_UNIT_CLASS} title={block.wohnung || '—'}>
                             {block.wohnung || '—'}
                           </span>
                         </div>
                       </div>
-                      <ModalExpenseFinancialCell label="Owner Due:" valueFormatted={formatCurrency(block.ownerDue)} />
-                      <ModalExpenseFinancialCell label="Invoices:" valueFormatted={formatCurrency(block.invoices)} />
+                      <ModalExpenseFinancialCell
+                        label="Owner Due:"
+                        valueFormatted={formatCurrency(block.ownerDue)}
+                        innerClassName="text-[12px] leading-tight gap-1.5"
+                      />
+                      <ModalExpenseFinancialCell
+                        label="Invoices:"
+                        valueFormatted={formatCurrency(block.invoices)}
+                        innerClassName="text-[12px] leading-tight gap-1.5"
+                      />
                       <ModalExpenseFinancialCell
                         label="Total Expenses:"
                         valueFormatted={formatCurrency(block.totalCost)}
+                        innerClassName="text-[12px] leading-tight gap-1.5"
                         valueClassName="text-emerald-200"
                       />
                     </button>
