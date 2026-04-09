@@ -10,6 +10,25 @@ import { apartmentFinancialCoreFromMatrixRow } from '../../lib/propertiesDashboa
 import { buildPaidProformaContributionsByProperty } from '../../lib/propertiesDashboard/dayCellResolver';
 import type { DailyDashboardMetrics, DashboardApartmentMatrixRow } from '../../lib/propertiesDashboard/types';
 import { resolveOwnerDueForMonth } from '../../lib/ownerDueResolver';
+import { useWorker } from '../../contexts/WorkerContext';
+import {
+  compareApartmentCanonical,
+  compareLocaleEmptyLastApartmentSort,
+  compareStreetPrimaryThenCanonical,
+  compareStringsApartmentSort,
+  compareWohnungPrimaryCanonical,
+  getStreetSortKey,
+} from '../../lib/apartments/sorting';
+import {
+  financialTableSortPayload,
+  matrixTableSortPayload,
+  modalStreetSortPayload,
+  parseFinancialTableSortPayload,
+  parseMatrixTableSortPayload,
+  parseModalStreetSortPayload,
+  readSortPreferenceRaw,
+  writeSortPreferenceRaw,
+} from '../../lib/sortPreferencesStorage';
 import {
   blockBookingsForProperty,
   inclusiveToExclusive,
@@ -105,7 +124,7 @@ async function paymentProofsToPerformanceRows(proofs: PaymentProof[]): Promise<P
       filePath,
     });
   }
-  rows.sort((a, b) => a.id.localeCompare(b.id));
+  rows.sort((a, b) => compareStringsApartmentSort(a.id, b.id));
   return rows;
 }
 
@@ -172,15 +191,7 @@ type FinancialSortKey =
   | 'totalCost';
 
 function compareLocaleEmptyLast(a: string, b: string, asc: boolean): number {
-  const ae = !(a ?? '').trim();
-  const be = !(b ?? '').trim();
-  if (ae || be) {
-    if (ae && be) return 0;
-    if (ae) return 1;
-    if (be) return -1;
-  }
-  const c = (a ?? '').localeCompare(b ?? '', undefined, { sensitivity: 'base' });
-  return asc ? c : -c;
+  return compareLocaleEmptyLastApartmentSort(a ?? '', b ?? '', asc);
 }
 
 function compareNumberEmptyLast(a: number, b: number, asc: boolean): number {
@@ -206,10 +217,26 @@ function compareMatrixRow(a: DashboardApartmentMatrixRow, b: DashboardApartmentM
       cmp = compareLocaleEmptyLast(a.statusLabel, b.statusLabel, asc);
       break;
     case 'adresse':
-      cmp = compareLocaleEmptyLast(a.adresse, b.adresse, asc);
+      cmp = compareStreetPrimaryThenCanonical(
+        {
+          streetSortKey: getStreetSortKey(a.adresse ?? ''),
+          unit: a.wohnung ?? '',
+          apartmentId: a.apartmentId,
+        },
+        {
+          streetSortKey: getStreetSortKey(b.adresse ?? ''),
+          unit: b.wohnung ?? '',
+          apartmentId: b.apartmentId,
+        },
+        asc ? 'asc' : 'desc'
+      );
       break;
     case 'wohnung':
-      cmp = compareLocaleEmptyLast(a.wohnung, b.wohnung, asc);
+      cmp = compareWohnungPrimaryCanonical(
+        { unit: a.wohnung ?? '', apartmentId: a.apartmentId },
+        { unit: b.wohnung ?? '', apartmentId: b.apartmentId },
+        asc ? 'asc' : 'desc'
+      );
       break;
     case 'qm':
       cmp = compareNumberEmptyLast(a.qm, b.qm, asc);
@@ -227,7 +254,10 @@ function compareMatrixRow(a: DashboardApartmentMatrixRow, b: DashboardApartmentM
       cmp = 0;
   }
   if (cmp !== 0) return cmp;
-  return a.apartmentId.localeCompare(b.apartmentId);
+  return compareApartmentCanonical(
+    { unit: a.wohnung ?? '', apartmentId: a.apartmentId },
+    { unit: b.wohnung ?? '', apartmentId: b.apartmentId }
+  );
 }
 
 function compareFinancialRow(a: ApartmentFinancialRow, b: ApartmentFinancialRow, key: FinancialSortKey, dir: 'asc' | 'desc'): number {
@@ -241,10 +271,26 @@ function compareFinancialRow(a: ApartmentFinancialRow, b: ApartmentFinancialRow,
       cmp = compareLocaleEmptyLast(a.statusLabel, b.statusLabel, asc);
       break;
     case 'adresse':
-      cmp = compareLocaleEmptyLast(a.adresse, b.adresse, asc);
+      cmp = compareStreetPrimaryThenCanonical(
+        {
+          streetSortKey: getStreetSortKey(a.adresse ?? ''),
+          unit: a.wohnung ?? '',
+          apartmentId: a.apartmentId,
+        },
+        {
+          streetSortKey: getStreetSortKey(b.adresse ?? ''),
+          unit: b.wohnung ?? '',
+          apartmentId: b.apartmentId,
+        },
+        asc ? 'asc' : 'desc'
+      );
       break;
     case 'wohnung':
-      cmp = compareLocaleEmptyLast(a.wohnung, b.wohnung, asc);
+      cmp = compareWohnungPrimaryCanonical(
+        { unit: a.wohnung ?? '', apartmentId: a.apartmentId },
+        { unit: b.wohnung ?? '', apartmentId: b.apartmentId },
+        asc ? 'asc' : 'desc'
+      );
       break;
     case 'qm':
       cmp = compareNumberEmptyLast(a.qm, b.qm, asc);
@@ -283,7 +329,10 @@ function compareFinancialRow(a: ApartmentFinancialRow, b: ApartmentFinancialRow,
       cmp = 0;
   }
   if (cmp !== 0) return cmp;
-  return a.apartmentId.localeCompare(b.apartmentId);
+  return compareApartmentCanonical(
+    { unit: a.wohnung ?? '', apartmentId: a.apartmentId },
+    { unit: b.wohnung ?? '', apartmentId: b.apartmentId }
+  );
 }
 
 function TruncatingTooltipCell({ text, className = '' }: { text: string; className?: string }) {
@@ -505,6 +554,51 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
     key: null,
     dir: 'asc',
   });
+
+  const { worker } = useWorker();
+  const [dashboardSortPrefsHydrated, setDashboardSortPrefsHydrated] = useState(false);
+
+  useEffect(() => {
+    const uid = worker?.id;
+    if (!uid) return;
+    const rawM = readSortPreferenceRaw(uid, 'properties.dashboard', 'matrixTable');
+    const m = parseMatrixTableSortPayload(rawM);
+    if (m) setMatrixTableSort({ key: m.key as MatrixSortKey | null, dir: m.dir });
+    const rawF = readSortPreferenceRaw(uid, 'properties.dashboard', 'financialTable');
+    const f = parseFinancialTableSortPayload(rawF);
+    if (f) setFinancialTableSort({ key: f.key as FinancialSortKey | null, dir: f.dir });
+    const rawE = readSortPreferenceRaw(uid, 'properties.dashboard', 'expenseModalStreet');
+    const ex = parseModalStreetSortPayload(rawE);
+    if (ex) setApartmentExpenseModalStreetSort(ex);
+    const rawP = readSortPreferenceRaw(uid, 'properties.dashboard', 'performanceModalStreet');
+    const pf = parseModalStreetSortPayload(rawP);
+    if (pf) setPerformanceModalStreetSort(pf);
+    setDashboardSortPrefsHydrated(true);
+  }, [worker?.id]);
+
+  useEffect(() => {
+    const uid = worker?.id;
+    if (!uid || !dashboardSortPrefsHydrated) return;
+    writeSortPreferenceRaw(uid, 'properties.dashboard', 'matrixTable', matrixTableSortPayload(matrixTableSort.key, matrixTableSort.dir));
+  }, [worker?.id, matrixTableSort, dashboardSortPrefsHydrated]);
+
+  useEffect(() => {
+    const uid = worker?.id;
+    if (!uid || !dashboardSortPrefsHydrated) return;
+    writeSortPreferenceRaw(uid, 'properties.dashboard', 'financialTable', financialTableSortPayload(financialTableSort.key, financialTableSort.dir));
+  }, [worker?.id, financialTableSort, dashboardSortPrefsHydrated]);
+
+  useEffect(() => {
+    const uid = worker?.id;
+    if (!uid || !dashboardSortPrefsHydrated) return;
+    writeSortPreferenceRaw(uid, 'properties.dashboard', 'expenseModalStreet', modalStreetSortPayload(apartmentExpenseModalStreetSort));
+  }, [worker?.id, apartmentExpenseModalStreetSort, dashboardSortPrefsHydrated]);
+
+  useEffect(() => {
+    const uid = worker?.id;
+    if (!uid || !dashboardSortPrefsHydrated) return;
+    writeSortPreferenceRaw(uid, 'properties.dashboard', 'performanceModalStreet', modalStreetSortPayload(performanceModalStreetSort));
+  }, [worker?.id, performanceModalStreetSort, dashboardSortPrefsHydrated]);
 
   const monthData = useMemo(() => {
     const [y, m] = selectedMonth.split('-').map(Number);
@@ -877,8 +971,24 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
     if (q) {
       rows = rows.filter((r) => String(r.adresse ?? '').toLowerCase().includes(q));
     }
-    if (!matrixTableSort.key) return rows;
     const { key, dir } = matrixTableSort;
+    if (!key) {
+      return [...rows].sort((a, b) =>
+        compareStreetPrimaryThenCanonical(
+          {
+            streetSortKey: getStreetSortKey(a.adresse ?? ''),
+            unit: a.wohnung ?? '',
+            apartmentId: a.apartmentId,
+          },
+          {
+            streetSortKey: getStreetSortKey(b.adresse ?? ''),
+            unit: b.wohnung ?? '',
+            apartmentId: b.apartmentId,
+          },
+          'asc'
+        )
+      );
+    }
     return [...rows].sort((a, b) => compareMatrixRow(a, b, key, dir));
   }, [monthData, matrixAddressSearch, matrixTableSort]);
 
@@ -888,8 +998,24 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
     if (q) {
       rows = rows.filter((r) => String(r.adresse ?? '').toLowerCase().includes(q));
     }
-    if (!financialTableSort.key) return rows;
     const { key, dir } = financialTableSort;
+    if (!key) {
+      return [...rows].sort((a, b) =>
+        compareStreetPrimaryThenCanonical(
+          {
+            streetSortKey: getStreetSortKey(a.adresse ?? ''),
+            unit: a.wohnung ?? '',
+            apartmentId: a.apartmentId,
+          },
+          {
+            streetSortKey: getStreetSortKey(b.adresse ?? ''),
+            unit: b.wohnung ?? '',
+            apartmentId: b.apartmentId,
+          },
+          'asc'
+        )
+      );
+    }
     return [...rows].sort((a, b) => compareFinancialRow(a, b, key, dir));
   }, [apartmentFinancialRows, financialAddressSearch, financialTableSort]);
 
@@ -979,13 +1105,13 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
   const modalGroupFilterOptions = useMemo(() => {
     const uniq = new Set<string>();
     for (const r of apartmentExpenseModalRows) uniq.add(r.normalizedGroup);
-    return [...uniq].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    return [...uniq].sort((a, b) => compareStringsApartmentSort(a, b));
   }, [apartmentExpenseModalRows]);
 
   const modalOperatorFilterOptions = useMemo(() => {
     const uniq = new Set<string>();
     for (const r of apartmentExpenseModalRows) uniq.add(r.normalizedOperator);
-    return [...uniq].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    return [...uniq].sort((a, b) => compareStringsApartmentSort(a, b));
   }, [apartmentExpenseModalRows]);
 
   const displayedApartmentExpenseRows = useMemo(() => {
@@ -1002,16 +1128,22 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
       if (apartmentExpenseModalOperatorFilter !== 'all' && block.normalizedOperator !== apartmentExpenseModalOperatorFilter) return false;
       return true;
     });
-    if (apartmentExpenseModalStreetSort === 'default') {
-      return filtered;
-    }
-    return filtered.slice().sort((a, b) => {
-      const cmp = (a.adresse ?? '').localeCompare(b.adresse ?? '', undefined, { sensitivity: 'base' });
-      if (cmp !== 0) {
-        return apartmentExpenseModalStreetSort === 'asc' ? cmp : -cmp;
-      }
-      return a.apartmentId.localeCompare(b.apartmentId);
-    });
+    const primaryDir = apartmentExpenseModalStreetSort === 'default' || apartmentExpenseModalStreetSort === 'asc' ? 'asc' : 'desc';
+    return filtered.slice().sort((a, b) =>
+      compareStreetPrimaryThenCanonical(
+        {
+          streetSortKey: getStreetSortKey(a.adresse ?? ''),
+          unit: a.wohnung ?? '',
+          apartmentId: a.apartmentId,
+        },
+        {
+          streetSortKey: getStreetSortKey(b.adresse ?? ''),
+          unit: b.wohnung ?? '',
+          apartmentId: b.apartmentId,
+        },
+        primaryDir
+      )
+    );
   }, [
     apartmentExpenseModalRows,
     apartmentExpenseModalSearch,
@@ -1185,13 +1317,13 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
   const performanceModalGroupFilterOptions = useMemo(() => {
     const uniq = new Set<string>();
     for (const r of apartmentPerformanceModalRows) uniq.add(r.normalizedGroup);
-    return [...uniq].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    return [...uniq].sort((a, b) => compareStringsApartmentSort(a, b));
   }, [apartmentPerformanceModalRows]);
 
   const performanceModalOperatorFilterOptions = useMemo(() => {
     const uniq = new Set<string>();
     for (const r of apartmentPerformanceModalRows) uniq.add(r.normalizedOperator);
-    return [...uniq].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    return [...uniq].sort((a, b) => compareStringsApartmentSort(a, b));
   }, [apartmentPerformanceModalRows]);
 
   const displayedApartmentPerformanceRows = useMemo(() => {
@@ -1208,16 +1340,22 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
       if (performanceModalOperatorFilter !== 'all' && block.normalizedOperator !== performanceModalOperatorFilter) return false;
       return true;
     });
-    if (performanceModalStreetSort === 'default') {
-      return filtered;
-    }
-    return filtered.slice().sort((a, b) => {
-      const cmp = (a.adresse ?? '').localeCompare(b.adresse ?? '', undefined, { sensitivity: 'base' });
-      if (cmp !== 0) {
-        return performanceModalStreetSort === 'asc' ? cmp : -cmp;
-      }
-      return a.apartmentId.localeCompare(b.apartmentId);
-    });
+    const perfDir = performanceModalStreetSort === 'default' || performanceModalStreetSort === 'asc' ? 'asc' : 'desc';
+    return filtered.slice().sort((a, b) =>
+      compareStreetPrimaryThenCanonical(
+        {
+          streetSortKey: getStreetSortKey(a.adresse ?? ''),
+          unit: a.wohnung ?? '',
+          apartmentId: a.apartmentId,
+        },
+        {
+          streetSortKey: getStreetSortKey(b.adresse ?? ''),
+          unit: b.wohnung ?? '',
+          apartmentId: b.apartmentId,
+        },
+        perfDir
+      )
+    );
   }, [
     apartmentPerformanceModalRows,
     performanceModalSearch,

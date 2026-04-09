@@ -20,6 +20,17 @@ import { formatPropertyAddress } from '../utils/formatPropertyAddress';
 import { resolveSalesStatusContext, getEffectiveSalesApartmentStatus } from '../lib/salesCalendarStatus';
 import { buildSalesBarSnapshot, SALES_BAR_NARROW_MAX_PX } from '../utils/salesBarSnapshot';
 import { filterActiveProperties } from '../lib/propertyActive';
+import {
+  compareStreetPrimaryThenCanonical,
+  compareStringsApartmentSort,
+  getStreetSortKeyFromProperty,
+} from '../lib/apartments/sorting';
+import {
+  availabilityListSortPayload,
+  parseAvailabilityListSortPayload,
+  readSortPreferenceRaw,
+  writeSortPreferenceRaw,
+} from '../lib/sortPreferencesStorage';
 
 // Helper to normalize date strings for stacking key
 const normalizeDateKey = (v: string) => {
@@ -75,6 +86,8 @@ interface SalesCalendarProps {
   onOpenOfferFromCalendar?: (offer: OfferData) => void;
   onOpenProformaFromCalendar?: (proforma: InvoiceData) => void;
   onOpenInvoiceFromCalendar?: (invoice: InvoiceData) => void;
+  /** Supabase profile id — persisted sort for availability list (internal enum values only). */
+  sortPrefsUserId?: string | null;
 }
 
 const INITIAL_BOOKINGS: Booking[] = [
@@ -201,6 +214,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   onOpenOfferFromCalendar,
   onOpenProformaFromCalendar,
   onOpenInvoiceFromCalendar,
+  sortPrefsUserId,
 }) => {
   const safeProperties = React.useMemo(
     () => filterActiveProperties(properties ?? []),
@@ -242,8 +256,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   const [availabilityStartDate, setAvailabilityStartDate] = useState('');
   const [availabilityEndDate, setAvailabilityEndDate] = useState('');
   const [showReservations, setShowReservations] = useState(true); // visibility toggle for reservation layer
-  /** Left list + grid row order (after filters). A→Z uses address column `details`, not unit title. */
+  /** Left list + grid row order (after filters). A→Z uses canonical street key + unit (same as property list). */
   const [availabilityListSort, setAvailabilityListSort] = useState<'streetAsc' | 'roomsAsc' | 'bedsAsc'>('streetAsc');
+  const [availabilitySortPrefsHydrated, setAvailabilitySortPrefsHydrated] = useState(false);
   const [hoveredBooking, setHoveredBooking] = useState<{booking: Booking, x: number, y: number} | null>(null);
   const [ugpLoadingBookingId, setUgpLoadingBookingId] = useState<string | number | null>(null);
   const hoverLeaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -290,6 +305,21 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     () => new Map(safeProperties.map((property) => [String(property.id), property])),
     [safeProperties]
   );
+
+  useEffect(() => {
+    const uid = sortPrefsUserId;
+    if (!uid) return;
+    const raw = readSortPreferenceRaw(uid, 'sales.calendar', 'availabilityList');
+    const v = parseAvailabilityListSortPayload(raw);
+    if (v) setAvailabilityListSort(v);
+    setAvailabilitySortPrefsHydrated(true);
+  }, [sortPrefsUserId]);
+
+  useEffect(() => {
+    const uid = sortPrefsUserId;
+    if (!uid || !availabilitySortPrefsHydrated) return;
+    writeSortPreferenceRaw(uid, 'sales.calendar', 'availabilityList', availabilityListSortPayload(availabilityListSort));
+  }, [sortPrefsUserId, availabilityListSort, availabilitySortPrefsHydrated]);
 
   const roomsFromProperties = React.useMemo(
     () =>
@@ -534,7 +564,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         const sorted = [...overlapping].sort((a, b) => {
           const A = String(a.id);
           const B = String(b.id);
-          return A.localeCompare(B);
+          return compareStringsApartmentSort(A, B);
         });
         const index = sorted.findIndex((x) => String(x.id) === String(r.id));
         map.set(String(r.id), index >= 0 ? index : 0);
@@ -640,9 +670,26 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   const sortedFilteredRooms = React.useMemo(() => {
     const list = [...filteredRooms];
-    const addrKey = (r: (typeof filteredRooms)[number]) => (r.details || '').trim();
-    const cmpByStreet = (a: (typeof filteredRooms)[number], b: (typeof filteredRooms)[number]) =>
-      addrKey(a).localeCompare(addrKey(b), undefined, { sensitivity: 'base' });
+    const cmpByStreet = (a: (typeof filteredRooms)[number], b: (typeof filteredRooms)[number]) => {
+      const pa = propertyById.get(String(a.id));
+      const pb = propertyById.get(String(b.id));
+      if (!pa || !pb) {
+        return compareStringsApartmentSort((a.details || '').trim(), (b.details || '').trim());
+      }
+      return compareStreetPrimaryThenCanonical(
+        {
+          streetSortKey: getStreetSortKeyFromProperty(pa),
+          unit: (pa.title || '').trim(),
+          apartmentId: String(pa.id),
+        },
+        {
+          streetSortKey: getStreetSortKeyFromProperty(pb),
+          unit: (pb.title || '').trim(),
+          apartmentId: String(pb.id),
+        },
+        'asc'
+      );
+    };
 
     switch (availabilityListSort) {
       case 'streetAsc':
@@ -664,7 +711,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         list.sort(cmpByStreet);
     }
     return list;
-  }, [filteredRooms, availabilityListSort]);
+  }, [filteredRooms, availabilityListSort, propertyById]);
 
   const rowMetrics = React.useMemo((): RowMetric[] => {
     let top = 0;

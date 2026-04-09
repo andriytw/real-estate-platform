@@ -202,6 +202,17 @@ import { MOCK_PROPERTIES } from '../constants';
 import { createFacilityTasksForBooking, updateBookingStatusFromTask, getBookingStyle } from '../bookingUtils';
 import { supabase } from '../utils/supabase/client';
 import { safeGetSession, safeGetUser } from '../lib/supabaseAuthGuard';
+import {
+  compareStreetPrimaryThenCanonical,
+  compareStringsApartmentSort,
+  getStreetSortKeyFromProperty,
+} from '../lib/apartments/sorting';
+import {
+  parsePropertyListSortPayload,
+  propertyListSortPayload,
+  readSortPreferenceRaw,
+  writeSortPreferenceRaw,
+} from '../lib/sortPreferencesStorage';
 
 // --- Types ---
 type Department = 'admin' | 'properties' | 'facility' | 'accounting' | 'sales' | 'tasks';
@@ -599,6 +610,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const [propertySearch, setPropertySearch] = useState('');
   const [propertyGroupFilter, setPropertyGroupFilter] = useState<'all' | string>('all');
   const [propertyListSort, setPropertyListSort] = useState<'asc' | 'desc'>('asc');
+  const [propertyListSortHydrated, setPropertyListSortHydrated] = useState(false);
   const [archiveFilter, setArchiveFilter] = useState<'active' | 'archived'>('active');
   const [propertyMenuOpenId, setPropertyMenuOpenId] = useState<string | null>(null);
   const [archiveModalPropertyId, setArchiveModalPropertyId] = useState<string | null>(null);
@@ -607,6 +619,20 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>(initialId);
   const [isLoadingProperties, setIsLoadingProperties] = useState(initialProps.length === 0);
   const [einzugAuszugTasks, setEinzugAuszugTasks] = useState<CalendarEvent[]>([]);
+
+  useEffect(() => {
+    const uid = worker?.id;
+    if (!uid) return;
+    const v = parsePropertyListSortPayload(readSortPreferenceRaw(uid, 'properties.sidebar', 'propertyList'));
+    if (v) setPropertyListSort(v);
+    setPropertyListSortHydrated(true);
+  }, [worker?.id]);
+
+  useEffect(() => {
+    const uid = worker?.id;
+    if (!uid || !propertyListSortHydrated) return;
+    writeSortPreferenceRaw(uid, 'properties.sidebar', 'propertyList', propertyListSortPayload(propertyListSort));
+  }, [worker?.id, propertyListSort, propertyListSortHydrated]);
 
   // Load Einzug/Auszug tasks for selected property
   useEffect(() => {
@@ -925,10 +951,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   }, [properties, propertySearch]);
 
   const apartmentGroupsSortedByName = useMemo(
-    () =>
-      [...apartmentGroups].sort((a, b) =>
-        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
-      ),
+    () => [...apartmentGroups].sort((a, b) => compareStringsApartmentSort(a.name, b.name)),
     [apartmentGroups]
   );
 
@@ -939,14 +962,21 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     if (propertyGroupFilter !== 'all') {
       list = list.filter((p) => p.apartmentGroupId === propertyGroupFilter);
     }
-    const dir = propertyListSort === 'asc' ? 1 : -1;
-    return [...list].sort(
-      (a, b) =>
-        getPropertyListPrimaryTitle(a).localeCompare(
-          getPropertyListPrimaryTitle(b),
-          undefined,
-          { sensitivity: 'base' }
-        ) * dir
+    const primaryDir = propertyListSort === 'asc' ? 'asc' : 'desc';
+    return [...list].sort((a, b) =>
+      compareStreetPrimaryThenCanonical(
+        {
+          streetSortKey: getStreetSortKeyFromProperty(a),
+          unit: (a.title || '').trim(),
+          apartmentId: String(a.id),
+        },
+        {
+          streetSortKey: getStreetSortKeyFromProperty(b),
+          unit: (b.title || '').trim(),
+          apartmentId: String(b.id),
+        },
+        primaryDir
+      )
     );
   }, [filteredProperties, archiveFilter, propertyGroupFilter, propertyListSort]);
 
@@ -11217,6 +11247,7 @@ Hero Rooms Team`;
           proofSignedUrlByInvoiceId={proofSignedUrlByInvoiceId}
           adminEvents={adminEvents}
           properties={properties}
+          sortPrefsUserId={worker?.id ?? null}
           prefilledRequestData={selectedRequest ? {
             firstName: selectedRequest.firstName,
             lastName: selectedRequest.lastName,
