@@ -1,6 +1,12 @@
 
 
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import {
+  TooltipProvider,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from '@radix-ui/react-tooltip';
 import { RequestData, Property } from '../types';
 import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar, Search, Ruler, LayoutGrid, Bed } from 'lucide-react';
 import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus, Lead, MultiApartmentOfferDraft, PaymentProof, SelectedApartmentData } from '../types';
@@ -1150,6 +1156,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   monthBoundaries.push(totalDays);
 
   return (
+    <TooltipProvider delayDuration={0} skipDelayDuration={0}>
     <div className="h-full flex flex-col bg-[#111315] overflow-hidden select-none">
       
       {/* Toolbar */}
@@ -1369,9 +1376,25 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                       <span className={`block min-w-0 truncate whitespace-nowrap ${rowClass}`}>{getApartmentStatusLabel(room.status)}</span>
                     </div>
                     <div className="flex h-full min-w-0 flex-1 items-center border-r border-gray-800/50 px-1">
-                      <span className={`block min-w-0 truncate whitespace-nowrap ${rowClass} text-gray-300`} title={room.details || undefined}>
-                        {room.details || '—'}
-                      </span>
+                      {room.details ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className={`block min-w-0 cursor-default truncate whitespace-nowrap ${rowClass} text-gray-300`}>
+                              {room.details}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            side="top"
+                            align="start"
+                            sideOffset={6}
+                            className="z-[300] max-w-[min(90vw,28rem)] border border-gray-700 bg-[#1C1F24] px-2 py-1 text-xs leading-snug text-gray-100 shadow-lg"
+                          >
+                            {room.details}
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <span className={`block min-w-0 truncate whitespace-nowrap ${rowClass} text-gray-300`}>—</span>
+                      )}
                     </div>
                     <div className="flex h-full w-[100px] min-w-0 shrink-0 items-center border-r border-gray-800/50 px-1">
                       <span className={`block min-w-0 truncate whitespace-nowrap font-semibold ${rowClass}`} title={room.name || undefined}>
@@ -2243,6 +2266,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         } : undefined}
       />
     </div>
+    </TooltipProvider>
   );
 };
 
