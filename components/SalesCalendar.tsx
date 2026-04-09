@@ -1382,7 +1382,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                       <span className="flex min-w-0 items-center gap-0.5 whitespace-nowrap">
                         <Ruler className="h-3 w-3 shrink-0 text-gray-500" />
                         <span className={rowClass}>
-                          {room.area != null && String(room.area).trim() !== '' && Number(room.area) > 0 ? `${room.area} м²` : '—'}
+                          {room.area != null && String(room.area).trim() !== '' && Number(room.area) > 0 ? room.area : '—'}
                         </span>
                       </span>
                     </div>
