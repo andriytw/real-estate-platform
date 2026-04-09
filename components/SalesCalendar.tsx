@@ -411,8 +411,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   /** Single shared vertical scroll for calendar body (left + right rows). */
   const bodyScrollRef = useRef<HTMLDivElement>(null);
-  /** Horizontal scroll for date grid + header only. */
+  /** Horizontal scroll for date lanes (source of truth for scrollLeft). */
   const gridScrollRef = useRef<HTMLDivElement>(null);
+  /** Horizontal scroll for month + day headers; kept in sync with gridScrollRef. */
+  const dateHeaderScrollRef = useRef<HTMLDivElement>(null);
 
   // Refs for drag state so document-level mouseup can read current values
   const dragStateRef = useRef({ isDragging: false, dragStart: null as { roomId: string; date: Date } | null, dragEnd: null as { roomId: string; date: Date } | null });
@@ -860,6 +862,29 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     
     return () => container.removeEventListener('scroll', handleScroll);
   }, [totalDays, startDate]);
+
+  // Keep month/day header strip horizontally aligned with the grid (X-only sync).
+  useEffect(() => {
+    const grid = gridScrollRef.current;
+    const head = dateHeaderScrollRef.current;
+    if (!grid || !head) return;
+
+    const syncHeaderFromGrid = () => {
+      if (head.scrollLeft !== grid.scrollLeft) head.scrollLeft = grid.scrollLeft;
+    };
+    const syncGridFromHeader = () => {
+      if (grid.scrollLeft !== head.scrollLeft) grid.scrollLeft = head.scrollLeft;
+    };
+
+    grid.addEventListener('scroll', syncHeaderFromGrid, { passive: true });
+    head.addEventListener('scroll', syncGridFromHeader, { passive: true });
+    syncHeaderFromGrid();
+
+    return () => {
+      grid.removeEventListener('scroll', syncHeaderFromGrid);
+      head.removeEventListener('scroll', syncGridFromHeader);
+    };
+  }, [totalDays]);
 
   const handleMouseDown = (roomId: string, dayIndex: number) => {
     setIsDragging(true);
@@ -1311,7 +1336,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
               {sortedFilteredRooms.map((room, rowIndex) => {
                 const m = rowMetrics[rowIndex];
                 const rowH = m?.height ?? 0;
-                const rowClass = 'text-[11px] font-medium text-gray-200';
+                const rowClass = 'text-[11px] font-medium leading-tight text-gray-200';
                 const isSelected = selectedPropertyIds.includes(String(room.id));
                 return (
                   <div
@@ -1320,7 +1345,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                     data-calendar-row-index={rowIndex}
                     data-calendar-side="left"
                     onClick={() => togglePropertySelection(String(room.id))}
-                    className={`box-border flex min-h-0 w-full min-w-0 cursor-pointer flex-nowrap items-center overflow-hidden border-b border-gray-800 transition-colors ${isSelected ? 'bg-emerald-900/20 hover:bg-emerald-900/25' : 'hover:bg-[#252a32]'}`}
+                    className={`box-border flex min-h-0 w-full min-w-0 cursor-pointer flex-nowrap items-stretch overflow-hidden border-b border-gray-800 transition-colors ${isSelected ? 'bg-emerald-900/20 hover:bg-emerald-900/25' : 'hover:bg-[#252a32]'}`}
                     style={{ height: rowH, minHeight: rowH, maxHeight: rowH }}
                   >
                     <div
@@ -1332,7 +1357,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                         checked={isSelected}
                         onChange={() => togglePropertySelection(String(room.id))}
                         onClick={(e) => e.stopPropagation()}
-                        className="rounded border-gray-600 bg-[#111315] text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
+                        className="h-4 w-4 shrink-0 rounded border-gray-600 bg-[#111315] text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
                       />
                     </div>
                     <div className="flex h-full w-[76px] min-w-0 shrink-0 items-center border-r border-gray-800/50 px-1">
@@ -1378,14 +1403,19 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
               })}
             </div>
 
-            {/* Right: horizontal scroll only; global overlays in one layer */}
-            <div ref={gridScrollRef} className="relative min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-hidden bg-[#0D1117]">
-              <div className="min-w-max">
-                <div className="sticky top-0 z-20 flex flex-col bg-[#111315]">
-                  <div className="flex h-7 border-b border-gray-800 bg-[#111315]">{monthNamesRow}</div>
-                  <div className="flex border-b border-gray-800 bg-[#161B22] shadow-md">{daysHeader}</div>
+            {/* Right: sticky date header (scrolls X in sync with grid) + lane grid below */}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#0D1117]">
+              <div className="sticky top-0 z-20 flex-shrink-0 bg-[#111315]">
+                <div ref={dateHeaderScrollRef} className="overflow-x-auto overflow-y-hidden">
+                  <div className="flex min-w-max flex-col">
+                    <div className="flex h-7 border-b border-gray-800 bg-[#111315]">{monthNamesRow}</div>
+                    <div className="flex border-b border-gray-800 bg-[#161B22] shadow-md">{daysHeader}</div>
+                  </div>
                 </div>
+              </div>
 
+              <div ref={gridScrollRef} className="relative min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
+                <div className="min-w-max">
                 <div
                   className="relative box-border"
                   style={
@@ -1664,6 +1694,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                         </div>
                     );
                   })}
+                </div>
                 </div>
               </div>
             </div>
