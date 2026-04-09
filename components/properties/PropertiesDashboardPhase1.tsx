@@ -1400,7 +1400,7 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
         />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-5">
         <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
           <h3 className="text-sm font-semibold text-gray-300 mb-3">Summary</h3>
           <div className="flex flex-col gap-2 text-sm">
@@ -1478,7 +1478,7 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
         <button
           type="button"
           onClick={() => setPerformanceModalOpen(true)}
-          className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4 text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:ring-offset-2 focus:ring-offset-[#0D1117] hover:border-gray-600 transition-colors"
+          className="flex w-full flex-col items-stretch justify-start bg-[#1C1F24] border border-gray-800 rounded-xl p-4 text-left focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:ring-offset-2 focus:ring-offset-[#0D1117] hover:border-gray-600 transition-colors"
         >
           <h3 className="text-sm font-semibold text-gray-300 mb-3">Apartment Performance Summary</h3>
           <div className="grid grid-cols-1 gap-2 text-sm">
@@ -1505,7 +1505,7 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
         <button
           type="button"
           onClick={() => setExpensesModalOpen(true)}
-          className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4 text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:ring-offset-2 focus:ring-offset-[#0D1117] hover:border-gray-600 transition-colors"
+          className="flex w-full flex-col items-stretch justify-start bg-[#1C1F24] border border-gray-800 rounded-xl p-4 text-left focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:ring-offset-2 focus:ring-offset-[#0D1117] hover:border-gray-600 transition-colors"
         >
           <h3 className="text-sm font-semibold text-gray-300 mb-3">Apartment Expenses Summary</h3>
           <div className="grid grid-cols-1 gap-2 text-sm">
@@ -1616,53 +1616,51 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
       </section>
 
       <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3 justify-between">
-          <h3 className="text-sm font-semibold text-gray-300 shrink-0">Apartment / Day Matrix</h3>
-          <div className="flex flex-wrap items-center gap-2 justify-end min-w-0">
-            <input
-              type="search"
-              value={matrixAddressSearch}
-              onChange={(e) => setMatrixAddressSearch(e.target.value)}
-              placeholder="Search by street..."
-              aria-label="Search matrix by address"
-              className="w-40 max-w-full rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-white placeholder:text-gray-500"
-            />
-            <button
-              type="button"
-              onClick={() => setMatrixTableExpanded((v) => !v)}
-              className="shrink-0 rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-gray-300 hover:bg-gray-800"
-            >
-              {matrixTableExpanded ? 'Compact' : 'Expand'}
-            </button>
-            {selectedRange && selectedRangeLabel && (
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-gray-400 whitespace-nowrap">
-                  Selected: {selectedRangeLabel.startIso}–{selectedRangeLabel.endIso}
-                </span>
-                <button
-                  type="button"
-                  onClick={applyMarkAsOoo}
-                  className="px-2 py-1 rounded bg-gray-700/60 hover:bg-gray-700 text-gray-100"
-                >
-                  Mark as OOO
-                </button>
-                <button
-                  type="button"
-                  onClick={applyClearOoo}
-                  className="px-2 py-1 rounded bg-gray-700/60 hover:bg-gray-700 text-gray-100"
-                >
-                  Clear OOO
-                </button>
-                <button
-                  type="button"
-                  onClick={clearMatrixSelection}
-                  className="px-2 py-1 rounded bg-transparent hover:bg-gray-800 text-gray-300"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-          </div>
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h3 className="shrink-0 text-sm font-semibold text-gray-300">Apartment / Day Matrix</h3>
+          <input
+            type="search"
+            value={matrixAddressSearch}
+            onChange={(e) => setMatrixAddressSearch(e.target.value)}
+            placeholder="Search by street..."
+            aria-label="Search matrix by address"
+            className="w-40 max-w-full rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-white placeholder:text-gray-500"
+          />
+          <button
+            type="button"
+            onClick={() => setMatrixTableExpanded((v) => !v)}
+            className="shrink-0 rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-gray-300 hover:bg-gray-800"
+          >
+            {matrixTableExpanded ? 'Compact' : 'Expand'}
+          </button>
+          {selectedRange && selectedRangeLabel && (
+            <div className="ml-auto flex flex-wrap items-center gap-2 text-xs">
+              <span className="whitespace-nowrap text-gray-400">
+                Selected: {selectedRangeLabel.startIso}–{selectedRangeLabel.endIso}
+              </span>
+              <button
+                type="button"
+                onClick={applyMarkAsOoo}
+                className="rounded bg-gray-700/60 px-2 py-1 text-gray-100 hover:bg-gray-700"
+              >
+                Mark as OOO
+              </button>
+              <button
+                type="button"
+                onClick={applyClearOoo}
+                className="rounded bg-gray-700/60 px-2 py-1 text-gray-100 hover:bg-gray-700"
+              >
+                Clear OOO
+              </button>
+              <button
+                type="button"
+                onClick={clearMatrixSelection}
+                className="rounded bg-transparent px-2 py-1 text-gray-300 hover:bg-gray-800"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
         <div className="overflow-x-auto">
           <div
@@ -1738,7 +1736,7 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
                   className="px-1.5 py-1 border-b border-gray-700 sticky top-0 right-0 bg-[#1C1F24] z-[25] cursor-pointer select-none text-left hover:bg-gray-800/40 whitespace-nowrap"
                   onClick={() => cycleMatrixSort('occupancyPct')}
                 >
-                  Occupancy % of Operational Days
+                  Occ %
                 </th>
               </tr>
             </thead>
@@ -1816,25 +1814,23 @@ const PropertiesDashboardPhase1: React.FC<PropertiesDashboardPhase1Props> = ({
       </section>
 
       <section className="bg-[#1C1F24] border border-gray-800 rounded-xl p-4">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3 justify-between">
-          <h3 className="text-sm font-semibold text-gray-300 shrink-0">Apartment Financial Performance (Monthly)</h3>
-          <div className="flex flex-wrap items-center gap-2 justify-end min-w-0">
-            <input
-              type="search"
-              value={financialAddressSearch}
-              onChange={(e) => setFinancialAddressSearch(e.target.value)}
-              placeholder="Search by street..."
-              aria-label="Search financial table by address"
-              className="w-40 max-w-full rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-white placeholder:text-gray-500"
-            />
-            <button
-              type="button"
-              onClick={() => setFinancialTableExpanded((v) => !v)}
-              className="shrink-0 rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-gray-300 hover:bg-gray-800"
-            >
-              {financialTableExpanded ? 'Compact' : 'Expand'}
-            </button>
-          </div>
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h3 className="shrink-0 text-sm font-semibold text-gray-300">Apartment Financial Performance (Monthly)</h3>
+          <input
+            type="search"
+            value={financialAddressSearch}
+            onChange={(e) => setFinancialAddressSearch(e.target.value)}
+            placeholder="Search by street..."
+            aria-label="Search financial table by address"
+            className="w-40 max-w-full rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-white placeholder:text-gray-500"
+          />
+          <button
+            type="button"
+            onClick={() => setFinancialTableExpanded((v) => !v)}
+            className="shrink-0 rounded border border-gray-700 bg-[#0D1117] px-2 py-1 text-xs text-gray-300 hover:bg-gray-800"
+          >
+            {financialTableExpanded ? 'Compact' : 'Expand'}
+          </button>
         </div>
         {planningSaveError && (
           <div className="mb-3 text-xs text-red-300 bg-red-900/20 border border-red-700/40 rounded px-2 py-1">
