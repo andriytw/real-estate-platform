@@ -1,6 +1,6 @@
 
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { RequestData, Property } from '../types';
 import { ChevronLeft, ChevronRight, Filter, X, Plus, Calculator, Briefcase, User, Save, FileText, CreditCard, Calendar, Search, Ruler, LayoutGrid, Bed } from 'lucide-react';
 import { Booking, ReservationData, OfferData, InvoiceData, CalendarEvent, BookingStatus, Lead, MultiApartmentOfferDraft, PaymentProof, SelectedApartmentData } from '../types';
@@ -104,6 +104,23 @@ const INITIAL_BOOKINGS: Booking[] = [
 const DAY_WIDTH = 48; // px
 const NUM_DAYS = 120; // Початкова кількість днів (4 місяці)
 const CALENDAR_HEADER_HEIGHT = 28 + 48; // h-7 + h-12 (month row + dates row)
+
+/** Single source of truth for calendar body row height (px, integer). */
+const SALES_CALENDAR_ROW_BASE_PX = 32;
+const SALES_CALENDAR_STRIPE_H = 13;
+const SALES_CALENDAR_STRIPE_GAP = 3;
+
+function getSalesCalendarRowHeightPx(maxStack: number): number {
+  const extra = maxStack > 0 ? (maxStack - 1) * (SALES_CALENDAR_STRIPE_H + SALES_CALENDAR_STRIPE_GAP) : 0;
+  return SALES_CALENDAR_ROW_BASE_PX + extra;
+}
+
+type RowMetric = {
+  roomId: string;
+  height: number;
+  top: number;
+  bottom: number;
+};
 
 const parseDate = (dateString: string) => {
   const [year, month, day] = dateString.split('-').map(Number);
@@ -392,7 +409,10 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   const [guests, setGuests] = useState<{firstName: string, lastName: string}[]>([{ firstName: '', lastName: '' }]);
 
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  /** Single shared vertical scroll for calendar body (left + right rows). */
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
+  /** Horizontal scroll for date grid + header only. */
+  const gridScrollRef = useRef<HTMLDivElement>(null);
 
   // Refs for drag state so document-level mouseup can read current values
   const dragStateRef = useRef({ isDragging: false, dragStart: null as { roomId: string; date: Date } | null, dragEnd: null as { roomId: string; date: Date } | null });
@@ -485,9 +505,6 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     return a < d && c < b;
   };
 
-  // Stacking constants for offer/reservation stripes
-  const STRIPE_H = 13; // Height of each stripe in pixels
-  const STRIPE_GAP = 3; // Gap between stacked stripes in pixels
   const BASE_TOP_PX = 4; // Base top offset for first stripe
   const stackIndexByReservationId = React.useMemo(() => {
     const map = new Map<string, number>();
@@ -641,6 +658,60 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     return list;
   }, [filteredRooms, availabilityListSort]);
 
+  const rowMetrics = React.useMemo((): RowMetric[] => {
+    let top = 0;
+    return sortedFilteredRooms.map((room) => {
+      const maxStack = maxStackForRoomId.get(room.id) ?? 0;
+      const height = getSalesCalendarRowHeightPx(maxStack);
+      const row: RowMetric = { roomId: String(room.id), height, top, bottom: top + height };
+      top += height;
+      return row;
+    });
+  }, [sortedFilteredRooms, maxStackForRoomId]);
+
+  const totalGridHeight = rowMetrics.length === 0 ? 0 : rowMetrics[rowMetrics.length - 1].bottom;
+
+  useLayoutEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const body = bodyScrollRef.current;
+    if (!body || rowMetrics.length === 0) return;
+    const N = Math.min(20, rowMetrics.length);
+    for (let i = 0; i < N; i++) {
+      const m = rowMetrics[i];
+      const L = body.querySelector(`[data-calendar-side="left"][data-calendar-row-index="${i}"]`);
+      const R = body.querySelector(`[data-calendar-side="right"][data-calendar-row-index="${i}"]`);
+      if (!L || !R || !m) continue;
+      const hL = L.getBoundingClientRect().height;
+      const hR = R.getBoundingClientRect().height;
+      if (Math.abs(hL - hR) > 0.5) {
+        console.warn('[SalesCalendar] row height mismatch left/right', { i, hL, hR, expected: m.height });
+      }
+      if (Math.abs(hL - m.height) > 0.5) {
+        console.warn('[SalesCalendar] left row vs RowMetric', { i, hL, expected: m.height });
+      }
+      if (Math.abs(hR - m.height) > 0.5) {
+        console.warn('[SalesCalendar] right row vs RowMetric', { i, hR, expected: m.height });
+      }
+      if (L.scrollHeight > L.clientHeight + 1) {
+        console.warn('[SalesCalendar] left row content overflows wrapper height', { i, scrollHeight: L.scrollHeight, clientHeight: L.clientHeight });
+      }
+      if (R.scrollHeight > R.clientHeight + 1) {
+        console.warn('[SalesCalendar] right row content overflows wrapper height', { i, scrollHeight: R.scrollHeight, clientHeight: R.clientHeight });
+      }
+    }
+    const scanOverflowY = (el: HTMLElement) => {
+      for (const c of Array.from(el.children)) {
+        const ce = c as HTMLElement;
+        const st = window.getComputedStyle(ce);
+        if ((st.overflowY === 'auto' || st.overflowY === 'scroll') && ce !== body) {
+          console.warn('[SalesCalendar] nested overflow-y on calendar body descendant', ce);
+        }
+        scanOverflowY(ce);
+      }
+    };
+    scanOverflowY(body);
+  }, [sortedFilteredRooms, rowMetrics]);
+
   const getRoomNameById = (roomId: string | undefined | null) => {
     if (!roomId) return '';
     const room = roomsFromProperties.find((r) => r.id === roomId);
@@ -650,15 +721,15 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   
   // Auto-scroll to today on initial load
   useEffect(() => {
-    if (scrollContainerRef.current && todayOffsetDays >= 0 && todayOffsetDays < totalDays) {
-        const scrollPos = (todayOffsetDays * DAY_WIDTH) - (scrollContainerRef.current.clientWidth / 2) + (DAY_WIDTH / 2);
-        scrollContainerRef.current.scrollLeft = scrollPos;
+    if (gridScrollRef.current && todayOffsetDays >= 0 && todayOffsetDays < totalDays) {
+        const scrollPos = (todayOffsetDays * DAY_WIDTH) - (gridScrollRef.current.clientWidth / 2) + (DAY_WIDTH / 2);
+        gridScrollRef.current.scrollLeft = scrollPos;
     }
   }, []); // Тільки при першому рендері
 
   // Infinite scroll - додавати дні при наближенні до кінця
   useEffect(() => {
-    const container = scrollContainerRef.current;
+    const container = gridScrollRef.current;
     if (!container) return;
     
     const handleScroll = () => {
@@ -676,19 +747,19 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
   // Функція для переходу до сьогодні
   const scrollToToday = () => {
     const todayOffset = dateDiffInDays(startDate, TODAY);
-    if (scrollContainerRef.current) {
+    if (gridScrollRef.current) {
       if (todayOffset >= 0 && todayOffset < totalDays) {
-        const scrollLeft = todayOffset * DAY_WIDTH - scrollContainerRef.current.clientWidth / 2 + DAY_WIDTH / 2;
-        scrollContainerRef.current.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+        const scrollLeft = todayOffset * DAY_WIDTH - gridScrollRef.current.clientWidth / 2 + DAY_WIDTH / 2;
+        gridScrollRef.current.scrollTo({ left: scrollLeft, behavior: 'smooth' });
       } else if (todayOffset < 0) {
         // Сьогодні в минулому - додати дні на початок
         const daysToAdd = Math.abs(todayOffset) + 30;
         setTotalDays(prev => prev + daysToAdd);
         setTimeout(() => {
-          if (scrollContainerRef.current) {
+          if (gridScrollRef.current) {
             const newTodayOffset = dateDiffInDays(startDate, TODAY) + daysToAdd;
-            const scrollLeft = newTodayOffset * DAY_WIDTH - scrollContainerRef.current.clientWidth / 2 + DAY_WIDTH / 2;
-            scrollContainerRef.current.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+            const scrollLeft = newTodayOffset * DAY_WIDTH - gridScrollRef.current.clientWidth / 2 + DAY_WIDTH / 2;
+            gridScrollRef.current.scrollTo({ left: scrollLeft, behavior: 'smooth' });
           }
         }, 50);
       } else {
@@ -696,9 +767,9 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         const daysNeeded = todayOffset - totalDays + 30;
         setTotalDays(prev => prev + daysNeeded);
         setTimeout(() => {
-          if (scrollContainerRef.current) {
-            const scrollLeft = todayOffset * DAY_WIDTH - scrollContainerRef.current.clientWidth / 2 + DAY_WIDTH / 2;
-            scrollContainerRef.current.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+          if (gridScrollRef.current) {
+            const scrollLeft = todayOffset * DAY_WIDTH - gridScrollRef.current.clientWidth / 2 + DAY_WIDTH / 2;
+            gridScrollRef.current.scrollTo({ left: scrollLeft, behavior: 'smooth' });
           }
         }, 50);
       }
@@ -716,20 +787,20 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
     // Знайти індекс першого дня цього місяця
     const targetOffsetDays = dateDiffInDays(startDate, targetMonth);
     
-    if (scrollContainerRef.current) {
+    if (gridScrollRef.current) {
       if (targetOffsetDays >= 0 && targetOffsetDays < totalDays) {
         // Місяць вже в межах завантажених днів - прокрутити до початку місяця
         const scrollPos = targetOffsetDays * DAY_WIDTH;
-        scrollContainerRef.current.scrollTo({ left: scrollPos, behavior: 'smooth' });
+        gridScrollRef.current.scrollTo({ left: scrollPos, behavior: 'smooth' });
         setCurrentVisibleMonth(targetMonth);
       } else if (targetOffsetDays < 0) {
         // Місяць в минулому - додати дні на початок
         const daysToAdd = Math.abs(targetOffsetDays) + 30;
         setTotalDays(prev => prev + daysToAdd);
         setTimeout(() => {
-          if (scrollContainerRef.current) {
+          if (gridScrollRef.current) {
             const newTargetOffsetDays = dateDiffInDays(startDate, targetMonth) + daysToAdd;
-            scrollContainerRef.current.scrollTo({ left: newTargetOffsetDays * DAY_WIDTH, behavior: 'smooth' });
+            gridScrollRef.current.scrollTo({ left: newTargetOffsetDays * DAY_WIDTH, behavior: 'smooth' });
             setCurrentVisibleMonth(targetMonth);
           }
         }, 50);
@@ -738,8 +809,8 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         const daysNeeded = targetOffsetDays - totalDays + 30;
         setTotalDays(prev => prev + daysNeeded);
         setTimeout(() => {
-          if (scrollContainerRef.current) {
-            scrollContainerRef.current.scrollTo({ left: targetOffsetDays * DAY_WIDTH, behavior: 'smooth' });
+          if (gridScrollRef.current) {
+            gridScrollRef.current.scrollTo({ left: targetOffsetDays * DAY_WIDTH, behavior: 'smooth' });
             setCurrentVisibleMonth(targetMonth);
           }
         }, 50);
@@ -763,7 +834,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
 
   // Відстежувати поточний видимий місяць на основі прокрутки
   useEffect(() => {
-    const container = scrollContainerRef.current;
+    const container = gridScrollRef.current;
     if (!container) return;
     
     const handleScroll = () => {
@@ -1213,149 +1284,148 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
         </span>
       </div>
 
-      {/* Main Grid Area */}
-      <div className="flex-1 flex overflow-hidden relative">
-         
-         {/* Left Sidebar (Rooms) — table-style single row per apartment, no header */}
-         <div className="w-[600px] flex-shrink-0 border-r border-gray-800 bg-[#161B22] z-20 flex flex-col">
-            <div
-                className="sticky top-0 z-30 border-b border-gray-800 bg-[#1C1F24] flex flex-col justify-center px-4 py-3"
+      {/* Main Grid Area: one vertical scroll (body); horizontal scroll only on the date grid */}
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <div
+          ref={bodyScrollRef}
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
+        >
+          <div className="flex min-w-0 flex-row items-stretch">
+            {/* Left: identity column (no table; row height from RowMetric) */}
+            <div className="z-20 flex w-[600px] shrink-0 flex-col border-r border-gray-800 bg-[#161B22]">
+              <div
+                className="sticky top-0 z-30 flex flex-col justify-center border-b border-gray-800 bg-[#1C1F24] px-4 py-3"
                 style={{ minHeight: CALENDAR_HEADER_HEIGHT, height: CALENDAR_HEADER_HEIGHT }}
-            >
+              >
                 <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Пошук об'єктів..."
-                        className="w-full pl-10 pr-3 py-2 bg-[#0D1117] border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-                    />
+                  <Search className="absolute left-3 top-1/2 w-4 -translate-y-1/2 transform text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Пошук об'єктів..."
+                    className="w-full rounded-lg border border-gray-700 bg-[#0D1117] py-2 pl-10 pr-3 text-sm text-white placeholder-gray-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
                 </div>
+              </div>
+              {sortedFilteredRooms.map((room, rowIndex) => {
+                const m = rowMetrics[rowIndex];
+                const rowH = m?.height ?? 0;
+                const rowClass = 'text-[11px] font-medium text-gray-200';
+                const isSelected = selectedPropertyIds.includes(String(room.id));
+                return (
+                  <div
+                    key={room.id}
+                    role="row"
+                    data-calendar-row-index={rowIndex}
+                    data-calendar-side="left"
+                    onClick={() => togglePropertySelection(String(room.id))}
+                    className={`box-border flex min-h-0 w-full min-w-0 cursor-pointer flex-nowrap items-center overflow-hidden border-b border-gray-800 transition-colors ${isSelected ? 'bg-emerald-900/20 hover:bg-emerald-900/25' : 'hover:bg-[#252a32]'}`}
+                    style={{ height: rowH, minHeight: rowH, maxHeight: rowH }}
+                  >
+                    <div
+                      className="flex h-full shrink-0 items-center border-r border-gray-800/50 px-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => togglePropertySelection(String(room.id))}
+                        onClick={(e) => e.stopPropagation()}
+                        className="rounded border-gray-600 bg-[#111315] text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
+                      />
+                    </div>
+                    <div className="flex h-full w-[76px] min-w-0 shrink-0 items-center border-r border-gray-800/50 px-1">
+                      <span className={`block min-w-0 truncate whitespace-nowrap ${rowClass}`} title={room.department || undefined}>
+                        {room.department || '—'}
+                      </span>
+                    </div>
+                    <div className="flex h-full w-[92px] min-w-0 shrink-0 items-center border-r border-gray-800/50 px-1">
+                      <span className={`block min-w-0 truncate whitespace-nowrap ${rowClass}`}>{getApartmentStatusLabel(room.status)}</span>
+                    </div>
+                    <div className="flex h-full min-w-0 flex-1 items-center border-r border-gray-800/50 px-1">
+                      <span className={`block min-w-0 truncate whitespace-nowrap ${rowClass} text-gray-300`} title={room.details || undefined}>
+                        {room.details || '—'}
+                      </span>
+                    </div>
+                    <div className="flex h-full w-[100px] min-w-0 shrink-0 items-center border-r border-gray-800/50 px-1">
+                      <span className={`block min-w-0 truncate whitespace-nowrap font-semibold ${rowClass}`} title={room.name || undefined}>
+                        {room.name || '—'}
+                      </span>
+                    </div>
+                    <div className="flex h-full w-[52px] shrink-0 items-center border-r border-gray-800/50 px-0.5" title="QM">
+                      <span className="flex min-w-0 items-center gap-0.5 whitespace-nowrap">
+                        <Ruler className="h-3 w-3 shrink-0 text-gray-500" />
+                        <span className={rowClass}>
+                          {room.area != null && String(room.area).trim() !== '' && Number(room.area) > 0 ? `${room.area} м²` : '—'}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="flex h-full w-[44px] shrink-0 items-center border-r border-gray-800/50 px-0.5" title="Betten">
+                      <span className="flex min-w-0 items-center gap-0.5 whitespace-nowrap">
+                        <Bed className="h-3 w-3 shrink-0 text-gray-500" />
+                        <span className={rowClass}>{room.beds ?? 0}</span>
+                      </span>
+                    </div>
+                    <div className="flex h-full w-[44px] shrink-0 items-center px-0.5" title="Rooms">
+                      <span className="flex min-w-0 items-center gap-0.5 whitespace-nowrap">
+                        <LayoutGrid className="h-3 w-3 shrink-0 text-gray-500" />
+                        <span className={rowClass}>{room.rooms ?? 0}</span>
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <div className="overflow-auto flex-1 scrollbar-hide">
-                <table
-                    className="w-full border-collapse"
-                    style={{ tableLayout: 'auto', width: 'max-content', minWidth: '100%' }}
+
+            {/* Right: horizontal scroll only; global overlays in one layer */}
+            <div ref={gridScrollRef} className="relative min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-hidden bg-[#0D1117]">
+              <div className="min-w-max">
+                <div className="sticky top-0 z-20 flex flex-col bg-[#111315]">
+                  <div className="flex h-7 border-b border-gray-800 bg-[#111315]">{monthNamesRow}</div>
+                  <div className="flex border-b border-gray-800 bg-[#161B22] shadow-md">{daysHeader}</div>
+                </div>
+
+                <div
+                  className="relative box-border"
+                  style={
+                    totalGridHeight > 0
+                      ? { height: totalGridHeight, minHeight: totalGridHeight }
+                      : { minHeight: 0 }
+                  }
                 >
-                    <tbody>
-                        {sortedFilteredRooms.map(room => {
-                            const BASE_ROW_HEIGHT = 32;
-                            const maxStack = maxStackForRoomId.get(room.id) ?? 0;
-                            const extraHeight = maxStack > 0 ? (maxStack - 1) * (STRIPE_H + STRIPE_GAP) : 0;
-                            const rowMinHeight = BASE_ROW_HEIGHT + extraHeight;
-                            const rowClass = 'text-[11px] text-gray-200 font-medium';
-                            const isSelected = selectedPropertyIds.includes(String(room.id));
-                            return (
-                                <tr
-                                    key={room.id}
-                                    onClick={() => togglePropertySelection(String(room.id))}
-                                    className={`border-b border-gray-800 transition-colors group relative cursor-pointer ${isSelected ? 'bg-emerald-900/20 hover:bg-emerald-900/25' : 'hover:bg-[#252a32]'}`}
-                                    style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
-                                >
-                                    <td className="py-1 px-2 text-left align-middle whitespace-nowrap">
-                                        <input
-                                            type="checkbox"
-                                            checked={isSelected}
-                                            onChange={() => togglePropertySelection(String(room.id))}
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="rounded border-gray-600 bg-[#111315] text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0"
-                                        />
-                                    </td>
-                                    <td className="py-1 px-2 text-left align-middle whitespace-nowrap">
-                                        <span className={`block truncate min-w-0 ${rowClass}`} title={room.department || undefined}>{room.department || '—'}</span>
-                                    </td>
-                                    <td className="py-1 px-2 text-left align-middle whitespace-nowrap">
-                                        <span className={rowClass}>{getApartmentStatusLabel(room.status)}</span>
-                                    </td>
-                                    <td className="py-1 px-2 text-left align-middle whitespace-nowrap">
-                                        <span className={`block truncate min-w-0 ${rowClass} text-gray-300`} title={room.details || undefined}>{room.details || '—'}</span>
-                                    </td>
-                                    <td className="py-1 px-2 text-left align-middle whitespace-nowrap">
-                                        <span className={`block truncate min-w-0 ${rowClass} font-semibold`} title={room.name || undefined}>{room.name || '—'}</span>
-                                    </td>
-                                    <td className="py-1 px-1 text-left align-middle whitespace-nowrap">
-                                        <span className="flex items-center gap-0.5 w-fit" title="QM">
-                                            <Ruler className="w-3 h-3 text-gray-500 shrink-0" />
-                                            <span className={rowClass}>{(room.area != null && room.area !== '' && Number(room.area) > 0) ? `${room.area} м²` : '—'}</span>
-                                        </span>
-                                    </td>
-                                    <td className="py-1 px-1 text-left align-middle whitespace-nowrap">
-                                        <span className="flex items-center gap-0.5 w-fit" title="Betten">
-                                            <Bed className="w-3 h-3 text-gray-500 shrink-0" />
-                                            <span className={rowClass}>{room.beds ?? 0}</span>
-                                        </span>
-                                    </td>
-                                    <td className="py-1 px-1 text-left align-middle whitespace-nowrap">
-                                        <span className="flex items-center gap-0.5 w-fit" title="Rooms">
-                                            <LayoutGrid className="w-3 h-3 text-gray-500 shrink-0" />
-                                            <span className={rowClass}>{room.rooms ?? 0}</span>
-                                        </span>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
-         </div>
-
-         {/* Calendar Scroll Area */}
-         <div 
-            className="flex-1 overflow-x-auto overflow-y-auto relative bg-[#0D1117]" 
-            ref={scrollContainerRef}
-         >
-            <div className="min-w-max">
-                
-                {/* Combined Month Names and Dates Header */}
-                <div className="sticky top-0 z-20 flex flex-col">
-                    {/* Month Names Row */}
-                    <div className="flex border-b border-gray-800 bg-[#111315] h-7">
-                        {monthNamesRow}
-                    </div>
-                    {/* Dates Header */}
-                    <div className="flex border-b border-gray-800 shadow-md bg-[#161B22]">
-                        {daysHeader}
-                    </div>
-                </div>
-
-                {/* Booking Grid Rows */}
-                <div className="relative">
-                    
-                    {/* Month Boundary Lines */}
+                  <div className="pointer-events-none absolute inset-0 z-0">
                     {monthBoundaries.map((boundaryIndex, idx) => {
-                      if (idx === 0) return null; // Пропускаємо перший індекс (0)
+                      if (idx === 0) return null;
                       const left = boundaryIndex * DAY_WIDTH;
                       return (
                         <div
                           key={`month-boundary-${boundaryIndex}`}
-                          className="absolute top-0 bottom-0 w-[1.5px] bg-gray-600/70 z-0 pointer-events-none"
+                          className="absolute bottom-0 top-0 w-[1.5px] bg-gray-600/70"
                           style={{ left: `${left}px` }}
                         />
                       );
                     })}
-                    
-                    {/* Today Line */}
                     {todayOffsetDays >= 0 && todayOffsetDays < totalDays && (
-                        <div 
-                            className="absolute top-0 bottom-0 w-0.5 bg-red-500/50 z-1 pointer-events-none"
-                            style={{ left: `${(todayOffsetDays * DAY_WIDTH) + (DAY_WIDTH / 2)}px` }}
-                        />
+                      <div
+                        className="absolute bottom-0 top-0 w-0.5 bg-red-500/50"
+                        style={{ left: `${todayOffsetDays * DAY_WIDTH + DAY_WIDTH / 2}px` }}
+                      />
                     )}
+                  </div>
 
-                    {sortedFilteredRooms.map(room => {
-                        // Calculate row height: base 32px + extra for stacked reservations
-                        const BASE_ROW_HEIGHT = 32;
-                        const maxStack = maxStackForRoomId.get(room.id) ?? 0;
-                        const extraHeight = maxStack > 0 ? (maxStack - 1) * (STRIPE_H + STRIPE_GAP) : 0;
-                        const rowMinHeight = BASE_ROW_HEIGHT + extraHeight;
+                  {sortedFilteredRooms.map((room, rowIndex) => {
+                    const m = rowMetrics[rowIndex];
+                    const rowH = m?.height ?? 0;
 
-                        return (
-                        <div 
-                            key={room.id} 
-                            className="border-b border-gray-800 relative flex bg-[#111315]/50 hover:bg-[#161B22]/50 transition-colors"
-                            style={{ height: `${rowMinHeight}px`, minHeight: `${rowMinHeight}px` }}
-                        >
+                    return (
+                      <div
+                        key={room.id}
+                        data-calendar-row-index={rowIndex}
+                        data-calendar-side="right"
+                        className="relative z-[1] box-border flex border-b border-gray-800 bg-[#111315]/50 transition-colors hover:bg-[#161B22]/50"
+                        style={{ height: rowH, minHeight: rowH, maxHeight: rowH }}
+                      >
                             {/* Grid Lines & Cells for Selection */}
                             {Array.from({ length: getTotalDays() }).map((_, i) => {
                                 const cellDate = getDateFromIndex(i);
@@ -1440,7 +1510,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 
                                 const useStripeLayout = !isBlock && (isReservation || isOffer);
                                 const topPx = useStripeLayout
-                                  ? BASE_TOP_PX + stackIndex * (STRIPE_H + STRIPE_GAP)
+                                  ? BASE_TOP_PX + stackIndex * (SALES_CALENDAR_STRIPE_H + SALES_CALENDAR_STRIPE_GAP)
                                   : 4;
                                 
                                 // Offer bar: solid. Reservation: dashed = open hold, solid = offer created/sent
@@ -1487,7 +1557,7 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                             left: `${left}px`, 
                                             width: `${width}px`, 
                                             top: `${topPx}px`,
-                                            height: (isReservation || isOffer) ? `${STRIPE_H}px` : undefined,
+                                            height: (isReservation || isOffer) ? `${SALES_CALENDAR_STRIPE_H}px` : undefined,
                                         }}
                                     >
                                         {(isReservation || isOffer) ? (() => {
@@ -1592,11 +1662,13 @@ const SalesCalendar: React.FC<SalesCalendarProps> = ({
                                 );
                             })}
                         </div>
-                        );
-                    })}
+                    );
+                  })}
                 </div>
+              </div>
             </div>
-         </div>
+          </div>
+        </div>
       </div>
 
       {/* --- HOVER TOOLTIP --- */}
