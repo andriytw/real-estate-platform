@@ -842,6 +842,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const [isCard2Editing, setIsCard2Editing] = useState(false);
   const [card2Draft, setCard2Draft] = useState<{ details: PropertyDetails; amenities: Record<string, boolean> } | null>(null);
   const [openAusstattungCards, setOpenAusstattungCards] = useState<Record<string, boolean>>({});
+  const [isApartmentDataOpen, setIsApartmentDataOpen] = useState(true);
   useEffect(() => {
     setOpenAusstattungCards({});
   }, [selectedPropertyId]);
@@ -8234,17 +8235,33 @@ Hero Rooms Team`;
 
             {/* Card 2: Unit Details & Ausstattung — single editable form (details + amenities only; no building) */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
+                <>
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold text-white">🏠 Дані квартири</h2>
+                    <h2 id="apartment-data-card-heading" className="text-2xl font-bold text-white">🏠 Дані квартири</h2>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button
+                            type="button"
+                            aria-expanded={isApartmentDataOpen}
+                            aria-controls="apartment-data-card-body"
+                            onClick={() => setIsApartmentDataOpen((o) => !o)}
+                            className="p-2 rounded-lg text-gray-500 hover:bg-white/[0.03] hover:text-gray-400 transition-colors"
+                            aria-label={isApartmentDataOpen ? 'Згорнути розділ' : 'Розгорнути розділ'}
+                        >
+                            <ChevronDown className={`w-4 h-4 transition-transform ${isApartmentDataOpen ? 'rotate-180' : ''}`} />
+                        </button>
                     {!isCard2Editing && (
                         <button
+                            type="button"
                             onClick={startCard2Edit}
                             className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
                         >
                             <Edit className="w-4 h-4 mr-1 inline" /> Редагувати
                         </button>
                     )}
+                    </div>
                 </div>
+                {(isApartmentDataOpen || isCard2Editing) && (
+                <div id="apartment-data-card-body" role="region" aria-labelledby="apartment-data-card-heading">
                 {(() => {
                     const d = isCard2Editing && card2Draft ? card2Draft.details : (selectedProperty.details || {});
                     const a = isCard2Editing && card2Draft ? card2Draft.amenities : (selectedProperty.amenities || {});
@@ -8371,6 +8388,9 @@ Hero Rooms Team`;
                         </button>
                     </div>
                 )}
+                </div>
+                )}
+                </>
             </section>
 
             {/* Card 3 — Building */}
