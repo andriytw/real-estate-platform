@@ -179,6 +179,7 @@ import {
   PropertyDepositProof,
   LeaseTermDraftUi,
   AddressBookPartyEntry,
+  AddressBookPartyRole,
   PaymentChainAttachment,
   PaymentChain,
   PaymentChainFile,
@@ -572,6 +573,138 @@ function mergeGetAllPreservingEnriched(prev: Property[], cleanedData: Property[]
   });
 }
 
+/** UI-only `<select>` value for embedded parties not linked by a saved `addressBookPartyId` that exists in the list. Never persisted. */
+const ADDRESS_BOOK_LEGACY_SELECT_VALUE = '__legacy__';
+
+function isPersistableAddressBookPartyId(id: unknown): id is string {
+  return typeof id === 'string' && id.trim() !== '' && id !== ADDRESS_BOOK_LEGACY_SELECT_VALUE;
+}
+
+function addressBookRowVisibleInSelect(entries: AddressBookPartyEntry[], role: AddressBookPartyRole, id: string): boolean {
+  return entries.some((e) => e.id === id && e.role === role);
+}
+
+function contactPartyHasDisplayableLegacyBody(p: ContactParty | null | undefined): boolean {
+  if (!p) return false;
+  if ((p.name ?? '').trim()) return true;
+  if ((p.iban ?? '').trim()) return true;
+  if ((p.unitIdentifier ?? '').trim()) return true;
+  if ((p.contactPerson ?? '').trim()) return true;
+  const a = p.address;
+  if (a && [(a.street ?? '').trim(), (a.houseNumber ?? '').trim(), (a.zip ?? '').trim(), (a.city ?? '').trim(), (a.country ?? '').trim()].some(Boolean)) return true;
+  if ((p.phones ?? []).some((x) => (x ?? '').trim())) return true;
+  if ((p.emails ?? []).some((x) => (x ?? '').trim())) return true;
+  return false;
+}
+
+function tenantLikeHasDisplayableLegacyBody(
+  p: (TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[] }) | null | undefined
+): boolean {
+  if (!p) return false;
+  if ((p.name ?? '').trim()) return true;
+  if ((p.iban ?? '').trim()) return true;
+  if ((p.phone ?? '').trim()) return true;
+  if ((p.email ?? '').trim()) return true;
+  const a = p.address;
+  if (a && [(a.street ?? '').trim(), (a.houseNumber ?? '').trim(), (a.zip ?? '').trim(), (a.city ?? '').trim(), (a.country ?? '').trim()].some(Boolean)) return true;
+  if ((p.phones ?? []).some((x) => (x ?? '').trim())) return true;
+  if ((p.emails ?? []).some((x) => (x ?? '').trim())) return true;
+  return false;
+}
+
+/** Select value: preselect only when saved `addressBookPartyId` exists in `entries` for `role` — no name/iban/address matching to Address Book. */
+function counterpartySelectValueContact(
+  party: ContactParty | null | undefined,
+  role: AddressBookPartyRole,
+  entries: AddressBookPartyEntry[]
+): '' | typeof ADDRESS_BOOK_LEGACY_SELECT_VALUE | string {
+  const id = party?.addressBookPartyId;
+  if (isPersistableAddressBookPartyId(id) && addressBookRowVisibleInSelect(entries, role, id)) return id;
+  if (contactPartyHasDisplayableLegacyBody(party)) return ADDRESS_BOOK_LEGACY_SELECT_VALUE;
+  return '';
+}
+
+function counterpartySelectValueTenantLike(
+  party: (TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[] }) | null | undefined,
+  role: AddressBookPartyRole,
+  entries: AddressBookPartyEntry[]
+): '' | typeof ADDRESS_BOOK_LEGACY_SELECT_VALUE | string {
+  const id = party?.addressBookPartyId;
+  if (isPersistableAddressBookPartyId(id) && addressBookRowVisibleInSelect(entries, role, id)) return id;
+  if (tenantLikeHasDisplayableLegacyBody(party)) return ADDRESS_BOOK_LEGACY_SELECT_VALUE;
+  return '';
+}
+
+function contactPartyFromAddressBookEntry(entry: AddressBookPartyEntry): ContactParty {
+  return {
+    name: entry.name ?? '',
+    address: {
+      street: entry.street ?? '',
+      houseNumber: entry.houseNumber ?? '',
+      zip: entry.zip ?? '',
+      city: entry.city ?? '',
+      country: entry.country ?? '',
+    },
+    phones: entry.phones?.length ? [...entry.phones] : [''],
+    emails: entry.emails?.length ? [...entry.emails] : [''],
+    iban: entry.iban ?? '',
+    unitIdentifier: entry.unitIdentifier ?? '',
+    contactPerson: entry.contactPerson ?? '',
+    ...(entry.id ? { addressBookPartyId: entry.id } : {}),
+  };
+}
+
+type Card1TenantDraft = TenantDetails & {
+  address?: ContactParty['address'];
+  phones?: string[];
+  emails?: string[];
+  iban?: string;
+  paymentDayOfMonth?: number;
+  addressBookPartyId?: string;
+};
+
+function tenantFromAddressBookEntry(entry: AddressBookPartyEntry, base: Card1TenantDraft): Card1TenantDraft {
+  return {
+    ...base,
+    name: entry.name ?? '',
+    iban: entry.iban ?? '',
+    address: {
+      street: entry.street ?? '',
+      houseNumber: entry.houseNumber ?? '',
+      zip: entry.zip ?? '',
+      city: entry.city ?? '',
+      country: entry.country ?? '',
+    },
+    phones: entry.phones?.length ? [...entry.phones] : [''],
+    emails: entry.emails?.length ? [...entry.emails] : [''],
+    phone: entry.phones?.[0] ?? '',
+    email: entry.emails?.[0] ?? '',
+    paymentDayOfMonth:
+      entry.paymentDay != null && entry.paymentDay >= 1 && entry.paymentDay <= 31 ? entry.paymentDay : base.paymentDayOfMonth,
+    ...(entry.id ? { addressBookPartyId: entry.id } : {}),
+  };
+}
+
+const EMPTY_TENANT_ADDR: ContactParty['address'] = { street: '', houseNumber: '', zip: '', city: '', country: '' };
+
+function emptySecondCompanyDraft(): Card1TenantDraft & { address: ContactParty['address'] } {
+  return {
+    name: '',
+    phone: '',
+    email: '',
+    rent: 0,
+    deposit: 0,
+    startDate: '',
+    km: 0,
+    bk: 0,
+    hk: 0,
+    address: { ...EMPTY_TENANT_ADDR },
+    phones: [''],
+    emails: [],
+    paymentDayOfMonth: undefined,
+  };
+}
+
 const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties = [], initialSelectedPropertyId }) => {
   const { worker, logout } = useWorker();
 
@@ -760,10 +893,26 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const [addressBookLoading, setAddressBookLoading] = useState(false);
   const [addressBookLoaded, setAddressBookLoaded] = useState(false);
   const [addressBookLastError, setAddressBookLastError] = useState<string | null>(null);
-  const [addressBookDropdownOpen, setAddressBookDropdownOpen] = useState<'owner' | 'company1' | 'company2' | 'management' | null>(null);
-  const [addressBookSearch, setAddressBookSearch] = useState<{ owner: string; company1: string; company2: string; management: string }>({ owner: '', company1: '', company2: '', management: '' });
   const [addressBookDeletingId, setAddressBookDeletingId] = useState<string | null>(null);
   const [addressBookDeleteError, setAddressBookDeleteError] = useState<string | null>(null);
+  const [addressBookAddOpen, setAddressBookAddOpen] = useState(false);
+  const [addressBookAddRole, setAddressBookAddRole] = useState<AddressBookPartyRole>('owner');
+  const [addressBookAddDraft, setAddressBookAddDraft] = useState({
+    name: '',
+    iban: '',
+    street: '',
+    houseNumber: '',
+    zip: '',
+    city: '',
+    country: '',
+    phonesRaw: '',
+    emailsRaw: '',
+    paymentDay: '',
+    unitIdentifier: '',
+    contactPerson: '',
+  });
+  const [addressBookAddSaving, setAddressBookAddSaving] = useState(false);
+  const [addressBookAddError, setAddressBookAddError] = useState<string | null>(null);
   const [docPreview, setDocPreview] = useState<{ open: boolean; url: string; title?: string }>({ open: false, url: '' });
   const closeDocPreview = useCallback(() => setDocPreview({ open: false, url: '' }), []);
   useEffect(() => {
@@ -3010,12 +3159,6 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     );
   };
 
-  const addressBookEntryMatchesSearch = (entry: AddressBookPartyEntry, q: string) => {
-    if (!q || String(q).trim() === '') return true;
-    const addr = formatAddress({ street: entry.street, houseNumber: entry.houseNumber ?? '', zip: entry.zip, city: entry.city, country: entry.country ?? '' });
-    const searchable = `${entry.name ?? ''} ${addr} ${normalizeArray(entry.phones ?? [])} ${normalizeArray(entry.emails ?? [])}`.toLowerCase();
-    return searchable.includes(String(q).trim().toLowerCase());
-  };
   const addressBookRoleLabel = (r: string) => (r === 'owner' ? 'Власник' : r === 'company1' ? '1-ша фірма' : r === 'company2' ? '2-га фірма' : 'Управління');
 
   const startCard1Edit = () => {
@@ -3029,7 +3172,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       emails: (prop.landlord.emails?.length ? [...prop.landlord.emails] : ['']),
       iban: prop.landlord.iban ?? '',
       unitIdentifier: prop.landlord.unitIdentifier ?? '',
-      contactPerson: prop.landlord.contactPerson ?? ''
+      contactPerson: prop.landlord.contactPerson ?? '',
+      ...(isPersistableAddressBookPartyId(prop.landlord.addressBookPartyId) ? { addressBookPartyId: prop.landlord.addressBookPartyId } : {}),
     } : defaultContactParty();
     const management: ContactParty = prop.management ? {
       name: prop.management.name ?? '',
@@ -3038,14 +3182,16 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       emails: (prop.management.emails?.length ? [...prop.management.emails] : ['']),
       iban: prop.management.iban ?? '',
       unitIdentifier: prop.management.unitIdentifier ?? '',
-      contactPerson: prop.management.contactPerson ?? ''
+      contactPerson: prop.management.contactPerson ?? '',
+      ...(isPersistableAddressBookPartyId(prop.management.addressBookPartyId) ? { addressBookPartyId: prop.management.addressBookPartyId } : {}),
     } : defaultContactParty();
-    const tenant: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number } = prop.tenant ? {
+    const tenant: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number; addressBookPartyId?: string } = prop.tenant ? {
       ...prop.tenant,
       address: prop.tenant.address ? { ...defAddr, ...prop.tenant.address } : defAddr,
       phones: (prop.tenant.phones?.length ? [...prop.tenant.phones] : (prop.tenant.phone ? [prop.tenant.phone] : [''])),
       emails: (prop.tenant.emails?.length ? [...prop.tenant.emails] : (prop.tenant.email ? [prop.tenant.email] : [''])),
-      paymentDayOfMonth: prop.tenant.paymentDayOfMonth
+      paymentDayOfMonth: prop.tenant.paymentDayOfMonth,
+      ...(isPersistableAddressBookPartyId(prop.tenant.addressBookPartyId) ? { addressBookPartyId: prop.tenant.addressBookPartyId } : {}),
     } : {
       name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0,
       address: defAddr,
@@ -3053,12 +3199,13 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       emails: [''],
       paymentDayOfMonth: undefined
     };
-    const secondCompany: (TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number }) | null = prop.secondCompany ? {
+    const secondCompany: (TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number; addressBookPartyId?: string }) | null = prop.secondCompany ? {
       ...prop.secondCompany,
       address: prop.secondCompany.address ? { ...defAddr, ...prop.secondCompany.address } : defAddr,
       phones: (prop.secondCompany.phones?.length ? [...prop.secondCompany.phones] : (prop.secondCompany.phone ? [prop.secondCompany.phone] : [''])),
       emails: (prop.secondCompany.emails?.length ? [...prop.secondCompany.emails] : (prop.secondCompany.email ? [prop.secondCompany.email] : [''])),
-      paymentDayOfMonth: prop.secondCompany.paymentDayOfMonth
+      paymentDayOfMonth: prop.secondCompany.paymentDayOfMonth,
+      ...(isPersistableAddressBookPartyId(prop.secondCompany.addressBookPartyId) ? { addressBookPartyId: prop.secondCompany.addressBookPartyId } : {}),
     } : null;
     const deposit: PropertyDeposit | null = prop.deposit ? {
       amount: prop.deposit.amount ?? 0,
@@ -3224,7 +3371,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     }
     try {
       const t = draftSnapshot.tenant;
-      const tenantPayload: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number } = {
+      const tenantPayload: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number; addressBookPartyId?: string } = {
         name: t.name ?? '',
         phone: (t.phones?.[0] ?? t.phone) ?? '',
         email: (t.emails?.[0] ?? t.email) ?? '',
@@ -3238,25 +3385,32 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         emails: t.emails?.length ? t.emails : undefined,
         address: t.address,
         iban: t.iban ?? '',
-        paymentDayOfMonth: paymentDay
+        paymentDayOfMonth: paymentDay,
+        ...(isPersistableAddressBookPartyId(t.addressBookPartyId) ? { addressBookPartyId: t.addressBookPartyId } : {}),
       };
       const sc = draftSnapshot.secondCompany;
-      const secondCompanyPayload: (TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number }) | null = (sc?.name?.trim()) ? {
-        name: sc.name ?? '',
-        phone: (sc.phones?.[0] ?? sc.phone) ?? '',
-        email: (sc.emails?.[0] ?? sc.email) ?? '',
-        rent: typeof sc.rent === 'number' ? sc.rent : 0,
-        deposit: typeof sc.deposit === 'number' ? sc.deposit : 0,
-        startDate: sc.startDate ?? '',
-        km: typeof sc.km === 'number' ? sc.km : 0,
-        bk: typeof sc.bk === 'number' ? sc.bk : 0,
-        hk: typeof sc.hk === 'number' ? sc.hk : 0,
-        phones: sc.phones?.length ? sc.phones : undefined,
-        emails: sc.emails?.length ? sc.emails : undefined,
-        address: sc.address,
-        iban: sc.iban ?? '',
-        paymentDayOfMonth: scPaymentDay ?? undefined
-      } : null;
+      const shouldPersistSecond =
+        sc != null && (((sc.name ?? '').trim() !== '') || tenantLikeHasDisplayableLegacyBody(sc));
+      const secondCompanyPayload: (TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number; addressBookPartyId?: string }) | null =
+        shouldPersistSecond && sc
+          ? {
+              name: sc.name ?? '',
+              phone: (sc.phones?.[0] ?? sc.phone) ?? '',
+              email: (sc.emails?.[0] ?? sc.email) ?? '',
+              rent: typeof sc.rent === 'number' ? sc.rent : 0,
+              deposit: typeof sc.deposit === 'number' ? sc.deposit : 0,
+              startDate: sc.startDate ?? '',
+              km: typeof sc.km === 'number' ? sc.km : 0,
+              bk: typeof sc.bk === 'number' ? sc.bk : 0,
+              hk: typeof sc.hk === 'number' ? sc.hk : 0,
+              phones: sc.phones?.length ? sc.phones : undefined,
+              emails: sc.emails?.length ? sc.emails : undefined,
+              address: sc.address,
+              iban: sc.iban ?? '',
+              paymentDayOfMonth: scPaymentDay ?? undefined,
+              ...(isPersistableAddressBookPartyId(sc.addressBookPartyId) ? { addressBookPartyId: sc.addressBookPartyId } : {}),
+            }
+          : null;
       const depositPayload: PropertyDeposit | null = draftSnapshot.deposit != null
         ? {
             amount: typeof draftSnapshot.deposit.amount === 'number' ? draftSnapshot.deposit.amount : 0,
@@ -6799,211 +6953,153 @@ Hero Rooms Team`;
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start pb-4 border-b border-gray-700">
                                 <div>
-                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Власник (орендодавець)</h3>
-                                    <div className="grid grid-cols-1 gap-2 items-start">
-                                        <div>
-                                            <label className="text-xs text-gray-500 block mb-1">Назва</label>
-                                            <div className="relative">
-                                                <input value={card1Draft.landlord?.name ?? ''} onChange={e => { const v = e.target.value; setCard1Draft(d => d ? { ...d, landlord: d.landlord ? { ...d.landlord, name: v } : { ...defaultContactParty(), name: v } } : null); setAddressBookSearch(s => ({ ...s, owner: v })); }} onFocus={() => setAddressBookDropdownOpen('owner')} onBlur={() => setTimeout(() => setAddressBookDropdownOpen(null), 150)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white" placeholder="Імʼя або компанія" />
-                                                <button type="button" onClick={() => { setCard1Draft(d => d ? { ...d, landlord: d.landlord ? { ...d.landlord, name: '' } : { ...defaultContactParty(), name: '' } } : null); setAddressBookSearch(s => ({ ...s, owner: '' })); setAddressBookDropdownOpen(null); }} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>
-                                                {addressBookDropdownOpen === 'owner' && (
-                                                    <div className="absolute left-0 right-0 top-full mt-0.5 z-50 bg-[#1C1F24] border border-gray-700 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                                                        {addressBookEntries.filter(e => addressBookEntryMatchesSearch(e, addressBookSearch.owner)).map(entry => {
-                                                            const addr = formatAddress({ street: entry.street, houseNumber: entry.houseNumber ?? '', zip: entry.zip, city: entry.city, country: entry.country ?? '' }); const meta = joinMeta([addr, normalizeArray(entry.phones ?? []), normalizeArray(entry.emails ?? [])]);
-                                                            return (
-                                                                <button key={entry.id ?? entry.name + entry.street} type="button" className="w-full text-left px-3 py-2 hover:bg-[#111315] border-b border-gray-700/50 last:border-0" onMouseDown={(ev) => { ev.preventDefault(); setCard1Draft(d => d ? { ...d, landlord: { name: entry.name ?? '', address: { street: entry.street ?? '', houseNumber: entry.houseNumber ?? '', zip: entry.zip ?? '', city: entry.city ?? '', country: entry.country ?? '' }, phones: entry.phones ?? [], emails: entry.emails ?? [], iban: entry.iban ?? '', unitIdentifier: entry.unitIdentifier ?? '', contactPerson: entry.contactPerson ?? '' } } : null); setAddressBookSearch(s => ({ ...s, owner: '' })); setAddressBookDropdownOpen(null); }}>
-                                                                    <div className="text-sm"><span className="font-semibold text-white">{entry.name}</span><span className="ml-1.5 text-xs text-gray-400">({addressBookRoleLabel(entry.role)})</span></div>
-                                                                    <div className="text-gray-400 text-xs">{meta || '—'}</div>
-                                                                </button>
-                                                            );
-                                                        })}
-                                                        {addressBookEntries.filter(e => addressBookEntryMatchesSearch(e, addressBookSearch.owner)).length === 0 && <div className="px-3 py-2 text-gray-500 text-sm">Немає записів</div>}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">ID</label>{renderClearableInput({ value: card1Draft.landlord?.unitIdentifier ?? '', onChange: v => setCard1Draft(d => d ? { ...d, landlord: { ...(d.landlord || defaultContactParty()), unitIdentifier: v } } : null), placeholder: '—' })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Контактна персона</label>{renderClearableInput({ value: card1Draft.landlord?.contactPerson ?? '', onChange: v => setCard1Draft(d => d ? { ...d, landlord: { ...(d.landlord || defaultContactParty()), contactPerson: v } } : null), placeholder: '—' })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">IBAN</label>{renderClearableInput({ value: card1Draft.landlord?.iban ?? '', onChange: v => setCard1Draft(d => d ? { ...d, landlord: { ...(d.landlord || defaultContactParty()), iban: v } } : null), placeholder: 'IBAN', inputClassName: 'font-mono' })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Вулиця</label>{renderClearableInput({ value: card1Draft.landlord?.address?.street ?? '', onChange: v => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, address: { ...d.landlord.address!, street: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Номер будинку</label>{renderClearableInput({ value: card1Draft.landlord?.address?.houseNumber ?? '', onChange: v => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, address: { ...d.landlord.address!, houseNumber: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Індекс</label>{renderClearableInput({ value: card1Draft.landlord?.address?.zip ?? '', onChange: v => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, address: { ...d.landlord.address!, zip: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Місто</label>{renderClearableInput({ value: card1Draft.landlord?.address?.city ?? '', onChange: v => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, address: { ...d.landlord.address!, city: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Країна</label>{renderClearableInput({ value: card1Draft.landlord?.address?.country ?? '', onChange: v => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, address: { ...d.landlord.address!, country: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Телефони</label>{(card1Draft.landlord?.phones ?? ['']).map((ph, i) => (<div key={i} className="grid grid-cols-12 gap-3 items-center mb-1"><div className="col-span-9 min-w-0">{renderClearableInput({ value: ph, onChange: v => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, phones: (d.landlord.phones ?? ['']).map((p, j) => j === i ? v : p) } } : null), placeholder: 'Телефон' })}</div><div className="col-span-3 flex items-center justify-end gap-0.5 shrink-0 ml-1"><button type="button" onClick={() => setCard1Draft(d => d ? { ...d, landlord: { ...(d.landlord || defaultContactParty()), phones: [...(d.landlord?.phones ?? ['']), ''] } } : null)} className="inline-flex items-center justify-center p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати телефон"><Phone className="w-4 h-4" /><Plus className="w-3 h-3 ml-0.5" /></button><button type="button" onClick={() => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, phones: (d.landlord.phones ?? ['']).filter((_, j) => j !== i) } } : null)} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити"><Trash2 className="w-4 h-4" /></button></div></div>))}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Email</label>{(card1Draft.landlord?.emails ?? ['']).map((em, i) => (<div key={i} className="grid grid-cols-12 gap-3 items-center mb-1"><div className="col-span-9 min-w-0">{renderClearableInput({ value: em, onChange: v => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, emails: (d.landlord.emails ?? []).map((x, j) => j === i ? v : x) } } : null), type: 'email', placeholder: 'Email' })}</div><div className="col-span-3 flex items-center justify-end gap-0.5 shrink-0 ml-1"><button type="button" onClick={() => setCard1Draft(d => d ? { ...d, landlord: { ...(d.landlord || defaultContactParty()), emails: [...(d.landlord?.emails ?? ['']), ''] } } : null)} className="inline-flex items-center justify-center p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати email"><Mail className="w-4 h-4" /><Plus className="w-3 h-3 ml-0.5" /></button><button type="button" onClick={() => setCard1Draft(d => d && d.landlord ? { ...d, landlord: { ...d.landlord, emails: (d.landlord.emails ?? []).filter((_, j) => j !== i) } } : null)} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити"><Trash2 className="w-4 h-4" /></button></div></div>))}</div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">1-ша фірма</h3>
-                                    <div className="grid grid-cols-1 gap-2 items-start">
-                                        <div>
-                                            <label className="text-xs text-gray-500 block mb-1">Імʼя</label>
-                                            <div className="relative">
-                                                <input value={card1Draft.tenant.name} onChange={e => { const v = e.target.value; setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, name: v } } : null); setAddressBookSearch(s => ({ ...s, company1: v })); }} onFocus={() => setAddressBookDropdownOpen('company1')} onBlur={() => setTimeout(() => setAddressBookDropdownOpen(null), 150)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white" />
-                                                <button type="button" onClick={() => { setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, name: '' } } : null); setAddressBookSearch(s => ({ ...s, company1: '' })); setAddressBookDropdownOpen(null); }} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>
-                                                {addressBookDropdownOpen === 'company1' && (
-                                                    <div className="absolute left-0 right-0 top-full mt-0.5 z-50 bg-[#1C1F24] border border-gray-700 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                                                        {addressBookEntries.filter(e => addressBookEntryMatchesSearch(e, addressBookSearch.company1)).map(entry => {
-                                                            const addr = formatAddress({ street: entry.street, houseNumber: entry.houseNumber ?? '', zip: entry.zip, city: entry.city, country: entry.country ?? '' }); const meta = joinMeta([addr, normalizeArray(entry.phones ?? []), normalizeArray(entry.emails ?? [])]);
-                                                            return (
-                                                                <button key={entry.id ?? entry.name + entry.street} type="button" className="w-full text-left px-3 py-2 hover:bg-[#111315] border-b border-gray-700/50 last:border-0" onMouseDown={(ev) => { ev.preventDefault(); setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, name: entry.name ?? '', iban: entry.iban ?? '', address: { street: entry.street ?? '', houseNumber: entry.houseNumber ?? '', zip: entry.zip ?? '', city: entry.city ?? '', country: entry.country ?? '' }, phones: entry.phones ?? [], emails: entry.emails ?? [], paymentDayOfMonth: (entry.paymentDay != null && entry.paymentDay >= 1 && entry.paymentDay <= 31) ? entry.paymentDay : undefined, phone: (entry.phones?.[0] ?? ''), email: (entry.emails?.[0] ?? '') } } : null); setAddressBookSearch(s => ({ ...s, company1: '' })); setAddressBookDropdownOpen(null); }}>
-                                                                    <div className="text-sm"><span className="font-semibold text-white">{entry.name}</span><span className="ml-1.5 text-xs text-gray-400">({addressBookRoleLabel(entry.role)})</span></div>
-                                                                    <div className="text-gray-400 text-xs">{meta || '—'}</div>
-                                                                </button>
-                                                            );
-                                                        })}
-                                                        {addressBookEntries.filter(e => addressBookEntryMatchesSearch(e, addressBookSearch.company1)).length === 0 && <div className="px-3 py-2 text-gray-500 text-sm">Немає записів</div>}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">IBAN (необовʼязково)</label>{renderClearableInput({ value: card1Draft.tenant.iban ?? '', onChange: v => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, iban: v } } : null), inputClassName: 'font-mono' })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Вулиця</label>{renderClearableInput({ value: card1Draft.tenant.address?.street ?? '', onChange: v => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, address: { ...(d.tenant.address || defaultContactParty().address), street: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Номер будинку</label>{renderClearableInput({ value: card1Draft.tenant.address?.houseNumber ?? '', onChange: v => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, address: { ...(d.tenant.address || defaultContactParty().address), houseNumber: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Індекс</label>{renderClearableInput({ value: card1Draft.tenant.address?.zip ?? '', onChange: v => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, address: { ...(d.tenant.address || defaultContactParty().address), zip: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Місто</label>{renderClearableInput({ value: card1Draft.tenant.address?.city ?? '', onChange: v => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, address: { ...(d.tenant.address || defaultContactParty().address), city: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Країна</label>{renderClearableInput({ value: card1Draft.tenant.address?.country ?? '', onChange: v => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, address: { ...(d.tenant.address || defaultContactParty().address), country: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">День оплати (1–31)</label><div className="relative"><select value={card1Draft.tenant.paymentDayOfMonth ?? ''} onChange={e => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, paymentDayOfMonth: e.target.value === '' ? undefined : Math.min(31, Math.max(1, parseInt(e.target.value, 10) || 1)) } } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white"><option value="">—</option>{Array.from({ length: 31 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select>{card1Draft.tenant.paymentDayOfMonth != null && <button type="button" onClick={() => { setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, paymentDayOfMonth: undefined } } : null); setAddressBookSearch(s => ({ ...s, company1: '' })); }} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>}</div></div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Телефони</label>{(card1Draft.tenant.phones ?? ['']).map((ph, i) => (<div key={i} className="grid grid-cols-12 gap-3 items-center mb-1"><div className="col-span-9 min-w-0">{renderClearableInput({ value: ph, onChange: v => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, phones: (d.tenant.phones ?? ['']).map((p, j) => j === i ? v : p) } } : null) })}</div><div className="col-span-3 flex items-center justify-end gap-0.5 shrink-0 ml-1"><button type="button" onClick={() => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, phones: [...(d.tenant.phones ?? ['']), ''] } } : null)} className="inline-flex items-center justify-center p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати телефон"><Phone className="w-4 h-4" /><Plus className="w-3 h-3 ml-0.5" /></button><button type="button" onClick={() => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, phones: (d.tenant.phones ?? ['']).filter((_, j) => j !== i) } } : null)} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити"><Trash2 className="w-4 h-4" /></button></div></div>))}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Email</label>{(card1Draft.tenant.emails ?? ['']).map((em, i) => (<div key={i} className="grid grid-cols-12 gap-3 items-center mb-1"><div className="col-span-9 min-w-0">{renderClearableInput({ value: em, onChange: v => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, emails: (d.tenant.emails ?? []).map((x, j) => j === i ? v : x) } } : null), type: 'email' })}</div><div className="col-span-3 flex items-center justify-end gap-0.5 shrink-0 ml-1"><button type="button" onClick={() => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, emails: [...(d.tenant.emails ?? ['']), ''] } } : null)} className="inline-flex items-center justify-center p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати email"><Mail className="w-4 h-4" /><Plus className="w-3 h-3 ml-0.5" /></button><button type="button" onClick={() => setCard1Draft(d => d ? { ...d, tenant: { ...d.tenant, emails: (d.tenant.emails ?? []).filter((_, j) => j !== i) } } : null)} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити"><Trash2 className="w-4 h-4" /></button></div></div>))}</div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">2-га фірма</h3>
-                                    <div className="grid grid-cols-1 gap-2 items-start">
-                                        <div>
-                                            <label className="text-xs text-gray-500 block mb-1">Імʼя</label>
-                                            <div className="relative">
-                                                <input value={card1Draft.secondCompany?.name ?? ''} onChange={e => { const v = e.target.value; setCard1Draft(d => d ? { ...d, secondCompany: d.secondCompany ? { ...d.secondCompany, name: v } : { name: v, phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [''], paymentDayOfMonth: undefined } } : null); setAddressBookSearch(s => ({ ...s, company2: v })); }} onFocus={() => setAddressBookDropdownOpen('company2')} onBlur={() => setTimeout(() => setAddressBookDropdownOpen(null), 150)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white" />
-                                                <button type="button" onClick={() => { setCard1Draft(d => d ? (d.secondCompany ? { ...d, secondCompany: { ...d.secondCompany, name: '' } } : d) : null); setAddressBookSearch(s => ({ ...s, company2: '' })); setAddressBookDropdownOpen(null); }} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>
-                                                {addressBookDropdownOpen === 'company2' && (
-                                                    <div className="absolute left-0 right-0 top-full mt-0.5 z-50 bg-[#1C1F24] border border-gray-700 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                                                        {addressBookEntries.filter(e => addressBookEntryMatchesSearch(e, addressBookSearch.company2)).map(entry => {
-                                                            const addr = formatAddress({ street: entry.street, houseNumber: entry.houseNumber ?? '', zip: entry.zip, city: entry.city, country: entry.country ?? '' }); const meta = joinMeta([addr, normalizeArray(entry.phones ?? []), normalizeArray(entry.emails ?? [])]);
-                                                            return (
-                                                                <button key={entry.id ?? entry.name + entry.street} type="button" className="w-full text-left px-3 py-2 hover:bg-[#111315] border-b border-gray-700/50 last:border-0" onMouseDown={(ev) => { ev.preventDefault(); const base = card1Draft?.secondCompany ?? { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [''], paymentDayOfMonth: undefined }; setCard1Draft(d => d ? { ...d, secondCompany: { ...base, name: entry.name ?? '', iban: entry.iban ?? '', address: { street: entry.street ?? '', houseNumber: entry.houseNumber ?? '', zip: entry.zip ?? '', city: entry.city ?? '', country: entry.country ?? '' }, phones: entry.phones ?? [], emails: entry.emails ?? [], paymentDayOfMonth: (entry.paymentDay != null && entry.paymentDay >= 1 && entry.paymentDay <= 31) ? entry.paymentDay : undefined, phone: (entry.phones?.[0] ?? ''), email: (entry.emails?.[0] ?? '') } } : null); setAddressBookSearch(s => ({ ...s, company2: '' })); setAddressBookDropdownOpen(null); }}>
-                                                                    <div className="text-sm"><span className="font-semibold text-white">{entry.name}</span><span className="ml-1.5 text-xs text-gray-400">({addressBookRoleLabel(entry.role)})</span></div>
-                                                                    <div className="text-gray-400 text-xs">{meta || '—'}</div>
-                                                                </button>
-                                                            );
-                                                        })}
-                                                        {addressBookEntries.filter(e => addressBookEntryMatchesSearch(e, addressBookSearch.company2)).length === 0 && <div className="px-3 py-2 text-gray-500 text-sm">Немає записів</div>}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">IBAN (необовʼязково)</label>{renderClearableInput({ value: card1Draft.secondCompany?.iban ?? '', onChange: v => setCard1Draft(d => d ? { ...d, secondCompany: { ...(d.secondCompany || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [] }), iban: v } } : null), inputClassName: 'font-mono' })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Вулиця</label>{renderClearableInput({ value: card1Draft.secondCompany?.address?.street ?? '', onChange: v => setCard1Draft(d => d ? { ...d, secondCompany: { ...(d.secondCompany || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [] }), address: { ...(d.secondCompany?.address || defaultContactParty().address), street: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Номер будинку</label>{renderClearableInput({ value: card1Draft.secondCompany?.address?.houseNumber ?? '', onChange: v => setCard1Draft(d => d ? { ...d, secondCompany: { ...(d.secondCompany || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [] }), address: { ...(d.secondCompany?.address || defaultContactParty().address), houseNumber: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Індекс</label>{renderClearableInput({ value: card1Draft.secondCompany?.address?.zip ?? '', onChange: v => setCard1Draft(d => d ? { ...d, secondCompany: { ...(d.secondCompany || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [] }), address: { ...(d.secondCompany?.address || defaultContactParty().address), zip: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Місто</label>{renderClearableInput({ value: card1Draft.secondCompany?.address?.city ?? '', onChange: v => setCard1Draft(d => d ? { ...d, secondCompany: { ...(d.secondCompany || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [] }), address: { ...(d.secondCompany?.address || defaultContactParty().address), city: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Країна</label>{renderClearableInput({ value: card1Draft.secondCompany?.address?.country ?? '', onChange: v => setCard1Draft(d => d ? { ...d, secondCompany: { ...(d.secondCompany || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [] }), address: { ...(d.secondCompany?.address || defaultContactParty().address), country: v } } } : null) })}</div>
-                                        <div>
-                                        <label className="text-xs text-gray-500 block mb-1">День оплати (1–31)</label>
-                                        <div className="relative">
-                                          <select
-                                            value={card1Draft.secondCompany?.paymentDayOfMonth ?? ''}
-                                            onChange={e =>
-                                              setCard1Draft(d =>
-                                                d
-                                                  ? {
-                                                      ...d,
-                                                      secondCompany: d.secondCompany
-                                                        ? {
-                                                            ...d.secondCompany,
-                                                            paymentDayOfMonth:
-                                                              e.target.value === ''
-                                                                ? undefined
-                                                                : Math.min(31, Math.max(1, parseInt(e.target.value, 10) || 1)),
-                                                          }
-                                                        : {
-                                                            name: '',
-                                                            phone: '',
-                                                            email: '',
-                                                            rent: 0,
-                                                            deposit: 0,
-                                                            startDate: '',
-                                                            km: 0,
-                                                            bk: 0,
-                                                            hk: 0,
-                                                            address: defaultContactParty().address,
-                                                            phones: [''],
-                                                            emails: [],
-                                                            paymentDayOfMonth:
-                                                              e.target.value === ''
-                                                                ? undefined
-                                                                : Math.min(31, Math.max(1, parseInt(e.target.value, 10) || 1)),
-                                                          },
-                                                    }
-                                                  : null
-                                              )
+                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Власник (орендодавець)</h3>
+                                    <label className="text-xs text-gray-500 block mb-1">Контрагент</label>
+                                    <select
+                                        className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white"
+                                        value={counterpartySelectValueContact(card1Draft.landlord, 'owner', addressBookEntries)}
+                                        onChange={(e) => {
+                                            const v = e.target.value;
+                                            if (v === ADDRESS_BOOK_LEGACY_SELECT_VALUE) return;
+                                            if (v === '') setCard1Draft((d) => (d ? { ...d, landlord: defaultContactParty() } : null));
+                                            else {
+                                                const entry = addressBookEntries.find((x) => x.id === v && x.role === 'owner');
+                                                if (!entry?.id) return;
+                                                setCard1Draft((d) => (d ? { ...d, landlord: contactPartyFromAddressBookEntry(entry) } : null));
                                             }
-                                            className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white"
-                                          >
-                                            <option value="">—</option>
-                                            {Array.from({ length: 31 }, (_, i) => i + 1).map(n => (
-                                              <option key={n} value={n}>{n}</option>
+                                        }}
+                                    >
+                                        <option value="">Вибрати зі списку</option>
+                                        {counterpartySelectValueContact(card1Draft.landlord, 'owner', addressBookEntries) === ADDRESS_BOOK_LEGACY_SELECT_VALUE ? (
+                                            <option value={ADDRESS_BOOK_LEGACY_SELECT_VALUE}>Поточний запис (не з Address Book)</option>
+                                        ) : null}
+                                        {addressBookEntries
+                                            .filter((e) => e.role === 'owner' && e.id)
+                                            .map((entry) => (
+                                                <option key={entry.id} value={entry.id as string}>
+                                                    {entry.name}
+                                                </option>
                                             ))}
-                                          </select>
-
-                                          {card1Draft.secondCompany?.paymentDayOfMonth != null && (
-                                            <button
-                                              type="button"
-                                              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded"
-                                              onClick={() => {
-                                                setCard1Draft(d =>
-                                                  d
-                                                    ? (d.secondCompany
-                                                        ? { ...d, secondCompany: { ...d.secondCompany, paymentDayOfMonth: undefined } }
-                                                        : d)
-                                                    : null
-                                                );
-                                              }}
-                                            >
-                                              ×
-                                            </button>
-                                          )}
-                                        </div>
-                                        </div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Телефони</label>{(card1Draft.secondCompany?.phones ?? ['']).map((ph, i) => (<div key={i} className="grid grid-cols-12 gap-3 items-center mb-1"><div className="col-span-9 min-w-0">{renderClearableInput({ value: ph, onChange: v => setCard1Draft(d => d && d.secondCompany ? { ...d, secondCompany: { ...d.secondCompany, phones: (d.secondCompany.phones ?? ['']).map((p, j) => j === i ? v : p) } } : null) })}</div><div className="col-span-3 flex items-center justify-end gap-0.5 shrink-0 ml-1"><button type="button" onClick={() => setCard1Draft(d => d ? { ...d, secondCompany: { ...(d.secondCompany || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [] }), phones: [...(d.secondCompany?.phones ?? ['']), ''] } } : null)} className="inline-flex items-center justify-center p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати телефон"><Phone className="w-4 h-4" /><Plus className="w-3 h-3 ml-0.5" /></button><button type="button" onClick={() => setCard1Draft(d => d && d.secondCompany ? { ...d, secondCompany: { ...d.secondCompany, phones: (d.secondCompany.phones ?? ['']).filter((_, j) => j !== i) } } : null)} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити"><Trash2 className="w-4 h-4" /></button></div></div>))}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Email</label>{(card1Draft.secondCompany?.emails ?? ['']).map((em, i) => (<div key={i} className="grid grid-cols-12 gap-3 items-center mb-1"><div className="col-span-9 min-w-0">{renderClearableInput({ value: em, onChange: v => setCard1Draft(d => d && d.secondCompany ? { ...d, secondCompany: { ...d.secondCompany, emails: (d.secondCompany.emails ?? []).map((x, j) => j === i ? v : x) } } : null), type: 'email' })}</div><div className="col-span-3 flex items-center justify-end gap-0.5 shrink-0 ml-1"><button type="button" onClick={() => setCard1Draft(d => d ? { ...d, secondCompany: { ...(d.secondCompany || { name: '', phone: '', email: '', rent: 0, deposit: 0, startDate: '', km: 0, bk: 0, hk: 0, address: defaultContactParty().address, phones: [''], emails: [] }), emails: [...(d.secondCompany?.emails ?? ['']), ''] } } : null)} className="inline-flex items-center justify-center p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати email"><Mail className="w-4 h-4" /><Plus className="w-3 h-3 ml-0.5" /></button><button type="button" onClick={() => setCard1Draft(d => d && d.secondCompany ? { ...d, secondCompany: { ...d.secondCompany, emails: (d.secondCompany.emails ?? []).filter((_, j) => j !== i) } } : null)} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити"><Trash2 className="w-4 h-4" /></button></div></div>))}</div>
-                                    </div>
+                                    </select>
                                 </div>
                                 <div>
-                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Управління</h3>
-                                    <div className="grid grid-cols-1 gap-2 items-start">
-                                        <div>
-                                            <label className="text-xs text-gray-500 block mb-1">Назва</label>
-                                            <div className="relative">
-                                                <input value={card1Draft.management?.name ?? ''} onChange={e => { const v = e.target.value; setCard1Draft(d => d ? { ...d, management: (d.management || defaultContactParty()).name !== undefined ? { ...(d.management || defaultContactParty()), name: v } : { ...defaultContactParty(), name: v } } : null); setAddressBookSearch(s => ({ ...s, management: v })); }} onFocus={() => setAddressBookDropdownOpen('management')} onBlur={() => setTimeout(() => setAddressBookDropdownOpen(null), 150)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white" />
-                                                <button type="button" onClick={() => { setCard1Draft(d => d ? { ...d, management: d.management ? { ...d.management, name: '' } : { ...defaultContactParty(), name: '' } } : null); setAddressBookSearch(s => ({ ...s, management: '' })); setAddressBookDropdownOpen(null); }} className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>
-                                                {addressBookDropdownOpen === 'management' && (
-                                                    <div className="absolute left-0 right-0 top-full mt-0.5 z-50 bg-[#1C1F24] border border-gray-700 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                                                        {addressBookEntries.filter(e => addressBookEntryMatchesSearch(e, addressBookSearch.management)).map(entry => {
-                                                            const addr = formatAddress({ street: entry.street, houseNumber: entry.houseNumber ?? '', zip: entry.zip, city: entry.city, country: entry.country ?? '' }); const meta = joinMeta([addr, normalizeArray(entry.phones ?? []), normalizeArray(entry.emails ?? [])]);
-                                                            return (
-                                                                <button key={entry.id ?? entry.name + entry.street} type="button" className="w-full text-left px-3 py-2 hover:bg-[#111315] border-b border-gray-700/50 last:border-0" onMouseDown={(ev) => { ev.preventDefault(); setCard1Draft(d => d ? { ...d, management: { name: entry.name ?? '', address: { street: entry.street ?? '', houseNumber: entry.houseNumber ?? '', zip: entry.zip ?? '', city: entry.city ?? '', country: entry.country ?? '' }, phones: entry.phones ?? [], emails: entry.emails ?? [], iban: entry.iban ?? '', unitIdentifier: entry.unitIdentifier ?? '', contactPerson: entry.contactPerson ?? '' } } : null); setAddressBookSearch(s => ({ ...s, management: '' })); setAddressBookDropdownOpen(null); }}>
-                                                                    <div className="text-sm"><span className="font-semibold text-white">{entry.name}</span><span className="ml-1.5 text-xs text-gray-400">({addressBookRoleLabel(entry.role)})</span></div>
-                                                                    <div className="text-gray-400 text-xs">{meta || '—'}</div>
-                                                                </button>
-                                                            );
-                                                        })}
-                                                        {addressBookEntries.filter(e => addressBookEntryMatchesSearch(e, addressBookSearch.management)).length === 0 && <div className="px-3 py-2 text-gray-500 text-sm">Немає записів</div>}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">ID</label>{renderClearableInput({ value: card1Draft.management?.unitIdentifier ?? '', onChange: v => setCard1Draft(d => d ? { ...d, management: { ...(d.management || defaultContactParty()), unitIdentifier: v } } : null), placeholder: '—' })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Контактна персона</label>{renderClearableInput({ value: card1Draft.management?.contactPerson ?? '', onChange: v => setCard1Draft(d => d ? { ...d, management: { ...(d.management || defaultContactParty()), contactPerson: v } } : null), placeholder: '—' })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Вулиця</label>{renderClearableInput({ value: card1Draft.management?.address?.street ?? '', onChange: v => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, address: { ...d.management.address!, street: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Номер будинку</label>{renderClearableInput({ value: card1Draft.management?.address?.houseNumber ?? '', onChange: v => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, address: { ...d.management.address!, houseNumber: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Індекс</label>{renderClearableInput({ value: card1Draft.management?.address?.zip ?? '', onChange: v => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, address: { ...d.management.address!, zip: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Місто</label>{renderClearableInput({ value: card1Draft.management?.address?.city ?? '', onChange: v => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, address: { ...d.management.address!, city: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Країна</label>{renderClearableInput({ value: card1Draft.management?.address?.country ?? '', onChange: v => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, address: { ...d.management.address!, country: v } } } : null) })}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Телефони</label>{(card1Draft.management?.phones ?? ['']).map((ph, i) => (<div key={i} className="grid grid-cols-12 gap-3 items-center mb-1"><div className="col-span-9 min-w-0">{renderClearableInput({ value: ph, onChange: v => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, phones: (d.management.phones ?? []).map((p, j) => j === i ? v : p) } } : null) })}</div><div className="col-span-3 flex items-center justify-end gap-0.5 shrink-0 ml-1"><button type="button" onClick={() => setCard1Draft(d => d ? { ...d, management: { ...(d.management || defaultContactParty()), phones: [...(d.management?.phones ?? ['']), ''] } } : null)} className="inline-flex items-center justify-center p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати телефон"><Phone className="w-4 h-4" /><Plus className="w-3 h-3 ml-0.5" /></button><button type="button" onClick={() => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, phones: (d.management.phones ?? []).filter((_, j) => j !== i) } } : null)} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити"><Trash2 className="w-4 h-4" /></button></div></div>))}</div>
-                                        <div><label className="text-xs text-gray-500 block mb-1">Email</label>{(card1Draft.management?.emails ?? ['']).map((em, i) => (<div key={i} className="grid grid-cols-12 gap-3 items-center mb-1"><div className="col-span-9 min-w-0">{renderClearableInput({ value: em, onChange: v => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, emails: (d.management.emails ?? []).map((x, j) => j === i ? v : x) } } : null), type: 'email' })}</div><div className="col-span-3 flex items-center justify-end gap-0.5 shrink-0 ml-1"><button type="button" onClick={() => setCard1Draft(d => d ? { ...d, management: { ...(d.management || defaultContactParty()), emails: [...(d.management?.emails ?? ['']), ''] } } : null)} className="inline-flex items-center justify-center p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors" title="Додати email"><Mail className="w-4 h-4" /><Plus className="w-3 h-3 ml-0.5" /></button><button type="button" onClick={() => setCard1Draft(d => d && d.management ? { ...d, management: { ...d.management, emails: (d.management.emails ?? []).filter((_, j) => j !== i) } } : null)} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors" title="Видалити"><Trash2 className="w-4 h-4" /></button></div></div>))}</div>
-                                    </div>
+                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">1-ша фірма</h3>
+                                    <label className="text-xs text-gray-500 block mb-1">Контрагент</label>
+                                    <select
+                                        className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white"
+                                        value={counterpartySelectValueTenantLike(card1Draft.tenant, 'company1', addressBookEntries)}
+                                        onChange={(e) => {
+                                            const v = e.target.value;
+                                            if (v === ADDRESS_BOOK_LEGACY_SELECT_VALUE) return;
+                                            if (v === '') {
+                                                setCard1Draft((d) =>
+                                                    d
+                                                        ? {
+                                                            ...d,
+                                                            tenant: {
+                                                                name: '',
+                                                                phone: '',
+                                                                email: '',
+                                                                rent: 0,
+                                                                deposit: 0,
+                                                                startDate: '',
+                                                                km: 0,
+                                                                bk: 0,
+                                                                hk: 0,
+                                                                address: defaultContactParty().address,
+                                                                phones: [''],
+                                                                emails: [],
+                                                                paymentDayOfMonth: undefined,
+                                                            },
+                                                        }
+                                                        : null
+                                                );
+                                            } else {
+                                                setCard1Draft((d) => {
+                                                    if (!d) return null;
+                                                    const entry = addressBookEntries.find((x) => x.id === v && x.role === 'company1');
+                                                    if (!entry?.id) return d;
+                                                    return { ...d, tenant: tenantFromAddressBookEntry(entry, d.tenant as Card1TenantDraft) };
+                                                });
+                                            }
+                                        }}
+                                    >
+                                        <option value="">Вибрати зі списку</option>
+                                        {counterpartySelectValueTenantLike(card1Draft.tenant, 'company1', addressBookEntries) === ADDRESS_BOOK_LEGACY_SELECT_VALUE ? (
+                                            <option value={ADDRESS_BOOK_LEGACY_SELECT_VALUE}>Поточний запис (не з Address Book)</option>
+                                        ) : null}
+                                        {addressBookEntries
+                                            .filter((e) => e.role === 'company1' && e.id)
+                                            .map((entry) => (
+                                                <option key={entry.id} value={entry.id as string}>
+                                                    {entry.name}
+                                                </option>
+                                            ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">2-га фірма</h3>
+                                    <label className="text-xs text-gray-500 block mb-1">Контрагент</label>
+                                    <select
+                                        className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white"
+                                        value={counterpartySelectValueTenantLike(card1Draft.secondCompany, 'company2', addressBookEntries)}
+                                        onChange={(e) => {
+                                            const v = e.target.value;
+                                            if (v === ADDRESS_BOOK_LEGACY_SELECT_VALUE) return;
+                                            if (v === '') setCard1Draft((d) => (d ? { ...d, secondCompany: null } : null));
+                                            else {
+                                                setCard1Draft((d) => {
+                                                    if (!d) return null;
+                                                    const entry = addressBookEntries.find((x) => x.id === v && x.role === 'company2');
+                                                    if (!entry?.id) return d;
+                                                    const base = d.secondCompany ?? emptySecondCompanyDraft();
+                                                    return { ...d, secondCompany: tenantFromAddressBookEntry(entry, base) };
+                                                });
+                                            }
+                                        }}
+                                    >
+                                        <option value="">Вибрати зі списку</option>
+                                        {counterpartySelectValueTenantLike(card1Draft.secondCompany, 'company2', addressBookEntries) === ADDRESS_BOOK_LEGACY_SELECT_VALUE ? (
+                                            <option value={ADDRESS_BOOK_LEGACY_SELECT_VALUE}>Поточний запис (не з Address Book)</option>
+                                        ) : null}
+                                        {addressBookEntries
+                                            .filter((e) => e.role === 'company2' && e.id)
+                                            .map((entry) => (
+                                                <option key={entry.id} value={entry.id as string}>
+                                                    {entry.name}
+                                                </option>
+                                            ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Управління</h3>
+                                    <label className="text-xs text-gray-500 block mb-1">Контрагент</label>
+                                    <select
+                                        className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white"
+                                        value={counterpartySelectValueContact(card1Draft.management, 'management', addressBookEntries)}
+                                        onChange={(e) => {
+                                            const v = e.target.value;
+                                            if (v === ADDRESS_BOOK_LEGACY_SELECT_VALUE) return;
+                                            if (v === '') setCard1Draft((d) => (d ? { ...d, management: defaultContactParty() } : null));
+                                            else {
+                                                const entry = addressBookEntries.find((x) => x.id === v && x.role === 'management');
+                                                if (!entry?.id) return;
+                                                setCard1Draft((d) => (d ? { ...d, management: contactPartyFromAddressBookEntry(entry) } : null));
+                                            }
+                                        }}
+                                    >
+                                        <option value="">Вибрати зі списку</option>
+                                        {counterpartySelectValueContact(card1Draft.management, 'management', addressBookEntries) === ADDRESS_BOOK_LEGACY_SELECT_VALUE ? (
+                                            <option value={ADDRESS_BOOK_LEGACY_SELECT_VALUE}>Поточний запис (не з Address Book)</option>
+                                        ) : null}
+                                        {addressBookEntries
+                                            .filter((e) => e.role === 'management' && e.id)
+                                            .map((entry) => (
+                                                <option key={entry.id} value={entry.id as string}>
+                                                    {entry.name}
+                                                </option>
+                                            ))}
+                                    </select>
                                 </div>
                             </div>
                             <div>
@@ -7915,22 +8011,54 @@ Hero Rooms Team`;
                         </div>
                     )}
                     {isAddressBookModalOpen && (
-                        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4" onClick={() => setIsAddressBookModalOpen(false)}>
+                        <>
+                        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4" onClick={() => { setAddressBookAddOpen(false); setIsAddressBookModalOpen(false); }}>
                             <div className="bg-[#1C1F24] w-full max-w-2xl max-h-[80vh] rounded-xl border border-gray-700 shadow-xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
                                 <div className="p-4 border-b border-gray-700 flex justify-between items-center">
                                     <h3 className="text-lg font-bold text-white">Address Book</h3>
-                                    <button type="button" onClick={() => setIsAddressBookModalOpen(false)} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
+                                    <button type="button" onClick={() => { setAddressBookAddOpen(false); setIsAddressBookModalOpen(false); }} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
                                 </div>
                                 <div className="flex-1 min-h-0 overflow-y-auto p-4">
                                     {addressBookDeleteError && <p className="text-xs text-amber-500 mb-3">Delete failed: {addressBookDeleteError}</p>}
-                                    {addressBookLoading ? <p className="text-sm text-gray-500">Завантаження…</p> : addressBookEntries.length === 0 ? <p className="text-sm text-gray-500">Немає записів. Збережіть картку обʼєкта (сторони угоди), щоб додати контакти в Address Book.</p> : (
+                                    {addressBookLoading ? (
+                                        <p className="text-sm text-gray-500">Завантаження…</p>
+                                    ) : (
                                         <div className="space-y-4">
+                                            <p className="text-xs text-gray-500">Додавайте записи кнопкою «+» у секції. Контрагенти на квартирі обираються з цього списку.</p>
                                             {(['owner', 'company1', 'company2', 'management'] as const).map(role => {
                                                 const byRole = addressBookEntries.filter(e => e.role === role);
                                                 const roleLabel = role === 'owner' ? 'Власник' : role === 'company1' ? '1-ша фірма' : role === 'company2' ? '2-га фірма' : 'Управління';
                                                 return (
                                                     <div key={role}>
-                                                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">{roleLabel}</h4>
+                                                        <div className="flex items-center justify-between gap-2 mb-2">
+                                                            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{roleLabel}</h4>
+                                                            <button
+                                                                type="button"
+                                                                title={`Додати в «${roleLabel}»`}
+                                                                onClick={() => {
+                                                                    setAddressBookAddRole(role);
+                                                                    setAddressBookAddDraft({
+                                                                        name: '',
+                                                                        iban: '',
+                                                                        street: '',
+                                                                        houseNumber: '',
+                                                                        zip: '',
+                                                                        city: '',
+                                                                        country: '',
+                                                                        phonesRaw: '',
+                                                                        emailsRaw: '',
+                                                                        paymentDay: '',
+                                                                        unitIdentifier: '',
+                                                                        contactPerson: '',
+                                                                    });
+                                                                    setAddressBookAddError(null);
+                                                                    setAddressBookAddOpen(true);
+                                                                }}
+                                                                className="p-1.5 rounded-md border border-gray-600 bg-[#111315] hover:bg-[#15181b] text-emerald-500 shrink-0"
+                                                            >
+                                                                <Plus className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
                                                         {byRole.length === 0 ? <p className="text-sm text-gray-500">—</p> : (
                                                         <ul className="space-y-2">
                                                             {byRole.map(entry => {
@@ -7966,6 +8094,100 @@ Hero Rooms Team`;
                                 </div>
                             </div>
                         </div>
+                        {addressBookAddOpen && (
+                            <div className="fixed inset-0 z-[225] flex items-center justify-center bg-black/50 p-4" onClick={() => { if (!addressBookAddSaving) setAddressBookAddOpen(false); }}>
+                                <div className="bg-[#1C1F24] w-full max-w-md rounded-xl border border-gray-700 shadow-xl p-4" onClick={e => e.stopPropagation()}>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h4 className="text-sm font-bold text-white">Новий запис — {addressBookRoleLabel(addressBookAddRole)}</h4>
+                                        <button type="button" disabled={addressBookAddSaving} onClick={() => setAddressBookAddOpen(false)} className="text-gray-400 hover:text-white p-1 rounded disabled:opacity-50"><X className="w-4 h-4" /></button>
+                                    </div>
+                                    {addressBookAddError && <p className="text-xs text-amber-500 mb-2">{addressBookAddError}</p>}
+                                    <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                                        <div><label className="text-xs text-gray-500 block mb-0.5">Назва</label><input value={addressBookAddDraft.name} onChange={e => setAddressBookAddDraft(d => ({ ...d, name: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="Компанія / контакт" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-0.5">IBAN</label><input value={addressBookAddDraft.iban} onChange={e => setAddressBookAddDraft(d => ({ ...d, iban: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white font-mono" placeholder="—" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-0.5">Вулиця</label><input value={addressBookAddDraft.street} onChange={e => setAddressBookAddDraft(d => ({ ...d, street: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div><label className="text-xs text-gray-500 block mb-0.5">Номер</label><input value={addressBookAddDraft.houseNumber} onChange={e => setAddressBookAddDraft(d => ({ ...d, houseNumber: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                            <div><label className="text-xs text-gray-500 block mb-0.5">Індекс</label><input value={addressBookAddDraft.zip} onChange={e => setAddressBookAddDraft(d => ({ ...d, zip: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        </div>
+                                        <div><label className="text-xs text-gray-500 block mb-0.5">Місто</label><input value={addressBookAddDraft.city} onChange={e => setAddressBookAddDraft(d => ({ ...d, city: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-0.5">Країна</label><input value={addressBookAddDraft.country} onChange={e => setAddressBookAddDraft(d => ({ ...d, country: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-0.5">Телефони (через кому)</label><input value={addressBookAddDraft.phonesRaw} onChange={e => setAddressBookAddDraft(d => ({ ...d, phonesRaw: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-0.5">Email (через кому)</label><input value={addressBookAddDraft.emailsRaw} onChange={e => setAddressBookAddDraft(d => ({ ...d, emailsRaw: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        {(addressBookAddRole === 'company1' || addressBookAddRole === 'company2') && (
+                                            <div><label className="text-xs text-gray-500 block mb-0.5">День оплати (1–31)</label><input value={addressBookAddDraft.paymentDay} onChange={e => setAddressBookAddDraft(d => ({ ...d, paymentDay: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="—" /></div>
+                                        )}
+                                        {(addressBookAddRole === 'owner' || addressBookAddRole === 'management') && (
+                                            <>
+                                                <div><label className="text-xs text-gray-500 block mb-0.5">ID (одиниця)</label><input value={addressBookAddDraft.unitIdentifier} onChange={e => setAddressBookAddDraft(d => ({ ...d, unitIdentifier: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                                <div><label className="text-xs text-gray-500 block mb-0.5">Контактна персона</label><input value={addressBookAddDraft.contactPerson} onChange={e => setAddressBookAddDraft(d => ({ ...d, contactPerson: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                            </>
+                                        )}
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-4">
+                                        <button type="button" disabled={addressBookAddSaving} onClick={() => setAddressBookAddOpen(false)} className="px-3 py-2 rounded border border-gray-600 text-sm text-gray-200 hover:bg-gray-800 disabled:opacity-50">Скасувати</button>
+                                        <button
+                                            type="button"
+                                            disabled={addressBookAddSaving || !addressBookAddDraft.name.trim()}
+                                            onClick={async () => {
+                                                setAddressBookAddError(null);
+                                                if (!addressBookAddDraft.name.trim()) {
+                                                    setAddressBookAddError('Вкажіть назву.');
+                                                    return;
+                                                }
+                                                setAddressBookAddSaving(true);
+                                                try {
+                                                    const user = await safeGetUser();
+                                                    if (!user?.id) throw new Error('Not authenticated');
+                                                    const phones = addressBookAddDraft.phonesRaw.split(',').map(s => s.trim()).filter(Boolean);
+                                                    const emails = addressBookAddDraft.emailsRaw.split(',').map(s => s.trim()).filter(Boolean);
+                                                    let paymentDay: number | null = null;
+                                                    if ((addressBookAddRole === 'company1' || addressBookAddRole === 'company2') && addressBookAddDraft.paymentDay.trim()) {
+                                                        const n = parseInt(addressBookAddDraft.paymentDay, 10);
+                                                        if (n >= 1 && n <= 31) paymentDay = n;
+                                                    }
+                                                    const entry: AddressBookPartyEntry = {
+                                                        ownerUserId: user.id,
+                                                        role: addressBookAddRole,
+                                                        name: addressBookAddDraft.name.trim(),
+                                                        iban: addressBookAddDraft.iban.trim(),
+                                                        street: addressBookAddDraft.street.trim(),
+                                                        zip: addressBookAddDraft.zip.trim(),
+                                                        city: addressBookAddDraft.city.trim(),
+                                                        houseNumber: addressBookAddDraft.houseNumber.trim() || null,
+                                                        country: addressBookAddDraft.country.trim() || null,
+                                                        phones,
+                                                        emails,
+                                                        paymentDay,
+                                                        unitIdentifier:
+                                                            addressBookAddRole === 'owner' || addressBookAddRole === 'management'
+                                                                ? addressBookAddDraft.unitIdentifier.trim() || null
+                                                                : null,
+                                                        contactPerson:
+                                                            addressBookAddRole === 'owner' || addressBookAddRole === 'management'
+                                                                ? addressBookAddDraft.contactPerson.trim() || null
+                                                                : null,
+                                                    };
+                                                    await addressBookPartiesService.upsertMany([entry]);
+                                                    const list = await addressBookPartiesService.listByRole(user.id);
+                                                    setAddressBookEntries(list);
+                                                    setAddressBookLoaded(true);
+                                                    setAddressBookAddOpen(false);
+                                                } catch (e) {
+                                                    setAddressBookAddError(e instanceof Error ? e.message : String(e));
+                                                } finally {
+                                                    setAddressBookAddSaving(false);
+                                                }
+                                            }}
+                                            className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-medium"
+                                        >
+                                            Зберегти
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        </>
                     )}
                     {docPreview.open && (
                         <div className="fixed inset-0 z-[230] flex items-center justify-center bg-black/60 p-4" onClick={closeDocPreview}>

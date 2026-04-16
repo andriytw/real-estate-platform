@@ -49,6 +49,8 @@ export interface ContactParty {
   unitIdentifier?: string;
   /** Contact person name (PIB) for owner/management (persisted). */
   contactPerson?: string;
+  /** When set, Card 1 counterparties select was bound to this `address_book_parties.id` (optional JSON only). */
+  addressBookPartyId?: string;
 }
 
 export interface TenantDetails {
@@ -70,6 +72,8 @@ export interface TenantDetails {
   iban?: string;
   /** Payment day of month (1–31) for current lease. */
   paymentDayOfMonth?: number;
+  /** When set, Card 1 counterparties select was bound to this `address_book_parties.id` (optional JSON only). */
+  addressBookPartyId?: string;
 }
 
 /** In Card 1 (master lease): our company as tenant. Future: external client/occupant will be a separate concept. */
