@@ -846,7 +846,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   useEffect(() => {
     setOpenAusstattungCards({});
   }, [selectedPropertyId]);
-  const [isEditingCard1, setIsEditingCard1] = useState(false);
+  type Card1EditSection = 'lease' | 'counterparties' | 'kaution' | 'documents' | 'rentTimeline' | null;
+  const [editingCard1Section, setEditingCard1Section] = useState<Card1EditSection>(null);
   const [isLeaseRentalCardOpen, setIsLeaseRentalCardOpen] = useState(true);
   const [isCounterpartiesCardOpen, setIsCounterpartiesCardOpen] = useState(true);
   const [isPaymentChainCardOpen, setIsPaymentChainCardOpen] = useState(true);
@@ -881,6 +882,12 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     secondCompany: (TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number }) | null;
     deposit: PropertyDeposit | null;
   } | null>(null);
+  const [card1DraftBaseline, setCard1DraftBaseline] = useState<typeof card1Draft>(null);
+  const isEditingLeaseCard = editingCard1Section === 'lease';
+  const isEditingCounterpartiesCard = editingCard1Section === 'counterparties';
+  const isEditingKautionCard = editingCard1Section === 'kaution';
+  const isEditingDocumentsCard = editingCard1Section === 'documents';
+  const isEditingRentTimelineCard = editingCard1Section === 'rentTimeline';
   const [apartmentGroups, setApartmentGroups] = useState<ApartmentGroup[]>([]);
   const [apartmentGroupsLoaded, setApartmentGroupsLoaded] = useState(false);
   const [addApartmentGroupModalOpen, setAddApartmentGroupModalOpen] = useState(false);
@@ -940,7 +947,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const zweckentfremdungFileInputRef = useRef<HTMLInputElement>(null);
   const [showPartiesDetails, setShowPartiesDetails] = useState(false);
   const [showPaymentDetails, setShowPaymentDetails] = useState(false);
-  const [editingPaymentTile, setEditingPaymentTile] = useState<PaymentTileKey | null>(null);
+  // Payment chain is view-only in this flow.
   const [paymentTiles, setPaymentTiles] = useState<Record<PaymentTileKey, PaymentTileState>>({
     owner_control: { payByDayOfMonth: undefined, total: '', description: '', breakdown: {}, attachments: [] },
     from_company1_to_owner: { payByDayOfMonth: undefined, total: '', description: '', breakdown: {}, attachments: [] },
@@ -3168,7 +3175,7 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
 
   const addressBookRoleLabel = (r: string) => (r === 'owner' ? 'Власник' : r === 'company1' ? '1-ша фірма' : r === 'company2' ? '2-га фірма' : 'Управління');
 
-  const startCard1Edit = () => {
+  const startCard1SectionEdit = (section: Exclude<Card1EditSection, null>) => {
     const prop = selectedProperty ?? properties.find(pr => pr.id === selectedPropertyId) ?? null;
     if (!prop) return;
     const defAddr = defaultContactParty().address;
@@ -3244,9 +3251,25 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       secondCompany,
       deposit
     });
+    setCard1DraftBaseline({
+      apartmentStatus: (prop.apartmentStatus || 'active') as 'active' | 'ooo' | 'preparation' | 'rented_worker',
+      address: prop.address ?? '',
+      zip: prop.zip ?? '',
+      city: prop.city ?? '',
+      country: prop.country ?? '',
+      title: prop.title ?? '',
+      floor: prop.details?.floor ?? 0,
+      buildingFloors: prop.details?.buildingFloors ?? 0,
+      apartmentGroupId: prop.apartmentGroupId ?? null,
+      landlord,
+      management,
+      tenant,
+      secondCompany,
+      deposit
+    });
     setCard1DepositError(null);
     setLeaseTermDraft(leaseTerm ? { contractStart: leaseTerm.contract_start, contractEnd: leaseTerm.contract_end ?? '', contractType: leaseTerm.contract_type, firstPaymentDate: leaseTerm.first_payment_date ?? '', note: leaseTerm.note ?? '' } : { contractStart: '', contractEnd: '', contractType: 'befristet', firstPaymentDate: '', note: '' });
-    setIsEditingCard1(true);
+    setEditingCard1Section(section);
     if (!apartmentGroupsLoaded) {
       (async () => {
         try {
@@ -3277,17 +3300,24 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     }
   };
 
-  const cancelCard1Edit = () => {
-    setIsEditingCard1(false);
-    setCard1Draft(null);
-    setLeaseTermDraft(null);
+  const cancelCard1SectionEdit = () => {
+    setEditingCard1Section(null);
+    if (card1DraftBaseline) setCard1Draft(card1DraftBaseline);
     setCard1DepositError(null);
     setEditingRentTimelineRowId(null);
     setRentTimelineEditDraft(null);
     setRentTimelineEditError(null);
+    setShowAddRentIncreaseForm(false);
+    setRentIncreaseForm({ validFrom: '', validTo: '', km: '', mietsteuer: '', unternehmenssteuer: '', bk: '', hk: '', muell: '', strom: '', gas: '', wasser: '' });
+    setRentIncreaseFormError(null);
+    setShowAddDocumentForm(false);
+    setNewDocFile(null);
+    setAddDocumentError(null);
+    setNewDocMeta({});
     setAddApartmentGroupModalOpen(false);
     setAddApartmentGroupName('');
     setAddApartmentGroupError(null);
+    setLeaseTermDraft(leaseTerm ? { contractStart: leaseTerm.contract_start, contractEnd: leaseTerm.contract_end ?? '', contractType: leaseTerm.contract_type, firstPaymentDate: leaseTerm.first_payment_date ?? '', note: leaseTerm.note ?? '' } : null);
   };
 
   const isCard1LandlordValid = (l: ContactParty | null): boolean => {
@@ -3311,189 +3341,219 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     return { valid: true, message: null };
   };
 
-  const saveCard1 = async () => {
+  const saveRentTimelineRowIfEditing = useCallback(async () => {
+    if (!selectedPropertyId) return;
+    if (!(editingRentTimelineRowId && rentTimelineEditDraft)) return;
+    const d = rentTimelineEditDraft;
+    setRentTimelineEditError(null);
+    if (!d.validFrom?.trim()) {
+      setRentTimelineEditError('Дата «Дійсний з» обовʼязкова.');
+      return;
+    }
+    const num = (s: string) => (s === '' || s == null) ? 0 : parseFloat(s);
+    const kmNum = num(d.km), bkNum = num(d.bk), hkNum = num(d.hk);
+    const mietsteuerNum = num(d.mietsteuer), unternehmenssteuerNum = num(d.unternehmenssteuer);
+    const stromNum = num(d.strom), muellNum = num(d.muell), gasNum = num(d.gas), wasserNum = num(d.wasser);
+    const allNums = [kmNum, bkNum, hkNum, mietsteuerNum, unternehmenssteuerNum, stromNum, muellNum, gasNum, wasserNum];
+    if (allNums.some(n => Number.isNaN(n) || n < 0)) {
+      setRentTimelineEditError('Усі числові поля мають бути числами ≥ 0.');
+      return;
+    }
+    if (d.validTo?.trim() && d.validTo < d.validFrom) {
+      setRentTimelineEditError('Дата «Дійсний по» не може бути раніше за «Дійсний з».');
+      return;
+    }
+    try {
+      await rentTimelineService.updateRow(editingRentTimelineRowId, {
+        valid_from: d.validFrom.trim(),
+        valid_to: (d.validTo?.trim() && d.validTo.trim() !== '∞') ? d.validTo.trim() : null,
+        km: kmNum,
+        mietsteuer: mietsteuerNum,
+        unternehmenssteuer: unternehmenssteuerNum,
+        bk: bkNum,
+        hk: hkNum,
+        muell: muellNum,
+        strom: stromNum,
+        gas: gasNum,
+        wasser: wasserNum,
+      });
+      const rows = await rentTimelineService.listRows(selectedPropertyId);
+      setOwnerRentTimelineDbRows(rows);
+    } catch (err) {
+      console.error('Rent timeline update error:', err);
+      setRentTimelineEditError(err instanceof Error ? err.message : 'Помилка збереження рядка.');
+      return;
+    }
+    setEditingRentTimelineRowId(null);
+    setRentTimelineEditDraft(null);
+    setRentTimelineEditError(null);
+  }, [editingRentTimelineRowId, rentTimelineEditDraft, selectedPropertyId]);
+
+  const saveCard1Section = async (section: Exclude<Card1EditSection, null>) => {
     const prop = properties.find(p => p.id === selectedPropertyId) ?? null;
     const draftSnapshot = card1Draft;
     if (!prop || !draftSnapshot) return;
-    const depositCheck = isCard1DepositValid(draftSnapshot.deposit);
-    if (!depositCheck.valid) {
-      setCard1DepositError(depositCheck.message);
+
+    if (section === 'rentTimeline') {
+      await saveRentTimelineRowIfEditing();
+      setEditingCard1Section(null);
       return;
     }
-    setCard1DepositError(null);
-    const paymentDay = draftSnapshot.tenant.paymentDayOfMonth;
-    if (paymentDay != null && (paymentDay < 1 || paymentDay > 31 || !Number.isInteger(paymentDay))) {
-      alert('День оплати має бути числом від 1 до 31.');
+
+    if (section === 'documents') {
+      // Documents CRUD persists immediately; “save” just exits edit mode.
+      setShowAddDocumentForm(false);
+      setNewDocFile(null);
+      setAddDocumentError(null);
+      setNewDocMeta({});
+      setEditingCard1Section(null);
       return;
     }
-    const scPaymentDay = draftSnapshot.secondCompany?.paymentDayOfMonth;
-    if (scPaymentDay != null && (scPaymentDay < 1 || scPaymentDay > 31 || !Number.isInteger(scPaymentDay))) {
-      alert('День оплати (2-га фірма) має бути числом від 1 до 31.');
-      return;
+
+    if (section === 'kaution') {
+      const depositCheck = isCard1DepositValid(draftSnapshot.deposit);
+      if (!depositCheck.valid) {
+        setCard1DepositError(depositCheck.message);
+        return;
+      }
+      setCard1DepositError(null);
     }
-    if (editingRentTimelineRowId && rentTimelineEditDraft) {
-      const d = rentTimelineEditDraft;
-      setRentTimelineEditError(null);
-      if (!d.validFrom?.trim()) {
-        setRentTimelineEditError('Дата «Дійсний з» обовʼязкова.');
-        return;
-      }
-      const num = (s: string) => (s === '' || s == null) ? 0 : parseFloat(s);
-      const kmNum = num(d.km), bkNum = num(d.bk), hkNum = num(d.hk);
-      const mietsteuerNum = num(d.mietsteuer), unternehmenssteuerNum = num(d.unternehmenssteuer);
-      const stromNum = num(d.strom), muellNum = num(d.muell), gasNum = num(d.gas), wasserNum = num(d.wasser);
-      const allNums = [kmNum, bkNum, hkNum, mietsteuerNum, unternehmenssteuerNum, stromNum, muellNum, gasNum, wasserNum];
-      if (allNums.some(n => Number.isNaN(n) || n < 0)) {
-        setRentTimelineEditError('Усі числові поля мають бути числами ≥ 0.');
-        return;
-      }
-      if (d.validTo?.trim() && d.validTo < d.validFrom) {
-        setRentTimelineEditError('Дата «Дійсний по» не може бути раніше за «Дійсний з».');
-        return;
-      }
-      try {
-        await rentTimelineService.updateRow(editingRentTimelineRowId, {
-          valid_from: d.validFrom.trim(),
-          valid_to: (d.validTo?.trim() && d.validTo.trim() !== '∞') ? d.validTo.trim() : null,
-          km: kmNum,
-          mietsteuer: mietsteuerNum,
-          unternehmenssteuer: unternehmenssteuerNum,
-          bk: bkNum,
-          hk: hkNum,
-          muell: muellNum,
-          strom: stromNum,
-          gas: gasNum,
-          wasser: wasserNum,
-        });
-        const rows = await rentTimelineService.listRows(selectedPropertyId!);
-        setOwnerRentTimelineDbRows(rows);
-      } catch (err) {
-        console.error('Rent timeline update error:', err);
-        setRentTimelineEditError(err instanceof Error ? err.message : 'Помилка збереження рядка.');
-        return;
-      }
-      setEditingRentTimelineRowId(null);
-      setRentTimelineEditDraft(null);
-      setRentTimelineEditError(null);
-    }
+
     try {
-      const t = draftSnapshot.tenant;
-      const tenantPayload: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number; addressBookPartyId?: string } = {
-        name: t.name ?? '',
-        phone: (t.phones?.[0] ?? t.phone) ?? '',
-        email: (t.emails?.[0] ?? t.email) ?? '',
-        rent: typeof t.rent === 'number' ? t.rent : 0,
-        deposit: typeof t.deposit === 'number' ? t.deposit : 0,
-        startDate: t.startDate ?? '',
-        km: typeof t.km === 'number' ? t.km : 0,
-        bk: typeof t.bk === 'number' ? t.bk : 0,
-        hk: typeof t.hk === 'number' ? t.hk : 0,
-        phones: t.phones?.length ? t.phones : undefined,
-        emails: t.emails?.length ? t.emails : undefined,
-        address: t.address,
-        iban: t.iban ?? '',
-        paymentDayOfMonth: paymentDay,
-        ...(isPersistableAddressBookPartyId(t.addressBookPartyId) ? { addressBookPartyId: t.addressBookPartyId } : {}),
-      };
-      const sc = draftSnapshot.secondCompany;
-      const shouldPersistSecond =
-        sc != null && (((sc.name ?? '').trim() !== '') || tenantLikeHasDisplayableLegacyBody(sc));
-      const secondCompanyPayload: (TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number; addressBookPartyId?: string }) | null =
-        shouldPersistSecond && sc
+      if (section === 'lease') {
+        const fullAddressDisplay = formatPropertyAddress({
+          address: draftSnapshot.address,
+          zip: draftSnapshot.zip,
+          city: draftSnapshot.city,
+          country: draftSnapshot.country,
+        });
+        const updated = await propertiesService.update(prop.id, {
+          address: draftSnapshot.address,
+          zip: draftSnapshot.zip,
+          city: draftSnapshot.city,
+          country: draftSnapshot.country,
+          fullAddress: fullAddressDisplay,
+          title: draftSnapshot.title,
+          details: { ...(prop.details ?? {}), floor: draftSnapshot.floor, buildingFloors: draftSnapshot.buildingFloors },
+          apartmentStatus: draftSnapshot.apartmentStatus,
+          apartmentGroupId: draftSnapshot.apartmentGroupId ?? null,
+        });
+        setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+        setSelectedPropertyId(updated.id);
+        setCard1DraftBaseline(draftSnapshot);
+        setEditingCard1Section(null);
+        return;
+      }
+
+      if (section === 'counterparties') {
+        const paymentDay = draftSnapshot.tenant.paymentDayOfMonth;
+        if (paymentDay != null && (paymentDay < 1 || paymentDay > 31 || !Number.isInteger(paymentDay))) {
+          alert('День оплати має бути числом від 1 до 31.');
+          return;
+        }
+        const scPaymentDay = draftSnapshot.secondCompany?.paymentDayOfMonth;
+        if (scPaymentDay != null && (scPaymentDay < 1 || scPaymentDay > 31 || !Number.isInteger(scPaymentDay))) {
+          alert('День оплати (2-га фірма) має бути числом від 1 до 31.');
+          return;
+        }
+        const t = draftSnapshot.tenant;
+        const tenantPayload: TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number; addressBookPartyId?: string } = {
+          name: t.name ?? '',
+          phone: (t.phones?.[0] ?? t.phone) ?? '',
+          email: (t.emails?.[0] ?? t.email) ?? '',
+          rent: typeof t.rent === 'number' ? t.rent : 0,
+          deposit: typeof t.deposit === 'number' ? t.deposit : 0,
+          startDate: t.startDate ?? '',
+          km: typeof t.km === 'number' ? t.km : 0,
+          bk: typeof t.bk === 'number' ? t.bk : 0,
+          hk: typeof t.hk === 'number' ? t.hk : 0,
+          phones: t.phones?.length ? t.phones : undefined,
+          emails: t.emails?.length ? t.emails : undefined,
+          address: t.address,
+          iban: t.iban ?? '',
+          paymentDayOfMonth: paymentDay,
+          ...(isPersistableAddressBookPartyId(t.addressBookPartyId) ? { addressBookPartyId: t.addressBookPartyId } : {}),
+        };
+        const sc = draftSnapshot.secondCompany;
+        const shouldPersistSecond =
+          sc != null && (((sc.name ?? '').trim() !== '') || tenantLikeHasDisplayableLegacyBody(sc));
+        const secondCompanyPayload: (TenantDetails & { address?: ContactParty['address']; phones?: string[]; emails?: string[]; iban?: string; paymentDayOfMonth?: number; addressBookPartyId?: string }) | null =
+          shouldPersistSecond && sc
+            ? {
+                name: sc.name ?? '',
+                phone: (sc.phones?.[0] ?? sc.phone) ?? '',
+                email: (sc.emails?.[0] ?? sc.email) ?? '',
+                rent: typeof sc.rent === 'number' ? sc.rent : 0,
+                deposit: typeof sc.deposit === 'number' ? sc.deposit : 0,
+                startDate: sc.startDate ?? '',
+                km: typeof sc.km === 'number' ? sc.km : 0,
+                bk: typeof sc.bk === 'number' ? sc.bk : 0,
+                hk: typeof sc.hk === 'number' ? sc.hk : 0,
+                phones: sc.phones?.length ? sc.phones : undefined,
+                emails: sc.emails?.length ? sc.emails : undefined,
+                address: sc.address,
+                iban: sc.iban ?? '',
+                paymentDayOfMonth: scPaymentDay ?? undefined,
+                ...(isPersistableAddressBookPartyId(sc.addressBookPartyId) ? { addressBookPartyId: sc.addressBookPartyId } : {}),
+              }
+            : null;
+        const updated = await propertiesService.update(prop.id, {
+          landlord: draftSnapshot.landlord,
+          management: draftSnapshot.management,
+          tenant: tenantPayload,
+          secondCompany: secondCompanyPayload === null ? null : (secondCompanyPayload ?? undefined),
+        });
+        const user = await safeGetUser();
+        const entries = user?.id
+          ? propertyToPartiesAddressBookEntries(user.id, {
+              landlord: draftSnapshot.landlord,
+              tenant: tenantPayload,
+              secondCompany: secondCompanyPayload ?? undefined,
+              management: draftSnapshot.management,
+            })
+          : [];
+        setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+        setSelectedPropertyId(updated.id);
+        setCard1DraftBaseline(draftSnapshot);
+        setEditingCard1Section(null);
+        if (user?.id && entries.length > 0) {
+          try {
+            setAddressBookLastError(null);
+            await addressBookPartiesService.upsertMany(entries);
+          } catch (e) {
+            console.error('[AddressBook upsertMany]', e);
+            setAddressBookLastError(String((e as Error)?.message ?? e));
+          }
+        }
+        return;
+      }
+
+      if (section === 'kaution') {
+        const depositPayload: PropertyDeposit | null = draftSnapshot.deposit != null
           ? {
-              name: sc.name ?? '',
-              phone: (sc.phones?.[0] ?? sc.phone) ?? '',
-              email: (sc.emails?.[0] ?? sc.email) ?? '',
-              rent: typeof sc.rent === 'number' ? sc.rent : 0,
-              deposit: typeof sc.deposit === 'number' ? sc.deposit : 0,
-              startDate: sc.startDate ?? '',
-              km: typeof sc.km === 'number' ? sc.km : 0,
-              bk: typeof sc.bk === 'number' ? sc.bk : 0,
-              hk: typeof sc.hk === 'number' ? sc.hk : 0,
-              phones: sc.phones?.length ? sc.phones : undefined,
-              emails: sc.emails?.length ? sc.emails : undefined,
-              address: sc.address,
-              iban: sc.iban ?? '',
-              paymentDayOfMonth: scPaymentDay ?? undefined,
-              ...(isPersistableAddressBookPartyId(sc.addressBookPartyId) ? { addressBookPartyId: sc.addressBookPartyId } : {}),
+              amount: typeof draftSnapshot.deposit.amount === 'number' ? draftSnapshot.deposit.amount : 0,
+              status: draftSnapshot.deposit.status ?? 'unpaid',
+              paidAt: draftSnapshot.deposit.periodFrom?.trim() || draftSnapshot.deposit.paidAt?.trim() || undefined,
+              paidTo: draftSnapshot.deposit.paidTo?.trim() || undefined,
+              returnedAt: draftSnapshot.deposit.returnedAt?.trim() || undefined,
+              returnedAmount: draftSnapshot.deposit.returnedAmount,
+              returnStatus: draftSnapshot.deposit.returnStatus ?? 'unpaid',
+              depositType: draftSnapshot.deposit.depositType ?? 'TRANSFER',
+              periodFrom: draftSnapshot.deposit.periodFrom?.trim() || undefined,
+              periodTo: draftSnapshot.deposit.periodTo?.trim() || undefined,
+              depositNo: draftSnapshot.deposit.depositNo?.trim() || undefined,
+              issuerCompany: draftSnapshot.deposit.issuerCompany?.trim() || undefined
             }
           : null;
-      const depositPayload: PropertyDeposit | null = draftSnapshot.deposit != null
-        ? {
-            amount: typeof draftSnapshot.deposit.amount === 'number' ? draftSnapshot.deposit.amount : 0,
-            status: draftSnapshot.deposit.status ?? 'unpaid',
-            paidAt: draftSnapshot.deposit.periodFrom?.trim() || draftSnapshot.deposit.paidAt?.trim() || undefined,
-            paidTo: draftSnapshot.deposit.paidTo?.trim() || undefined,
-            returnedAt: draftSnapshot.deposit.returnedAt?.trim() || undefined,
-            returnedAmount: draftSnapshot.deposit.returnedAmount,
-            returnStatus: draftSnapshot.deposit.returnStatus ?? 'unpaid',
-            depositType: draftSnapshot.deposit.depositType ?? 'TRANSFER',
-            periodFrom: draftSnapshot.deposit.periodFrom?.trim() || undefined,
-            periodTo: draftSnapshot.deposit.periodTo?.trim() || undefined,
-            depositNo: draftSnapshot.deposit.depositNo?.trim() || undefined,
-            issuerCompany: draftSnapshot.deposit.issuerCompany?.trim() || undefined
-          }
-        : null;
-      await Promise.all([
-        paymentChainService.upsertEdge(prop.id, 'C1_TO_OWNER', {
-          payByDayOfMonth: paymentTiles.from_company1_to_owner.payByDayOfMonth ?? null,
-          amount_total: paymentTiles.from_company1_to_owner.total || null,
-          description: paymentTiles.from_company1_to_owner.description || null,
-          breakdown: Object.keys(paymentTiles.from_company1_to_owner.breakdown).length ? paymentTiles.from_company1_to_owner.breakdown : null,
-        }),
-        paymentChainService.upsertEdge(prop.id, 'C2_TO_C1', {
-          payByDayOfMonth: paymentTiles.from_company2_to_company1.payByDayOfMonth ?? null,
-          amount_total: paymentTiles.from_company2_to_company1.total || null,
-          description: paymentTiles.from_company2_to_company1.description || null,
-          breakdown: Object.keys(paymentTiles.from_company2_to_company1.breakdown).length ? paymentTiles.from_company2_to_company1.breakdown : null,
-        }),
-      ]);
-      const fullAddressDisplay = formatPropertyAddress({
-        address: draftSnapshot.address,
-        zip: draftSnapshot.zip,
-        city: draftSnapshot.city,
-        country: draftSnapshot.country,
-      });
-      const updated = await propertiesService.update(prop.id, {
-        address: draftSnapshot.address,
-        zip: draftSnapshot.zip,
-        city: draftSnapshot.city,
-        country: draftSnapshot.country,
-        fullAddress: fullAddressDisplay,
-        title: draftSnapshot.title,
-        details: { ...(prop.details ?? {}), floor: draftSnapshot.floor, buildingFloors: draftSnapshot.buildingFloors },
-        apartmentStatus: draftSnapshot.apartmentStatus,
-        apartmentGroupId: draftSnapshot.apartmentGroupId ?? null,
-        landlord: draftSnapshot.landlord,
-        management: draftSnapshot.management,
-        tenant: tenantPayload,
-        secondCompany: secondCompanyPayload === null ? null : (secondCompanyPayload ?? undefined),
-        deposit: depositPayload,
-      });
-      const user = await safeGetUser();
-      const entries = user?.id
-        ? propertyToPartiesAddressBookEntries(user.id, {
-            landlord: draftSnapshot.landlord,
-            tenant: tenantPayload,
-            secondCompany: secondCompanyPayload ?? undefined,
-            management: draftSnapshot.management,
-          })
-        : [];
-      setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
-      setSelectedPropertyId(updated.id);
-      setIsEditingCard1(false);
-      setCard1Draft(null);
-      if (user?.id && entries.length > 0) {
-        try {
-          setAddressBookLastError(null);
-          await addressBookPartiesService.upsertMany(entries);
-        } catch (e) {
-          console.error('[AddressBook upsertMany]', e);
-          setAddressBookLastError(String((e as Error)?.message ?? e));
-        }
+        const updated = await propertiesService.update(prop.id, { deposit: depositPayload });
+        setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
+        setSelectedPropertyId(updated.id);
+        setCard1DraftBaseline(draftSnapshot);
+        setEditingCard1Section(null);
+        return;
       }
     } catch (err) {
-      console.error('Card 1 save error:', err);
+      console.error('Card 1 section save error:', err);
       alert('Помилка збереження. Спробуйте ще раз.');
     }
   };
@@ -3555,8 +3615,9 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   }, [selectedPropertyId]);
 
   useEffect(() => {
-    setIsEditingCard1(false);
+    setEditingCard1Section(null);
     setCard1Draft(null);
+    setCard1DraftBaseline(null);
     setLeaseTermDraft(null);
     setShowAddRentIncreaseForm(false);
     setRentIncreaseForm({ validFrom: '', validTo: '', km: '', mietsteuer: '', unternehmenssteuer: '', bk: '', hk: '', muell: '', strom: '', gas: '', wasser: '' });
@@ -6909,12 +6970,12 @@ Hero Rooms Team`;
                         >
                             <ChevronDown className={`w-4 h-4 transition-transform ${isLeaseRentalCardOpen ? 'rotate-180' : ''}`} />
                         </button>
-                    {!isEditingCard1 ? (
+                    {editingCard1Section === null ? (
                         <div className="flex items-center gap-2">
                             <button type="button" onClick={() => { setZweckentfremdungSwitchValue(!!selectedProperty?.zweckentfremdungFlag); setZweckentfremdungAddDraft({ datum: '', aktenzeichen: '', bezirksamt: '', note: '' }); setZweckentfremdungModalFile(null); setZweckentfremdungAddError(null); if (selectedProperty?.id) { setZweckentfremdungDocsLoading(true); propertyDocumentsService.listPropertyDocuments(selectedProperty.id).then(list => { setZweckentfremdungDocs(list.filter(d => d.type === 'zweckentfremdung_notice')); }).finally(() => setZweckentfremdungDocsLoading(false)); } setIsZweckentfremdungModalOpen(true); }} className="p-2 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors" title="Zweckentfremdung — Hinweis/Anzeige wegen Zweckentfremdung">
                                 {selectedProperty?.zweckentfremdungFlag ? <AlertTriangle className="w-5 h-5 text-amber-500" /> : <Square className="w-5 h-5 text-gray-500" />}
                             </button>
-                            <button type="button" onClick={startCard1Edit} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+                            <button type="button" onClick={() => startCard1SectionEdit('lease')} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
                                 <Edit className="w-4 h-4 mr-1 inline" /> Редагувати
                             </button>
                         </div>
@@ -6923,7 +6984,7 @@ Hero Rooms Team`;
                 </div>
                 {isLeaseRentalCardOpen && (
                 <div id="lease-rent-card-body" role="region" aria-labelledby="lease-rent-card-heading" className="space-y-4">
-                    {isEditingCard1 && card1Draft ? (
+                    {isEditingLeaseCard && card1Draft ? (
                         <>
                             <div className="grid grid-cols-12 gap-4 items-start pb-4 border-b border-gray-700">
                                 <div className="col-span-8"><label className="text-xs text-gray-500 block mb-1">Вулиця + номер</label><input value={card1Draft.address} onChange={e => setCard1Draft(d => d ? { ...d, address: e.target.value } : null)} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="Вулиця, номер будинку" /></div>
@@ -6970,6 +7031,10 @@ Hero Rooms Team`;
                                 <div className="mt-3">
                                     <button type="button" disabled={leaseTermSaving || !leaseTermDraft || !leaseTermDraft.contractStart?.trim()} onClick={async () => { if (!selectedPropertyId || !leaseTermDraft) return; const d = leaseTermDraft; if (!d.contractStart?.trim()) { setLeaseTermSaveError('Gültig von ist erforderlich.'); return; } const errStart = validateEuDate(d.contractStart, 'Gültig von'); if (errStart) { setLeaseTermSaveError(errStart); return; } const errEnd = d.contractEnd?.trim() ? validateEuDate(d.contractEnd, 'Gültig bis') : null; if (errEnd) { setLeaseTermSaveError(errEnd); return; } const errFirst = d.firstPaymentDate?.trim() ? validateEuDate(d.firstPaymentDate, 'Erste Mietzahlung ab') : null; if (errFirst) { setLeaseTermSaveError(errFirst); return; } const isoStart = euToIso(d.contractStart); if (!isoStart) { setLeaseTermSaveError('Ungültiges Datum bei Gültig von.'); return; } const isoEnd = d.contractEnd?.trim() ? euToIso(d.contractEnd) : null; const isoFirst = d.firstPaymentDate?.trim() ? euToIso(d.firstPaymentDate) : null; if (isoEnd && isoEnd < isoStart) { setLeaseTermSaveError('Gültig bis muss am oder nach Gültig von liegen.'); return; } if (isoFirst && isoFirst < isoStart) { setLeaseTermSaveError('Erste Mietzahlung ab darf nicht vor Gültig von liegen.'); return; } setLeaseTermSaveError(null); setLeaseTermSaving(true); try { const saved = await unitLeaseTermsService.upsertByPropertyId(selectedPropertyId, { contract_start: isoStart, contract_end: isoEnd ?? undefined, contract_type: d.contractType, first_payment_date: isoFirst ?? undefined, note: d.note?.trim() || undefined }); setLeaseTerm(saved); } catch (e) { setLeaseTermSaveError(e instanceof Error ? e.message : 'Fehler beim Speichern.'); } finally { setLeaseTermSaving(false); } }} className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white">Зберегти термін договору</button>
                                 </div>
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={() => saveCard1Section('lease')} className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white">Зберегти</button>
+                                <button type="button" onClick={cancelCard1SectionEdit} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-400 hover:text-white hover:bg-gray-800">Скасувати</button>
                             </div>
                         </>
                     ) : (
@@ -7025,11 +7090,16 @@ Hero Rooms Team`;
                         >
                             <ChevronDown className={`w-4 h-4 transition-transform ${isCounterpartiesCardOpen ? 'rotate-180' : ''}`} />
                         </button>
+                        {editingCard1Section === null ? (
+                            <button type="button" onClick={() => startCard1SectionEdit('counterparties')} className="p-2 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors" title="Редагувати">
+                                <Edit className="w-4 h-4 text-gray-200" />
+                            </button>
+                        ) : null}
                     </div>
                 </div>
                 {isCounterpartiesCardOpen && (
                 <div id="counterparties-card-body" role="region" aria-labelledby="counterparties-card-heading" className="space-y-4">
-                    {isEditingCard1 && card1Draft ? (
+                    {isEditingCounterpartiesCard && card1Draft ? (
                         <>
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start pb-4 border-b border-gray-700">
                                 <div>
@@ -7182,6 +7252,10 @@ Hero Rooms Team`;
                                     </select>
                                 </div>
                             </div>
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={() => saveCard1Section('counterparties')} className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white">Зберегти</button>
+                                <button type="button" onClick={cancelCard1SectionEdit} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-400 hover:text-white hover:bg-gray-800">Скасувати</button>
+                            </div>
                         </>
                     ) : (
                         <>
@@ -7310,8 +7384,8 @@ Hero Rooms Team`;
                 </div>
                 {isPaymentChainCardOpen && (
                 <div id="payment-chain-card-body" role="region" aria-labelledby="payment-chain-card-heading" className="space-y-4">
-                    {isEditingCard1 && card1Draft ? (
-                        <p className="text-sm text-gray-400">Платіжний ланцюжок показується в режимі перегляду. Вийдіть із редагування квартири (Зберегти / Скасувати), щоб знову бачити цей блок.</p>
+                    {editingCard1Section != null ? (
+                        <p className="text-sm text-gray-400">Платіжний ланцюжок — тільки перегляд. Щоб редагувати інші дані, використайте «Редагувати» в потрібній картці.</p>
                     ) : (
                         <>
                             {/* Платіжний ланцюжок — edges + files from paymentChainService */}
@@ -7346,21 +7420,16 @@ Hero Rooms Team`;
                                                     <div className="text-emerald-400 font-medium">Warmmiete: €{(activeRentRow.warm ?? 0).toFixed(2)}</div>
                                                 </div>
                                             )}
-                                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                <label className="text-xs text-emerald-500 hover:text-emerald-400 cursor-pointer">+ Додати файл<input type="file" className="hidden" multiple onChange={e => { handlePaymentChainAddFiles('owner_control', e.target.files); e.target.value = ''; }} disabled={!!paymentChainUploadingTile} /></label>
-                                                {paymentChainUploadingTile === 'owner_control' && <span className="text-xs text-gray-500">завантаження…</span>}
-                                                {paymentChainFiles.owner_control.length > 0 && (
-                                                    <ul className="list-none space-y-1 w-full">
-                                                        {paymentChainFiles.owner_control.map(f => (
-                                                            <li key={f.id} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
-                                                                <span className="truncate flex-1">{f.file_name}</span>
-                                                                <button type="button" onClick={() => handlePaymentChainViewFile(f.storage_path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>
-                                                                <button type="button" onClick={() => handlePaymentChainDeleteFile('owner_control', f)} className="text-gray-400 hover:text-white">Видалити</button>
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                )}
-                                            </div>
+                                            {paymentChainFiles.owner_control.length > 0 && (
+                                                <ul className="mt-2 list-none space-y-1 w-full">
+                                                    {paymentChainFiles.owner_control.map(f => (
+                                                        <li key={f.id} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
+                                                            <span className="truncate flex-1">{f.file_name}</span>
+                                                            <button type="button" onClick={() => handlePaymentChainViewFile(f.storage_path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="hidden md:flex md:col-span-1 items-center justify-center text-gray-500 pt-8"><ArrowRight className="w-5 h-5 rotate-180" /></div>
@@ -7369,7 +7438,7 @@ Hero Rooms Team`;
                                             {paymentChainParties.ownerParty.name === '—' ? (
                                                 <>
                                                     <div className="text-sm text-gray-500 py-2">Додай власника в Контрагенти</div>
-                                                    <button type="button" onClick={startCard1Edit} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
+                                                    <button type="button" onClick={() => startCard1SectionEdit('counterparties')} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
                                                 </>
                                             ) : (
                                                 <>
@@ -7380,22 +7449,7 @@ Hero Rooms Team`;
                                                         <div className="text-sm font-semibold text-emerald-400">Отримувач: {paymentChainParties.ownerParty.name}</div>
                                                         <div className="text-sm text-gray-400 font-mono">IBAN: {paymentChainParties.ownerParty.iban}</div>
                                                     </div>
-                                                    {editingPaymentTile === 'from_company1_to_owner' ? (
-                                                        <>
-                                                            <div className="mt-2"><span className="text-xs text-gray-500 block">Оплатити до (1–31)</span><div className="relative"><select value={paymentTiles.from_company1_to_owner.payByDayOfMonth ?? ''} onChange={e => { const v = e.target.value; setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, payByDayOfMonth: v === '' ? undefined : Math.min(31, Math.max(1, parseInt(v, 10) || 1)) } })); }} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white"><option value="">—</option>{Array.from({ length: 31 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select>{paymentTiles.from_company1_to_owner.payByDayOfMonth != null && <button type="button" onClick={() => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, payByDayOfMonth: undefined } }))} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>}</div><span className="text-xs text-gray-500 block mt-0.5">кожного місяця</span></div>
-                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Сума (разом)</span><input type="text" value={paymentTiles.from_company1_to_owner.total} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, total: e.target.value } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" />{ownerTotalAuto > 0 && <span className="text-xs text-gray-500 block mt-0.5">Підказка: Warmmiete зараз €{Number(ownerTotalAuto).toFixed(2)}</span>}</div>
-                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Опис</span><input type="text" value={paymentTiles.from_company1_to_owner.description} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, description: e.target.value } }))} placeholder="оренда, BK, HK…" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
-                                                            {showPaymentDetails && (
-                                                                <div className="mt-2 pt-2 border-t border-gray-800 space-y-1">
-                                                                    <div className="text-xs text-gray-500">Kaltmiete</div><input type="text" value={paymentTiles.from_company1_to_owner.breakdown.km ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, breakdown: { ...s.from_company1_to_owner.breakdown, km: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
-                                                                    <div className="text-xs text-gray-500">Betriebskosten</div><input type="text" value={paymentTiles.from_company1_to_owner.breakdown.bk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, breakdown: { ...s.from_company1_to_owner.breakdown, bk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
-                                                                    <div className="text-xs text-gray-500">Heizkosten</div><input type="text" value={paymentTiles.from_company1_to_owner.breakdown.hk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, breakdown: { ...s.from_company1_to_owner.breakdown, hk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
-                                                                </div>
-                                                            )}
-                                                            <div className="mt-2 flex gap-1"><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-emerald-500 hover:text-emerald-400">Зберегти</button><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-gray-400 hover:text-white">Скасувати</button></div>
-                                                        </>
-                                                    ) : (
-                                                        <>
+                                                    <>
                                                             <div className="mt-2 text-sm text-gray-400">Оплатити до (1–31): {paymentTiles.from_company1_to_owner.payByDayOfMonth != null && paymentTiles.from_company1_to_owner.payByDayOfMonth >= 1 && paymentTiles.from_company1_to_owner.payByDayOfMonth <= 31 ? `до ${paymentTiles.from_company1_to_owner.payByDayOfMonth}-го числа (щомісяця)` : '—'}</div>
                                                             <div className="mt-1 text-sm text-gray-400">Сума (разом): {paymentTiles.from_company1_to_owner.total || '—'}</div>
                                                             {paymentTiles.from_company1_to_owner.description && <div className="text-sm text-gray-400 mt-0.5">Опис: {paymentTiles.from_company1_to_owner.description}</div>}
@@ -7405,24 +7459,17 @@ Hero Rooms Team`;
                                                                     {!paymentTiles.from_company1_to_owner.breakdown.km && !paymentTiles.from_company1_to_owner.breakdown.bk && !paymentTiles.from_company1_to_owner.breakdown.hk && <div>—</div>}
                                                                 </div>
                                                             )}
-                                                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                                <label className="text-xs text-emerald-500 hover:text-emerald-400 cursor-pointer">+ Додати файл<input type="file" className="hidden" multiple onChange={e => { handlePaymentChainAddFiles('from_company1_to_owner', e.target.files); e.target.value = ''; }} disabled={!!paymentChainUploadingTile} /></label>
-                                                                {paymentChainUploadingTile === 'from_company1_to_owner' && <span className="text-xs text-gray-500">завантаження…</span>}
-                                                                {paymentChainFiles.from_company1_to_owner.length > 0 && (
-                                                                    <ul className="list-none space-y-1 w-full">
-                                                                        {paymentChainFiles.from_company1_to_owner.map(f => (
-                                                                            <li key={f.id} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
-                                                                                <span className="truncate flex-1">{f.file_name}</span>
-                                                                                <button type="button" onClick={() => handlePaymentChainViewFile(f.storage_path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>
-                                                                                <button type="button" onClick={() => handlePaymentChainDeleteFile('from_company1_to_owner', f)} className="text-gray-400 hover:text-white">Видалити</button>
-                                                                            </li>
-                                                                        ))}
-                                                                    </ul>
-                                                                )}
-                                                                <button type="button" onClick={() => setEditingPaymentTile('from_company1_to_owner')} className="text-xs text-emerald-500 hover:text-emerald-400">Редагувати</button>
-                                                            </div>
-                                                        </>
-                                                    )}
+                                                            {paymentChainFiles.from_company1_to_owner.length > 0 && (
+                                                                <ul className="mt-2 list-none space-y-1 w-full">
+                                                                    {paymentChainFiles.from_company1_to_owner.map(f => (
+                                                                        <li key={f.id} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
+                                                                            <span className="truncate flex-1">{f.file_name}</span>
+                                                                            <button type="button" onClick={() => handlePaymentChainViewFile(f.storage_path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            )}
+                                                    </>
                                                 </>
                                             )}
                                         </div>
@@ -7433,12 +7480,12 @@ Hero Rooms Team`;
                                             {paymentChainParties.company1Party.name === '—' ? (
                                                 <>
                                                     <div className="text-sm text-gray-500 py-2">Додай 1-шу фірму в Контрагенти</div>
-                                                    <button type="button" onClick={startCard1Edit} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
+                                                    <button type="button" onClick={() => startCard1SectionEdit('counterparties')} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
                                                 </>
                                             ) : paymentChainParties.company2Party.name === '—' ? (
                                                 <>
                                                     <div className="text-sm text-gray-500 py-2">Додай 2-гу фірму в Контрагенти</div>
-                                                    <button type="button" onClick={startCard1Edit} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
+                                                    <button type="button" onClick={() => startCard1SectionEdit('counterparties')} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
                                                 </>
                                             ) : (
                                                 <>
@@ -7449,22 +7496,7 @@ Hero Rooms Team`;
                                                         <div className="text-sm font-semibold text-emerald-400">Отримувач: {paymentChainParties.company1Party.name}</div>
                                                         <div className="text-sm text-gray-400 font-mono">IBAN: {paymentChainParties.company1Party.iban}</div>
                                                     </div>
-                                                    {editingPaymentTile === 'from_company2_to_company1' ? (
-                                                        <>
-                                                            <div className="mt-2"><span className="text-xs text-gray-500 block">Оплатити до (1–31)</span><div className="relative"><select value={paymentTiles.from_company2_to_company1.payByDayOfMonth ?? ''} onChange={e => { const v = e.target.value; setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, payByDayOfMonth: v === '' ? undefined : Math.min(31, Math.max(1, parseInt(v, 10) || 1)) } })); }} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white"><option value="">—</option>{Array.from({ length: 31 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select>{paymentTiles.from_company2_to_company1.payByDayOfMonth != null && <button type="button" onClick={() => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, payByDayOfMonth: undefined } }))} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>}</div><span className="text-xs text-gray-500 block mt-0.5">кожного місяця</span></div>
-                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Сума (разом)</span><input type="text" value={paymentTiles.from_company2_to_company1.total} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, total: e.target.value } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
-                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Опис</span><input type="text" value={paymentTiles.from_company2_to_company1.description} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, description: e.target.value } }))} placeholder="оренда, BK, HK…" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
-                                                            {showPaymentDetails && (
-                                                                <div className="mt-2 pt-2 border-t border-gray-800 space-y-1">
-                                                                    <div className="text-xs text-gray-500">Kaltmiete</div><input type="text" value={paymentTiles.from_company2_to_company1.breakdown.km ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, breakdown: { ...s.from_company2_to_company1.breakdown, km: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
-                                                                    <div className="text-xs text-gray-500">Betriebskosten</div><input type="text" value={paymentTiles.from_company2_to_company1.breakdown.bk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, breakdown: { ...s.from_company2_to_company1.breakdown, bk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
-                                                                    <div className="text-xs text-gray-500">Heizkosten</div><input type="text" value={paymentTiles.from_company2_to_company1.breakdown.hk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, breakdown: { ...s.from_company2_to_company1.breakdown, hk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
-                                                                </div>
-                                                            )}
-                                                            <div className="mt-2 flex gap-1"><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-emerald-500 hover:text-emerald-400">Зберегти</button><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-gray-400 hover:text-white">Скасувати</button></div>
-                                                        </>
-                                                    ) : (
-                                                        <>
+                                                    <>
                                                             <div className="mt-2 text-sm text-gray-400">Оплатити до (1–31): {paymentTiles.from_company2_to_company1.payByDayOfMonth != null && paymentTiles.from_company2_to_company1.payByDayOfMonth >= 1 && paymentTiles.from_company2_to_company1.payByDayOfMonth <= 31 ? `до ${paymentTiles.from_company2_to_company1.payByDayOfMonth}-го числа (щомісяця)` : '—'}</div>
                                                             <div className="mt-1 text-sm text-gray-400">Сума (разом): {paymentTiles.from_company2_to_company1.total || '—'}</div>
                                                             {paymentTiles.from_company2_to_company1.description && <div className="text-sm text-gray-400 mt-0.5">Опис: {paymentTiles.from_company2_to_company1.description}</div>}
@@ -7474,24 +7506,17 @@ Hero Rooms Team`;
                                                                     {!paymentTiles.from_company2_to_company1.breakdown.km && !paymentTiles.from_company2_to_company1.breakdown.bk && !paymentTiles.from_company2_to_company1.breakdown.hk && <div>—</div>}
                                                                 </div>
                                                             )}
-                                                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                                <label className="text-xs text-emerald-500 hover:text-emerald-400 cursor-pointer">+ Додати файл<input type="file" className="hidden" multiple onChange={e => { handlePaymentChainAddFiles('from_company2_to_company1', e.target.files); e.target.value = ''; }} disabled={!!paymentChainUploadingTile} /></label>
-                                                                {paymentChainUploadingTile === 'from_company2_to_company1' && <span className="text-xs text-gray-500">завантаження…</span>}
-                                                                {paymentChainFiles.from_company2_to_company1.length > 0 && (
-                                                                    <ul className="list-none space-y-1 w-full">
-                                                                        {paymentChainFiles.from_company2_to_company1.map(f => (
-                                                                            <li key={f.id} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
-                                                                                <span className="truncate flex-1">{f.file_name}</span>
-                                                                                <button type="button" onClick={() => handlePaymentChainViewFile(f.storage_path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>
-                                                                                <button type="button" onClick={() => handlePaymentChainDeleteFile('from_company2_to_company1', f)} className="text-gray-400 hover:text-white">Видалити</button>
-                                                                            </li>
-                                                                        ))}
-                                                                    </ul>
-                                                                )}
-                                                                <button type="button" onClick={() => setEditingPaymentTile('from_company2_to_company1')} className="text-xs text-emerald-500 hover:text-emerald-400">Редагувати</button>
-                                                            </div>
-                                                        </>
-                                                    )}
+                                                            {paymentChainFiles.from_company2_to_company1.length > 0 && (
+                                                                <ul className="mt-2 list-none space-y-1 w-full">
+                                                                    {paymentChainFiles.from_company2_to_company1.map(f => (
+                                                                        <li key={f.id} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
+                                                                            <span className="truncate flex-1">{f.file_name}</span>
+                                                                            <button type="button" onClick={() => handlePaymentChainViewFile(f.storage_path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            )}
+                                                    </>
                                                 </>
                                             )}
                                         </div>
@@ -7519,11 +7544,16 @@ Hero Rooms Team`;
                         >
                             <ChevronDown className={`w-4 h-4 transition-transform ${isKautionCardOpen ? 'rotate-180' : ''}`} />
                         </button>
+                        {editingCard1Section === null ? (
+                            <button type="button" onClick={() => startCard1SectionEdit('kaution')} className="p-2 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors" title="Редагувати">
+                                <Edit className="w-4 h-4 text-gray-200" />
+                            </button>
+                        ) : null}
                     </div>
                 </div>
                 {isKautionCardOpen && (
                 <div id="kaution-card-body" role="region" aria-labelledby="kaution-card-heading" className="space-y-4">
-                    {isEditingCard1 && card1Draft ? (
+                    {isEditingKautionCard && card1Draft ? (
                         <>
                             <div className="pb-4 border-b border-gray-700">
                                 <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Застава (Kaution)</h3>
@@ -7571,6 +7601,10 @@ Hero Rooms Team`;
                                 <div className="mt-2">
                                     <button type="button" onClick={() => { if (window.confirm('Очистити заставу повністю? Це видалить дані застави (deposit) з цієї квартири.')) { setCard1Draft(d => d ? { ...d, deposit: null } : null); setCard1DepositError(null); } }} className="text-sm text-amber-400 hover:text-amber-300 font-medium">Очистити заставу</button>
                                 </div>
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={() => saveCard1Section('kaution')} className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white">Зберегти</button>
+                                <button type="button" onClick={cancelCard1SectionEdit} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-400 hover:text-white hover:bg-gray-800">Скасувати</button>
                             </div>
                         </>
                     ) : (
@@ -7659,11 +7693,16 @@ Hero Rooms Team`;
                         >
                             <ChevronDown className={`w-4 h-4 transition-transform ${isDocumentsCardOpen ? 'rotate-180' : ''}`} />
                         </button>
+                        {editingCard1Section === null ? (
+                            <button type="button" onClick={() => startCard1SectionEdit('documents')} className="p-2 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors" title="Редагувати">
+                                <Edit className="w-4 h-4 text-gray-200" />
+                            </button>
+                        ) : null}
                     </div>
                 </div>
                 {isDocumentsCardOpen && (
                 <div id="documents-card-body" role="region" aria-labelledby="documents-card-heading" className="space-y-4">
-                    {isEditingCard1 && card1Draft ? (
+                    {isEditingDocumentsCard && card1Draft ? (
                         <>
                             <div className="pb-4 border-b border-gray-700">
                                 <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Документи та договори</h3>
@@ -7869,6 +7908,10 @@ Hero Rooms Team`;
                                     </>
                                 )}
                             </div>
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={() => saveCard1Section('documents')} className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white">Готово</button>
+                                <button type="button" onClick={cancelCard1SectionEdit} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-400 hover:text-white hover:bg-gray-800">Скасувати</button>
+                            </div>
                         </>
                     ) : (
                         <>
@@ -7936,11 +7979,16 @@ Hero Rooms Team`;
                         >
                             <ChevronDown className={`w-4 h-4 transition-transform ${isRentTimelineCardOpen ? 'rotate-180' : ''}`} />
                         </button>
+                        {editingCard1Section === null ? (
+                            <button type="button" onClick={() => startCard1SectionEdit('rentTimeline')} className="p-2 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors" title="Редагувати">
+                                <Edit className="w-4 h-4 text-gray-200" />
+                            </button>
+                        ) : null}
                     </div>
                 </div>
                 {isRentTimelineCardOpen && (
                 <div id="rent-timeline-card-body" role="region" aria-labelledby="rent-timeline-card-heading" className="space-y-4">
-                    {isEditingCard1 && card1Draft ? (
+                    {isEditingRentTimelineCard && card1Draft ? (
                         <>
                             <div>
                                 <span className="text-xs text-gray-500 block mb-2">Рентний таймлайн</span>
@@ -8029,6 +8077,10 @@ Hero Rooms Team`;
                                     <button type="button" onClick={() => setShowAddRentIncreaseForm(true)} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400 font-medium">+ Додати підвищення оренди</button>
                                 )}
                             </div>
+                            <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={() => saveCard1Section('rentTimeline')} className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white">Зберегти</button>
+                                <button type="button" onClick={cancelCard1SectionEdit} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-400 hover:text-white hover:bg-gray-800">Скасувати</button>
+                            </div>
                         </>
                     ) : (
                         <>
@@ -8044,19 +8096,13 @@ Hero Rooms Team`;
                                         </tbody>
                                     </table>
                                 </div>
-                                <button type="button" onClick={() => { startCard1Edit(); setShowAddRentIncreaseForm(true); }} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400 font-medium">+ Додати підвищення оренди</button>
+                                <button type="button" onClick={() => { startCard1SectionEdit('rentTimeline'); setShowAddRentIncreaseForm(true); }} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400 font-medium">+ Додати підвищення оренди</button>
                             </div>
                         </>
                     )}
                 </div>
                 )}
             </section>
-            {isEditingCard1 && card1Draft && (
-                <div className="mb-6 flex gap-3">
-                                <button type="button" onClick={saveCard1} disabled={!isCard1DepositValid(card1Draft.deposit).valid} className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white">Зберегти</button>
-                                <button type="button" onClick={cancelCard1Edit} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-400 hover:text-white hover:bg-gray-800">Скасувати</button>
-                </div>
-            )}
                             {isDepositProofModalOpen && depositProofType && selectedProperty && (
                                 <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4" onClick={() => { setIsDepositProofModalOpen(false); setDepositProofType(null); setDepositProofFile(null); setDepositProofError(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; }}>
                                     <div className="bg-[#1C1F24] w-full max-w-md rounded-xl border border-gray-700 shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
