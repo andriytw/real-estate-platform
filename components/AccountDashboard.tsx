@@ -6975,8 +6975,9 @@ Hero Rooms Team`;
                             <button type="button" onClick={() => { setZweckentfremdungSwitchValue(!!selectedProperty?.zweckentfremdungFlag); setZweckentfremdungAddDraft({ datum: '', aktenzeichen: '', bezirksamt: '', note: '' }); setZweckentfremdungModalFile(null); setZweckentfremdungAddError(null); if (selectedProperty?.id) { setZweckentfremdungDocsLoading(true); propertyDocumentsService.listPropertyDocuments(selectedProperty.id).then(list => { setZweckentfremdungDocs(list.filter(d => d.type === 'zweckentfremdung_notice')); }).finally(() => setZweckentfremdungDocsLoading(false)); } setIsZweckentfremdungModalOpen(true); }} className="p-2 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors" title="Zweckentfremdung — Hinweis/Anzeige wegen Zweckentfremdung">
                                 {selectedProperty?.zweckentfremdungFlag ? <AlertTriangle className="w-5 h-5 text-amber-500" /> : <Square className="w-5 h-5 text-gray-500" />}
                             </button>
-                            <button type="button" onClick={() => startCard1SectionEdit('lease')} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
-                                <Edit className="w-4 h-4 mr-1 inline" /> Редагувати
+                            <button type="button" onClick={() => startCard1SectionEdit('lease')} aria-label="Редагувати" title="Редагувати" className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors inline-flex items-center justify-center">
+                                <Edit className="w-4 h-4 inline" />
+                                <span className="opacity-0 select-none ml-1">Редагувати</span>
                             </button>
                         </div>
                     ) : null}
@@ -8459,9 +8460,12 @@ Hero Rooms Team`;
                         <button
                             type="button"
                             onClick={startCard2Edit}
-                            className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                            aria-label="Редагувати"
+                            title="Редагувати"
+                            className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors inline-flex items-center justify-center"
                         >
-                            <Edit className="w-4 h-4 mr-1 inline" /> Редагувати
+                            <Edit className="w-4 h-4 inline" />
+                            <span className="opacity-0 select-none ml-1">Редагувати</span>
                         </button>
                     )}
                     </div>
@@ -8607,9 +8611,12 @@ Hero Rooms Team`;
                         <button
                             type="button"
                             onClick={startCard3Edit}
-                            className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2"
+                            aria-label="Редагувати"
+                            title="Редагувати"
+                            className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors inline-flex items-center justify-center"
                         >
-                            <Edit className="w-4 h-4" /> Редагувати
+                            <Edit className="w-4 h-4" />
+                            <span className="opacity-0 select-none ml-1">Редагувати</span>
                         </button>
                     ) : (
                         <div className="flex gap-2">
@@ -8987,10 +8994,12 @@ Hero Rooms Team`;
                                   if (isPropertyInventoryCollapsed) setPropertyInventoryCollapsed(false);
                                   if (isInventoryEditing) handleSavePropertyInventory(); else setIsInventoryEditing(true);
                                 }}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${isInventoryEditing ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}
+                                aria-label={isInventoryEditing ? 'Зберегти' : 'Редагувати'}
+                                title={isInventoryEditing ? 'Зберегти' : 'Редагувати'}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border inline-flex items-center justify-center ${isInventoryEditing ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}
                             >
                                 {isInventoryEditing ? <Check className="w-3 h-3 mr-1 inline"/> : <Edit className="w-3 h-3 mr-1 inline"/>}
-                                {isInventoryEditing ? 'Зберегти' : 'Редагувати'}
+                                {isInventoryEditing ? 'Зберегти' : <span className="opacity-0 select-none">Редагувати</span>}
                             </button>
                             {isInventoryEditing && (
                                 <button
