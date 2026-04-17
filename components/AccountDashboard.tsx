@@ -847,6 +847,12 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     setOpenAusstattungCards({});
   }, [selectedPropertyId]);
   const [isEditingCard1, setIsEditingCard1] = useState(false);
+  const [isLeaseRentalCardOpen, setIsLeaseRentalCardOpen] = useState(true);
+  const [isCounterpartiesCardOpen, setIsCounterpartiesCardOpen] = useState(true);
+  const [isPaymentChainCardOpen, setIsPaymentChainCardOpen] = useState(true);
+  const [isKautionCardOpen, setIsKautionCardOpen] = useState(true);
+  const [isDocumentsCardOpen, setIsDocumentsCardOpen] = useState(true);
+  const [isRentTimelineCardOpen, setIsRentTimelineCardOpen] = useState(true);
   const [card1Documents, setCard1Documents] = useState<PropertyDocument[]>([]);
   const [card1DocumentsLoading, setCard1DocumentsLoading] = useState(false);
   const [card1DocumentsError, setCard1DocumentsError] = useState<string | null>(null);
@@ -6888,10 +6894,21 @@ Hero Rooms Team`;
                </div>
             </div>
 
-            {/* Card 1 — Lease (Rent) + Identity */}
+            {/* Lease / rental — split into six cards (UI only) */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold text-white">Оренда квартири</h2>
+                    <h2 id="lease-rent-card-heading" className="text-2xl font-bold text-white">Оренда квартири</h2>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button
+                            type="button"
+                            aria-expanded={isLeaseRentalCardOpen}
+                            aria-controls="lease-rent-card-body"
+                            onClick={() => setIsLeaseRentalCardOpen((open) => !open)}
+                            className="p-2 rounded-lg text-gray-500 hover:bg-white/[0.03] hover:text-gray-400 transition-colors"
+                            aria-label={isLeaseRentalCardOpen ? 'Згорнути розділ' : 'Розгорнути розділ'}
+                        >
+                            <ChevronDown className={`w-4 h-4 transition-transform ${isLeaseRentalCardOpen ? 'rotate-180' : ''}`} />
+                        </button>
                     {!isEditingCard1 ? (
                         <div className="flex items-center gap-2">
                             <button type="button" onClick={() => { setZweckentfremdungSwitchValue(!!selectedProperty?.zweckentfremdungFlag); setZweckentfremdungAddDraft({ datum: '', aktenzeichen: '', bezirksamt: '', note: '' }); setZweckentfremdungModalFile(null); setZweckentfremdungAddError(null); if (selectedProperty?.id) { setZweckentfremdungDocsLoading(true); propertyDocumentsService.listPropertyDocuments(selectedProperty.id).then(list => { setZweckentfremdungDocs(list.filter(d => d.type === 'zweckentfremdung_notice')); }).finally(() => setZweckentfremdungDocsLoading(false)); } setIsZweckentfremdungModalOpen(true); }} className="p-2 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors" title="Zweckentfremdung — Hinweis/Anzeige wegen Zweckentfremdung">
@@ -6902,8 +6919,10 @@ Hero Rooms Team`;
                             </button>
                         </div>
                     ) : null}
+                    </div>
                 </div>
-                <div className="space-y-4">
+                {isLeaseRentalCardOpen && (
+                <div id="lease-rent-card-body" role="region" aria-labelledby="lease-rent-card-heading" className="space-y-4">
                     {isEditingCard1 && card1Draft ? (
                         <>
                             <div className="grid grid-cols-12 gap-4 items-start pb-4 border-b border-gray-700">
@@ -6952,6 +6971,66 @@ Hero Rooms Team`;
                                     <button type="button" disabled={leaseTermSaving || !leaseTermDraft || !leaseTermDraft.contractStart?.trim()} onClick={async () => { if (!selectedPropertyId || !leaseTermDraft) return; const d = leaseTermDraft; if (!d.contractStart?.trim()) { setLeaseTermSaveError('Gültig von ist erforderlich.'); return; } const errStart = validateEuDate(d.contractStart, 'Gültig von'); if (errStart) { setLeaseTermSaveError(errStart); return; } const errEnd = d.contractEnd?.trim() ? validateEuDate(d.contractEnd, 'Gültig bis') : null; if (errEnd) { setLeaseTermSaveError(errEnd); return; } const errFirst = d.firstPaymentDate?.trim() ? validateEuDate(d.firstPaymentDate, 'Erste Mietzahlung ab') : null; if (errFirst) { setLeaseTermSaveError(errFirst); return; } const isoStart = euToIso(d.contractStart); if (!isoStart) { setLeaseTermSaveError('Ungültiges Datum bei Gültig von.'); return; } const isoEnd = d.contractEnd?.trim() ? euToIso(d.contractEnd) : null; const isoFirst = d.firstPaymentDate?.trim() ? euToIso(d.firstPaymentDate) : null; if (isoEnd && isoEnd < isoStart) { setLeaseTermSaveError('Gültig bis muss am oder nach Gültig von liegen.'); return; } if (isoFirst && isoFirst < isoStart) { setLeaseTermSaveError('Erste Mietzahlung ab darf nicht vor Gültig von liegen.'); return; } setLeaseTermSaveError(null); setLeaseTermSaving(true); try { const saved = await unitLeaseTermsService.upsertByPropertyId(selectedPropertyId, { contract_start: isoStart, contract_end: isoEnd ?? undefined, contract_type: d.contractType, first_payment_date: isoFirst ?? undefined, note: d.note?.trim() || undefined }); setLeaseTerm(saved); } catch (e) { setLeaseTermSaveError(e instanceof Error ? e.message : 'Fehler beim Speichern.'); } finally { setLeaseTermSaving(false); } }} className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white">Зберегти термін договору</button>
                                 </div>
                             </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-4 border-b border-gray-700">
+                                <div><span className="text-xs text-gray-500 block mb-1">Адреса</span><span className="text-sm text-white font-bold">{formatPropertyAddress(selectedProperty)}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Поверх / Сторона</span><span className="text-sm text-white">{selectedProperty.details?.floor != null ? `${selectedProperty.details.floor} OG` : '—'} {selectedProperty.details?.buildingFloors != null ? ` / ${selectedProperty.details.buildingFloors} поверхов` : ''}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Квартира / Код</span><span className="text-sm text-white">{selectedProperty.title || '—'}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Група квартири</span><span className="text-sm text-white">{selectedProperty.apartmentGroupName ?? '—'}</span></div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-4 border-b border-gray-700">
+                                <div><span className="text-xs text-gray-500 block mb-1">Gültig von</span><span className="text-sm text-white">{leaseTerm?.contract_start || '—'}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Gültig bis</span><span className="text-sm text-white">{leaseTerm?.contract_end ?? '—'}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Vertragstyp</span><span className="text-sm text-white">{leaseTerm?.contract_type || '—'}</span></div>
+                                <div><span className="text-xs text-gray-500 block mb-1">Erste Mietzahlung ab</span><span className="text-sm text-white">{leaseTerm?.first_payment_date ?? '—'}</span></div>
+                            </div>
+                            {(leaseTerm?.note != null && leaseTerm.note.trim() !== '') && (
+                                <div className="pb-4 border-b border-gray-700"><span className="text-xs text-gray-500 block mb-1">Notiz</span><span className="text-sm text-white">{leaseTerm.note}</span></div>
+                            )}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
+                                <div>
+                                  <span className="text-xs text-gray-500 block mb-1">Статус квартири</span>
+                                  <span className="text-sm font-medium text-white">
+                                    {(() => {
+                                      const effective = isPropertyOooToday(selectedProperty.id) ? 'ooo' : (selectedProperty.apartmentStatus ?? 'active');
+                                      return effective === 'ooo'
+                                        ? 'Out of order'
+                                        : effective === 'preparation'
+                                          ? 'В підготовці'
+                                          : effective === 'rented_worker'
+                                            ? 'Здана працівнику'
+                                            : 'Активна';
+                                    })()}
+                                  </span>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+                )}
+            </section>
+            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 id="counterparties-card-heading" className="text-2xl font-bold text-white">Контрагенти</h2>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button
+                            type="button"
+                            aria-expanded={isCounterpartiesCardOpen}
+                            aria-controls="counterparties-card-body"
+                            onClick={() => setIsCounterpartiesCardOpen((open) => !open)}
+                            className="p-2 rounded-lg text-gray-500 hover:bg-white/[0.03] hover:text-gray-400 transition-colors"
+                            aria-label={isCounterpartiesCardOpen ? 'Згорнути розділ' : 'Розгорнути розділ'}
+                        >
+                            <ChevronDown className={`w-4 h-4 transition-transform ${isCounterpartiesCardOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                    </div>
+                </div>
+                {isCounterpartiesCardOpen && (
+                <div id="counterparties-card-body" role="region" aria-labelledby="counterparties-card-heading" className="space-y-4">
+                    {isEditingCard1 && card1Draft ? (
+                        <>
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start pb-4 border-b border-gray-700">
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Власник (орендодавець)</h3>
@@ -7103,93 +7182,349 @@ Hero Rooms Team`;
                                     </select>
                                 </div>
                             </div>
-                            <div>
-                                <span className="text-xs text-gray-500 block mb-2">Рентний таймлайн</span>
-                                {rentTimelineLoading && <p className="text-xs text-gray-500 mb-1">Завантаження…</p>}
-                                {rentTimelineError && <p className="text-sm text-red-400 mb-1">{rentTimelineError}</p>}
-                                {rentTimelineEditError && <p className="text-xs text-amber-400 mb-1">{rentTimelineEditError}</p>}
-                                <div className="overflow-x-auto overflow-hidden border border-gray-700 rounded-lg">
-                                    <table className="w-full text-sm text-left min-w-[800px]">
-                                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700"><tr><th className="p-2 font-bold text-xs uppercase" title="Дійсний з">Von</th><th className="p-2 font-bold text-xs uppercase" title="Дійсний по">Bis</th><th className="p-2 font-bold text-xs uppercase text-right" title="Kaltmiete">KM</th><th className="p-2 font-bold text-xs uppercase text-right" title="Mietsteuer">MSt</th><th className="p-2 font-bold text-xs uppercase text-right" title="Unternehmenssteuer">USt</th><th className="p-2 font-bold text-xs uppercase text-right" title="Betriebskosten">BK</th><th className="p-2 font-bold text-xs uppercase text-right" title="Heizkosten">HK</th><th className="p-2 font-bold text-xs uppercase text-right" title="Müll">Müll</th><th className="p-2 font-bold text-xs uppercase text-right" title="Strom">Strom</th><th className="p-2 font-bold text-xs uppercase text-right" title="Gas">Gas</th><th className="p-2 font-bold text-xs uppercase text-right" title="Wasser">Wasser</th><th className="p-2 font-bold text-xs uppercase text-right" title="Warmmiete">WM</th></tr></thead>
-                                        <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                                            {rentTimelineRows.length === 0 ? (
-                                              <tr><td colSpan={12} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr>
-                                            ) : rentTimelineRows.map((r) => {
-                                              const isEditing = editingRentTimelineRowId === r.id && rentTimelineEditDraft;
-                                              const draft = isEditing ? rentTimelineEditDraft : null;
-                                              const warmPreview = draft ? ((parseFloat(draft.km) || 0) + (parseFloat(draft.bk) || 0) + (parseFloat(draft.hk) || 0) + (parseFloat(draft.mietsteuer) || 0) + (parseFloat(draft.unternehmenssteuer) || 0) + (parseFloat(draft.muell) || 0) + (parseFloat(draft.strom) || 0) + (parseFloat(draft.gas) || 0) + (parseFloat(draft.wasser) || 0)) : 0;
-                                              return (
-                                                <tr
-                                                  key={r.id}
-                                                  onClick={isEditing ? (e) => e.stopPropagation() : () => { setEditingRentTimelineRowId(r.id); setRentTimelineEditDraft({ validFrom: r.validFrom, validTo: r.validTo === '∞' ? '' : r.validTo, km: (r.km ?? 0) === 0 ? '' : String(r.km), mietsteuer: (r.mietsteuer ?? 0) === 0 ? '' : String(r.mietsteuer), unternehmenssteuer: (r.unternehmenssteuer ?? 0) === 0 ? '' : String(r.unternehmenssteuer), bk: (r.bk ?? 0) === 0 ? '' : String(r.bk), hk: (r.hk ?? 0) === 0 ? '' : String(r.hk), muell: (r.muell ?? 0) === 0 ? '' : String(r.muell), strom: (r.strom ?? 0) === 0 ? '' : String(r.strom), gas: (r.gas ?? 0) === 0 ? '' : String(r.gas), wasser: (r.wasser ?? 0) === 0 ? '' : String(r.wasser) }); setRentTimelineEditError(null); }}
-                                                  className={isEditing ? '' : 'cursor-pointer hover:bg-[#1C1F24]'}
-                                                >
-                                                  {isEditing && draft ? (
-                                                    <>
-                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="date" value={draft.validFrom} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, validFrom: e.target.value } : null)} className="w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white" placeholder="YYYY-MM-DD" title="Von" /></td>
-                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="date" value={draft.validTo} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, validTo: e.target.value } : null)} className="w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white" title="Bis" placeholder="∞" /></td>
-                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.km === '0' ? '' : draft.km} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, km: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
-                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.mietsteuer === '0' ? '' : draft.mietsteuer} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, mietsteuer: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
-                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.unternehmenssteuer === '0' ? '' : draft.unternehmenssteuer} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, unternehmenssteuer: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
-                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.bk === '0' ? '' : draft.bk} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, bk: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
-                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.hk === '0' ? '' : draft.hk} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, hk: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
-                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.muell === '0' ? '' : draft.muell} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, muell: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
-                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.strom === '0' ? '' : draft.strom} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, strom: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
-                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.gas === '0' ? '' : draft.gas} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, gas: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
-                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.wasser === '0' ? '' : draft.wasser} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, wasser: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
-                                                      <td className="p-2 text-right text-emerald-400 font-mono font-bold">€{warmPreview.toFixed(2)}</td>
-                                                    </>
-                                                  ) : (
-                                                    <>
-                                                      <td className="p-2 text-white">{r.validFrom}</td><td className="p-2 text-white">{r.validTo}</td><td className="p-2 text-right text-white font-mono">€{(r.km ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.mietsteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.unternehmenssteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.bk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.hk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.muell ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.strom ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.gas ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.wasser ?? 0).toFixed(2)}</td><td className="p-2 text-right text-emerald-400 font-mono font-bold">€{(r.warm ?? 0).toFixed(2)}</td>
-                                                    </>
-                                                  )}
-                                                </tr>
-                                              );
-                                            })}
-                                        </tbody>
-                                    </table>
+                        </>
+                    ) : (
+                        <>
+                            <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-semibold text-white">Контрагенти</span>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPartiesDetails(v => !v)}
+                                        className="p-2 rounded-md border border-gray-700 bg-[#111315] hover:bg-[#15181b] text-gray-200 flex items-center gap-1.5 text-sm"
+                                    >
+                                        {showPartiesDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                        {showPartiesDetails ? 'Сховати деталі' : 'Показати деталі'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            setIsAddressBookModalOpen(true);
+                                            setAddressBookLastError(null);
+
+                                            if (addressBookLoaded && addressBookEntries.length > 0) return;
+
+                                            setAddressBookLoading(true);
+                                            setAddressBookEntries([]);
+
+                                            try {
+                                                const user = await safeGetUser();
+                                                if (!user) throw new Error('Not authenticated');
+
+                                                const list = await addressBookPartiesService.listByRole(user.id);
+                                                setAddressBookEntries(list);
+                                                setAddressBookLoaded(true);
+                                            } catch (e) {
+                                                console.error('[AddressBook listByRole]', e);
+                                                setAddressBookLastError(String((e as Error)?.message ?? e));
+                                            } finally {
+                                                setAddressBookLoading(false);
+                                            }
+                                        }}
+                                        className="p-2 rounded-md border border-gray-700 bg-[#111315] hover:bg-[#15181b] text-gray-200"
+                                        title="Address Book"
+                                    >
+                                        <BookOpen size={18} />
+                                    </button>
                                 </div>
-                                {showAddRentIncreaseForm ? (
-                                    <div className="mt-2 p-3 bg-[#111315] border border-gray-700 rounded-lg">
-                                        <div className="overflow-x-auto min-w-[800px]">
-                                            <div className="grid gap-x-1.5 gap-y-0.5 items-center" style={{ gridTemplateColumns: 'minmax(88px,1.15fr) minmax(88px,1.15fr) minmax(52px,0.75fr) minmax(48px,0.7fr) minmax(48px,0.7fr) minmax(52px,0.75fr) minmax(52px,0.75fr) minmax(52px,0.75fr) minmax(52px,0.75fr) minmax(52px,0.75fr) minmax(52px,0.75fr) minmax(64px,1fr)' }}>
-                                                <span className="text-xs text-gray-500 uppercase font-medium" title="Дійсний з">Von</span>
-                                                <span className="text-xs text-gray-500 uppercase font-medium" title="Дійсний по">Bis</span>
-                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Kaltmiete">KM</span>
-                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Mietsteuer">MSt</span>
-                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Unternehmenssteuer">USt</span>
-                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Betriebskosten">BK</span>
-                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Heizkosten">HK</span>
-                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Müll">Müll</span>
-                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Strom">Strom</span>
-                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Gas">Gas</span>
-                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Wasser">W</span>
-                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Warmmiete">WM</span>
-                                                <div className="min-w-0"><input type="date" value={rentIncreaseForm.validFrom} onChange={e => setRentIncreaseForm(f => ({ ...f, validFrom: e.target.value }))} className="w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white" placeholder="YYYY-MM-DD" title="Von" /></div>
-                                                <div className="min-w-0"><input type="date" value={rentIncreaseForm.validTo} onChange={e => setRentIncreaseForm(f => ({ ...f, validTo: e.target.value }))} className="w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white" title="Bis" placeholder="∞ / YYYY-MM-DD" /></div>
-                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.km === '0' ? '' : rentIncreaseForm.km} onChange={e => setRentIncreaseForm(f => ({ ...f, km: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Kaltmiete" /></div>
-                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.mietsteuer === '0' ? '' : rentIncreaseForm.mietsteuer} onChange={e => setRentIncreaseForm(f => ({ ...f, mietsteuer: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Mietsteuer" /></div>
-                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.unternehmenssteuer === '0' ? '' : rentIncreaseForm.unternehmenssteuer} onChange={e => setRentIncreaseForm(f => ({ ...f, unternehmenssteuer: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Unternehmenssteuer" /></div>
-                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.bk === '0' ? '' : rentIncreaseForm.bk} onChange={e => setRentIncreaseForm(f => ({ ...f, bk: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Betriebskosten" /></div>
-                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.hk === '0' ? '' : rentIncreaseForm.hk} onChange={e => setRentIncreaseForm(f => ({ ...f, hk: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Heizkosten" /></div>
-                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.muell === '0' ? '' : rentIncreaseForm.muell} onChange={e => setRentIncreaseForm(f => ({ ...f, muell: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Müll" /></div>
-                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.strom === '0' ? '' : rentIncreaseForm.strom} onChange={e => setRentIncreaseForm(f => ({ ...f, strom: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Strom" /></div>
-                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.gas === '0' ? '' : rentIncreaseForm.gas} onChange={e => setRentIncreaseForm(f => ({ ...f, gas: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Gas" /></div>
-                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.wasser === '0' ? '' : rentIncreaseForm.wasser} onChange={e => setRentIncreaseForm(f => ({ ...f, wasser: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Wasser" /></div>
-                                                <div className="min-w-0 flex items-center justify-end h-9 text-right"><span className="text-sm font-mono font-bold text-emerald-400" title="Warmmiete">€{((parseFloat(rentIncreaseForm.km) || 0) + (parseFloat(rentIncreaseForm.bk) || 0) + (parseFloat(rentIncreaseForm.hk) || 0) + (parseFloat(rentIncreaseForm.mietsteuer) || 0) + (parseFloat(rentIncreaseForm.unternehmenssteuer) || 0) + (parseFloat(rentIncreaseForm.strom) || 0) + (parseFloat(rentIncreaseForm.muell) || 0) + (parseFloat(rentIncreaseForm.gas) || 0) + (parseFloat(rentIncreaseForm.wasser) || 0)).toFixed(2)}</span></div>
+                            </div>
+                            {addressBookLastError && (
+                                <p className="text-xs text-amber-500 mt-1">Address Book sync failed: {addressBookLastError}</p>
+                            )}
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-4 border-b border-gray-700">
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Власник (орендодавець)</h3>
+                                    <div className={`text-sm font-semibold ${(selectedProperty.landlord?.name ?? '').trim() ? 'text-white' : 'text-gray-500'}`}>{(selectedProperty.landlord?.name ?? '').trim() || '—'}</div>
+                                    {formatAddress(selectedProperty.landlord?.address)?.trim() && <div className="text-sm text-gray-400 mt-0.5">{formatAddress(selectedProperty.landlord?.address)}</div>}
+                                    {(() => { const p = selectedProperty.landlord; const phonesLine = normalizeArray(p?.phones ?? []); const emailsLine = normalizeArray(p?.emails ?? []); const metaLine = joinMeta([phonesLine, emailsLine]); return metaLine ? <div className="text-sm text-gray-400 mt-0.5">{metaLine}</div> : null; })()}
+                                    {showPartiesDetails && (
+                                        <>
+                                            <div className="border-t border-gray-800 mt-2 pt-2" />
+                                            {renderPartyRow('ID', selectedProperty.landlord?.unitIdentifier?.trim() || undefined)}
+                                            {renderPartyRow('Контакт', selectedProperty.landlord?.contactPerson)}
+                                            {renderPartyRow('IBAN', selectedProperty.landlord?.iban)}
+                                        </>
+                                    )}
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">1-ша фірма</h3>
+                                    <div className={`text-sm font-semibold ${(selectedProperty.tenant?.name ?? '').trim() ? 'text-white' : 'text-gray-500'}`}>{(selectedProperty.tenant?.name ?? '').trim() || '—'}</div>
+                                    {formatAddress(selectedProperty.tenant?.address)?.trim() && <div className="text-sm text-gray-400 mt-0.5">{formatAddress(selectedProperty.tenant?.address)}</div>}
+                                    {(() => { const p = selectedProperty.tenant; const phonesLine = normalizeArray((p?.phones?.length ? p.phones : (p?.phone ? [p.phone] : []))); const emailsLine = normalizeArray((p?.emails?.length ? p.emails : (p?.email ? [p.email] : []))); const metaLine = joinMeta([phonesLine, emailsLine]); return metaLine ? <div className="text-sm text-gray-400 mt-0.5">{metaLine}</div> : null; })()}
+                                    {showPartiesDetails && (
+                                        <>
+                                            <div className="border-t border-gray-800 mt-2 pt-2" />
+                                            {renderPartyRow('IBAN', selectedProperty.tenant?.iban)}
+                                            {renderPartyRow('День оплати', (selectedProperty.tenant?.paymentDayOfMonth != null && selectedProperty.tenant.paymentDayOfMonth >= 1 && selectedProperty.tenant.paymentDayOfMonth <= 31) ? selectedProperty.tenant.paymentDayOfMonth : undefined)}
+                                        </>
+                                    )}
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">2-га фірма</h3>
+                                    <div className={`text-sm font-semibold ${(selectedProperty.secondCompany?.name ?? '').trim() ? 'text-white' : 'text-gray-500'}`}>{(selectedProperty.secondCompany?.name ?? '').trim() || '—'}</div>
+                                    {formatAddress(selectedProperty.secondCompany?.address)?.trim() && <div className="text-sm text-gray-400 mt-0.5">{formatAddress(selectedProperty.secondCompany?.address)}</div>}
+                                    {(() => { const p = selectedProperty.secondCompany; const phonesLine = normalizeArray((p?.phones?.length ? p.phones : (p?.phone ? [p.phone] : []))); const emailsLine = normalizeArray((p?.emails?.length ? p.emails : (p?.email ? [p.email] : []))); const metaLine = joinMeta([phonesLine, emailsLine]); return metaLine ? <div className="text-sm text-gray-400 mt-0.5">{metaLine}</div> : null; })()}
+                                    {showPartiesDetails && (
+                                        <>
+                                            <div className="border-t border-gray-800 mt-2 pt-2" />
+                                            {renderPartyRow('IBAN', selectedProperty.secondCompany?.iban)}
+                                            {renderPartyRow('День оплати', (selectedProperty.secondCompany?.paymentDayOfMonth != null && selectedProperty.secondCompany.paymentDayOfMonth >= 1 && selectedProperty.secondCompany.paymentDayOfMonth <= 31) ? selectedProperty.secondCompany.paymentDayOfMonth : undefined)}
+                                        </>
+                                    )}
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Управління</h3>
+                                    <div className={`text-sm font-semibold ${(selectedProperty.management?.name ?? '').trim() ? 'text-white' : 'text-gray-500'}`}>{(selectedProperty.management?.name ?? '').trim() || '—'}</div>
+                                    {formatAddress(selectedProperty.management?.address)?.trim() && <div className="text-sm text-gray-400 mt-0.5">{formatAddress(selectedProperty.management?.address)}</div>}
+                                    {(() => { const p = selectedProperty.management; const phonesLine = normalizeArray(p?.phones ?? []); const emailsLine = normalizeArray(p?.emails ?? []); const metaLine = joinMeta([phonesLine, emailsLine]); return metaLine ? <div className="text-sm text-gray-400 mt-0.5">{metaLine}</div> : null; })()}
+                                    {showPartiesDetails && (
+                                        <>
+                                            <div className="border-t border-gray-800 mt-2 pt-2" />
+                                            {renderPartyRow('ID', selectedProperty.management?.unitIdentifier?.trim() || undefined)}
+                                            {renderPartyRow('Контакт', selectedProperty.management?.contactPerson)}
+                                            {renderPartyRow('IBAN', selectedProperty.management?.iban)}
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+                )}
+            </section>
+            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 id="payment-chain-card-heading" className="text-2xl font-bold text-white">Платіжний ланцюжок</h2>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button
+                            type="button"
+                            aria-expanded={isPaymentChainCardOpen}
+                            aria-controls="payment-chain-card-body"
+                            onClick={() => setIsPaymentChainCardOpen((open) => !open)}
+                            className="p-2 rounded-lg text-gray-500 hover:bg-white/[0.03] hover:text-gray-400 transition-colors"
+                            aria-label={isPaymentChainCardOpen ? 'Згорнути розділ' : 'Розгорнути розділ'}
+                        >
+                            <ChevronDown className={`w-4 h-4 transition-transform ${isPaymentChainCardOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                    </div>
+                </div>
+                {isPaymentChainCardOpen && (
+                <div id="payment-chain-card-body" role="region" aria-labelledby="payment-chain-card-heading" className="space-y-4">
+                    {isEditingCard1 && card1Draft ? (
+                        <p className="text-sm text-gray-400">Платіжний ланцюжок показується в режимі перегляду. Вийдіть із редагування квартири (Зберегти / Скасувати), щоб знову бачити цей блок.</p>
+                    ) : (
+                        <>
+                            {/* Платіжний ланцюжок — edges + files from paymentChainService */}
+                            <div className="pb-4 border-b border-gray-700">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-sm font-semibold text-white">Платіжний ланцюжок</span>
+                                    <button type="button" onClick={() => setShowPaymentDetails(v => !v)} className="p-2 rounded-md border border-gray-700 bg-[#111315] hover:bg-[#15181b] text-gray-200 flex items-center gap-1.5 text-sm">
+                                        {showPaymentDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                        {showPaymentDetails ? 'Сховати деталізацію' : 'Показати деталізацію'}
+                                    </button>
+                                </div>
+                                {paymentChainError && <div className="text-sm text-red-400 mb-2">{paymentChainError}</div>}
+                                {paymentChainLoading ? (
+                                    <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-4 text-gray-500 text-sm">Завантаження платіжного ланцюжка…</div>
+                                ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-0 items-start">
+                                    <div className="md:col-span-3">
+                                        <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-3">
+                                            <div className="space-y-1 leading-snug">
+                                                <div className="text-xs text-gray-400 uppercase tracking-wider">ВЛАСНИК (отримує)</div>
+                                                <div className="text-xs text-gray-500">Очікуване отримання щомісяця</div>
+                                                <div className="text-sm font-semibold text-emerald-400">Отримувач: {paymentChainParties.ownerParty.name}</div>
+                                                <div className="text-sm text-gray-400 font-mono">IBAN: {paymentChainParties.ownerParty.iban}</div>
+                                            </div>
+                                            <div className="mt-2 text-sm text-gray-400">Отримати до (1–31): {paymentTiles.from_company1_to_owner.payByDayOfMonth != null && paymentTiles.from_company1_to_owner.payByDayOfMonth >= 1 && paymentTiles.from_company1_to_owner.payByDayOfMonth <= 31 ? `до ${paymentTiles.from_company1_to_owner.payByDayOfMonth} числа` : '—'}</div>
+                                            <div className="mt-1 text-sm font-semibold text-white">Сума (разом): {ownerTotalAuto != null && typeof ownerTotalAuto === 'number' ? `€${Number(ownerTotalAuto).toFixed(2)}` : '—'}</div>
+                                            {showPaymentDetails && activeRentRow && (
+                                                <div className="mt-2 pt-2 border-t border-gray-800 text-xs text-gray-500 space-y-0.5">
+                                                    <div>Kaltmiete: €{(activeRentRow.km ?? 0).toFixed(2)}</div>
+                                                    <div>Betriebskosten: €{(activeRentRow.bk ?? 0).toFixed(2)}</div>
+                                                    <div>Heizkosten: €{(activeRentRow.hk ?? 0).toFixed(2)}</div>
+                                                    <div className="text-emerald-400 font-medium">Warmmiete: €{(activeRentRow.warm ?? 0).toFixed(2)}</div>
+                                                </div>
+                                            )}
+                                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                <label className="text-xs text-emerald-500 hover:text-emerald-400 cursor-pointer">+ Додати файл<input type="file" className="hidden" multiple onChange={e => { handlePaymentChainAddFiles('owner_control', e.target.files); e.target.value = ''; }} disabled={!!paymentChainUploadingTile} /></label>
+                                                {paymentChainUploadingTile === 'owner_control' && <span className="text-xs text-gray-500">завантаження…</span>}
+                                                {paymentChainFiles.owner_control.length > 0 && (
+                                                    <ul className="list-none space-y-1 w-full">
+                                                        {paymentChainFiles.owner_control.map(f => (
+                                                            <li key={f.id} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
+                                                                <span className="truncate flex-1">{f.file_name}</span>
+                                                                <button type="button" onClick={() => handlePaymentChainViewFile(f.storage_path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>
+                                                                <button type="button" onClick={() => handlePaymentChainDeleteFile('owner_control', f)} className="text-gray-400 hover:text-white">Видалити</button>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                )}
                                             </div>
                                         </div>
-                                        {rentIncreaseFormError && <p className="text-sm text-red-400 mt-1.5">{rentIncreaseFormError}</p>}
-                                        <div className="flex justify-end gap-2 mt-2">
-                                            <button type="button" disabled={isAddingRentIncrease} onClick={addRentIncrease} className="h-9 px-3 rounded text-sm font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white">Додати</button>
-                                            <button type="button" disabled={isAddingRentIncrease} onClick={() => { setShowAddRentIncreaseForm(false); setRentIncreaseForm({ validFrom: '', validTo: '', km: '', mietsteuer: '', unternehmenssteuer: '', bk: '', hk: '', muell: '', strom: '', gas: '', wasser: '' }); setRentIncreaseFormError(null); }} className="h-9 px-3 rounded text-sm text-gray-400 hover:text-white">Скасувати</button>
+                                    </div>
+                                    <div className="hidden md:flex md:col-span-1 items-center justify-center text-gray-500 pt-8"><ArrowRight className="w-5 h-5 rotate-180" /></div>
+                                    <div className="md:col-span-3">
+                                        <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-3">
+                                            {paymentChainParties.ownerParty.name === '—' ? (
+                                                <>
+                                                    <div className="text-sm text-gray-500 py-2">Додай власника в Контрагенти</div>
+                                                    <button type="button" onClick={startCard1Edit} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div className="space-y-1 leading-snug">
+                                                        <div className="text-xs text-gray-400 uppercase tracking-wider">1-ША ФІРМА → ВЛАСНИК</div>
+                                                        <div className="text-xs text-gray-500">Платіж щомісяця</div>
+                                                        <div className="text-sm text-amber-400 font-medium">Платник: {paymentChainParties.company1Party.name}</div>
+                                                        <div className="text-sm font-semibold text-emerald-400">Отримувач: {paymentChainParties.ownerParty.name}</div>
+                                                        <div className="text-sm text-gray-400 font-mono">IBAN: {paymentChainParties.ownerParty.iban}</div>
+                                                    </div>
+                                                    {editingPaymentTile === 'from_company1_to_owner' ? (
+                                                        <>
+                                                            <div className="mt-2"><span className="text-xs text-gray-500 block">Оплатити до (1–31)</span><div className="relative"><select value={paymentTiles.from_company1_to_owner.payByDayOfMonth ?? ''} onChange={e => { const v = e.target.value; setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, payByDayOfMonth: v === '' ? undefined : Math.min(31, Math.max(1, parseInt(v, 10) || 1)) } })); }} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white"><option value="">—</option>{Array.from({ length: 31 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select>{paymentTiles.from_company1_to_owner.payByDayOfMonth != null && <button type="button" onClick={() => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, payByDayOfMonth: undefined } }))} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>}</div><span className="text-xs text-gray-500 block mt-0.5">кожного місяця</span></div>
+                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Сума (разом)</span><input type="text" value={paymentTiles.from_company1_to_owner.total} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, total: e.target.value } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" />{ownerTotalAuto > 0 && <span className="text-xs text-gray-500 block mt-0.5">Підказка: Warmmiete зараз €{Number(ownerTotalAuto).toFixed(2)}</span>}</div>
+                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Опис</span><input type="text" value={paymentTiles.from_company1_to_owner.description} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, description: e.target.value } }))} placeholder="оренда, BK, HK…" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
+                                                            {showPaymentDetails && (
+                                                                <div className="mt-2 pt-2 border-t border-gray-800 space-y-1">
+                                                                    <div className="text-xs text-gray-500">Kaltmiete</div><input type="text" value={paymentTiles.from_company1_to_owner.breakdown.km ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, breakdown: { ...s.from_company1_to_owner.breakdown, km: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
+                                                                    <div className="text-xs text-gray-500">Betriebskosten</div><input type="text" value={paymentTiles.from_company1_to_owner.breakdown.bk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, breakdown: { ...s.from_company1_to_owner.breakdown, bk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
+                                                                    <div className="text-xs text-gray-500">Heizkosten</div><input type="text" value={paymentTiles.from_company1_to_owner.breakdown.hk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, breakdown: { ...s.from_company1_to_owner.breakdown, hk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
+                                                                </div>
+                                                            )}
+                                                            <div className="mt-2 flex gap-1"><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-emerald-500 hover:text-emerald-400">Зберегти</button><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-gray-400 hover:text-white">Скасувати</button></div>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div className="mt-2 text-sm text-gray-400">Оплатити до (1–31): {paymentTiles.from_company1_to_owner.payByDayOfMonth != null && paymentTiles.from_company1_to_owner.payByDayOfMonth >= 1 && paymentTiles.from_company1_to_owner.payByDayOfMonth <= 31 ? `до ${paymentTiles.from_company1_to_owner.payByDayOfMonth}-го числа (щомісяця)` : '—'}</div>
+                                                            <div className="mt-1 text-sm text-gray-400">Сума (разом): {paymentTiles.from_company1_to_owner.total || '—'}</div>
+                                                            {paymentTiles.from_company1_to_owner.description && <div className="text-sm text-gray-400 mt-0.5">Опис: {paymentTiles.from_company1_to_owner.description}</div>}
+                                                            {showPaymentDetails && (
+                                                                <div className="mt-2 pt-2 border-t border-gray-800 text-xs text-gray-500 space-y-0.5">
+                                                                    {['km', 'bk', 'hk'].map(k => (paymentTiles.from_company1_to_owner.breakdown as Record<string, string>)[k] && <div key={k}>{k === 'km' ? 'Kaltmiete' : k === 'bk' ? 'Betriebskosten' : 'Heizkosten'}: {(paymentTiles.from_company1_to_owner.breakdown as Record<string, string>)[k]}</div>)}
+                                                                    {!paymentTiles.from_company1_to_owner.breakdown.km && !paymentTiles.from_company1_to_owner.breakdown.bk && !paymentTiles.from_company1_to_owner.breakdown.hk && <div>—</div>}
+                                                                </div>
+                                                            )}
+                                                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                                <label className="text-xs text-emerald-500 hover:text-emerald-400 cursor-pointer">+ Додати файл<input type="file" className="hidden" multiple onChange={e => { handlePaymentChainAddFiles('from_company1_to_owner', e.target.files); e.target.value = ''; }} disabled={!!paymentChainUploadingTile} /></label>
+                                                                {paymentChainUploadingTile === 'from_company1_to_owner' && <span className="text-xs text-gray-500">завантаження…</span>}
+                                                                {paymentChainFiles.from_company1_to_owner.length > 0 && (
+                                                                    <ul className="list-none space-y-1 w-full">
+                                                                        {paymentChainFiles.from_company1_to_owner.map(f => (
+                                                                            <li key={f.id} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
+                                                                                <span className="truncate flex-1">{f.file_name}</span>
+                                                                                <button type="button" onClick={() => handlePaymentChainViewFile(f.storage_path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>
+                                                                                <button type="button" onClick={() => handlePaymentChainDeleteFile('from_company1_to_owner', f)} className="text-gray-400 hover:text-white">Видалити</button>
+                                                                            </li>
+                                                                        ))}
+                                                                    </ul>
+                                                                )}
+                                                                <button type="button" onClick={() => setEditingPaymentTile('from_company1_to_owner')} className="text-xs text-emerald-500 hover:text-emerald-400">Редагувати</button>
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </>
+                                            )}
                                         </div>
                                     </div>
-                                ) : (
-                                    <button type="button" onClick={() => setShowAddRentIncreaseForm(true)} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400 font-medium">+ Додати підвищення оренди</button>
+                                    <div className="hidden md:flex md:col-span-1 items-center justify-center text-gray-500 pt-8"><ArrowRight className="w-5 h-5 rotate-180" /></div>
+                                    <div className="md:col-span-3">
+                                        <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-3">
+                                            {paymentChainParties.company1Party.name === '—' ? (
+                                                <>
+                                                    <div className="text-sm text-gray-500 py-2">Додай 1-шу фірму в Контрагенти</div>
+                                                    <button type="button" onClick={startCard1Edit} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
+                                                </>
+                                            ) : paymentChainParties.company2Party.name === '—' ? (
+                                                <>
+                                                    <div className="text-sm text-gray-500 py-2">Додай 2-гу фірму в Контрагенти</div>
+                                                    <button type="button" onClick={startCard1Edit} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div className="space-y-1 leading-snug">
+                                                        <div className="text-xs text-gray-400 uppercase tracking-wider">2-ГА ФІРМА → 1-ША ФІРМА</div>
+                                                        <div className="text-xs text-gray-500">Платіж щомісяця</div>
+                                                        <div className="text-sm text-amber-400 font-medium">Платник: {paymentChainParties.company2Party.name}</div>
+                                                        <div className="text-sm font-semibold text-emerald-400">Отримувач: {paymentChainParties.company1Party.name}</div>
+                                                        <div className="text-sm text-gray-400 font-mono">IBAN: {paymentChainParties.company1Party.iban}</div>
+                                                    </div>
+                                                    {editingPaymentTile === 'from_company2_to_company1' ? (
+                                                        <>
+                                                            <div className="mt-2"><span className="text-xs text-gray-500 block">Оплатити до (1–31)</span><div className="relative"><select value={paymentTiles.from_company2_to_company1.payByDayOfMonth ?? ''} onChange={e => { const v = e.target.value; setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, payByDayOfMonth: v === '' ? undefined : Math.min(31, Math.max(1, parseInt(v, 10) || 1)) } })); }} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white"><option value="">—</option>{Array.from({ length: 31 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select>{paymentTiles.from_company2_to_company1.payByDayOfMonth != null && <button type="button" onClick={() => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, payByDayOfMonth: undefined } }))} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>}</div><span className="text-xs text-gray-500 block mt-0.5">кожного місяця</span></div>
+                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Сума (разом)</span><input type="text" value={paymentTiles.from_company2_to_company1.total} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, total: e.target.value } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
+                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Опис</span><input type="text" value={paymentTiles.from_company2_to_company1.description} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, description: e.target.value } }))} placeholder="оренда, BK, HK…" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
+                                                            {showPaymentDetails && (
+                                                                <div className="mt-2 pt-2 border-t border-gray-800 space-y-1">
+                                                                    <div className="text-xs text-gray-500">Kaltmiete</div><input type="text" value={paymentTiles.from_company2_to_company1.breakdown.km ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, breakdown: { ...s.from_company2_to_company1.breakdown, km: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
+                                                                    <div className="text-xs text-gray-500">Betriebskosten</div><input type="text" value={paymentTiles.from_company2_to_company1.breakdown.bk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, breakdown: { ...s.from_company2_to_company1.breakdown, bk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
+                                                                    <div className="text-xs text-gray-500">Heizkosten</div><input type="text" value={paymentTiles.from_company2_to_company1.breakdown.hk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, breakdown: { ...s.from_company2_to_company1.breakdown, hk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
+                                                                </div>
+                                                            )}
+                                                            <div className="mt-2 flex gap-1"><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-emerald-500 hover:text-emerald-400">Зберегти</button><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-gray-400 hover:text-white">Скасувати</button></div>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div className="mt-2 text-sm text-gray-400">Оплатити до (1–31): {paymentTiles.from_company2_to_company1.payByDayOfMonth != null && paymentTiles.from_company2_to_company1.payByDayOfMonth >= 1 && paymentTiles.from_company2_to_company1.payByDayOfMonth <= 31 ? `до ${paymentTiles.from_company2_to_company1.payByDayOfMonth}-го числа (щомісяця)` : '—'}</div>
+                                                            <div className="mt-1 text-sm text-gray-400">Сума (разом): {paymentTiles.from_company2_to_company1.total || '—'}</div>
+                                                            {paymentTiles.from_company2_to_company1.description && <div className="text-sm text-gray-400 mt-0.5">Опис: {paymentTiles.from_company2_to_company1.description}</div>}
+                                                            {showPaymentDetails && (
+                                                                <div className="mt-2 pt-2 border-t border-gray-800 text-xs text-gray-500 space-y-0.5">
+                                                                    {['km', 'bk', 'hk'].map(k => (paymentTiles.from_company2_to_company1.breakdown as Record<string, string>)[k] && <div key={k}>{k === 'km' ? 'Kaltmiete' : k === 'bk' ? 'Betriebskosten' : 'Heizkosten'}: {(paymentTiles.from_company2_to_company1.breakdown as Record<string, string>)[k]}</div>)}
+                                                                    {!paymentTiles.from_company2_to_company1.breakdown.km && !paymentTiles.from_company2_to_company1.breakdown.bk && !paymentTiles.from_company2_to_company1.breakdown.hk && <div>—</div>}
+                                                                </div>
+                                                            )}
+                                                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                                <label className="text-xs text-emerald-500 hover:text-emerald-400 cursor-pointer">+ Додати файл<input type="file" className="hidden" multiple onChange={e => { handlePaymentChainAddFiles('from_company2_to_company1', e.target.files); e.target.value = ''; }} disabled={!!paymentChainUploadingTile} /></label>
+                                                                {paymentChainUploadingTile === 'from_company2_to_company1' && <span className="text-xs text-gray-500">завантаження…</span>}
+                                                                {paymentChainFiles.from_company2_to_company1.length > 0 && (
+                                                                    <ul className="list-none space-y-1 w-full">
+                                                                        {paymentChainFiles.from_company2_to_company1.map(f => (
+                                                                            <li key={f.id} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
+                                                                                <span className="truncate flex-1">{f.file_name}</span>
+                                                                                <button type="button" onClick={() => handlePaymentChainViewFile(f.storage_path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>
+                                                                                <button type="button" onClick={() => handlePaymentChainDeleteFile('from_company2_to_company1', f)} className="text-gray-400 hover:text-white">Видалити</button>
+                                                                            </li>
+                                                                        ))}
+                                                                    </ul>
+                                                                )}
+                                                                <button type="button" onClick={() => setEditingPaymentTile('from_company2_to_company1')} className="text-xs text-emerald-500 hover:text-emerald-400">Редагувати</button>
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="hidden md:block md:col-span-1" />
+                                </div>
                                 )}
                             </div>
+                        </>
+                    )}
+                </div>
+                )}
+            </section>
+            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 id="kaution-card-heading" className="text-2xl font-bold text-white">Застава (Kaution)</h2>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button
+                            type="button"
+                            aria-expanded={isKautionCardOpen}
+                            aria-controls="kaution-card-body"
+                            onClick={() => setIsKautionCardOpen((open) => !open)}
+                            className="p-2 rounded-lg text-gray-500 hover:bg-white/[0.03] hover:text-gray-400 transition-colors"
+                            aria-label={isKautionCardOpen ? 'Згорнути розділ' : 'Розгорнути розділ'}
+                        >
+                            <ChevronDown className={`w-4 h-4 transition-transform ${isKautionCardOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                    </div>
+                </div>
+                {isKautionCardOpen && (
+                <div id="kaution-card-body" role="region" aria-labelledby="kaution-card-heading" className="space-y-4">
+                    {isEditingCard1 && card1Draft ? (
+                        <>
                             <div className="pb-4 border-b border-gray-700">
                                 <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Застава (Kaution)</h3>
                                 {(() => {
@@ -7237,40 +7572,99 @@ Hero Rooms Team`;
                                     <button type="button" onClick={() => { if (window.confirm('Очистити заставу повністю? Це видалить дані застави (deposit) з цієї квартири.')) { setCard1Draft(d => d ? { ...d, deposit: null } : null); setCard1DepositError(null); } }} className="text-sm text-amber-400 hover:text-amber-300 font-medium">Очистити заставу</button>
                                 </div>
                             </div>
-                            {isDepositProofModalOpen && depositProofType && selectedProperty && (
-                                <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4" onClick={() => { setIsDepositProofModalOpen(false); setDepositProofType(null); setDepositProofFile(null); setDepositProofError(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; }}>
-                                    <div className="bg-[#1C1F24] w-full max-w-md rounded-xl border border-gray-700 shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
-                                        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
-                                            <h3 className="text-lg font-bold text-white">{depositProofType === 'payment' ? 'Додати підтвердження оплати' : 'Додати підтвердження повернення'}</h3>
-                                            <button type="button" onClick={() => { setIsDepositProofModalOpen(false); setDepositProofType(null); setDepositProofFile(null); setDepositProofError(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; }} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
-                                        </div>
-                                        <div className="p-4 space-y-4">
-                                            <div>
-                                                <label className="text-xs text-gray-500 block mb-2">Файл (PDF або зображення)</label>
-                                                {!depositProofFile ? (
-                                                    <div onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-emerald-500'); }} onDragLeave={e => e.currentTarget.classList.remove('border-emerald-500')} onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('border-emerald-500'); const f = e.dataTransfer.files[0]; if (f && (f.type === 'application/pdf' || f.type.startsWith('image/'))) setDepositProofFile(f); }} className="border-2 border-dashed border-gray-700 rounded-lg p-6 min-h-[120px] flex flex-col items-center justify-center gap-2 hover:border-gray-600 transition-colors">
-                                                        <input ref={depositProofFileInputRef} type="file" accept=".pdf,image/*" className="hidden" id="deposit-proof-file" onChange={e => { const f = e.target.files?.[0]; if (f && (f.type === 'application/pdf' || f.type.startsWith('image/'))) setDepositProofFile(f); }} />
-                                                        <label htmlFor="deposit-proof-file" className="cursor-pointer flex flex-col items-center gap-2">
-                                                            <Upload className="w-8 h-8 text-gray-500" />
-                                                            <span className="text-sm text-gray-400">Перетягніть файл сюди або натисніть для вибору</span>
-                                                        </label>
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex items-center gap-2 p-3 rounded-lg border border-gray-700 bg-[#111315]">
-                                                        <span className="text-emerald-400 text-sm truncate flex-1">{depositProofFile.name}</span>
-                                                        <button type="button" onClick={() => { setDepositProofFile(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; }} className="text-xs text-gray-400 hover:text-white">Видалити файл</button>
-                                                    </div>
-                                                )}
+                        </>
+                    ) : (
+                        <>
+                            <div className="pb-4 border-b border-gray-700">
+                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Застава (Kaution)</h3>
+                                {(selectedProperty.deposit || kautionProofs.payment || kautionProofs.return) ? (
+                                    <>
+                                        {/* Row 1: Payment — grid 12 + right actions */}
+                                        <div className="flex items-end gap-4">
+                                            <div className="grid flex-1 grid-cols-12 gap-4 items-center min-w-0">
+                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Von</span><span className="text-sm text-white">{(selectedProperty.deposit?.periodFrom ?? selectedProperty.deposit?.paidAt)?.trim() || '—'}</span></div>
+                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Bis</span><span className="text-sm text-white">{selectedProperty.deposit?.periodTo?.trim() || '—'}</span></div>
+                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Nr</span><span className="text-sm text-white">{selectedProperty.deposit?.depositNo?.trim() || '—'}</span></div>
+                                                <div className="col-span-2 min-w-0"><span className="text-xs text-gray-500 block mb-1">Firma</span><span className="text-sm text-white truncate block">{selectedProperty.deposit?.issuerCompany?.trim() || '—'}</span></div>
+                                                <div className="col-span-2 min-w-0"><span className="text-xs text-gray-500 block mb-1">Оплачено кому</span><span className="text-sm text-white truncate block">{selectedProperty.deposit?.paidTo?.trim() || '—'}</span></div>
+                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Typ</span><span className="text-sm text-white">{(() => { const dt = selectedProperty.deposit?.depositType ?? 'TRANSFER'; return dt === 'CASH' ? 'Bar' : dt === 'GUARANTEE' ? 'BU' : 'ÜW'; })()}</span></div>
+                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Сума (€)</span><span className="text-sm text-white font-bold">{(() => { const n = Number(selectedProperty.deposit?.amount); return (n != null && !Number.isNaN(n)) ? `€${n.toFixed(2)}` : '—'; })()}</span></div>
+                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Статус</span><span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${(selectedProperty.deposit?.status ?? 'unpaid') === 'paid' ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-500/20 text-gray-400'}`}>{(selectedProperty.deposit?.status ?? 'unpaid') === 'paid' ? 'Оплачено' : 'Не оплачено'}</span></div>
                                             </div>
-                                            {depositProofError && <p className="text-sm text-red-400">{depositProofError}</p>}
-                                            <div className="flex gap-2">
-                                                <button type="button" disabled={depositProofUploading || !depositProofFile} onClick={async () => { if (!selectedProperty || !depositProofFile) return; setDepositProofUploading(true); setDepositProofError(null); try { await propertyDepositProofsService.create(selectedProperty.id, depositProofType!, depositProofFile); refreshKautionProofs(); setIsDepositProofModalOpen(false); setDepositProofType(null); setDepositProofFile(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; } catch (e) { setDepositProofError(e instanceof Error ? e.message : 'Помилка'); } finally { setDepositProofUploading(false); } }} className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white">Зберегти</button>
-                                                <button type="button" onClick={() => { setIsDepositProofModalOpen(false); setDepositProofType(null); setDepositProofFile(null); setDepositProofError(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; }} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white">Скасувати</button>
+                                            <div className="w-[120px] flex items-center justify-end gap-2 shrink-0">
+                                                {kautionProofs.payment ? (
+                                                    <button type="button" title="Підтвердження оплати застави" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.payment!.filePath); setDocPreview({ open: true, url, title: 'Підтвердження оплати застави' }); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors"><FileText className="w-4 h-4" /></button>
+                                                ) : <span className="text-sm text-gray-500">—</span>}
                                             </div>
                                         </div>
-                                    </div>
-                                </div>
-                            )}
+                                        {/* Row 2: Refund — grid 12 + right actions */}
+                                        <div className="flex items-end gap-4 mt-4">
+                                            <div className="grid flex-1 grid-cols-12 gap-4 items-center min-w-0">
+                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Дата повернення</span><span className="text-sm text-white">{selectedProperty.deposit?.returnedAt?.trim() || '—'}</span></div>
+                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Сума повернення (€)</span><span className="text-sm text-white">{selectedProperty.deposit?.returnedAmount != null ? (() => { const n = Number(selectedProperty.deposit!.returnedAmount); return !Number.isNaN(n) ? `€${n.toFixed(2)}` : '—'; })() : '—'}</span></div>
+                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Статус</span><span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${(selectedProperty.deposit?.returnStatus ?? 'unpaid') === 'returned' ? 'bg-emerald-500/20 text-emerald-400' : (selectedProperty.deposit?.returnStatus ?? 'unpaid') === 'partially_returned' ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/20 text-gray-400'}`}>{(selectedProperty.deposit?.returnStatus ?? 'unpaid') === 'returned' ? 'Повернено' : (selectedProperty.deposit?.returnStatus ?? 'unpaid') === 'partially_returned' ? 'Частково повернено' : 'Не повернено'}</span></div>
+                                                <div className="col-span-6 min-w-0"><span className="text-xs text-gray-500 block mb-1">Повернув хто / від кого</span><span className="text-sm text-gray-500 truncate block">—</span></div>
+                                            </div>
+                                            <div className="w-[120px] flex items-center justify-end gap-2 shrink-0">
+                                                {kautionProofs.return ? (
+                                                    <button type="button" title="Підтвердження повернення застави" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.return!.filePath); setDocPreview({ open: true, url, title: 'Підтвердження повернення застави' }); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors"><FileText className="w-4 h-4" /></button>
+                                                ) : <span className="text-sm text-gray-500">—</span>}
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* Empty state: same two-row structure */}
+                                        <div className="flex items-end gap-4">
+                                            <div className="grid flex-1 grid-cols-12 gap-4 items-center min-w-0">
+                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Von</span><span className="text-sm text-gray-500">—</span></div>
+                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Bis</span><span className="text-sm text-gray-500">—</span></div>
+                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Nr</span><span className="text-sm text-gray-500">—</span></div>
+                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Firma</span><span className="text-sm text-gray-500">—</span></div>
+                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Оплачено кому</span><span className="text-sm text-gray-500">—</span></div>
+                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Typ</span><span className="text-sm text-gray-500">—</span></div>
+                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Сума (€)</span><span className="text-sm text-gray-500">—</span></div>
+                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Статус</span><span className="text-sm text-gray-500">—</span></div>
+                                            </div>
+                                            <div className="w-[120px] flex items-center justify-end shrink-0"><span className="text-sm text-gray-500">—</span></div>
+                                        </div>
+                                        <div className="flex items-end gap-4 mt-4">
+                                            <div className="grid flex-1 grid-cols-12 gap-4 items-center min-w-0">
+                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Дата повернення</span><span className="text-sm text-gray-500">—</span></div>
+                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Сума повернення (€)</span><span className="text-sm text-gray-500">—</span></div>
+                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Статус</span><span className="text-sm text-gray-500">—</span></div>
+                                                <div className="col-span-6"><span className="text-xs text-gray-500 block mb-1">Повернув хто / від кого</span><span className="text-sm text-gray-500">—</span></div>
+                                            </div>
+                                            <div className="w-[120px] flex items-center justify-end shrink-0"><span className="text-sm text-gray-500">—</span></div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </div>
+                )}
+            </section>
+            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 id="documents-card-heading" className="text-2xl font-bold text-white">Документи та договори</h2>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button
+                            type="button"
+                            aria-expanded={isDocumentsCardOpen}
+                            aria-controls="documents-card-body"
+                            onClick={() => setIsDocumentsCardOpen((open) => !open)}
+                            className="p-2 rounded-lg text-gray-500 hover:bg-white/[0.03] hover:text-gray-400 transition-colors"
+                            aria-label={isDocumentsCardOpen ? 'Згорнути розділ' : 'Розгорнути розділ'}
+                        >
+                            <ChevronDown className={`w-4 h-4 transition-transform ${isDocumentsCardOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                    </div>
+                </div>
+                {isDocumentsCardOpen && (
+                <div id="documents-card-body" role="region" aria-labelledby="documents-card-heading" className="space-y-4">
+                    {isEditingCard1 && card1Draft ? (
+                        <>
                             <div className="pb-4 border-b border-gray-700">
                                 <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Документи та договори</h3>
                                 <input ref={addDocumentFileInputRef} type="file" accept=".pdf,image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setNewDocFile(f); }} />
@@ -7475,412 +7869,9 @@ Hero Rooms Team`;
                                     </>
                                 )}
                             </div>
-                            <div className="flex gap-3 pt-2">
-                                <button type="button" onClick={saveCard1} disabled={!isCard1DepositValid(card1Draft.deposit).valid} className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white">Зберегти</button>
-                                <button type="button" onClick={cancelCard1Edit} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-400 hover:text-white hover:bg-gray-800">Скасувати</button>
-                            </div>
                         </>
                     ) : (
                         <>
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-4 border-b border-gray-700">
-                                <div><span className="text-xs text-gray-500 block mb-1">Адреса</span><span className="text-sm text-white font-bold">{formatPropertyAddress(selectedProperty)}</span></div>
-                                <div><span className="text-xs text-gray-500 block mb-1">Поверх / Сторона</span><span className="text-sm text-white">{selectedProperty.details?.floor != null ? `${selectedProperty.details.floor} OG` : '—'} {selectedProperty.details?.buildingFloors != null ? ` / ${selectedProperty.details.buildingFloors} поверхов` : ''}</span></div>
-                                <div><span className="text-xs text-gray-500 block mb-1">Квартира / Код</span><span className="text-sm text-white">{selectedProperty.title || '—'}</span></div>
-                                <div><span className="text-xs text-gray-500 block mb-1">Група квартири</span><span className="text-sm text-white">{selectedProperty.apartmentGroupName ?? '—'}</span></div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-4 border-b border-gray-700">
-                                <div><span className="text-xs text-gray-500 block mb-1">Gültig von</span><span className="text-sm text-white">{leaseTerm?.contract_start || '—'}</span></div>
-                                <div><span className="text-xs text-gray-500 block mb-1">Gültig bis</span><span className="text-sm text-white">{leaseTerm?.contract_end ?? '—'}</span></div>
-                                <div><span className="text-xs text-gray-500 block mb-1">Vertragstyp</span><span className="text-sm text-white">{leaseTerm?.contract_type || '—'}</span></div>
-                                <div><span className="text-xs text-gray-500 block mb-1">Erste Mietzahlung ab</span><span className="text-sm text-white">{leaseTerm?.first_payment_date ?? '—'}</span></div>
-                            </div>
-                            {(leaseTerm?.note != null && leaseTerm.note.trim() !== '') && (
-                                <div className="pb-4 border-b border-gray-700"><span className="text-xs text-gray-500 block mb-1">Notiz</span><span className="text-sm text-white">{leaseTerm.note}</span></div>
-                            )}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-gray-700">
-                                <div>
-                                  <span className="text-xs text-gray-500 block mb-1">Статус квартири</span>
-                                  <span className="text-sm font-medium text-white">
-                                    {(() => {
-                                      const effective = isPropertyOooToday(selectedProperty.id) ? 'ooo' : (selectedProperty.apartmentStatus ?? 'active');
-                                      return effective === 'ooo'
-                                        ? 'Out of order'
-                                        : effective === 'preparation'
-                                          ? 'В підготовці'
-                                          : effective === 'rented_worker'
-                                            ? 'Здана працівнику'
-                                            : 'Активна';
-                                    })()}
-                                  </span>
-                                </div>
-                            </div>
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-sm font-semibold text-white">Контрагенти</span>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPartiesDetails(v => !v)}
-                                        className="p-2 rounded-md border border-gray-700 bg-[#111315] hover:bg-[#15181b] text-gray-200 flex items-center gap-1.5 text-sm"
-                                    >
-                                        {showPartiesDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                                        {showPartiesDetails ? 'Сховати деталі' : 'Показати деталі'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={async () => {
-                                            setIsAddressBookModalOpen(true);
-                                            setAddressBookLastError(null);
-
-                                            if (addressBookLoaded && addressBookEntries.length > 0) return;
-
-                                            setAddressBookLoading(true);
-                                            setAddressBookEntries([]);
-
-                                            try {
-                                                const user = await safeGetUser();
-                                                if (!user) throw new Error('Not authenticated');
-
-                                                const list = await addressBookPartiesService.listByRole(user.id);
-                                                setAddressBookEntries(list);
-                                                setAddressBookLoaded(true);
-                                            } catch (e) {
-                                                console.error('[AddressBook listByRole]', e);
-                                                setAddressBookLastError(String((e as Error)?.message ?? e));
-                                            } finally {
-                                                setAddressBookLoading(false);
-                                            }
-                                        }}
-                                        className="p-2 rounded-md border border-gray-700 bg-[#111315] hover:bg-[#15181b] text-gray-200"
-                                        title="Address Book"
-                                    >
-                                        <BookOpen size={18} />
-                                    </button>
-                                </div>
-                            </div>
-                            {addressBookLastError && (
-                                <p className="text-xs text-amber-500 mt-1">Address Book sync failed: {addressBookLastError}</p>
-                            )}
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pb-4 border-b border-gray-700">
-                                <div>
-                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Власник (орендодавець)</h3>
-                                    <div className={`text-sm font-semibold ${(selectedProperty.landlord?.name ?? '').trim() ? 'text-white' : 'text-gray-500'}`}>{(selectedProperty.landlord?.name ?? '').trim() || '—'}</div>
-                                    {formatAddress(selectedProperty.landlord?.address)?.trim() && <div className="text-sm text-gray-400 mt-0.5">{formatAddress(selectedProperty.landlord?.address)}</div>}
-                                    {(() => { const p = selectedProperty.landlord; const phonesLine = normalizeArray(p?.phones ?? []); const emailsLine = normalizeArray(p?.emails ?? []); const metaLine = joinMeta([phonesLine, emailsLine]); return metaLine ? <div className="text-sm text-gray-400 mt-0.5">{metaLine}</div> : null; })()}
-                                    {showPartiesDetails && (
-                                        <>
-                                            <div className="border-t border-gray-800 mt-2 pt-2" />
-                                            {renderPartyRow('ID', selectedProperty.landlord?.unitIdentifier?.trim() || undefined)}
-                                            {renderPartyRow('Контакт', selectedProperty.landlord?.contactPerson)}
-                                            {renderPartyRow('IBAN', selectedProperty.landlord?.iban)}
-                                        </>
-                                    )}
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">1-ша фірма</h3>
-                                    <div className={`text-sm font-semibold ${(selectedProperty.tenant?.name ?? '').trim() ? 'text-white' : 'text-gray-500'}`}>{(selectedProperty.tenant?.name ?? '').trim() || '—'}</div>
-                                    {formatAddress(selectedProperty.tenant?.address)?.trim() && <div className="text-sm text-gray-400 mt-0.5">{formatAddress(selectedProperty.tenant?.address)}</div>}
-                                    {(() => { const p = selectedProperty.tenant; const phonesLine = normalizeArray((p?.phones?.length ? p.phones : (p?.phone ? [p.phone] : []))); const emailsLine = normalizeArray((p?.emails?.length ? p.emails : (p?.email ? [p.email] : []))); const metaLine = joinMeta([phonesLine, emailsLine]); return metaLine ? <div className="text-sm text-gray-400 mt-0.5">{metaLine}</div> : null; })()}
-                                    {showPartiesDetails && (
-                                        <>
-                                            <div className="border-t border-gray-800 mt-2 pt-2" />
-                                            {renderPartyRow('IBAN', selectedProperty.tenant?.iban)}
-                                            {renderPartyRow('День оплати', (selectedProperty.tenant?.paymentDayOfMonth != null && selectedProperty.tenant.paymentDayOfMonth >= 1 && selectedProperty.tenant.paymentDayOfMonth <= 31) ? selectedProperty.tenant.paymentDayOfMonth : undefined)}
-                                        </>
-                                    )}
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">2-га фірма</h3>
-                                    <div className={`text-sm font-semibold ${(selectedProperty.secondCompany?.name ?? '').trim() ? 'text-white' : 'text-gray-500'}`}>{(selectedProperty.secondCompany?.name ?? '').trim() || '—'}</div>
-                                    {formatAddress(selectedProperty.secondCompany?.address)?.trim() && <div className="text-sm text-gray-400 mt-0.5">{formatAddress(selectedProperty.secondCompany?.address)}</div>}
-                                    {(() => { const p = selectedProperty.secondCompany; const phonesLine = normalizeArray((p?.phones?.length ? p.phones : (p?.phone ? [p.phone] : []))); const emailsLine = normalizeArray((p?.emails?.length ? p.emails : (p?.email ? [p.email] : []))); const metaLine = joinMeta([phonesLine, emailsLine]); return metaLine ? <div className="text-sm text-gray-400 mt-0.5">{metaLine}</div> : null; })()}
-                                    {showPartiesDetails && (
-                                        <>
-                                            <div className="border-t border-gray-800 mt-2 pt-2" />
-                                            {renderPartyRow('IBAN', selectedProperty.secondCompany?.iban)}
-                                            {renderPartyRow('День оплати', (selectedProperty.secondCompany?.paymentDayOfMonth != null && selectedProperty.secondCompany.paymentDayOfMonth >= 1 && selectedProperty.secondCompany.paymentDayOfMonth <= 31) ? selectedProperty.secondCompany.paymentDayOfMonth : undefined)}
-                                        </>
-                                    )}
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Управління</h3>
-                                    <div className={`text-sm font-semibold ${(selectedProperty.management?.name ?? '').trim() ? 'text-white' : 'text-gray-500'}`}>{(selectedProperty.management?.name ?? '').trim() || '—'}</div>
-                                    {formatAddress(selectedProperty.management?.address)?.trim() && <div className="text-sm text-gray-400 mt-0.5">{formatAddress(selectedProperty.management?.address)}</div>}
-                                    {(() => { const p = selectedProperty.management; const phonesLine = normalizeArray(p?.phones ?? []); const emailsLine = normalizeArray(p?.emails ?? []); const metaLine = joinMeta([phonesLine, emailsLine]); return metaLine ? <div className="text-sm text-gray-400 mt-0.5">{metaLine}</div> : null; })()}
-                                    {showPartiesDetails && (
-                                        <>
-                                            <div className="border-t border-gray-800 mt-2 pt-2" />
-                                            {renderPartyRow('ID', selectedProperty.management?.unitIdentifier?.trim() || undefined)}
-                                            {renderPartyRow('Контакт', selectedProperty.management?.contactPerson)}
-                                            {renderPartyRow('IBAN', selectedProperty.management?.iban)}
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                            {/* Платіжний ланцюжок — edges + files from paymentChainService */}
-                            <div className="pb-4 border-b border-gray-700">
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-sm font-semibold text-white">Платіжний ланцюжок</span>
-                                    <button type="button" onClick={() => setShowPaymentDetails(v => !v)} className="p-2 rounded-md border border-gray-700 bg-[#111315] hover:bg-[#15181b] text-gray-200 flex items-center gap-1.5 text-sm">
-                                        {showPaymentDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                                        {showPaymentDetails ? 'Сховати деталізацію' : 'Показати деталізацію'}
-                                    </button>
-                                </div>
-                                {paymentChainError && <div className="text-sm text-red-400 mb-2">{paymentChainError}</div>}
-                                {paymentChainLoading ? (
-                                    <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-4 text-gray-500 text-sm">Завантаження платіжного ланцюжка…</div>
-                                ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-0 items-start">
-                                    <div className="md:col-span-3">
-                                        <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-3">
-                                            <div className="space-y-1 leading-snug">
-                                                <div className="text-xs text-gray-400 uppercase tracking-wider">ВЛАСНИК (отримує)</div>
-                                                <div className="text-xs text-gray-500">Очікуване отримання щомісяця</div>
-                                                <div className="text-sm font-semibold text-emerald-400">Отримувач: {paymentChainParties.ownerParty.name}</div>
-                                                <div className="text-sm text-gray-400 font-mono">IBAN: {paymentChainParties.ownerParty.iban}</div>
-                                            </div>
-                                            <div className="mt-2 text-sm text-gray-400">Отримати до (1–31): {paymentTiles.from_company1_to_owner.payByDayOfMonth != null && paymentTiles.from_company1_to_owner.payByDayOfMonth >= 1 && paymentTiles.from_company1_to_owner.payByDayOfMonth <= 31 ? `до ${paymentTiles.from_company1_to_owner.payByDayOfMonth} числа` : '—'}</div>
-                                            <div className="mt-1 text-sm font-semibold text-white">Сума (разом): {ownerTotalAuto != null && typeof ownerTotalAuto === 'number' ? `€${Number(ownerTotalAuto).toFixed(2)}` : '—'}</div>
-                                            {showPaymentDetails && activeRentRow && (
-                                                <div className="mt-2 pt-2 border-t border-gray-800 text-xs text-gray-500 space-y-0.5">
-                                                    <div>Kaltmiete: €{(activeRentRow.km ?? 0).toFixed(2)}</div>
-                                                    <div>Betriebskosten: €{(activeRentRow.bk ?? 0).toFixed(2)}</div>
-                                                    <div>Heizkosten: €{(activeRentRow.hk ?? 0).toFixed(2)}</div>
-                                                    <div className="text-emerald-400 font-medium">Warmmiete: €{(activeRentRow.warm ?? 0).toFixed(2)}</div>
-                                                </div>
-                                            )}
-                                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                <label className="text-xs text-emerald-500 hover:text-emerald-400 cursor-pointer">+ Додати файл<input type="file" className="hidden" multiple onChange={e => { handlePaymentChainAddFiles('owner_control', e.target.files); e.target.value = ''; }} disabled={!!paymentChainUploadingTile} /></label>
-                                                {paymentChainUploadingTile === 'owner_control' && <span className="text-xs text-gray-500">завантаження…</span>}
-                                                {paymentChainFiles.owner_control.length > 0 && (
-                                                    <ul className="list-none space-y-1 w-full">
-                                                        {paymentChainFiles.owner_control.map(f => (
-                                                            <li key={f.id} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
-                                                                <span className="truncate flex-1">{f.file_name}</span>
-                                                                <button type="button" onClick={() => handlePaymentChainViewFile(f.storage_path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>
-                                                                <button type="button" onClick={() => handlePaymentChainDeleteFile('owner_control', f)} className="text-gray-400 hover:text-white">Видалити</button>
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="hidden md:flex md:col-span-1 items-center justify-center text-gray-500 pt-8"><ArrowRight className="w-5 h-5 rotate-180" /></div>
-                                    <div className="md:col-span-3">
-                                        <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-3">
-                                            {paymentChainParties.ownerParty.name === '—' ? (
-                                                <>
-                                                    <div className="text-sm text-gray-500 py-2">Додай власника в Контрагенти</div>
-                                                    <button type="button" onClick={startCard1Edit} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <div className="space-y-1 leading-snug">
-                                                        <div className="text-xs text-gray-400 uppercase tracking-wider">1-ША ФІРМА → ВЛАСНИК</div>
-                                                        <div className="text-xs text-gray-500">Платіж щомісяця</div>
-                                                        <div className="text-sm text-amber-400 font-medium">Платник: {paymentChainParties.company1Party.name}</div>
-                                                        <div className="text-sm font-semibold text-emerald-400">Отримувач: {paymentChainParties.ownerParty.name}</div>
-                                                        <div className="text-sm text-gray-400 font-mono">IBAN: {paymentChainParties.ownerParty.iban}</div>
-                                                    </div>
-                                                    {editingPaymentTile === 'from_company1_to_owner' ? (
-                                                        <>
-                                                            <div className="mt-2"><span className="text-xs text-gray-500 block">Оплатити до (1–31)</span><div className="relative"><select value={paymentTiles.from_company1_to_owner.payByDayOfMonth ?? ''} onChange={e => { const v = e.target.value; setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, payByDayOfMonth: v === '' ? undefined : Math.min(31, Math.max(1, parseInt(v, 10) || 1)) } })); }} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white"><option value="">—</option>{Array.from({ length: 31 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select>{paymentTiles.from_company1_to_owner.payByDayOfMonth != null && <button type="button" onClick={() => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, payByDayOfMonth: undefined } }))} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>}</div><span className="text-xs text-gray-500 block mt-0.5">кожного місяця</span></div>
-                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Сума (разом)</span><input type="text" value={paymentTiles.from_company1_to_owner.total} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, total: e.target.value } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" />{ownerTotalAuto > 0 && <span className="text-xs text-gray-500 block mt-0.5">Підказка: Warmmiete зараз €{Number(ownerTotalAuto).toFixed(2)}</span>}</div>
-                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Опис</span><input type="text" value={paymentTiles.from_company1_to_owner.description} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, description: e.target.value } }))} placeholder="оренда, BK, HK…" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
-                                                            {showPaymentDetails && (
-                                                                <div className="mt-2 pt-2 border-t border-gray-800 space-y-1">
-                                                                    <div className="text-xs text-gray-500">Kaltmiete</div><input type="text" value={paymentTiles.from_company1_to_owner.breakdown.km ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, breakdown: { ...s.from_company1_to_owner.breakdown, km: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
-                                                                    <div className="text-xs text-gray-500">Betriebskosten</div><input type="text" value={paymentTiles.from_company1_to_owner.breakdown.bk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, breakdown: { ...s.from_company1_to_owner.breakdown, bk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
-                                                                    <div className="text-xs text-gray-500">Heizkosten</div><input type="text" value={paymentTiles.from_company1_to_owner.breakdown.hk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company1_to_owner: { ...s.from_company1_to_owner, breakdown: { ...s.from_company1_to_owner.breakdown, hk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
-                                                                </div>
-                                                            )}
-                                                            <div className="mt-2 flex gap-1"><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-emerald-500 hover:text-emerald-400">Зберегти</button><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-gray-400 hover:text-white">Скасувати</button></div>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <div className="mt-2 text-sm text-gray-400">Оплатити до (1–31): {paymentTiles.from_company1_to_owner.payByDayOfMonth != null && paymentTiles.from_company1_to_owner.payByDayOfMonth >= 1 && paymentTiles.from_company1_to_owner.payByDayOfMonth <= 31 ? `до ${paymentTiles.from_company1_to_owner.payByDayOfMonth}-го числа (щомісяця)` : '—'}</div>
-                                                            <div className="mt-1 text-sm text-gray-400">Сума (разом): {paymentTiles.from_company1_to_owner.total || '—'}</div>
-                                                            {paymentTiles.from_company1_to_owner.description && <div className="text-sm text-gray-400 mt-0.5">Опис: {paymentTiles.from_company1_to_owner.description}</div>}
-                                                            {showPaymentDetails && (
-                                                                <div className="mt-2 pt-2 border-t border-gray-800 text-xs text-gray-500 space-y-0.5">
-                                                                    {['km', 'bk', 'hk'].map(k => (paymentTiles.from_company1_to_owner.breakdown as Record<string, string>)[k] && <div key={k}>{k === 'km' ? 'Kaltmiete' : k === 'bk' ? 'Betriebskosten' : 'Heizkosten'}: {(paymentTiles.from_company1_to_owner.breakdown as Record<string, string>)[k]}</div>)}
-                                                                    {!paymentTiles.from_company1_to_owner.breakdown.km && !paymentTiles.from_company1_to_owner.breakdown.bk && !paymentTiles.from_company1_to_owner.breakdown.hk && <div>—</div>}
-                                                                </div>
-                                                            )}
-                                                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                                <label className="text-xs text-emerald-500 hover:text-emerald-400 cursor-pointer">+ Додати файл<input type="file" className="hidden" multiple onChange={e => { handlePaymentChainAddFiles('from_company1_to_owner', e.target.files); e.target.value = ''; }} disabled={!!paymentChainUploadingTile} /></label>
-                                                                {paymentChainUploadingTile === 'from_company1_to_owner' && <span className="text-xs text-gray-500">завантаження…</span>}
-                                                                {paymentChainFiles.from_company1_to_owner.length > 0 && (
-                                                                    <ul className="list-none space-y-1 w-full">
-                                                                        {paymentChainFiles.from_company1_to_owner.map(f => (
-                                                                            <li key={f.id} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
-                                                                                <span className="truncate flex-1">{f.file_name}</span>
-                                                                                <button type="button" onClick={() => handlePaymentChainViewFile(f.storage_path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>
-                                                                                <button type="button" onClick={() => handlePaymentChainDeleteFile('from_company1_to_owner', f)} className="text-gray-400 hover:text-white">Видалити</button>
-                                                                            </li>
-                                                                        ))}
-                                                                    </ul>
-                                                                )}
-                                                                <button type="button" onClick={() => setEditingPaymentTile('from_company1_to_owner')} className="text-xs text-emerald-500 hover:text-emerald-400">Редагувати</button>
-                                                            </div>
-                                                        </>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div className="hidden md:flex md:col-span-1 items-center justify-center text-gray-500 pt-8"><ArrowRight className="w-5 h-5 rotate-180" /></div>
-                                    <div className="md:col-span-3">
-                                        <div className="rounded-lg border border-gray-800 bg-[#0f1113] p-3">
-                                            {paymentChainParties.company1Party.name === '—' ? (
-                                                <>
-                                                    <div className="text-sm text-gray-500 py-2">Додай 1-шу фірму в Контрагенти</div>
-                                                    <button type="button" onClick={startCard1Edit} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
-                                                </>
-                                            ) : paymentChainParties.company2Party.name === '—' ? (
-                                                <>
-                                                    <div className="text-sm text-gray-500 py-2">Додай 2-гу фірму в Контрагенти</div>
-                                                    <button type="button" onClick={startCard1Edit} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400">Додати в Контрагенти</button>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <div className="space-y-1 leading-snug">
-                                                        <div className="text-xs text-gray-400 uppercase tracking-wider">2-ГА ФІРМА → 1-ША ФІРМА</div>
-                                                        <div className="text-xs text-gray-500">Платіж щомісяця</div>
-                                                        <div className="text-sm text-amber-400 font-medium">Платник: {paymentChainParties.company2Party.name}</div>
-                                                        <div className="text-sm font-semibold text-emerald-400">Отримувач: {paymentChainParties.company1Party.name}</div>
-                                                        <div className="text-sm text-gray-400 font-mono">IBAN: {paymentChainParties.company1Party.iban}</div>
-                                                    </div>
-                                                    {editingPaymentTile === 'from_company2_to_company1' ? (
-                                                        <>
-                                                            <div className="mt-2"><span className="text-xs text-gray-500 block">Оплатити до (1–31)</span><div className="relative"><select value={paymentTiles.from_company2_to_company1.payByDayOfMonth ?? ''} onChange={e => { const v = e.target.value; setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, payByDayOfMonth: v === '' ? undefined : Math.min(31, Math.max(1, parseInt(v, 10) || 1)) } })); }} className="w-full bg-[#111315] border border-gray-700 rounded p-2 pr-8 text-sm text-white"><option value="">—</option>{Array.from({ length: 31 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select>{paymentTiles.from_company2_to_company1.payByDayOfMonth != null && <button type="button" onClick={() => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, payByDayOfMonth: undefined } }))} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-white rounded">×</button>}</div><span className="text-xs text-gray-500 block mt-0.5">кожного місяця</span></div>
-                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Сума (разом)</span><input type="text" value={paymentTiles.from_company2_to_company1.total} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, total: e.target.value } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
-                                                            <div className="mt-1"><span className="text-xs text-gray-500 block">Опис</span><input type="text" value={paymentTiles.from_company2_to_company1.description} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, description: e.target.value } }))} placeholder="оренда, BK, HK…" className="w-full bg-[#111315] border border-gray-700 rounded p-1.5 text-sm text-white" /></div>
-                                                            {showPaymentDetails && (
-                                                                <div className="mt-2 pt-2 border-t border-gray-800 space-y-1">
-                                                                    <div className="text-xs text-gray-500">Kaltmiete</div><input type="text" value={paymentTiles.from_company2_to_company1.breakdown.km ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, breakdown: { ...s.from_company2_to_company1.breakdown, km: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
-                                                                    <div className="text-xs text-gray-500">Betriebskosten</div><input type="text" value={paymentTiles.from_company2_to_company1.breakdown.bk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, breakdown: { ...s.from_company2_to_company1.breakdown, bk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
-                                                                    <div className="text-xs text-gray-500">Heizkosten</div><input type="text" value={paymentTiles.from_company2_to_company1.breakdown.hk ?? ''} onChange={e => setPaymentTiles(s => ({ ...s, from_company2_to_company1: { ...s.from_company2_to_company1, breakdown: { ...s.from_company2_to_company1.breakdown, hk: e.target.value } } }))} className="w-full bg-[#111315] border border-gray-700 rounded p-1 text-sm text-white" />
-                                                                </div>
-                                                            )}
-                                                            <div className="mt-2 flex gap-1"><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-emerald-500 hover:text-emerald-400">Зберегти</button><button type="button" onClick={() => setEditingPaymentTile(null)} className="text-xs text-gray-400 hover:text-white">Скасувати</button></div>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <div className="mt-2 text-sm text-gray-400">Оплатити до (1–31): {paymentTiles.from_company2_to_company1.payByDayOfMonth != null && paymentTiles.from_company2_to_company1.payByDayOfMonth >= 1 && paymentTiles.from_company2_to_company1.payByDayOfMonth <= 31 ? `до ${paymentTiles.from_company2_to_company1.payByDayOfMonth}-го числа (щомісяця)` : '—'}</div>
-                                                            <div className="mt-1 text-sm text-gray-400">Сума (разом): {paymentTiles.from_company2_to_company1.total || '—'}</div>
-                                                            {paymentTiles.from_company2_to_company1.description && <div className="text-sm text-gray-400 mt-0.5">Опис: {paymentTiles.from_company2_to_company1.description}</div>}
-                                                            {showPaymentDetails && (
-                                                                <div className="mt-2 pt-2 border-t border-gray-800 text-xs text-gray-500 space-y-0.5">
-                                                                    {['km', 'bk', 'hk'].map(k => (paymentTiles.from_company2_to_company1.breakdown as Record<string, string>)[k] && <div key={k}>{k === 'km' ? 'Kaltmiete' : k === 'bk' ? 'Betriebskosten' : 'Heizkosten'}: {(paymentTiles.from_company2_to_company1.breakdown as Record<string, string>)[k]}</div>)}
-                                                                    {!paymentTiles.from_company2_to_company1.breakdown.km && !paymentTiles.from_company2_to_company1.breakdown.bk && !paymentTiles.from_company2_to_company1.breakdown.hk && <div>—</div>}
-                                                                </div>
-                                                            )}
-                                                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                                                                <label className="text-xs text-emerald-500 hover:text-emerald-400 cursor-pointer">+ Додати файл<input type="file" className="hidden" multiple onChange={e => { handlePaymentChainAddFiles('from_company2_to_company1', e.target.files); e.target.value = ''; }} disabled={!!paymentChainUploadingTile} /></label>
-                                                                {paymentChainUploadingTile === 'from_company2_to_company1' && <span className="text-xs text-gray-500">завантаження…</span>}
-                                                                {paymentChainFiles.from_company2_to_company1.length > 0 && (
-                                                                    <ul className="list-none space-y-1 w-full">
-                                                                        {paymentChainFiles.from_company2_to_company1.map(f => (
-                                                                            <li key={f.id} className="flex items-center gap-2 text-xs text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">
-                                                                                <span className="truncate flex-1">{f.file_name}</span>
-                                                                                <button type="button" onClick={() => handlePaymentChainViewFile(f.storage_path)} className="text-emerald-500 hover:text-emerald-400">Переглянути</button>
-                                                                                <button type="button" onClick={() => handlePaymentChainDeleteFile('from_company2_to_company1', f)} className="text-gray-400 hover:text-white">Видалити</button>
-                                                                            </li>
-                                                                        ))}
-                                                                    </ul>
-                                                                )}
-                                                                <button type="button" onClick={() => setEditingPaymentTile('from_company2_to_company1')} className="text-xs text-emerald-500 hover:text-emerald-400">Редагувати</button>
-                                                            </div>
-                                                        </>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div className="hidden md:block md:col-span-1" />
-                                </div>
-                                )}
-                            </div>
-                            <div>
-                                <span className="text-xs text-gray-500 block mb-2">Рентний таймлайн</span>
-                                {rentTimelineLoading && <p className="text-xs text-gray-500 mb-1">Завантаження…</p>}
-                                {rentTimelineError && <p className="text-sm text-red-400 mb-1">{rentTimelineError}</p>}
-                                <div className="overflow-x-auto overflow-hidden border border-gray-700 rounded-lg">
-                                    <table className="w-full text-sm text-left min-w-[800px]">
-                                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700"><tr><th className="p-2 font-bold text-xs uppercase" title="Дійсний з">Von</th><th className="p-2 font-bold text-xs uppercase" title="Дійсний по">Bis</th><th className="p-2 font-bold text-xs uppercase text-right" title="Kaltmiete">KM</th><th className="p-2 font-bold text-xs uppercase text-right" title="Mietsteuer">MSt</th><th className="p-2 font-bold text-xs uppercase text-right" title="Unternehmenssteuer">USt</th><th className="p-2 font-bold text-xs uppercase text-right" title="Betriebskosten">BK</th><th className="p-2 font-bold text-xs uppercase text-right" title="Heizkosten">HK</th><th className="p-2 font-bold text-xs uppercase text-right" title="Müll">Müll</th><th className="p-2 font-bold text-xs uppercase text-right" title="Strom">Strom</th><th className="p-2 font-bold text-xs uppercase text-right" title="Gas">Gas</th><th className="p-2 font-bold text-xs uppercase text-right" title="Wasser">Wasser</th><th className="p-2 font-bold text-xs uppercase text-right" title="Warmmiete">WM</th></tr></thead>
-                                        <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
-                                            {rentTimelineRows.length === 0 ? <tr><td colSpan={12} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr> : rentTimelineRows.map((r) => <tr key={r.id} className="hover:bg-[#1C1F24]"><td className="p-2 text-white">{r.validFrom}</td><td className="p-2 text-white">{r.validTo}</td><td className="p-2 text-right text-white font-mono">€{(r.km ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.mietsteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.unternehmenssteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.bk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.hk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.muell ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.strom ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.gas ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.wasser ?? 0).toFixed(2)}</td><td className="p-2 text-right text-emerald-400 font-mono font-bold">€{(r.warm ?? 0).toFixed(2)}</td></tr>)}
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <button type="button" onClick={() => { startCard1Edit(); setShowAddRentIncreaseForm(true); }} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400 font-medium">+ Додати підвищення оренди</button>
-                            </div>
-                            <div className="pb-4 border-b border-gray-700">
-                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Застава (Kaution)</h3>
-                                {(selectedProperty.deposit || kautionProofs.payment || kautionProofs.return) ? (
-                                    <>
-                                        {/* Row 1: Payment — grid 12 + right actions */}
-                                        <div className="flex items-end gap-4">
-                                            <div className="grid flex-1 grid-cols-12 gap-4 items-center min-w-0">
-                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Von</span><span className="text-sm text-white">{(selectedProperty.deposit?.periodFrom ?? selectedProperty.deposit?.paidAt)?.trim() || '—'}</span></div>
-                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Bis</span><span className="text-sm text-white">{selectedProperty.deposit?.periodTo?.trim() || '—'}</span></div>
-                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Nr</span><span className="text-sm text-white">{selectedProperty.deposit?.depositNo?.trim() || '—'}</span></div>
-                                                <div className="col-span-2 min-w-0"><span className="text-xs text-gray-500 block mb-1">Firma</span><span className="text-sm text-white truncate block">{selectedProperty.deposit?.issuerCompany?.trim() || '—'}</span></div>
-                                                <div className="col-span-2 min-w-0"><span className="text-xs text-gray-500 block mb-1">Оплачено кому</span><span className="text-sm text-white truncate block">{selectedProperty.deposit?.paidTo?.trim() || '—'}</span></div>
-                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Typ</span><span className="text-sm text-white">{(() => { const dt = selectedProperty.deposit?.depositType ?? 'TRANSFER'; return dt === 'CASH' ? 'Bar' : dt === 'GUARANTEE' ? 'BU' : 'ÜW'; })()}</span></div>
-                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Сума (€)</span><span className="text-sm text-white font-bold">{(() => { const n = Number(selectedProperty.deposit?.amount); return (n != null && !Number.isNaN(n)) ? `€${n.toFixed(2)}` : '—'; })()}</span></div>
-                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Статус</span><span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${(selectedProperty.deposit?.status ?? 'unpaid') === 'paid' ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-500/20 text-gray-400'}`}>{(selectedProperty.deposit?.status ?? 'unpaid') === 'paid' ? 'Оплачено' : 'Не оплачено'}</span></div>
-                                            </div>
-                                            <div className="w-[120px] flex items-center justify-end gap-2 shrink-0">
-                                                {kautionProofs.payment ? (
-                                                    <button type="button" title="Підтвердження оплати застави" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.payment!.filePath); setDocPreview({ open: true, url, title: 'Підтвердження оплати застави' }); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors"><FileText className="w-4 h-4" /></button>
-                                                ) : <span className="text-sm text-gray-500">—</span>}
-                                            </div>
-                                        </div>
-                                        {/* Row 2: Refund — grid 12 + right actions */}
-                                        <div className="flex items-end gap-4 mt-4">
-                                            <div className="grid flex-1 grid-cols-12 gap-4 items-center min-w-0">
-                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Дата повернення</span><span className="text-sm text-white">{selectedProperty.deposit?.returnedAt?.trim() || '—'}</span></div>
-                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Сума повернення (€)</span><span className="text-sm text-white">{selectedProperty.deposit?.returnedAmount != null ? (() => { const n = Number(selectedProperty.deposit!.returnedAmount); return !Number.isNaN(n) ? `€${n.toFixed(2)}` : '—'; })() : '—'}</span></div>
-                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Статус</span><span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${(selectedProperty.deposit?.returnStatus ?? 'unpaid') === 'returned' ? 'bg-emerald-500/20 text-emerald-400' : (selectedProperty.deposit?.returnStatus ?? 'unpaid') === 'partially_returned' ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/20 text-gray-400'}`}>{(selectedProperty.deposit?.returnStatus ?? 'unpaid') === 'returned' ? 'Повернено' : (selectedProperty.deposit?.returnStatus ?? 'unpaid') === 'partially_returned' ? 'Частково повернено' : 'Не повернено'}</span></div>
-                                                <div className="col-span-6 min-w-0"><span className="text-xs text-gray-500 block mb-1">Повернув хто / від кого</span><span className="text-sm text-gray-500 truncate block">—</span></div>
-                                            </div>
-                                            <div className="w-[120px] flex items-center justify-end gap-2 shrink-0">
-                                                {kautionProofs.return ? (
-                                                    <button type="button" title="Підтвердження повернення застави" onClick={async () => { try { const url = await propertyDepositProofsService.getSignedUrl(kautionProofs.return!.filePath); setDocPreview({ open: true, url, title: 'Підтвердження повернення застави' }); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1.5 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/20 rounded transition-colors"><FileText className="w-4 h-4" /></button>
-                                                ) : <span className="text-sm text-gray-500">—</span>}
-                                            </div>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <>
-                                        {/* Empty state: same two-row structure */}
-                                        <div className="flex items-end gap-4">
-                                            <div className="grid flex-1 grid-cols-12 gap-4 items-center min-w-0">
-                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Von</span><span className="text-sm text-gray-500">—</span></div>
-                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Bis</span><span className="text-sm text-gray-500">—</span></div>
-                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Nr</span><span className="text-sm text-gray-500">—</span></div>
-                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Firma</span><span className="text-sm text-gray-500">—</span></div>
-                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Оплачено кому</span><span className="text-sm text-gray-500">—</span></div>
-                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Typ</span><span className="text-sm text-gray-500">—</span></div>
-                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Сума (€)</span><span className="text-sm text-gray-500">—</span></div>
-                                                <div className="col-span-1"><span className="text-xs text-gray-500 block mb-1">Статус</span><span className="text-sm text-gray-500">—</span></div>
-                                            </div>
-                                            <div className="w-[120px] flex items-center justify-end shrink-0"><span className="text-sm text-gray-500">—</span></div>
-                                        </div>
-                                        <div className="flex items-end gap-4 mt-4">
-                                            <div className="grid flex-1 grid-cols-12 gap-4 items-center min-w-0">
-                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Дата повернення</span><span className="text-sm text-gray-500">—</span></div>
-                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Сума повернення (€)</span><span className="text-sm text-gray-500">—</span></div>
-                                                <div className="col-span-2"><span className="text-xs text-gray-500 block mb-1">Статус</span><span className="text-sm text-gray-500">—</span></div>
-                                                <div className="col-span-6"><span className="text-xs text-gray-500 block mb-1">Повернув хто / від кого</span><span className="text-sm text-gray-500">—</span></div>
-                                            </div>
-                                            <div className="w-[120px] flex items-center justify-end shrink-0"><span className="text-sm text-gray-500">—</span></div>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
                             <div className="pb-4 border-b border-gray-700">
                                 <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">Документи та договори</h3>
                                 <input ref={addDocumentFileInputRef} type="file" accept=".pdf,image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setNewDocFile(f); }} />
@@ -7928,6 +7919,178 @@ Hero Rooms Team`;
                             </div>
                         </>
                     )}
+                </div>
+                )}
+            </section>
+            <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 id="rent-timeline-card-heading" className="text-2xl font-bold text-white">Рентний таймлайн</h2>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button
+                            type="button"
+                            aria-expanded={isRentTimelineCardOpen}
+                            aria-controls="rent-timeline-card-body"
+                            onClick={() => setIsRentTimelineCardOpen((open) => !open)}
+                            className="p-2 rounded-lg text-gray-500 hover:bg-white/[0.03] hover:text-gray-400 transition-colors"
+                            aria-label={isRentTimelineCardOpen ? 'Згорнути розділ' : 'Розгорнути розділ'}
+                        >
+                            <ChevronDown className={`w-4 h-4 transition-transform ${isRentTimelineCardOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                    </div>
+                </div>
+                {isRentTimelineCardOpen && (
+                <div id="rent-timeline-card-body" role="region" aria-labelledby="rent-timeline-card-heading" className="space-y-4">
+                    {isEditingCard1 && card1Draft ? (
+                        <>
+                            <div>
+                                <span className="text-xs text-gray-500 block mb-2">Рентний таймлайн</span>
+                                {rentTimelineLoading && <p className="text-xs text-gray-500 mb-1">Завантаження…</p>}
+                                {rentTimelineError && <p className="text-sm text-red-400 mb-1">{rentTimelineError}</p>}
+                                {rentTimelineEditError && <p className="text-xs text-amber-400 mb-1">{rentTimelineEditError}</p>}
+                                <div className="overflow-x-auto overflow-hidden border border-gray-700 rounded-lg">
+                                    <table className="w-full text-sm text-left min-w-[800px]">
+                                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700"><tr><th className="p-2 font-bold text-xs uppercase" title="Дійсний з">Von</th><th className="p-2 font-bold text-xs uppercase" title="Дійсний по">Bis</th><th className="p-2 font-bold text-xs uppercase text-right" title="Kaltmiete">KM</th><th className="p-2 font-bold text-xs uppercase text-right" title="Mietsteuer">MSt</th><th className="p-2 font-bold text-xs uppercase text-right" title="Unternehmenssteuer">USt</th><th className="p-2 font-bold text-xs uppercase text-right" title="Betriebskosten">BK</th><th className="p-2 font-bold text-xs uppercase text-right" title="Heizkosten">HK</th><th className="p-2 font-bold text-xs uppercase text-right" title="Müll">Müll</th><th className="p-2 font-bold text-xs uppercase text-right" title="Strom">Strom</th><th className="p-2 font-bold text-xs uppercase text-right" title="Gas">Gas</th><th className="p-2 font-bold text-xs uppercase text-right" title="Wasser">Wasser</th><th className="p-2 font-bold text-xs uppercase text-right" title="Warmmiete">WM</th></tr></thead>
+                                        <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
+                                            {rentTimelineRows.length === 0 ? (
+                                              <tr><td colSpan={12} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr>
+                                            ) : rentTimelineRows.map((r) => {
+                                              const isEditing = editingRentTimelineRowId === r.id && rentTimelineEditDraft;
+                                              const draft = isEditing ? rentTimelineEditDraft : null;
+                                              const warmPreview = draft ? ((parseFloat(draft.km) || 0) + (parseFloat(draft.bk) || 0) + (parseFloat(draft.hk) || 0) + (parseFloat(draft.mietsteuer) || 0) + (parseFloat(draft.unternehmenssteuer) || 0) + (parseFloat(draft.muell) || 0) + (parseFloat(draft.strom) || 0) + (parseFloat(draft.gas) || 0) + (parseFloat(draft.wasser) || 0)) : 0;
+                                              return (
+                                                <tr
+                                                  key={r.id}
+                                                  onClick={isEditing ? (e) => e.stopPropagation() : () => { setEditingRentTimelineRowId(r.id); setRentTimelineEditDraft({ validFrom: r.validFrom, validTo: r.validTo === '∞' ? '' : r.validTo, km: (r.km ?? 0) === 0 ? '' : String(r.km), mietsteuer: (r.mietsteuer ?? 0) === 0 ? '' : String(r.mietsteuer), unternehmenssteuer: (r.unternehmenssteuer ?? 0) === 0 ? '' : String(r.unternehmenssteuer), bk: (r.bk ?? 0) === 0 ? '' : String(r.bk), hk: (r.hk ?? 0) === 0 ? '' : String(r.hk), muell: (r.muell ?? 0) === 0 ? '' : String(r.muell), strom: (r.strom ?? 0) === 0 ? '' : String(r.strom), gas: (r.gas ?? 0) === 0 ? '' : String(r.gas), wasser: (r.wasser ?? 0) === 0 ? '' : String(r.wasser) }); setRentTimelineEditError(null); }}
+                                                  className={isEditing ? '' : 'cursor-pointer hover:bg-[#1C1F24]'}
+                                                >
+                                                  {isEditing && draft ? (
+                                                    <>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="date" value={draft.validFrom} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, validFrom: e.target.value } : null)} className="w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white" placeholder="YYYY-MM-DD" title="Von" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="date" value={draft.validTo} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, validTo: e.target.value } : null)} className="w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white" title="Bis" placeholder="∞" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.km === '0' ? '' : draft.km} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, km: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.mietsteuer === '0' ? '' : draft.mietsteuer} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, mietsteuer: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.unternehmenssteuer === '0' ? '' : draft.unternehmenssteuer} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, unternehmenssteuer: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.bk === '0' ? '' : draft.bk} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, bk: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.hk === '0' ? '' : draft.hk} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, hk: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.muell === '0' ? '' : draft.muell} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, muell: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.strom === '0' ? '' : draft.strom} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, strom: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.gas === '0' ? '' : draft.gas} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, gas: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-1" onClick={e => e.stopPropagation()}><input type="number" min={0} step={0.01} value={draft.wasser === '0' ? '' : draft.wasser} onChange={e => setRentTimelineEditDraft(d => d ? { ...d, wasser: e.target.value } : null)} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" /></td>
+                                                      <td className="p-2 text-right text-emerald-400 font-mono font-bold">€{warmPreview.toFixed(2)}</td>
+                                                    </>
+                                                  ) : (
+                                                    <>
+                                                      <td className="p-2 text-white">{r.validFrom}</td><td className="p-2 text-white">{r.validTo}</td><td className="p-2 text-right text-white font-mono">€{(r.km ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.mietsteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.unternehmenssteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.bk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.hk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.muell ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.strom ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.gas ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.wasser ?? 0).toFixed(2)}</td><td className="p-2 text-right text-emerald-400 font-mono font-bold">€{(r.warm ?? 0).toFixed(2)}</td>
+                                                    </>
+                                                  )}
+                                                </tr>
+                                              );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {showAddRentIncreaseForm ? (
+                                    <div className="mt-2 p-3 bg-[#111315] border border-gray-700 rounded-lg">
+                                        <div className="overflow-x-auto min-w-[800px]">
+                                            <div className="grid gap-x-1.5 gap-y-0.5 items-center" style={{ gridTemplateColumns: 'minmax(88px,1.15fr) minmax(88px,1.15fr) minmax(52px,0.75fr) minmax(48px,0.7fr) minmax(48px,0.7fr) minmax(52px,0.75fr) minmax(52px,0.75fr) minmax(52px,0.75fr) minmax(52px,0.75fr) minmax(52px,0.75fr) minmax(52px,0.75fr) minmax(64px,1fr)' }}>
+                                                <span className="text-xs text-gray-500 uppercase font-medium" title="Дійсний з">Von</span>
+                                                <span className="text-xs text-gray-500 uppercase font-medium" title="Дійсний по">Bis</span>
+                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Kaltmiete">KM</span>
+                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Mietsteuer">MSt</span>
+                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Unternehmenssteuer">USt</span>
+                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Betriebskosten">BK</span>
+                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Heizkosten">HK</span>
+                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Müll">Müll</span>
+                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Strom">Strom</span>
+                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Gas">Gas</span>
+                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Wasser">W</span>
+                                                <span className="text-xs text-gray-500 uppercase font-medium text-right" title="Warmmiete">WM</span>
+                                                <div className="min-w-0"><input type="date" value={rentIncreaseForm.validFrom} onChange={e => setRentIncreaseForm(f => ({ ...f, validFrom: e.target.value }))} className="w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white" placeholder="YYYY-MM-DD" title="Von" /></div>
+                                                <div className="min-w-0"><input type="date" value={rentIncreaseForm.validTo} onChange={e => setRentIncreaseForm(f => ({ ...f, validTo: e.target.value }))} className="w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white" title="Bis" placeholder="∞ / YYYY-MM-DD" /></div>
+                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.km === '0' ? '' : rentIncreaseForm.km} onChange={e => setRentIncreaseForm(f => ({ ...f, km: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Kaltmiete" /></div>
+                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.mietsteuer === '0' ? '' : rentIncreaseForm.mietsteuer} onChange={e => setRentIncreaseForm(f => ({ ...f, mietsteuer: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Mietsteuer" /></div>
+                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.unternehmenssteuer === '0' ? '' : rentIncreaseForm.unternehmenssteuer} onChange={e => setRentIncreaseForm(f => ({ ...f, unternehmenssteuer: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Unternehmenssteuer" /></div>
+                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.bk === '0' ? '' : rentIncreaseForm.bk} onChange={e => setRentIncreaseForm(f => ({ ...f, bk: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Betriebskosten" /></div>
+                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.hk === '0' ? '' : rentIncreaseForm.hk} onChange={e => setRentIncreaseForm(f => ({ ...f, hk: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Heizkosten" /></div>
+                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.muell === '0' ? '' : rentIncreaseForm.muell} onChange={e => setRentIncreaseForm(f => ({ ...f, muell: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Müll" /></div>
+                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.strom === '0' ? '' : rentIncreaseForm.strom} onChange={e => setRentIncreaseForm(f => ({ ...f, strom: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Strom" /></div>
+                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.gas === '0' ? '' : rentIncreaseForm.gas} onChange={e => setRentIncreaseForm(f => ({ ...f, gas: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Gas" /></div>
+                                                <div className="min-w-0"><input type="number" min={0} step={0.01} value={rentIncreaseForm.wasser === '0' ? '' : rentIncreaseForm.wasser} onChange={e => setRentIncreaseForm(f => ({ ...f, wasser: e.target.value }))} className="no-spinner w-full h-9 bg-[#0D1117] border border-gray-700 rounded px-2 text-sm text-white text-right font-mono" placeholder="0.00" title="Wasser" /></div>
+                                                <div className="min-w-0 flex items-center justify-end h-9 text-right"><span className="text-sm font-mono font-bold text-emerald-400" title="Warmmiete">€{((parseFloat(rentIncreaseForm.km) || 0) + (parseFloat(rentIncreaseForm.bk) || 0) + (parseFloat(rentIncreaseForm.hk) || 0) + (parseFloat(rentIncreaseForm.mietsteuer) || 0) + (parseFloat(rentIncreaseForm.unternehmenssteuer) || 0) + (parseFloat(rentIncreaseForm.strom) || 0) + (parseFloat(rentIncreaseForm.muell) || 0) + (parseFloat(rentIncreaseForm.gas) || 0) + (parseFloat(rentIncreaseForm.wasser) || 0)).toFixed(2)}</span></div>
+                                            </div>
+                                        </div>
+                                        {rentIncreaseFormError && <p className="text-sm text-red-400 mt-1.5">{rentIncreaseFormError}</p>}
+                                        <div className="flex justify-end gap-2 mt-2">
+                                            <button type="button" disabled={isAddingRentIncrease} onClick={addRentIncrease} className="h-9 px-3 rounded text-sm font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white">Додати</button>
+                                            <button type="button" disabled={isAddingRentIncrease} onClick={() => { setShowAddRentIncreaseForm(false); setRentIncreaseForm({ validFrom: '', validTo: '', km: '', mietsteuer: '', unternehmenssteuer: '', bk: '', hk: '', muell: '', strom: '', gas: '', wasser: '' }); setRentIncreaseFormError(null); }} className="h-9 px-3 rounded text-sm text-gray-400 hover:text-white">Скасувати</button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <button type="button" onClick={() => setShowAddRentIncreaseForm(true)} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400 font-medium">+ Додати підвищення оренди</button>
+                                )}
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div>
+                                <span className="text-xs text-gray-500 block mb-2">Рентний таймлайн</span>
+                                {rentTimelineLoading && <p className="text-xs text-gray-500 mb-1">Завантаження…</p>}
+                                {rentTimelineError && <p className="text-sm text-red-400 mb-1">{rentTimelineError}</p>}
+                                <div className="overflow-x-auto overflow-hidden border border-gray-700 rounded-lg">
+                                    <table className="w-full text-sm text-left min-w-[800px]">
+                                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700"><tr><th className="p-2 font-bold text-xs uppercase" title="Дійсний з">Von</th><th className="p-2 font-bold text-xs uppercase" title="Дійсний по">Bis</th><th className="p-2 font-bold text-xs uppercase text-right" title="Kaltmiete">KM</th><th className="p-2 font-bold text-xs uppercase text-right" title="Mietsteuer">MSt</th><th className="p-2 font-bold text-xs uppercase text-right" title="Unternehmenssteuer">USt</th><th className="p-2 font-bold text-xs uppercase text-right" title="Betriebskosten">BK</th><th className="p-2 font-bold text-xs uppercase text-right" title="Heizkosten">HK</th><th className="p-2 font-bold text-xs uppercase text-right" title="Müll">Müll</th><th className="p-2 font-bold text-xs uppercase text-right" title="Strom">Strom</th><th className="p-2 font-bold text-xs uppercase text-right" title="Gas">Gas</th><th className="p-2 font-bold text-xs uppercase text-right" title="Wasser">Wasser</th><th className="p-2 font-bold text-xs uppercase text-right" title="Warmmiete">WM</th></tr></thead>
+                                        <tbody className="divide-y divide-gray-700/50 bg-[#16181D]">
+                                            {rentTimelineRows.length === 0 ? <tr><td colSpan={12} className="p-3 text-gray-500 text-center">Немає даних про оренду.</td></tr> : rentTimelineRows.map((r) => <tr key={r.id} className="hover:bg-[#1C1F24]"><td className="p-2 text-white">{r.validFrom}</td><td className="p-2 text-white">{r.validTo}</td><td className="p-2 text-right text-white font-mono">€{(r.km ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.mietsteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.unternehmenssteuer ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.bk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.hk ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.muell ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.strom ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.gas ?? 0).toFixed(2)}</td><td className="p-2 text-right text-white font-mono">€{(r.wasser ?? 0).toFixed(2)}</td><td className="p-2 text-right text-emerald-400 font-mono font-bold">€{(r.warm ?? 0).toFixed(2)}</td></tr>)}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <button type="button" onClick={() => { startCard1Edit(); setShowAddRentIncreaseForm(true); }} className="mt-2 text-sm text-emerald-500 hover:text-emerald-400 font-medium">+ Додати підвищення оренди</button>
+                            </div>
+                        </>
+                    )}
+                </div>
+                )}
+            </section>
+            {isEditingCard1 && card1Draft && (
+                <div className="mb-6 flex gap-3">
+                                <button type="button" onClick={saveCard1} disabled={!isCard1DepositValid(card1Draft.deposit).valid} className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white">Зберегти</button>
+                                <button type="button" onClick={cancelCard1Edit} className="px-4 py-2 rounded-lg text-sm font-bold text-gray-400 hover:text-white hover:bg-gray-800">Скасувати</button>
+                </div>
+            )}
+                            {isDepositProofModalOpen && depositProofType && selectedProperty && (
+                                <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4" onClick={() => { setIsDepositProofModalOpen(false); setDepositProofType(null); setDepositProofFile(null); setDepositProofError(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; }}>
+                                    <div className="bg-[#1C1F24] w-full max-w-md rounded-xl border border-gray-700 shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
+                                        <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+                                            <h3 className="text-lg font-bold text-white">{depositProofType === 'payment' ? 'Додати підтвердження оплати' : 'Додати підтвердження повернення'}</h3>
+                                            <button type="button" onClick={() => { setIsDepositProofModalOpen(false); setDepositProofType(null); setDepositProofFile(null); setDepositProofError(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; }} className="text-gray-400 hover:text-white p-1.5 rounded"><X className="w-5 h-5" /></button>
+                                        </div>
+                                        <div className="p-4 space-y-4">
+                                            <div>
+                                                <label className="text-xs text-gray-500 block mb-2">Файл (PDF або зображення)</label>
+                                                {!depositProofFile ? (
+                                                    <div onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('border-emerald-500'); }} onDragLeave={e => e.currentTarget.classList.remove('border-emerald-500')} onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('border-emerald-500'); const f = e.dataTransfer.files[0]; if (f && (f.type === 'application/pdf' || f.type.startsWith('image/'))) setDepositProofFile(f); }} className="border-2 border-dashed border-gray-700 rounded-lg p-6 min-h-[120px] flex flex-col items-center justify-center gap-2 hover:border-gray-600 transition-colors">
+                                                        <input ref={depositProofFileInputRef} type="file" accept=".pdf,image/*" className="hidden" id="deposit-proof-file" onChange={e => { const f = e.target.files?.[0]; if (f && (f.type === 'application/pdf' || f.type.startsWith('image/'))) setDepositProofFile(f); }} />
+                                                        <label htmlFor="deposit-proof-file" className="cursor-pointer flex flex-col items-center gap-2">
+                                                            <Upload className="w-8 h-8 text-gray-500" />
+                                                            <span className="text-sm text-gray-400">Перетягніть файл сюди або натисніть для вибору</span>
+                                                        </label>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-2 p-3 rounded-lg border border-gray-700 bg-[#111315]">
+                                                        <span className="text-emerald-400 text-sm truncate flex-1">{depositProofFile.name}</span>
+                                                        <button type="button" onClick={() => { setDepositProofFile(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; }} className="text-xs text-gray-400 hover:text-white">Видалити файл</button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {depositProofError && <p className="text-sm text-red-400">{depositProofError}</p>}
+                                            <div className="flex gap-2">
+                                                <button type="button" disabled={depositProofUploading || !depositProofFile} onClick={async () => { if (!selectedProperty || !depositProofFile) return; setDepositProofUploading(true); setDepositProofError(null); try { await propertyDepositProofsService.create(selectedProperty.id, depositProofType!, depositProofFile); refreshKautionProofs(); setIsDepositProofModalOpen(false); setDepositProofType(null); setDepositProofFile(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; } catch (e) { setDepositProofError(e instanceof Error ? e.message : 'Помилка'); } finally { setDepositProofUploading(false); } }} className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white">Зберегти</button>
+                                                <button type="button" onClick={() => { setIsDepositProofModalOpen(false); setDepositProofType(null); setDepositProofFile(null); setDepositProofError(null); if (depositProofFileInputRef.current) depositProofFileInputRef.current.value = ''; }} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white">Скасувати</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                     {isZweckentfremdungModalOpen && selectedProperty && (
                         <div className="fixed inset-0 z-[218] flex items-center justify-center bg-black/60 p-4" onClick={() => setIsZweckentfremdungModalOpen(false)}>
                             <div className="bg-[#1C1F24] w-full max-w-lg rounded-xl border border-gray-700 shadow-xl flex flex-col max-h-[85vh] overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -8230,9 +8393,6 @@ Hero Rooms Team`;
                             </div>
                         </div>
                     )}
-                </div>
-            </section>
-
             {/* Card 2: Unit Details & Ausstattung — single editable form (details + amenities only; no building) */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <>
