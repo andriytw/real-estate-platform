@@ -888,6 +888,10 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const isEditingKautionCard = editingCard1Section === 'kaution';
   const isEditingDocumentsCard = editingCard1Section === 'documents';
   const isEditingRentTimelineCard = editingCard1Section === 'rentTimeline';
+  const isInteractiveHeaderClickTarget = (t: unknown): boolean => {
+    if (!(t instanceof Element)) return false;
+    return !!t.closest('button, a, input, select, textarea, [role="switch"], [role="menuitem"]');
+  };
   const [apartmentGroups, setApartmentGroups] = useState<ApartmentGroup[]>([]);
   const [apartmentGroupsLoaded, setApartmentGroupsLoaded] = useState(false);
   const [addApartmentGroupModalOpen, setAddApartmentGroupModalOpen] = useState(false);
@@ -6957,7 +6961,15 @@ Hero Rooms Team`;
 
             {/* Lease / rental — split into six cards (UI only) */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                <div className="flex justify-between items-center mb-4">
+                <div
+                    className="flex justify-between items-center mb-4 cursor-pointer select-none"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isLeaseRentalCardOpen}
+                    aria-controls="lease-rent-card-body"
+                    onClick={(e) => { if (isInteractiveHeaderClickTarget(e.target)) return; setIsLeaseRentalCardOpen((open) => !open); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsLeaseRentalCardOpen((open) => !open); } }}
+                >
                     <h2 id="lease-rent-card-heading" className="text-2xl font-bold text-white">Оренда квартири</h2>
                     <div className="flex items-center gap-2 shrink-0">
                         <button
@@ -7077,7 +7089,15 @@ Hero Rooms Team`;
                 )}
             </section>
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                <div className="flex justify-between items-center mb-4">
+                <div
+                    className="flex justify-between items-center mb-4 cursor-pointer select-none"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isCounterpartiesCardOpen}
+                    aria-controls="counterparties-card-body"
+                    onClick={(e) => { if (isInteractiveHeaderClickTarget(e.target)) return; setIsCounterpartiesCardOpen((open) => !open); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsCounterpartiesCardOpen((open) => !open); } }}
+                >
                     <h2 id="counterparties-card-heading" className="text-2xl font-bold text-white">Контрагенти</h2>
                     <div className="flex items-center gap-2 shrink-0">
                         <button
@@ -7367,7 +7387,15 @@ Hero Rooms Team`;
                 )}
             </section>
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                <div className="flex justify-between items-center mb-4">
+                <div
+                    className="flex justify-between items-center mb-4 cursor-pointer select-none"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isPaymentChainCardOpen}
+                    aria-controls="payment-chain-card-body"
+                    onClick={(e) => { if (isInteractiveHeaderClickTarget(e.target)) return; setIsPaymentChainCardOpen((open) => !open); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsPaymentChainCardOpen((open) => !open); } }}
+                >
                     <h2 id="payment-chain-card-heading" className="text-2xl font-bold text-white">Платіжний ланцюжок</h2>
                     <div className="flex items-center gap-2 shrink-0">
                         <button
@@ -7531,7 +7559,15 @@ Hero Rooms Team`;
                 )}
             </section>
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                <div className="flex justify-between items-center mb-4">
+                <div
+                    className="flex justify-between items-center mb-4 cursor-pointer select-none"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isKautionCardOpen}
+                    aria-controls="kaution-card-body"
+                    onClick={(e) => { if (isInteractiveHeaderClickTarget(e.target)) return; setIsKautionCardOpen((open) => !open); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsKautionCardOpen((open) => !open); } }}
+                >
                     <h2 id="kaution-card-heading" className="text-2xl font-bold text-white">Застава (Kaution)</h2>
                     <div className="flex items-center gap-2 shrink-0">
                         <button
@@ -7680,7 +7716,15 @@ Hero Rooms Team`;
                 )}
             </section>
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                <div className="flex justify-between items-center mb-4">
+                <div
+                    className="flex justify-between items-center mb-4 cursor-pointer select-none"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isDocumentsCardOpen}
+                    aria-controls="documents-card-body"
+                    onClick={(e) => { if (isInteractiveHeaderClickTarget(e.target)) return; setIsDocumentsCardOpen((open) => !open); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsDocumentsCardOpen((open) => !open); } }}
+                >
                     <h2 id="documents-card-heading" className="text-2xl font-bold text-white">Документи та договори</h2>
                     <div className="flex items-center gap-2 shrink-0">
                         <button
@@ -7966,7 +8010,15 @@ Hero Rooms Team`;
                 )}
             </section>
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
-                <div className="flex justify-between items-center mb-4">
+                <div
+                    className="flex justify-between items-center mb-4 cursor-pointer select-none"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isRentTimelineCardOpen}
+                    aria-controls="rent-timeline-card-body"
+                    onClick={(e) => { if (isInteractiveHeaderClickTarget(e.target)) return; setIsRentTimelineCardOpen((open) => !open); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsRentTimelineCardOpen((open) => !open); } }}
+                >
                     <h2 id="rent-timeline-card-heading" className="text-2xl font-bold text-white">Рентний таймлайн</h2>
                     <div className="flex items-center gap-2 shrink-0">
                         <button
@@ -8442,7 +8494,15 @@ Hero Rooms Team`;
             {/* Card 2: Unit Details & Ausstattung — single editable form (details + amenities only; no building) */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <>
-                <div className="flex justify-between items-center mb-4">
+                <div
+                    className="flex justify-between items-center mb-4 cursor-pointer select-none"
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isApartmentDataOpen}
+                    aria-controls="apartment-data-card-body"
+                    onClick={(e) => { if (isInteractiveHeaderClickTarget(e.target)) return; setIsApartmentDataOpen((o) => !o); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsApartmentDataOpen((o) => !o); } }}
+                >
                     <h2 id="apartment-data-card-heading" className="text-2xl font-bold text-white">🏠 Дані квартири</h2>
                     <div className="flex items-center gap-2 shrink-0">
                         <button
@@ -8684,7 +8744,14 @@ Hero Rooms Team`;
             {/* Інвойси (Витрати) — property expense invoices, per-row category */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-                    <div className="flex items-center gap-2">
+                    <div
+                        className="flex items-center gap-2 cursor-pointer select-none"
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={!isInvoicesCollapsed}
+                        onClick={(e) => { if (isInteractiveHeaderClickTarget(e.target)) return; setIsInvoicesCollapsed((prev) => !prev); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsInvoicesCollapsed((prev) => !prev); } }}
+                    >
                         <button
                             type="button"
                             aria-expanded={!isInvoicesCollapsed}
@@ -8969,7 +9036,14 @@ Hero Rooms Team`;
             {/* Inventory */}
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6">
                 <div className="flex justify-between items-center mb-4">
-                    <div className="flex items-center gap-2">
+                    <div
+                        className="flex items-center gap-2 cursor-pointer select-none"
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={!isPropertyInventoryCollapsed}
+                        onClick={(e) => { if (isInteractiveHeaderClickTarget(e.target)) return; setPropertyInventoryCollapsed(!isPropertyInventoryCollapsed); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPropertyInventoryCollapsed(!isPropertyInventoryCollapsed); } }}
+                    >
                         <button
                             type="button"
                             aria-expanded={!isPropertyInventoryCollapsed}
@@ -9212,7 +9286,14 @@ Hero Rooms Team`;
             {selectedPropertyId && (
             <section className="bg-[#1C1F24] p-6 rounded-xl border border-gray-800 shadow-sm mb-6" data-meter-tile="manual">
                 <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-                    <div className="flex items-center gap-2">
+                    <div
+                        className="flex items-center gap-2 cursor-pointer select-none"
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={!isMeterReadingsCollapsed}
+                        onClick={(e) => { if (isInteractiveHeaderClickTarget(e.target)) return; setMeterReadingsCollapsed(!isMeterReadingsCollapsed); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMeterReadingsCollapsed(!isMeterReadingsCollapsed); } }}
+                    >
                         <button
                             type="button"
                             aria-expanded={!isMeterReadingsCollapsed}
