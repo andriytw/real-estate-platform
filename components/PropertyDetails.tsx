@@ -353,7 +353,8 @@ const PropertyDetails: React.FC<PropertyDetailsProps> = ({
         </button>
         {!hideActions && (
           <>
-            <button 
+            <button
+              type="button"
               onClick={() => handleActionClick(() => {
                 if (isPublicMarketplaceProperty) {
                   setIsSendRequestModalOpen(true);

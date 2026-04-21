@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { requestsService } from '../services/supabaseService';
 import { createLeadFromRequest } from '../services/leadsService';
@@ -26,6 +26,25 @@ const SendRequestModal: React.FC<SendRequestModalProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Backdrop click-to-dismiss can immediately fire due to the same opening pointer gesture
+   * completing on the newly mounted dimmer. Guard only that immediate post-open click.
+   */
+  const ignoreBackdropCloseUntilMs = useRef(0);
+  useEffect(() => {
+    if (!isOpen) {
+      ignoreBackdropCloseUntilMs.current = 0;
+      return;
+    }
+    // Keep this very short: long enough to clear the same click, not noticeable to users.
+    ignoreBackdropCloseUntilMs.current = Date.now() + 120;
+  }, [isOpen]);
+
+  const handleBackdropClick = () => {
+    if (Date.now() < ignoreBackdropCloseUntilMs.current) return;
+    onClose();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,7 +99,7 @@ const SendRequestModal: React.FC<SendRequestModalProps> = ({
     <div className="fixed inset-0 z-[110] flex items-center justify-center px-4 font-sans">
       <div
         className="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
+        onClick={handleBackdropClick}
       />
       <div className="relative bg-[#1C1F24] border border-gray-700 rounded-xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
         <div className="flex items-center justify-between p-5 border-b border-gray-800">
