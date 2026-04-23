@@ -4357,7 +4357,11 @@ export const propertyDocumentsService = {
     notes?: string | null;
     meta?: Record<string, unknown> | null;
   }): Promise<PropertyDocument> {
-    if ((params.filePath == null || String(params.filePath).trim() === '') && params.type !== 'zvu') {
+    if (
+      (params.filePath == null || String(params.filePath).trim() === '') &&
+      params.type !== 'zvu' &&
+      params.type !== 'handover_protocol'
+    ) {
       throw new Error('filePath is required for this document type');
     }
     // Guard against accidentally storing URLs into DB (they will later break signed URL / delete).
