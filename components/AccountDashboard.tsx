@@ -7902,7 +7902,52 @@ Hero Rooms Team`;
                                                                 <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR}`}><select value={String(newDocMeta.firmaId ?? '')} onChange={e => { const id = e.target.value; const entry = addressBookEntries.find(x => x.id === id); setNewDocMeta(m => ({ ...m, firmaId: id, firmaName: entry?.name ?? '' })); }} className={docInput}><option value="">—</option>{addressBookEntries.map(e => <option key={e.id ?? e.name} value={e.id ?? ''}>{e.name}</option>)}</select></td>
                                                                 <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR}`}><select value={String(newDocMeta.ownerId ?? '')} onChange={e => { const id = e.target.value; const entry = addressBookEntries.find(x => x.id === id); setNewDocMeta(m => ({ ...m, ownerId: id, ownerName: entry?.name ?? '' })); }} className={docInput}><option value="">—</option>{addressBookEntries.map(e => <option key={e.id ?? e.name} value={e.id ?? ''}>{e.name}</option>)}</select></td>
                                                                 <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR}`}><select value={String(newDocMeta.party ?? '')} onChange={e => setNewDocMeta(m => ({ ...m, party: e.target.value }))} className={docInput}><option value="">—</option><option value="1">1</option><option value="2">2</option></select></td>
-                                                                <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR}`}><div className="flex items-center justify-end gap-2"><button type="button" onClick={() => addDocumentFileInputRef.current?.click()} className="p-1 text-gray-400 hover:text-white rounded" title="Файл"><Paperclip className="w-3.5 h-3.5" /></button><span className={`${trunc} max-w-16 text-gray-500`} title={newDocFile?.name}>{newDocFile?.name ?? '—'}</span><button type="button" disabled={addingDocument || !newDocFile} onClick={async () => { if (!selectedProperty || !newDocFile) return; const datum = String(newDocMeta.datum ?? '').trim(); if (!datum) { setAddDocumentError('Datum обовʼязковий'); return; } setAddingDocument(true); setAddDocumentError(null); const docId = crypto.randomUUID(); let filePath: string | null = null; try { filePath = await propertyDocumentsService.uploadPropertyDocumentFile(newDocFile, selectedProperty.id, 'zvu', docId); const meta = { datum: newDocMeta.datum, nr: newDocMeta.nr, firmaId: newDocMeta.firmaId, firmaName: newDocMeta.firmaName, ownerId: newDocMeta.ownerId, ownerName: newDocMeta.ownerName, party: newDocMeta.party }; await propertyDocumentsService.createPropertyDocument({ id: docId, propertyId: selectedProperty.id, type: 'zvu', filePath, title: null, meta }); const list = await propertyDocumentsService.listPropertyDocuments(selectedProperty.id); setCard1Documents(list); setNewDocMeta(getDefaultDocMeta('zvu')); setNewDocFile(null); setShowAddDocumentForm(false); if (addDocumentFileInputRef.current) addDocumentFileInputRef.current.value = ''; } catch (e) { if (filePath) propertyDocumentsService.removePropertyDocumentFile(filePath).catch(() => {}); setAddDocumentError(e instanceof Error ? e.message : 'Помилка'); } finally { setAddingDocument(false); } }} className="p-1 text-emerald-500 hover:text-emerald-400 rounded" title="Зберегти"><Check className="w-3.5 h-3.5" /></button><button type="button" onClick={() => { setShowAddDocumentForm(false); setAddDocumentError(null); setNewDocMeta({}); setNewDocFile(null); if (addDocumentFileInputRef.current) addDocumentFileInputRef.current.value = ''; }} className="p-1 text-gray-400 hover:text-white rounded" title="Скасувати"><X className="w-3.5 h-3.5" /></button></div></td></tr>
+                                                                <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR}`}>
+                                                                  <div className="flex items-center justify-end gap-2">
+                                                                    <button type="button" onClick={() => addDocumentFileInputRef.current?.click()} className="p-1 text-gray-400 hover:text-white rounded" title="Файл"><Paperclip className="w-3.5 h-3.5" /></button>
+                                                                    <span className={`${trunc} max-w-16 text-gray-500`} title={newDocFile?.name}>{newDocFile?.name ?? '—'}</span>
+                                                                    <button
+                                                                      type="button"
+                                                                      disabled={addingDocument}
+                                                                      onClick={async () => {
+                                                                        if (!selectedProperty) return;
+                                                                        const datum = String(newDocMeta.datum ?? '').trim();
+                                                                        if (!datum) {
+                                                                          setAddDocumentError('Datum обовʼязковий');
+                                                                          return;
+                                                                        }
+                                                                        setAddingDocument(true);
+                                                                        setAddDocumentError(null);
+                                                                        const docId = crypto.randomUUID();
+                                                                        let filePath: string | null = null;
+                                                                        try {
+                                                                          if (newDocFile) {
+                                                                            filePath = await propertyDocumentsService.uploadPropertyDocumentFile(newDocFile, selectedProperty.id, 'zvu', docId);
+                                                                          }
+                                                                          const meta = { datum: newDocMeta.datum, nr: newDocMeta.nr, firmaId: newDocMeta.firmaId, firmaName: newDocMeta.firmaName, ownerId: newDocMeta.ownerId, ownerName: newDocMeta.ownerName, party: newDocMeta.party };
+                                                                          await propertyDocumentsService.createPropertyDocument({ id: docId, propertyId: selectedProperty.id, type: 'zvu', filePath, title: null, meta });
+                                                                          const list = await propertyDocumentsService.listPropertyDocuments(selectedProperty.id);
+                                                                          setCard1Documents(list);
+                                                                          setNewDocMeta(getDefaultDocMeta('zvu'));
+                                                                          setNewDocFile(null);
+                                                                          setShowAddDocumentForm(false);
+                                                                          if (addDocumentFileInputRef.current) addDocumentFileInputRef.current.value = '';
+                                                                        } catch (e) {
+                                                                          if (filePath) propertyDocumentsService.removePropertyDocumentFile(filePath).catch(() => {});
+                                                                          setAddDocumentError(e instanceof Error ? e.message : 'Помилка');
+                                                                        } finally {
+                                                                          setAddingDocument(false);
+                                                                        }
+                                                                      }}
+                                                                      className="p-1 text-emerald-500 hover:text-emerald-400 rounded"
+                                                                      title="Зберегти"
+                                                                    >
+                                                                      <Check className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                    <button type="button" onClick={() => { setShowAddDocumentForm(false); setAddDocumentError(null); setNewDocMeta({}); setNewDocFile(null); if (addDocumentFileInputRef.current) addDocumentFileInputRef.current.value = ''; }} className="p-1 text-gray-400 hover:text-white rounded" title="Скасувати"><X className="w-3.5 h-3.5" /></button>
+                                                                  </div>
+                                                                </td>
+                                                            </tr>
                                                         )}
                                                         {showAddDocumentForm && newDocType === 'zvu' && addDocumentError && <tr><td colSpan={6} className={`${DOC_TABLE.empty} text-red-400 text-xs`}>{addDocumentError}</td></tr>}
                                                         {card1Documents.filter(d => d.type === 'zvu').length === 0 && !(showAddDocumentForm && newDocType === 'zvu') ? <tr><td colSpan={6} className={DOC_TABLE.empty}>Keine Einträge</td></tr> : card1Documents.filter(d => d.type === 'zvu').map((doc) => {
@@ -7910,7 +7955,42 @@ Hero Rooms Team`;
                                                             const firmaName = (m.firmaId ? addressBookEntries.find(e => e.id === m.firmaId)?.name : null) ?? String(m.firmaName ?? '—');
                                                             const ownerName = (m.ownerId ? addressBookEntries.find(e => e.id === m.ownerId)?.name : null) ?? String(m.ownerName ?? '—');
                                                             const datumS = String(m.datum ?? '—'); const nrS = String(m.nr ?? '—'); const partyS = String(m.party ?? '—');
-                                                            return <tr key={doc.id} className={DOC_TABLE.row}><td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${monoNum}`} title={datumS}>{datumS}</td><td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${trunc}`} title={nrS}>{nrS}</td><td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${trunc}`} title={firmaName}>{firmaName}</td><td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${trunc}`} title={ownerName}>{ownerName}</td><td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${monoNum}`}>{partyS}</td><td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR}`}><div className="flex items-center justify-end gap-2"><button type="button" onClick={async () => { try { const url = await propertyDocumentsService.getDocumentSignedUrl(doc.filePath); setDocPreview({ open: true, url, title: doc.title ?? DOCUMENT_TYPE_LABELS[doc.type] }); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1 text-gray-400 hover:text-white rounded" title="Переглянути"><Eye className="w-4 h-4" /></button><button type="button" onClick={() => { if (window.confirm('Видалити документ безповоротно?')) { const pid = selectedProperty!.id; propertyDocumentsService.deletePropertyDocumentHard(doc).then(() => {}).catch((e) => alert(e?.message || 'Помилка')).finally(() => { propertyDocumentsService.listPropertyDocuments(pid).then(setCard1Documents); }); } }} className="p-1 text-red-400 hover:text-red-300 rounded" title="Видалити"><Trash2 className="w-4 h-4" /></button></div></td></tr>;
+                                                            const hasFile = doc.filePath != null;
+                                                            const viewTitle = hasFile ? 'Переглянути' : 'No document attached';
+                                                            return (
+                                                              <tr key={doc.id} className={DOC_TABLE.row}>
+                                                                <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${monoNum}`} title={datumS}>{datumS}</td>
+                                                                <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${trunc}`} title={nrS}>{nrS}</td>
+                                                                <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${trunc}`} title={firmaName}>{firmaName}</td>
+                                                                <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${trunc}`} title={ownerName}>{ownerName}</td>
+                                                                <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${monoNum}`}>{partyS}</td>
+                                                                <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR}`}>
+                                                                  <div className="flex items-center justify-end gap-2">
+                                                                    <button
+                                                                      type="button"
+                                                                      disabled={!hasFile}
+                                                                      onClick={
+                                                                        hasFile
+                                                                          ? async () => {
+                                                                              try {
+                                                                                const url = await propertyDocumentsService.getDocumentSignedUrl(doc.filePath as string);
+                                                                                setDocPreview({ open: true, url, title: doc.title ?? DOCUMENT_TYPE_LABELS[doc.type] });
+                                                                              } catch (e) {
+                                                                                alert(e instanceof Error ? e.message : 'Не вдалося відкрити');
+                                                                              }
+                                                                            }
+                                                                          : undefined
+                                                                      }
+                                                                      className={`p-1 rounded ${hasFile ? 'text-gray-400 hover:text-white' : 'text-gray-600 cursor-not-allowed'}`}
+                                                                      title={viewTitle}
+                                                                    >
+                                                                      <Eye className="w-4 h-4" />
+                                                                    </button>
+                                                                    <button type="button" onClick={() => { if (window.confirm('Видалити документ безповоротно?')) { const pid = selectedProperty!.id; propertyDocumentsService.deletePropertyDocumentHard(doc).then(() => {}).catch((e) => alert(e?.message || 'Помилка')).finally(() => { propertyDocumentsService.listPropertyDocuments(pid).then(setCard1Documents); }); } }} className="p-1 text-red-400 hover:text-red-300 rounded" title="Видалити"><Trash2 className="w-4 h-4" /></button>
+                                                                  </div>
+                                                                </td>
+                                                              </tr>
+                                                            );
                                                         })}
                                                         </tbody>
                                                     </table>

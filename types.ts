@@ -152,7 +152,7 @@ export interface PropertyDocument {
   id: string;
   propertyId: string;
   type: PropertyDocumentType;
-  filePath: string;
+  filePath: string | null;
   title?: string | null;
   docDate?: string | null;
   notes?: string | null;

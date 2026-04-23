@@ -4271,7 +4271,7 @@ function transformPropertyDocumentFromDB(db: {
   id: string;
   property_id: string;
   type: string;
-  file_path: string;
+  file_path: string | null;
   title?: string | null;
   doc_date?: string | null;
   notes?: string | null;
@@ -4282,7 +4282,8 @@ function transformPropertyDocumentFromDB(db: {
     id: db.id,
     propertyId: db.property_id,
     type: db.type as PropertyDocumentType,
-    filePath: db.file_path,
+    // Normalize missing/empty paths strictly to null (never '')
+    filePath: (db.file_path == null || String(db.file_path).trim() === '') ? null : db.file_path,
     title: db.title ?? undefined,
     docDate: db.doc_date ?? undefined,
     createdAt: db.created_at,
@@ -4307,12 +4308,15 @@ export const propertyDocumentsService = {
     id: string;
     propertyId: string;
     type: PropertyDocumentType;
-    filePath: string;
+    filePath: string | null;
     title?: string | null;
     docDate?: string | null;
     notes?: string | null;
     meta?: Record<string, unknown> | null;
   }): Promise<PropertyDocument> {
+    if ((params.filePath == null || String(params.filePath).trim() === '') && params.type !== 'zvu') {
+      throw new Error('filePath is required for this document type');
+    }
     const meta = params.meta ?? {};
     let docDate: string | null = params.docDate ?? null;
     if (docDate == null || docDate === '') {
@@ -4350,6 +4354,15 @@ export const propertyDocumentsService = {
 
   /** Hard delete: 1) remove file from Storage, 2) delete DB row. If storage delete fails, DB is not touched and error is thrown. */
   async deletePropertyDocumentHard(doc: PropertyDocument): Promise<void> {
+    // Some doc types (e.g. ZVU) may not have an attached file.
+    if (doc.filePath == null || String(doc.filePath).trim() === '') {
+      const { error: dbError } = await supabase
+        .from('property_documents')
+        .delete()
+        .eq('id', doc.id);
+      if (dbError) throw new Error(dbError.message || 'Failed to delete document record');
+      return;
+    }
     const { error: storageError } = await supabase.storage
       .from(PROPERTY_DOCS_BUCKET)
       .remove([doc.filePath]);
