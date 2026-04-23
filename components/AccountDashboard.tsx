@@ -3210,8 +3210,9 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         try {
           const user = await safeGetUser();
           if (user?.id) {
-            const isManager = worker?.role === 'manager' || worker?.role === 'super_manager';
-            const list = isManager ? await addressBookPartiesService.listShared() : await addressBookPartiesService.listByRole(user.id);
+            // Always load via shared query. RLS keeps non-managers scoped to own rows,
+            // while managers/super_manager see the shared workspace list.
+            const list = await addressBookPartiesService.listShared();
             setAddressBookEntries(list);
             setAddressBookLoaded(true);
           }
