@@ -1588,6 +1588,18 @@ export const addressBookPartiesService = {
     return (data ?? []).map(addressBookRowFromDB);
   },
 
+  async listShared(role?: AddressBookPartyRole): Promise<AddressBookPartyEntry[]> {
+    let q = supabase
+      .from('address_book_parties')
+      .select('*')
+      .order('role', { ascending: true })
+      .order('name', { ascending: true });
+    if (role) q = q.eq('role', role);
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data ?? []).map(addressBookRowFromDB);
+  },
+
   /** Upsert by (owner_user_id, role, name, iban, street, zip, city). Gets user inside for RLS; normalizes so phones/emails are always arrays (NOT NULL in DB). */
   async upsertMany(entries: AddressBookPartyEntry[]): Promise<void> {
     if (!entries.length) return;
@@ -1616,18 +1628,15 @@ export const addressBookPartiesService = {
     }));
     const { error } = await supabase
       .from('address_book_parties')
-      .upsert(rows, { onConflict: 'owner_user_id,role,name,iban,street,zip,city' });
+      .upsert(rows, { onConflict: 'dedupe_key' });
     if (error) throw error;
   },
 
   async deleteById(id: string): Promise<void> {
-    const user = await safeGetUser();
-    if (!user) throw new Error('Not authenticated');
     const { error } = await supabase
       .from('address_book_parties')
       .delete()
-      .eq('id', id)
-      .eq('owner_user_id', user.id);
+      .eq('id', id);
     if (error) throw error;
   },
 };

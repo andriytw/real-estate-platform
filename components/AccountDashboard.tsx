@@ -3210,7 +3210,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
         try {
           const user = await safeGetUser();
           if (user?.id) {
-            const list = await addressBookPartiesService.listByRole(user.id);
+            const isManager = worker?.role === 'manager' || worker?.role === 'super_manager';
+            const list = isManager ? await addressBookPartiesService.listShared() : await addressBookPartiesService.listByRole(user.id);
             setAddressBookEntries(list);
             setAddressBookLoaded(true);
           }
