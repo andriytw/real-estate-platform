@@ -7699,14 +7699,153 @@ Hero Rooms Team`;
                                                                 <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR}`}><input value={String(newDocMeta.nr ?? '')} onChange={e => setNewDocMeta(m => ({ ...m, nr: e.target.value }))} className={docInput} /></td>
                                                                 <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR}`}><select value={String(newDocMeta.vonId ?? '')} onChange={e => { const id = e.target.value; const entry = addressBookEntries.find(x => x.id === id); setNewDocMeta(m => ({ ...m, vonId: id, vonName: entry?.name ?? '' })); }} className={docInput}><option value="">—</option>{addressBookEntries.map(e => <option key={e.id ?? e.name} value={e.id ?? ''}>{e.name}</option>)}</select></td>
                                                                 <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR}`}><select value={String(newDocMeta.anId ?? '')} onChange={e => { const id = e.target.value; const entry = addressBookEntries.find(x => x.id === id); setNewDocMeta(m => ({ ...m, anId: id, anName: entry?.name ?? '' })); }} className={docInput}><option value="">—</option>{addressBookEntries.map(e => <option key={e.id ?? e.name} value={e.id ?? ''}>{e.name}</option>)}</select></td>
-                                                                <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR}`}><div className="flex items-center justify-end gap-2"><button type="button" onClick={() => addDocumentFileInputRef.current?.click()} className="p-1 text-gray-400 hover:text-white rounded" title="Файл"><Paperclip className="w-3.5 h-3.5" /></button><span className={`${trunc} max-w-16 text-gray-500`} title={newDocFile?.name}>{newDocFile?.name ?? '—'}</span><button type="button" disabled={addingDocument || !newDocFile} onClick={async () => { if (!selectedProperty || !newDocFile) return; if (addressBookEntries.length === 0) { setAddDocumentError('Немає контрагентів — додай у Контрагенти'); return; } const datum = String(newDocMeta.datum ?? '').trim(); const vonId = String(newDocMeta.vonId ?? '').trim(); const anId = String(newDocMeta.anId ?? '').trim(); if (!datum || !vonId || !anId) { setAddDocumentError('Datum, Von та An обовʼязкові'); return; } setAddingDocument(true); setAddDocumentError(null); const docId = crypto.randomUUID(); let filePath: string | null = null; try { filePath = await propertyDocumentsService.uploadPropertyDocumentFile(newDocFile, selectedProperty.id, 'handover_protocol', docId); const vonName = String(newDocMeta.vonName ?? ''); const anName = String(newDocMeta.anName ?? ''); const meta = { datum, nr: newDocMeta.nr, vonId, vonName, anId, anName, von: vonName, an: anName }; await propertyDocumentsService.createPropertyDocument({ id: docId, propertyId: selectedProperty.id, type: 'handover_protocol', filePath, title: null, meta }); const list = await propertyDocumentsService.listPropertyDocuments(selectedProperty.id); setCard1Documents(list); setNewDocMeta(getDefaultDocMeta('handover_protocol')); setNewDocFile(null); setShowAddDocumentForm(false); if (addDocumentFileInputRef.current) addDocumentFileInputRef.current.value = ''; } catch (e) { if (filePath) propertyDocumentsService.removePropertyDocumentFile(filePath).catch(() => {}); setAddDocumentError(e instanceof Error ? e.message : 'Помилка'); } finally { setAddingDocument(false); } }} className="p-1 text-emerald-500 hover:text-emerald-400 rounded" title="Зберегти"><Check className="w-3.5 h-3.5" /></button><button type="button" onClick={() => { setShowAddDocumentForm(false); setAddDocumentError(null); setNewDocMeta({}); setNewDocFile(null); if (addDocumentFileInputRef.current) addDocumentFileInputRef.current.value = ''; }} className="p-1 text-gray-400 hover:text-white rounded" title="Скасувати"><X className="w-3.5 h-3.5" /></button></div></td></tr>
+                                                                <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR}`}>
+                                                                    <div className="flex items-center justify-end gap-2">
+                                                                        <button type="button" onClick={() => addDocumentFileInputRef.current?.click()} className="p-1 text-gray-400 hover:text-white rounded" title="Файл"><Paperclip className="w-3.5 h-3.5" /></button>
+                                                                        <span className={`${trunc} max-w-16 text-gray-500`} title={newDocFile?.name}>{newDocFile?.name ?? '—'}</span>
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={addingDocument || !newDocFile}
+                                                                            onClick={async () => {
+                                                                                if (!selectedProperty || !newDocFile) return;
+
+                                                                                const diagId = crypto.randomUUID();
+                                                                                let currentUserId: string | null = null;
+                                                                                try {
+                                                                                    const u = await safeGetUser();
+                                                                                    currentUserId = u?.id ?? null;
+                                                                                } catch {}
+
+                                                                                // Temporary diagnostics scoped ONLY to Übergabeprotokoll
+                                                                                console.log('UEGP_VALIDATE_OK', {
+                                                                                    diagId,
+                                                                                    userId: currentUserId,
+                                                                                    propertyId: selectedProperty.id,
+                                                                                    addressBookEntries: addressBookEntries.length,
+                                                                                });
+
+                                                                                if (addressBookEntries.length === 0) {
+                                                                                    setAddDocumentError('Немає контрагентів — додай у Контрагенти');
+                                                                                    console.warn('UEGP_BLOCKED_NO_PARTIES', { diagId, userId: currentUserId, propertyId: selectedProperty.id });
+                                                                                    return;
+                                                                                }
+                                                                                const datum = String(newDocMeta.datum ?? '').trim();
+                                                                                const vonId = String(newDocMeta.vonId ?? '').trim();
+                                                                                const anId = String(newDocMeta.anId ?? '').trim();
+                                                                                if (!datum || !vonId || !anId) {
+                                                                                    setAddDocumentError('Datum, Von та An обовʼязкові');
+                                                                                    console.warn('UEGP_BLOCKED_REQUIRED_FIELDS', { diagId, userId: currentUserId, propertyId: selectedProperty.id, datum, vonId, anId });
+                                                                                    return;
+                                                                                }
+
+                                                                                setAddingDocument(true);
+                                                                                setAddDocumentError(null);
+
+                                                                                const docId = crypto.randomUUID();
+                                                                                let uploadReturnFilePath: string | null = null;
+                                                                                try {
+                                                                                    console.log('UEGP_UPLOAD_START', { diagId, userId: currentUserId, propertyId: selectedProperty.id, docId });
+                                                                                    uploadReturnFilePath = await propertyDocumentsService.uploadPropertyDocumentFile(
+                                                                                        newDocFile,
+                                                                                        selectedProperty.id,
+                                                                                        'handover_protocol',
+                                                                                        docId
+                                                                                    );
+                                                                                    // (1) return value from uploadPropertyDocumentFile(...)
+                                                                                    console.log('UEGP_UPLOAD_OK', { diagId, docId, filePath: uploadReturnFilePath });
+
+                                                                                    const vonName = String(newDocMeta.vonName ?? '');
+                                                                                    const anName = String(newDocMeta.anName ?? '');
+                                                                                    const meta = { datum, nr: newDocMeta.nr, vonId, vonName, anId, anName, von: vonName, an: anName };
+
+                                                                                    console.log('UEGP_INSERT_START', { diagId, propertyId: selectedProperty.id, docId, filePath: uploadReturnFilePath });
+                                                                                    const created = await propertyDocumentsService.createPropertyDocument({
+                                                                                        id: docId,
+                                                                                        propertyId: selectedProperty.id,
+                                                                                        type: 'handover_protocol',
+                                                                                        filePath: uploadReturnFilePath,
+                                                                                        title: null,
+                                                                                        meta,
+                                                                                    });
+                                                                                    // (2) value written into property_documents.file_path (read back)
+                                                                                    console.log('UEGP_INSERT_OK', { diagId, docId, dbFilePath: created.filePath });
+
+                                                                                    const list = await propertyDocumentsService.listPropertyDocuments(selectedProperty.id);
+                                                                                    setCard1Documents(list);
+                                                                                    setNewDocMeta(getDefaultDocMeta('handover_protocol'));
+                                                                                    setNewDocFile(null);
+                                                                                    setShowAddDocumentForm(false);
+                                                                                    if (addDocumentFileInputRef.current) addDocumentFileInputRef.current.value = '';
+                                                                                } catch (e: any) {
+                                                                                    const errObj = {
+                                                                                        message: e?.message ?? String(e),
+                                                                                        code: e?.code,
+                                                                                        details: e?.details,
+                                                                                        hint: e?.hint,
+                                                                                        status: e?.status,
+                                                                                    };
+                                                                                    console.warn('UEGP_ERROR', { diagId, docId, uploadReturnFilePath, err: errObj });
+                                                                                    if (uploadReturnFilePath) propertyDocumentsService.removePropertyDocumentFile(uploadReturnFilePath).catch(() => {});
+                                                                                    setAddDocumentError(e instanceof Error ? e.message : 'Помилка');
+                                                                                } finally {
+                                                                                    setAddingDocument(false);
+                                                                                }
+                                                                            }}
+                                                                            className="p-1 text-emerald-500 hover:text-emerald-400 rounded"
+                                                                            title="Зберегти"
+                                                                        >
+                                                                            <Check className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                        <button type="button" onClick={() => { setShowAddDocumentForm(false); setAddDocumentError(null); setNewDocMeta({}); setNewDocFile(null); if (addDocumentFileInputRef.current) addDocumentFileInputRef.current.value = ''; }} className="p-1 text-gray-400 hover:text-white rounded" title="Скасувати"><X className="w-3.5 h-3.5" /></button>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
                                                         )}
                                                         {showAddDocumentForm && newDocType === 'handover_protocol' && addDocumentError && <tr><td colSpan={5} className={`${DOC_TABLE.empty} text-red-400 text-xs`}>{addDocumentError}</td></tr>}
                                                         {card1Documents.filter(d => d.type === 'handover_protocol').length === 0 && !(showAddDocumentForm && newDocType === 'handover_protocol') ? <tr><td colSpan={5} className={DOC_TABLE.empty}>Keine Einträge</td></tr> : card1Documents.filter(d => d.type === 'handover_protocol').map((doc) => {
                                                             const m = (doc.meta || {}) as Record<string, unknown>;
                                                             const vonDisplay = (m.vonId ? addressBookEntries.find(e => e.id === m.vonId)?.name : null) ?? String(m.vonName ?? m.von ?? '—');
                                                             const anDisplay = (m.anId ? addressBookEntries.find(e => e.id === m.anId)?.name : null) ?? String(m.anName ?? m.an ?? '—');
-                                                            return <tr key={doc.id} className={DOC_TABLE.row}><td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${monoNum}`} title={String(m.datum ?? '—')}>{String(m.datum ?? '—')}</td><td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${trunc}`} title={String(m.nr ?? '—')}>{String(m.nr ?? '—')}</td><td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${trunc}`} title={vonDisplay}>{vonDisplay}</td><td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${trunc}`} title={anDisplay}>{anDisplay}</td><td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR}`}><div className="flex items-center justify-end gap-2"><button type="button" onClick={async () => { try { const url = await propertyDocumentsService.getDocumentSignedUrl(doc.filePath); setDocPreview({ open: true, url, title: doc.title ?? DOCUMENT_TYPE_LABELS[doc.type] }); } catch (e) { alert(e instanceof Error ? e.message : 'Не вдалося відкрити'); } }} className="p-1 text-gray-400 hover:text-white rounded" title="Переглянути"><Eye className="w-4 h-4" /></button><button type="button" onClick={() => { if (window.confirm('Видалити документ безповоротно?')) { const pid = selectedProperty!.id; propertyDocumentsService.deletePropertyDocumentHard(doc).then(() => {}).catch((e) => alert(e?.message || 'Помилка')).finally(() => { propertyDocumentsService.listPropertyDocuments(pid).then(setCard1Documents); }); } }} className="p-1 text-red-400 hover:text-red-300 rounded" title="Видалити"><Trash2 className="w-4 h-4" /></button></div></td></tr>;
+                                                            return (
+                                                                <tr key={doc.id} className={DOC_TABLE.row}>
+                                                                    <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${monoNum}`} title={String(m.datum ?? '—')}>{String(m.datum ?? '—')}</td>
+                                                                    <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${trunc}`} title={String(m.nr ?? '—')}>{String(m.nr ?? '—')}</td>
+                                                                    <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${trunc}`} title={vonDisplay}>{vonDisplay}</td>
+                                                                    <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR} ${trunc}`} title={anDisplay}>{anDisplay}</td>
+                                                                    <td className={`${DOC_TABLE.td} ${DOC_TABLE.cellR}`}>
+                                                                        <div className="flex items-center justify-end gap-2">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={async () => {
+                                                                                    const diagId = crypto.randomUUID();
+                                                                                    // (3) value passed into getDocumentSignedUrl(...)
+                                                                                    console.log('UEGP_OPEN_START', { diagId, docId: doc.id, filePathArg: doc.filePath });
+                                                                                    try {
+                                                                                        const url = await propertyDocumentsService.getDocumentSignedUrl(doc.filePath);
+                                                                                        console.log('UEGP_OPEN_OK', { diagId, docId: doc.id });
+                                                                                        setDocPreview({ open: true, url, title: doc.title ?? DOCUMENT_TYPE_LABELS[doc.type] });
+                                                                                    } catch (e: any) {
+                                                                                        const errObj = {
+                                                                                            message: e?.message ?? String(e),
+                                                                                            code: e?.code,
+                                                                                            details: e?.details,
+                                                                                            hint: e?.hint,
+                                                                                            status: e?.status,
+                                                                                        };
+                                                                                        console.warn('UEGP_OPEN_ERR', { diagId, docId: doc.id, filePathArg: doc.filePath, err: errObj });
+                                                                                        alert(e instanceof Error ? e.message : 'Не вдалося відкрити');
+                                                                                    }
+                                                                                }}
+                                                                                className="p-1 text-gray-400 hover:text-white rounded"
+                                                                                title="Переглянути"
+                                                                            >
+                                                                                <Eye className="w-4 h-4" />
+                                                                            </button>
+                                                                            <button type="button" onClick={() => { if (window.confirm('Видалити документ безповоротно?')) { const pid = selectedProperty!.id; propertyDocumentsService.deletePropertyDocumentHard(doc).then(() => {}).catch((e) => alert(e?.message || 'Помилка')).finally(() => { propertyDocumentsService.listPropertyDocuments(pid).then(setCard1Documents); }); } }} className="p-1 text-red-400 hover:text-red-300 rounded" title="Видалити"><Trash2 className="w-4 h-4" /></button>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            );
                                                         })}
                                                         </tbody>
                                                     </table>

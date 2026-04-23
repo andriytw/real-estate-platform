@@ -4267,6 +4267,49 @@ export const fileUploadService = {
 // ==================== PROPERTY DOCUMENTS (Card 1 Documents Center) ====================
 const PROPERTY_DOCS_BUCKET = 'property-docs';
 
+function normalizePropertyDocsObjectKey(input: string): string {
+  const raw = String(input ?? '').trim();
+  if (!raw) throw new Error('Invalid file path');
+
+  // Common cases we have seen in the wild:
+  // - correct: "properties/<propertyId>/<type>/<docId>_<name>.pdf"
+  // - bucket-prefixed: "property-docs/properties/..."
+  // - full URLs: ".../storage/v1/object/public/property-docs/properties/..."
+  // - signed URLs: ".../storage/v1/object/sign/property-docs/properties/...?...token=..."
+  if (raw.startsWith('property-docs/')) return raw.slice('property-docs/'.length);
+
+  // Extract from Supabase Storage URLs (public or signed)
+  if (raw.startsWith('http://') || raw.startsWith('https://')) {
+    try {
+      const u = new URL(raw);
+      const p = u.pathname;
+      const markers = [
+        '/storage/v1/object/public/property-docs/',
+        '/storage/v1/object/sign/property-docs/',
+        '/storage/v1/object/authenticated/property-docs/',
+      ];
+      for (const m of markers) {
+        const idx = p.indexOf(m);
+        if (idx !== -1) {
+          const key = p.slice(idx + m.length);
+          if (!key) break;
+          return decodeURIComponent(key);
+        }
+      }
+    } catch {
+      // fall through to error below
+    }
+    throw new Error('Invalid file path format (expected storage object key, got URL)');
+  }
+
+  // If we got a path that still contains "/object/...", it's almost certainly an URL-path fragment.
+  if (raw.includes('/storage/v1/object/') || raw.includes('/object/public/') || raw.includes('/object/sign/')) {
+    throw new Error('Invalid file path format (expected storage object key)');
+  }
+
+  return raw;
+}
+
 function transformPropertyDocumentFromDB(db: {
   id: string;
   property_id: string;
@@ -4317,6 +4360,16 @@ export const propertyDocumentsService = {
     if ((params.filePath == null || String(params.filePath).trim() === '') && params.type !== 'zvu') {
       throw new Error('filePath is required for this document type');
     }
+    // Guard against accidentally storing URLs into DB (they will later break signed URL / delete).
+    if (params.filePath != null) {
+      const fp = String(params.filePath).trim();
+      if (fp.startsWith('http://') || fp.startsWith('https://') || fp.includes('/storage/v1/object/')) {
+        throw new Error('Invalid filePath: must be a storage object key (e.g. properties/...)');
+      }
+      if (fp.startsWith('property-docs/')) {
+        throw new Error('Invalid filePath: must not include bucket prefix');
+      }
+    }
     const meta = params.meta ?? {};
     let docDate: string | null = params.docDate ?? null;
     if (docDate == null || docDate === '') {
@@ -4349,7 +4402,8 @@ export const propertyDocumentsService = {
 
   /** Best-effort remove file from storage (e.g. after failed insert to avoid orphan). */
   async removePropertyDocumentFile(filePath: string): Promise<void> {
-    await supabase.storage.from(PROPERTY_DOCS_BUCKET).remove([filePath]);
+    const key = normalizePropertyDocsObjectKey(filePath);
+    await supabase.storage.from(PROPERTY_DOCS_BUCKET).remove([key]);
   },
 
   /** Hard delete: 1) remove file from Storage, 2) delete DB row. If storage delete fails, DB is not touched and error is thrown. */
@@ -4363,9 +4417,8 @@ export const propertyDocumentsService = {
       if (dbError) throw new Error(dbError.message || 'Failed to delete document record');
       return;
     }
-    const { error: storageError } = await supabase.storage
-      .from(PROPERTY_DOCS_BUCKET)
-      .remove([doc.filePath]);
+    const key = normalizePropertyDocsObjectKey(doc.filePath);
+    const { error: storageError } = await supabase.storage.from(PROPERTY_DOCS_BUCKET).remove([key]);
     if (storageError) throw new Error(storageError.message || 'Failed to delete file from storage');
     const { error: dbError } = await supabase
       .from('property_documents')
@@ -4376,9 +4429,10 @@ export const propertyDocumentsService = {
 
   /** Create signed URL for viewing/downloading (bucket is private). Expiry in seconds. */
   async getDocumentSignedUrl(filePath: string, expirySeconds: number = 3600): Promise<string> {
+    const key = normalizePropertyDocsObjectKey(filePath);
     const { data, error } = await supabase.storage
       .from(PROPERTY_DOCS_BUCKET)
-      .createSignedUrl(filePath, expirySeconds);
+      .createSignedUrl(key, expirySeconds);
     if (error) throw new Error(error.message || 'Failed to get document URL');
     if (!data?.signedUrl) throw new Error('No signed URL returned');
     return data.signedUrl;
