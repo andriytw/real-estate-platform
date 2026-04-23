@@ -84,6 +84,7 @@ import { propertyMediaService, type PropertyMediaAssetRow, type PropertyMediaAss
 import { ApartmentStatisticsSection } from './ApartmentStatisticsSection';
 import { VirtualDocumentsManager } from './VirtualDocumentsManager';
 import PropertiesDashboardPhase1 from './properties/PropertiesDashboardPhase1';
+import { recognizeInvoiceWithOcr } from '../services/ocrInvoiceClient';
 import { formatLocalDateYmd } from '../lib/localDate';
 import { hasBlockOverlapForPropertyHalfOpen, isPropertyBlockActiveOnDate } from '../lib/oooBlocks';
 
@@ -1817,99 +1818,40 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       setTransferError('Please upload a file first');
       return;
     }
+    if (isOcrProcessing) return;
 
     setIsOcrProcessing(true);
     setTransferError(null);
 
     try {
-      // Convert file to base64
-      const reader = new FileReader();
-      
-      reader.onloadend = async () => {
-        try {
-          const base64String = reader.result as string;
-          const base64Data = base64String.split(',')[1]; // Remove data:image/jpeg;base64, prefix
-          const mimeType = uploadedInventoryFile.type;
+      const result = await recognizeInvoiceWithOcr(uploadedInventoryFile, uploadedInventoryFileName);
+      if (!result.ok) {
+        setTransferError(result.message);
+        return;
+      }
+      const ocrData = result.data;
+      setOcrInvoiceNumber(ocrData.invoiceNumber || '');
+      setOcrPurchaseDate(ocrData.purchaseDate || new Date().toISOString().split('T')[0]);
+      setOcrVendor(ocrData.vendor || '');
 
-          const session = await safeGetSession();
-          
-          if (!session) {
-            throw new Error('Not authenticated. Please log in again.');
-          }
+      const rows = (ocrData.items || []).map((item: any, idx: number) => ({
+        id: String(idx + 1),
+        sku: item.sku || '',
+        name: item.name || '',
+        quantity: String(item.quantity || 1),
+        unit: item.unit || 'pcs',
+        price: String(item.price || 0),
+        invoiceNumber: ocrData.invoiceNumber || '',
+        purchaseDate: ocrData.purchaseDate || '',
+        object: 'Склад',
+      }));
 
-          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-          const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-          if (!supabaseUrl || !anonKey) {
-            throw new Error('Missing NEXT_PUBLIC_SUPABASE_* env variables');
-          }
-
-          // Call Edge Function
-          const response = await fetch(`${supabaseUrl}/functions/v1/ocr-invoice`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`,
-              'apikey': anonKey,
-            },
-            body: JSON.stringify({
-              fileBase64: base64Data,
-              mimeType: mimeType,
-              fileName: uploadedInventoryFileName,
-            }),
-          });
-
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || `OCR processing failed: ${response.status}`);
-          }
-
-          const result = await response.json();
-          
-          if (!result.success || !result.data) {
-            throw new Error('Invalid OCR response format');
-          }
-
-          const ocrData = result.data;
-
-          // Update state with recognized data
-          setOcrInvoiceNumber(ocrData.invoiceNumber || '');
-          setOcrPurchaseDate(ocrData.purchaseDate || new Date().toISOString().split('T')[0]);
-          setOcrVendor(ocrData.vendor || '');
-          
-          const rows = (ocrData.items || []).map((item: any, idx: number) => ({
-            id: String(idx + 1),
-            sku: item.sku || '',
-            name: item.name || '',
-            quantity: String(item.quantity || 1),
-            unit: item.unit || 'pcs',
-            price: String(item.price || 0),
-            invoiceNumber: ocrData.invoiceNumber || '',
-            purchaseDate: ocrData.purchaseDate || '',
-            object: 'Склад',
-          }));
-
-          setOcrInventoryRows(rows);
-          setIsOcrProcessing(false);
-          
-          if (rows.length === 0) {
-            setTransferError('No items found in the invoice. Please check the document or try another file.');
-          }
-        } catch (error: any) {
-          console.error('OCR Error:', error);
-          setTransferError(error.message || 'Failed to process OCR. Please try again.');
-          setIsOcrProcessing(false);
-        }
-      };
-
-      reader.onerror = () => {
-        setTransferError('Failed to read file');
-        setIsOcrProcessing(false);
-      };
-
-      reader.readAsDataURL(uploadedInventoryFile);
+      setOcrInventoryRows(rows);
+      if (rows.length === 0) setTransferError('No items found in the invoice. Please check the document or try another file.');
     } catch (error: any) {
       console.error('File reading error:', error);
       setTransferError(error.message || 'Failed to read file');
+    } finally {
       setIsOcrProcessing(false);
     }
   };
@@ -1999,58 +1941,35 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
 
   const handlePropertyOcrRecognize = async () => {
     if (!propertyOcrFile || !selectedPropertyId) return;
+    if (isPropertyOcrProcessing) return;
     setIsPropertyOcrProcessing(true);
     setPropertyOcrError(null);
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        try {
-          const base64String = reader.result as string;
-          const base64Data = base64String.split(',')[1];
-          const mimeType = propertyOcrFile.type;
-          const session = await safeGetSession();
-          if (!session) throw new Error('Not authenticated.');
-          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-          const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-          if (!supabaseUrl || !anonKey) throw new Error('Missing Supabase env.');
-          const response = await fetch(`${supabaseUrl}/functions/v1/ocr-invoice`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': anonKey },
-            body: JSON.stringify({ fileBase64: base64Data, mimeType, fileName: propertyOcrFileName }),
-          });
-          if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.error || `OCR failed: ${response.status}`);
-          }
-          const result = await response.json();
-          if (!result.success || !result.data) throw new Error('Invalid OCR response');
-          const ocrData = result.data;
-          setPropertyOcrInvoiceNumber(ocrData.invoiceNumber || '');
-          setPropertyOcrPurchaseDate(ocrData.purchaseDate || new Date().toISOString().split('T')[0]);
-          setPropertyOcrVendor(ocrData.vendor || '');
-          const rows = (ocrData.items || []).map((item: any, idx: number) => ({
-            id: String(idx + 1),
-            sku: item.sku || '',
-            name: item.name || '',
-            quantity: String(item.quantity || 1),
-            unit: item.unit || 'pcs',
-            price: String(item.price || 0),
-            invoiceNumber: ocrData.invoiceNumber || '',
-            purchaseDate: ocrData.purchaseDate || '',
-            object: propertyNameForOcr,
-          }));
-          setPropertyOcrRows(rows);
-          if (rows.length === 0) setPropertyOcrError('No items found in the document.');
-        } catch (e: any) {
-          setPropertyOcrError(e?.message || 'OCR failed.');
-        } finally {
-          setIsPropertyOcrProcessing(false);
-        }
-      };
-      reader.onerror = () => { setPropertyOcrError('Failed to read file'); setIsPropertyOcrProcessing(false); };
-      reader.readAsDataURL(propertyOcrFile);
+      const result = await recognizeInvoiceWithOcr(propertyOcrFile, propertyOcrFileName);
+      if (!result.ok) {
+        setPropertyOcrError(result.message);
+        return;
+      }
+      const ocrData = result.data;
+      setPropertyOcrInvoiceNumber(ocrData.invoiceNumber || '');
+      setPropertyOcrPurchaseDate(ocrData.purchaseDate || new Date().toISOString().split('T')[0]);
+      setPropertyOcrVendor(ocrData.vendor || '');
+      const rows = (ocrData.items || []).map((item: any, idx: number) => ({
+        id: String(idx + 1),
+        sku: item.sku || '',
+        name: item.name || '',
+        quantity: String(item.quantity || 1),
+        unit: item.unit || 'pcs',
+        price: String(item.price || 0),
+        invoiceNumber: ocrData.invoiceNumber || '',
+        purchaseDate: ocrData.purchaseDate || '',
+        object: propertyNameForOcr,
+      }));
+      setPropertyOcrRows(rows);
+      if (rows.length === 0) setPropertyOcrError('No items found in the document.');
     } catch (e: any) {
       setPropertyOcrError(e?.message || 'Failed');
+    } finally {
       setIsPropertyOcrProcessing(false);
     }
   };
@@ -4091,55 +4010,33 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
 
   const handleExpenseOcrRecognize = async () => {
     if (!expenseOcrFile || !selectedPropertyId) return;
+    if (isExpenseOcrProcessing) return;
     setIsExpenseOcrProcessing(true);
     setExpenseOcrError(null);
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        try {
-          const base64String = reader.result as string;
-          const base64Data = base64String.split(',')[1];
-          const mimeType = expenseOcrFile.type;
-          const session = await safeGetSession();
-          if (!session) throw new Error('Not authenticated.');
-          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-          const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-          if (!supabaseUrl || !anonKey) throw new Error('Missing Supabase env.');
-          const response = await fetch(`${supabaseUrl}/functions/v1/ocr-invoice`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': anonKey },
-            body: JSON.stringify({ fileBase64: base64Data, mimeType, fileName: expenseOcrFileName }),
-          });
-          if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.error || `OCR failed: ${response.status}`);
-          }
-          const result = await response.json();
-          if (!result.success || !result.data) throw new Error('Invalid OCR response');
-          const ocrData = result.data;
-          setExpenseOcrInvoiceNumber(ocrData.invoiceNumber || '');
-          setExpenseOcrInvoiceDate(ocrData.invoiceDate || ocrData.purchaseDate || new Date().toISOString().split('T')[0]);
-          setExpenseOcrVendor(ocrData.vendor || '');
-          const firstCategoryId = expenseCategories.length > 0 ? expenseCategories[0].id : '';
-          const rows = (ocrData.items || []).map((item: { name?: string; quantity?: number; price?: number }, idx: number) => ({
-            id: `ocr-${idx + 1}`,
-            name: item.name || '',
-            quantity: String(item.quantity ?? 1),
-            price: String(item.price ?? 0),
-            category_id: firstCategoryId,
-          }));
-          setExpenseOcrRows(rows);
-          if (rows.length === 0) setExpenseOcrError('Документ не містить позицій.');
-        } catch (e: unknown) {
-          setExpenseOcrError(e instanceof Error ? e.message : 'OCR failed.');
-        } finally {
-          setIsExpenseOcrProcessing(false);
-        }
-      };
-      reader.onerror = () => { setExpenseOcrError('Failed to read file'); setIsExpenseOcrProcessing(false); };
-      reader.readAsDataURL(expenseOcrFile);
+      const result = await recognizeInvoiceWithOcr(expenseOcrFile, expenseOcrFileName);
+      if (!result.ok) {
+        setExpenseOcrError(result.message);
+        return;
+      }
+      const ocrData = result.data;
+      setExpenseOcrInvoiceNumber(ocrData.invoiceNumber || '');
+      // Edge function returns purchaseDate; treat it as invoiceDate fallback for expenses.
+      setExpenseOcrInvoiceDate(ocrData.purchaseDate || new Date().toISOString().split('T')[0]);
+      setExpenseOcrVendor(ocrData.vendor || '');
+      const firstCategoryId = expenseCategories.length > 0 ? expenseCategories[0].id : '';
+      const rows = (ocrData.items || []).map((item: { name?: string; quantity?: number; price?: number }, idx: number) => ({
+        id: `ocr-${idx + 1}`,
+        name: item.name || '',
+        quantity: String(item.quantity ?? 1),
+        price: String(item.price ?? 0),
+        category_id: firstCategoryId,
+      }));
+      setExpenseOcrRows(rows);
+      if (rows.length === 0) setExpenseOcrError('Документ не містить позицій.');
     } catch (e: unknown) {
       setExpenseOcrError(e instanceof Error ? e.message : 'Failed');
+    } finally {
       setIsExpenseOcrProcessing(false);
     }
   };

@@ -26,7 +26,8 @@ serve(async (req) => {
       )
     }
 
-    const { fileBase64, mimeType, fileName } = await req.json()
+    const { requestId, fileBase64, mimeType, fileName } = await req.json()
+    const rid = typeof requestId === 'string' && requestId.trim() ? requestId.trim() : crypto.randomUUID()
 
     if (!fileBase64) {
       return new Response(
@@ -35,7 +36,7 @@ serve(async (req) => {
       )
     }
 
-    console.log('📄 Processing OCR request:', { fileName, mimeType, fileSize: fileBase64.length })
+    console.log('OCR_START', { requestId: rid, fileName, mimeType, fileSize: fileBase64.length })
 
     // Prompt for Gemini API
     const prompt = `You are processing German furniture and electronics invoices (e.g. POCO).
@@ -82,6 +83,7 @@ Important:
 - Ensure all quantities are numbers (not strings)
 - Return valid JSON only, no markdown, no explanations`
 
+    console.log('CALL_GEMINI', { requestId: rid, model: 'gemini-1.5-flash-latest' })
     // Call Gemini API
     const response = await fetch(
       `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
@@ -110,14 +112,32 @@ Important:
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error('❌ Gemini API error:', errorText)
-      throw new Error(`Gemini API error: ${response.status} ${errorText}`)
+      console.error('OCR_ERROR', { requestId: rid, status: response.status, errorText: errorText.slice(0, 800) })
+      if (response.status === 429) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            code: 'RATE_LIMIT',
+            error: 'OCR temporarily unavailable (rate limit). Please try again.',
+          }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      return new Response(
+        JSON.stringify({
+          success: false,
+          code: 'GEMINI_ERROR',
+          error: `Gemini API error: ${response.status}`,
+          details: errorText,
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     const data = await response.json()
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
     
-    console.log('📋 Gemini raw response:', text.substring(0, 500))
+    console.log('OCR_RESPONSE', { requestId: rid, preview: text.substring(0, 500) })
 
     // Parse JSON response
     let parsedData
@@ -151,7 +171,8 @@ Important:
       parsedData.purchaseDate = parsedData.purchaseDate || new Date().toISOString().split('T')[0]
       parsedData.vendor = parsedData.vendor || ''
       
-      console.log('✅ Parsed OCR data:', {
+      console.log('OCR_PARSED', {
+        requestId: rid,
         invoiceNumber: parsedData.invoiceNumber,
         purchaseDate: parsedData.purchaseDate,
         vendor: parsedData.vendor,
@@ -174,9 +195,11 @@ Important:
       }
     )
   } catch (error) {
-    console.error('❌ OCR processing error:', error)
+    console.error('OCR_ERROR', { error: error?.message ?? String(error) })
     return new Response(
       JSON.stringify({ 
+        success: false,
+        code: 'INTERNAL',
         error: error.message || 'Internal server error',
         details: error.toString()
       }),
