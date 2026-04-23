@@ -577,6 +577,30 @@ function mergeGetAllPreservingEnriched(prev: Property[], cleanedData: Property[]
 /** UI-only `<select>` value for embedded parties not linked by a saved `addressBookPartyId` that exists in the list. Never persisted. */
 const ADDRESS_BOOK_LEGACY_SELECT_VALUE = '__legacy__';
 
+function normalizeIbanForStorage(input: string): string {
+  return String(input ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+}
+
+function formatIbanForInput(input: string): string {
+  const compact = normalizeIbanForStorage(input);
+  if (!compact) return '';
+  return compact.replace(/(.{4})/g, '$1 ').trimEnd();
+}
+
+function ibanCaretIndexAfterFormat(prev: string, next: string, prevCaret: number): number {
+  const prevAlnumBefore = normalizeIbanForStorage(prev.slice(0, Math.max(0, prevCaret))).length;
+  let count = 0;
+  for (let i = 0; i < next.length; i++) {
+    const ch = next[i];
+    if (ch === ' ') continue;
+    count++;
+    if (count >= prevAlnumBefore) return i + 1;
+  }
+  return next.length;
+}
+
 function isPersistableAddressBookPartyId(id: unknown): id is string {
   return typeof id === 'string' && id.trim() !== '' && id !== ADDRESS_BOOK_LEGACY_SELECT_VALUE;
 }
@@ -8496,7 +8520,7 @@ Hero Rooms Team`;
                                                                                         setAddressBookEditRole(role);
                                                                                         setAddressBookEditDraft({
                                                                                             name: String(entry.name ?? ''),
-                                                                                            iban: String(entry.iban ?? ''),
+                                                                                            iban: formatIbanForInput(String(entry.iban ?? '')),
                                                                                             street: String(entry.street ?? ''),
                                                                                             houseNumber: String(entry.houseNumber ?? ''),
                                                                                             zip: String(entry.zip ?? ''),
@@ -8538,7 +8562,48 @@ Hero Rooms Team`;
                                     {addressBookAddError && <p className="text-xs text-amber-500 mb-2">{addressBookAddError}</p>}
                                     <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
                                         <div><label className="text-xs text-gray-500 block mb-0.5">Назва</label><input value={addressBookAddDraft.name} onChange={e => setAddressBookAddDraft(d => ({ ...d, name: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="Компанія / контакт" /></div>
-                                        <div><label className="text-xs text-gray-500 block mb-0.5">IBAN</label><input value={addressBookAddDraft.iban} onChange={e => setAddressBookAddDraft(d => ({ ...d, iban: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white font-mono" placeholder="—" /></div>
+                                        <div>
+                                          <label className="text-xs text-gray-500 block mb-0.5">IBAN</label>
+                                          <input
+                                            value={addressBookAddDraft.iban}
+                                            onChange={(e) => {
+                                              const el = e.target;
+                                              const prev = addressBookAddDraft.iban;
+                                              const prevCaret = el.selectionStart ?? prev.length;
+                                              const next = formatIbanForInput(el.value);
+                                              const nextCaret = ibanCaretIndexAfterFormat(prev, next, prevCaret);
+                                              setAddressBookAddDraft((d) => ({ ...d, iban: next }));
+                                              requestAnimationFrame(() => {
+                                                try {
+                                                  el.setSelectionRange(nextCaret, nextCaret);
+                                                } catch {
+                                                  /* ignore */
+                                                }
+                                              });
+                                            }}
+                                            onPaste={(e) => {
+                                              const pasted = e.clipboardData.getData('text');
+                                              const el = e.currentTarget;
+                                              const prev = addressBookAddDraft.iban;
+                                              const start = el.selectionStart ?? prev.length;
+                                              const end = el.selectionEnd ?? prev.length;
+                                              const merged = `${prev.slice(0, start)}${pasted}${prev.slice(end)}`;
+                                              const next = formatIbanForInput(merged);
+                                              const nextCaret = ibanCaretIndexAfterFormat(prev, next, start + pasted.length);
+                                              e.preventDefault();
+                                              setAddressBookAddDraft((d) => ({ ...d, iban: next }));
+                                              requestAnimationFrame(() => {
+                                                try {
+                                                  el.setSelectionRange(nextCaret, nextCaret);
+                                                } catch {
+                                                  /* ignore */
+                                                }
+                                              });
+                                            }}
+                                            className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white font-mono"
+                                            placeholder="—"
+                                          />
+                                        </div>
                                         <div><label className="text-xs text-gray-500 block mb-0.5">Вулиця</label><input value={addressBookAddDraft.street} onChange={e => setAddressBookAddDraft(d => ({ ...d, street: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
                                         <div className="grid grid-cols-2 gap-2">
                                             <div><label className="text-xs text-gray-500 block mb-0.5">Номер</label><input value={addressBookAddDraft.houseNumber} onChange={e => setAddressBookAddDraft(d => ({ ...d, houseNumber: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
@@ -8584,7 +8649,7 @@ Hero Rooms Team`;
                                                         ownerUserId: user.id,
                                                         role: addressBookAddRole,
                                                         name: addressBookAddDraft.name.trim(),
-                                                        iban: addressBookAddDraft.iban.trim(),
+                                                        iban: normalizeIbanForStorage(addressBookAddDraft.iban),
                                                         street: addressBookAddDraft.street.trim(),
                                                         zip: addressBookAddDraft.zip.trim(),
                                                         city: addressBookAddDraft.city.trim(),
@@ -8631,7 +8696,48 @@ Hero Rooms Team`;
                                     {addressBookEditError && <p className="text-xs text-amber-500 mb-2">{addressBookEditError}</p>}
                                     <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
                                         <div><label className="text-xs text-gray-500 block mb-0.5">Назва</label><input value={addressBookEditDraft.name} onChange={e => setAddressBookEditDraft(d => ({ ...d, name: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="Компанія / контакт" /></div>
-                                        <div><label className="text-xs text-gray-500 block mb-0.5">IBAN</label><input value={addressBookEditDraft.iban} onChange={e => setAddressBookEditDraft(d => ({ ...d, iban: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white font-mono" placeholder="—" /></div>
+                                        <div>
+                                          <label className="text-xs text-gray-500 block mb-0.5">IBAN</label>
+                                          <input
+                                            value={addressBookEditDraft.iban}
+                                            onChange={(e) => {
+                                              const el = e.target;
+                                              const prev = addressBookEditDraft.iban;
+                                              const prevCaret = el.selectionStart ?? prev.length;
+                                              const next = formatIbanForInput(el.value);
+                                              const nextCaret = ibanCaretIndexAfterFormat(prev, next, prevCaret);
+                                              setAddressBookEditDraft((d) => ({ ...d, iban: next }));
+                                              requestAnimationFrame(() => {
+                                                try {
+                                                  el.setSelectionRange(nextCaret, nextCaret);
+                                                } catch {
+                                                  /* ignore */
+                                                }
+                                              });
+                                            }}
+                                            onPaste={(e) => {
+                                              const pasted = e.clipboardData.getData('text');
+                                              const el = e.currentTarget;
+                                              const prev = addressBookEditDraft.iban;
+                                              const start = el.selectionStart ?? prev.length;
+                                              const end = el.selectionEnd ?? prev.length;
+                                              const merged = `${prev.slice(0, start)}${pasted}${prev.slice(end)}`;
+                                              const next = formatIbanForInput(merged);
+                                              const nextCaret = ibanCaretIndexAfterFormat(prev, next, start + pasted.length);
+                                              e.preventDefault();
+                                              setAddressBookEditDraft((d) => ({ ...d, iban: next }));
+                                              requestAnimationFrame(() => {
+                                                try {
+                                                  el.setSelectionRange(nextCaret, nextCaret);
+                                                } catch {
+                                                  /* ignore */
+                                                }
+                                              });
+                                            }}
+                                            className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white font-mono"
+                                            placeholder="—"
+                                          />
+                                        </div>
                                         <div><label className="text-xs text-gray-500 block mb-0.5">Вулиця</label><input value={addressBookEditDraft.street} onChange={e => setAddressBookEditDraft(d => ({ ...d, street: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
                                         <div className="grid grid-cols-2 gap-2">
                                             <div><label className="text-xs text-gray-500 block mb-0.5">Номер</label><input value={addressBookEditDraft.houseNumber} onChange={e => setAddressBookEditDraft(d => ({ ...d, houseNumber: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
@@ -8664,7 +8770,7 @@ Hero Rooms Team`;
                                                     const emails = addressBookEditDraft.emailsRaw.split(',').map(s => s.trim()).filter(Boolean);
                                                     await addressBookPartiesService.updateById(addressBookEditId, {
                                                         name: addressBookEditDraft.name,
-                                                        iban: addressBookEditDraft.iban,
+                                                        iban: normalizeIbanForStorage(addressBookEditDraft.iban),
                                                         street: addressBookEditDraft.street,
                                                         houseNumber: addressBookEditDraft.houseNumber,
                                                         zip: addressBookEditDraft.zip,
