@@ -1639,6 +1639,57 @@ export const addressBookPartiesService = {
       .eq('id', id);
     if (error) throw error;
   },
+
+  async updateById(
+    id: string,
+    patch: Partial<{
+      name: string;
+      iban: string;
+      street: string;
+      houseNumber: string | null;
+      zip: string;
+      city: string;
+      country: string | null;
+      phones: string[];
+      emails: string[];
+      contactPerson: string | null;
+    }>
+  ): Promise<AddressBookPartyEntry> {
+    const normStr = (v: any) => (v == null ? '' : String(v).trim());
+    const normNullable = (v: any) => {
+      const s = v == null ? '' : String(v).trim();
+      return s ? s : null;
+    };
+    const normArr = (arr?: string[]) =>
+      Array.isArray(arr) ? arr.map((x) => String(x).trim()).filter(Boolean) : [];
+
+    const updateData: Record<string, any> = {};
+    if (patch.name !== undefined) updateData.name = normStr(patch.name);
+    if (patch.iban !== undefined) updateData.iban = normStr(patch.iban);
+    if (patch.street !== undefined) updateData.street = normStr(patch.street);
+    if (patch.zip !== undefined) updateData.zip = normStr(patch.zip);
+    if (patch.city !== undefined) updateData.city = normStr(patch.city);
+    if (patch.houseNumber !== undefined) updateData.house_number = normNullable(patch.houseNumber);
+    if (patch.country !== undefined) updateData.country = normNullable(patch.country);
+    if (patch.contactPerson !== undefined) updateData.contact_person = normNullable(patch.contactPerson);
+    if (patch.phones !== undefined) updateData.phones = normArr(patch.phones);
+    if (patch.emails !== undefined) updateData.emails = normArr(patch.emails);
+
+    const { data, error } = await supabase
+      .from('address_book_parties')
+      .update(updateData)
+      .eq('id', id)
+      .select('*')
+      .single();
+
+    if (error) {
+      if ((error as any)?.code === '23505') {
+        throw new Error('This counterparty already exists');
+      }
+      throw error;
+    }
+    return addressBookRowFromDB(data);
+  },
 };
 
 /** Build Address Book entries from a property (for auto-capture after save). Owner = landlord, company1 = tenant, company2 = secondCompany, management = management. */

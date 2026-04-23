@@ -932,6 +932,23 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   });
   const [addressBookAddSaving, setAddressBookAddSaving] = useState(false);
   const [addressBookAddError, setAddressBookAddError] = useState<string | null>(null);
+  const [addressBookEditOpen, setAddressBookEditOpen] = useState(false);
+  const [addressBookEditId, setAddressBookEditId] = useState<string | null>(null);
+  const [addressBookEditRole, setAddressBookEditRole] = useState<AddressBookPartyRole>('owner');
+  const [addressBookEditDraft, setAddressBookEditDraft] = useState({
+    name: '',
+    iban: '',
+    street: '',
+    houseNumber: '',
+    zip: '',
+    city: '',
+    country: '',
+    phonesRaw: '',
+    emailsRaw: '',
+    contactPerson: '',
+  });
+  const [addressBookEditSaving, setAddressBookEditSaving] = useState(false);
+  const [addressBookEditError, setAddressBookEditError] = useState<string | null>(null);
   const [docPreview, setDocPreview] = useState<{ open: boolean; url: string; title?: string }>({ open: false, url: '' });
   const closeDocPreview = useCallback(() => setDocPreview({ open: false, url: '' }), []);
   useEffect(() => {
@@ -8467,7 +8484,36 @@ Hero Rooms Team`;
                                                                             <div className={meta ? 'text-gray-400 text-xs mt-0.5' : 'text-gray-500 text-xs mt-0.5'}>{meta || '—'}</div>
                                                                         </div>
                                                                         {entry.id != null && (
-                                                                            <button type="button" title="Видалити з Address Book" disabled={isDeleting} onClick={async () => { if (!window.confirm('Видалити цей контакт з Address Book?')) return; setAddressBookDeleteError(null); setAddressBookDeletingId(entry.id!); const removed = entry; setAddressBookEntries(prev => prev.filter(e => e.id !== entry.id)); try { await addressBookPartiesService.deleteById(entry.id!); } catch (e) { console.error('[AddressBook deleteById]', e); setAddressBookDeleteError(String((e as Error)?.message ?? e)); const user = await safeGetUser(); if (user?.id) { const list = await addressBookPartiesService.listShared(); setAddressBookEntries(list); } else { setAddressBookEntries(prev => [...prev, removed]); } } finally { setAddressBookDeletingId(null); } }} className={`p-2 rounded-md border border-gray-700 text-gray-200 shrink-0 ${isDeleting ? 'opacity-50 cursor-not-allowed' : 'bg-[#111315] hover:bg-[#15181b]'}`}><Trash2 className="w-4 h-4" size={16} /></button>
+                                                                            <div className="flex items-center gap-2 shrink-0">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    title="Редагувати"
+                                                                                    disabled={isDeleting}
+                                                                                    onClick={() => {
+                                                                                        if (!entry.id) return;
+                                                                                        setAddressBookEditError(null);
+                                                                                        setAddressBookEditId(entry.id);
+                                                                                        setAddressBookEditRole(role);
+                                                                                        setAddressBookEditDraft({
+                                                                                            name: String(entry.name ?? ''),
+                                                                                            iban: String(entry.iban ?? ''),
+                                                                                            street: String(entry.street ?? ''),
+                                                                                            houseNumber: String(entry.houseNumber ?? ''),
+                                                                                            zip: String(entry.zip ?? ''),
+                                                                                            city: String(entry.city ?? ''),
+                                                                                            country: String(entry.country ?? ''),
+                                                                                            phonesRaw: (entry.phones ?? []).join(', '),
+                                                                                            emailsRaw: (entry.emails ?? []).join(', '),
+                                                                                            contactPerson: String(entry.contactPerson ?? ''),
+                                                                                        });
+                                                                                        setAddressBookEditOpen(true);
+                                                                                    }}
+                                                                                    className={`p-2 rounded-md border border-gray-700 text-gray-200 ${isDeleting ? 'opacity-50 cursor-not-allowed' : 'bg-[#111315] hover:bg-[#15181b]'}`}
+                                                                                >
+                                                                                    <Edit className="w-4 h-4" size={16} />
+                                                                                </button>
+                                                                                <button type="button" title="Видалити з Address Book" disabled={isDeleting} onClick={async () => { if (!window.confirm('Видалити цей контакт з Address Book?')) return; setAddressBookDeleteError(null); setAddressBookDeletingId(entry.id!); const removed = entry; setAddressBookEntries(prev => prev.filter(e => e.id !== entry.id)); try { await addressBookPartiesService.deleteById(entry.id!); } catch (e) { console.error('[AddressBook deleteById]', e); setAddressBookDeleteError(String((e as Error)?.message ?? e)); const user = await safeGetUser(); if (user?.id) { const list = await addressBookPartiesService.listShared(); setAddressBookEntries(list); } else { setAddressBookEntries(prev => [...prev, removed]); } } finally { setAddressBookDeletingId(null); } }} className={`p-2 rounded-md border border-gray-700 text-gray-200 ${isDeleting ? 'opacity-50 cursor-not-allowed' : 'bg-[#111315] hover:bg-[#15181b]'}`}><Trash2 className="w-4 h-4" size={16} /></button>
+                                                                            </div>
                                                                         )}
                                                                     </li>
                                                                 );
@@ -8565,6 +8611,77 @@ Hero Rooms Team`;
                                                     setAddressBookAddError(e instanceof Error ? e.message : String(e));
                                                 } finally {
                                                     setAddressBookAddSaving(false);
+                                                }
+                                            }}
+                                            className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-medium"
+                                        >
+                                            Зберегти
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {addressBookEditOpen && (
+                            <div className="fixed inset-0 z-[226] flex items-center justify-center bg-black/50 p-4" onClick={() => { if (!addressBookEditSaving) setAddressBookEditOpen(false); }}>
+                                <div className="bg-[#1C1F24] w-full max-w-md rounded-xl border border-gray-700 shadow-xl p-4" onClick={e => e.stopPropagation()}>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h4 className="text-sm font-bold text-white">Edit counterparty — {addressBookRoleLabel(addressBookEditRole)}</h4>
+                                        <button type="button" disabled={addressBookEditSaving} onClick={() => setAddressBookEditOpen(false)} className="text-gray-400 hover:text-white p-1 rounded disabled:opacity-50"><X className="w-4 h-4" /></button>
+                                    </div>
+                                    {addressBookEditError && <p className="text-xs text-amber-500 mb-2">{addressBookEditError}</p>}
+                                    <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                                        <div><label className="text-xs text-gray-500 block mb-0.5">Назва</label><input value={addressBookEditDraft.name} onChange={e => setAddressBookEditDraft(d => ({ ...d, name: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" placeholder="Компанія / контакт" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-0.5">IBAN</label><input value={addressBookEditDraft.iban} onChange={e => setAddressBookEditDraft(d => ({ ...d, iban: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white font-mono" placeholder="—" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-0.5">Вулиця</label><input value={addressBookEditDraft.street} onChange={e => setAddressBookEditDraft(d => ({ ...d, street: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div><label className="text-xs text-gray-500 block mb-0.5">Номер</label><input value={addressBookEditDraft.houseNumber} onChange={e => setAddressBookEditDraft(d => ({ ...d, houseNumber: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                            <div><label className="text-xs text-gray-500 block mb-0.5">Індекс</label><input value={addressBookEditDraft.zip} onChange={e => setAddressBookEditDraft(d => ({ ...d, zip: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        </div>
+                                        <div><label className="text-xs text-gray-500 block mb-0.5">Місто</label><input value={addressBookEditDraft.city} onChange={e => setAddressBookEditDraft(d => ({ ...d, city: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-0.5">Країна</label><input value={addressBookEditDraft.country} onChange={e => setAddressBookEditDraft(d => ({ ...d, country: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-0.5">Телефони (через кому)</label><input value={addressBookEditDraft.phonesRaw} onChange={e => setAddressBookEditDraft(d => ({ ...d, phonesRaw: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-0.5">Email (через кому)</label><input value={addressBookEditDraft.emailsRaw} onChange={e => setAddressBookEditDraft(d => ({ ...d, emailsRaw: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                        <div><label className="text-xs text-gray-500 block mb-0.5">Контактна персона</label><input value={addressBookEditDraft.contactPerson} onChange={e => setAddressBookEditDraft(d => ({ ...d, contactPerson: e.target.value }))} className="w-full bg-[#111315] border border-gray-700 rounded p-2 text-sm text-white" /></div>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-4">
+                                        <button type="button" disabled={addressBookEditSaving} onClick={() => setAddressBookEditOpen(false)} className="px-3 py-2 rounded border border-gray-600 text-sm text-gray-200 hover:bg-gray-800 disabled:opacity-50">Скасувати</button>
+                                        <button
+                                            type="button"
+                                            disabled={addressBookEditSaving || !addressBookEditDraft.name.trim() || !addressBookEditId}
+                                            onClick={async () => {
+                                                setAddressBookEditError(null);
+                                                if (!addressBookEditId) {
+                                                    setAddressBookEditError('Missing id.');
+                                                    return;
+                                                }
+                                                if (!addressBookEditDraft.name.trim()) {
+                                                    setAddressBookEditError('Вкажіть назву.');
+                                                    return;
+                                                }
+                                                setAddressBookEditSaving(true);
+                                                try {
+                                                    const phones = addressBookEditDraft.phonesRaw.split(',').map(s => s.trim()).filter(Boolean);
+                                                    const emails = addressBookEditDraft.emailsRaw.split(',').map(s => s.trim()).filter(Boolean);
+                                                    await addressBookPartiesService.updateById(addressBookEditId, {
+                                                        name: addressBookEditDraft.name,
+                                                        iban: addressBookEditDraft.iban,
+                                                        street: addressBookEditDraft.street,
+                                                        houseNumber: addressBookEditDraft.houseNumber,
+                                                        zip: addressBookEditDraft.zip,
+                                                        city: addressBookEditDraft.city,
+                                                        country: addressBookEditDraft.country,
+                                                        phones,
+                                                        emails,
+                                                        contactPerson: addressBookEditDraft.contactPerson,
+                                                    });
+                                                    const list = await addressBookPartiesService.listShared();
+                                                    setAddressBookEntries(list);
+                                                    setAddressBookLoaded(true);
+                                                    setAddressBookEditOpen(false);
+                                                } catch (e) {
+                                                    setAddressBookEditError(e instanceof Error ? e.message : String(e));
+                                                } finally {
+                                                    setAddressBookEditSaving(false);
                                                 }
                                             }}
                                             className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-medium"
