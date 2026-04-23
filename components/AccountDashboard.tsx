@@ -589,14 +589,14 @@ function formatIbanForInput(input: string): string {
   return compact.replace(/(.{4})/g, '$1 ').trimEnd();
 }
 
-function ibanCaretIndexAfterFormat(prev: string, next: string, prevCaret: number): number {
-  const prevAlnumBefore = normalizeIbanForStorage(prev.slice(0, Math.max(0, prevCaret))).length;
+function ibanCaretIndexForAlnumCount(next: string, alnumCountBeforeCaret: number): number {
+  if (alnumCountBeforeCaret <= 0) return 0;
   let count = 0;
   for (let i = 0; i < next.length; i++) {
     const ch = next[i];
     if (ch === ' ') continue;
     count++;
-    if (count >= prevAlnumBefore) return i + 1;
+    if (count >= alnumCountBeforeCaret) return i + 1;
   }
   return next.length;
 }
@@ -8568,10 +8568,11 @@ Hero Rooms Team`;
                                             value={addressBookAddDraft.iban}
                                             onChange={(e) => {
                                               const el = e.target;
-                                              const prev = addressBookAddDraft.iban;
-                                              const prevCaret = el.selectionStart ?? prev.length;
-                                              const next = formatIbanForInput(el.value);
-                                              const nextCaret = ibanCaretIndexAfterFormat(prev, next, prevCaret);
+                                              const raw = el.value;
+                                              const rawCaret = el.selectionStart ?? raw.length;
+                                              const alnumBefore = normalizeIbanForStorage(raw.slice(0, Math.max(0, rawCaret))).length;
+                                              const next = formatIbanForInput(raw);
+                                              const nextCaret = ibanCaretIndexForAlnumCount(next, alnumBefore);
                                               setAddressBookAddDraft((d) => ({ ...d, iban: next }));
                                               requestAnimationFrame(() => {
                                                 try {
@@ -8584,12 +8585,14 @@ Hero Rooms Team`;
                                             onPaste={(e) => {
                                               const pasted = e.clipboardData.getData('text');
                                               const el = e.currentTarget;
-                                              const prev = addressBookAddDraft.iban;
-                                              const start = el.selectionStart ?? prev.length;
-                                              const end = el.selectionEnd ?? prev.length;
-                                              const merged = `${prev.slice(0, start)}${pasted}${prev.slice(end)}`;
+                                              const raw = el.value;
+                                              const start = el.selectionStart ?? raw.length;
+                                              const end = el.selectionEnd ?? raw.length;
+                                              const merged = `${raw.slice(0, start)}${pasted}${raw.slice(end)}`;
+                                              const caretRawAfter = start + pasted.length;
+                                              const alnumBefore = normalizeIbanForStorage(merged.slice(0, Math.max(0, caretRawAfter))).length;
                                               const next = formatIbanForInput(merged);
-                                              const nextCaret = ibanCaretIndexAfterFormat(prev, next, start + pasted.length);
+                                              const nextCaret = ibanCaretIndexForAlnumCount(next, alnumBefore);
                                               e.preventDefault();
                                               setAddressBookAddDraft((d) => ({ ...d, iban: next }));
                                               requestAnimationFrame(() => {
@@ -8702,10 +8705,11 @@ Hero Rooms Team`;
                                             value={addressBookEditDraft.iban}
                                             onChange={(e) => {
                                               const el = e.target;
-                                              const prev = addressBookEditDraft.iban;
-                                              const prevCaret = el.selectionStart ?? prev.length;
-                                              const next = formatIbanForInput(el.value);
-                                              const nextCaret = ibanCaretIndexAfterFormat(prev, next, prevCaret);
+                                              const raw = el.value;
+                                              const rawCaret = el.selectionStart ?? raw.length;
+                                              const alnumBefore = normalizeIbanForStorage(raw.slice(0, Math.max(0, rawCaret))).length;
+                                              const next = formatIbanForInput(raw);
+                                              const nextCaret = ibanCaretIndexForAlnumCount(next, alnumBefore);
                                               setAddressBookEditDraft((d) => ({ ...d, iban: next }));
                                               requestAnimationFrame(() => {
                                                 try {
@@ -8718,12 +8722,14 @@ Hero Rooms Team`;
                                             onPaste={(e) => {
                                               const pasted = e.clipboardData.getData('text');
                                               const el = e.currentTarget;
-                                              const prev = addressBookEditDraft.iban;
-                                              const start = el.selectionStart ?? prev.length;
-                                              const end = el.selectionEnd ?? prev.length;
-                                              const merged = `${prev.slice(0, start)}${pasted}${prev.slice(end)}`;
+                                              const raw = el.value;
+                                              const start = el.selectionStart ?? raw.length;
+                                              const end = el.selectionEnd ?? raw.length;
+                                              const merged = `${raw.slice(0, start)}${pasted}${raw.slice(end)}`;
+                                              const caretRawAfter = start + pasted.length;
+                                              const alnumBefore = normalizeIbanForStorage(merged.slice(0, Math.max(0, caretRawAfter))).length;
                                               const next = formatIbanForInput(merged);
-                                              const nextCaret = ibanCaretIndexAfterFormat(prev, next, start + pasted.length);
+                                              const nextCaret = ibanCaretIndexForAlnumCount(next, alnumBefore);
                                               e.preventDefault();
                                               setAddressBookEditDraft((d) => ({ ...d, iban: next }));
                                               requestAnimationFrame(() => {
