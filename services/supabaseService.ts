@@ -5027,6 +5027,32 @@ export const unitLeaseTermsService = {
   },
 
   /**
+   * Batch: owner/landlord contract end dates for sidebar (only loaded ids).
+   * Returns ISO `YYYY-MM-DD` or `null` per property (row missing or `contract_end` null).
+   */
+  async listByPropertyIds(propertyIds: string[]): Promise<Record<string, string | null>> {
+    const out: Record<string, string | null> = {};
+    const unique = [...new Set(propertyIds.filter((id) => id && id.trim() !== ''))];
+    for (const id of unique) {
+      out[id] = null;
+    }
+    if (unique.length === 0) return out;
+    const { data, error } = await supabase
+      .from('unit_lease_terms')
+      .select('unit_id, contract_end')
+      .in('unit_id', unique);
+    if (error) throw new Error(error.message || 'Failed to fetch lease terms');
+    const byId = new Map(
+      (data as { unit_id: string; contract_end: string | null }[] | null)?.map((r) => [r.unit_id, r.contract_end]) ?? []
+    );
+    for (const id of unique) {
+      const end = byId.get(id);
+      out[id] = end != null && end !== '' ? end : null;
+    }
+    return out;
+  },
+
+  /**
    * Upsert lease term for property. One call; onConflict unit_id.
    * row dates must be in YYYY-MM-DD.
    */

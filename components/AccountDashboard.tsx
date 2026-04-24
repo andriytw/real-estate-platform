@@ -188,6 +188,7 @@ import {
   CreateLeadInput,
 } from '../types';
 import { euToIso, validateEuDate } from '../utils/leaseTermDates';
+import { getRemainingTermBadge, remainingTermBadgeClassName } from '../utils/remainingTermBadge';
 import { formatPropertyAddress } from '../utils/formatPropertyAddress';
 import {
   getPropertyListPrimaryTitle,
@@ -942,6 +943,10 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const [leaseTermDraft, setLeaseTermDraft] = useState<LeaseTermDraftUi | null>(null);
   const [leaseTermSaving, setLeaseTermSaving] = useState(false);
   const [leaseTermSaveError, setLeaseTermSaveError] = useState<string | null>(null);
+  /** Cached `unit_lease_terms.contract_end` (ISO) per property for Property List sidebar badge; only keys we have fetched. */
+  const [leaseTermEndByPropertyId, setLeaseTermEndByPropertyId] = useState<Record<string, string | null>>({});
+  const leaseTermEndByPropertyIdRef = useRef<Record<string, string | null>>({});
+  leaseTermEndByPropertyIdRef.current = leaseTermEndByPropertyId;
   const [isAddressBookModalOpen, setIsAddressBookModalOpen] = useState(false);
   const [addressBookEntries, setAddressBookEntries] = useState<AddressBookPartyEntry[]>([]);
   const [addressBookLoading, setAddressBookLoading] = useState(false);
@@ -1220,6 +1225,32 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     });
 
     wasOnPropertiesListOrUnitsViewRef.current = true;
+  }, [isPropertiesListOrUnitsView, displayedProperties]);
+
+  useEffect(() => {
+    if (!isPropertiesListOrUnitsView) return;
+    const ids = [...new Set(displayedProperties.map((p) => p.id))];
+    if (ids.length === 0) return;
+    const prev = leaseTermEndByPropertyIdRef.current;
+    const missing = ids.filter((id) => !Object.prototype.hasOwnProperty.call(prev, id));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    unitLeaseTermsService
+      .listByPropertyIds(missing)
+      .then((map) => {
+        if (cancelled) return;
+        setLeaseTermEndByPropertyId((p) => ({ ...p, ...map }));
+      })
+      .catch((err) => {
+        console.error('[AccountDashboard] listByPropertyIds', err);
+        if (cancelled) return;
+        const fallback: Record<string, string | null> = {};
+        for (const id of missing) fallback[id] = null;
+        setLeaseTermEndByPropertyId((p) => ({ ...p, ...fallback }));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [isPropertiesListOrUnitsView, displayedProperties]);
 
   useEffect(() => {
@@ -6866,6 +6897,10 @@ Hero Rooms Team`;
                const line1 = getPropertyListPrimaryTitle(prop) || '—';
                const subtitle = getPropertyListSubtitleLine(prop);
                const metrics = getPropertyListMetricsLine(prop);
+               const hasLeaseEndFetched = Object.prototype.hasOwnProperty.call(leaseTermEndByPropertyId, prop.id);
+               const ownerTermBadge = hasLeaseEndFetched
+                 ? getRemainingTermBadge(leaseTermEndByPropertyId[prop.id])
+                 : null;
                return (
                <div key={prop.id} className={`cursor-pointer px-3 py-2 rounded-xl border transition-all duration-200 ${selectedPropertyId === prop.id ? 'bg-[#1C1F24] border-l-4 border-l-emerald-500 border-y-transparent border-r-transparent shadow-lg' : 'bg-[#1C1F24] border-gray-800 hover:bg-[#23262b] hover:border-gray-700'}`}>
                   <div onClick={() => { setSelectedPropertyId(prop.id); setPropertyMenuOpenId(null); }} className="block min-w-0">
@@ -6882,7 +6917,11 @@ Hero Rooms Team`;
                         <div className="flex items-center gap-1 shrink-0">
                            {archiveFilter === 'archived' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-600/50 text-gray-400">Archived</span>}
                            {prop.zweckentfremdungFlag && <span className="text-amber-500" title="Zweckentfremdung Hinweis"><AlertTriangle className="w-4 h-4" /></span>}
-                           <span className={`text-[10px] px-1.5 py-0.5 rounded ${prop.termStatus === 'green' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>{prop.termStatus === 'green' ? 'Active' : 'Expiring'}</span>
+                           {ownerTermBadge ? (
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded tabular-nums ${remainingTermBadgeClassName(ownerTermBadge.tone)}`}>{ownerTermBadge.label}</span>
+                           ) : (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded tabular-nums bg-gray-600/20 text-gray-500" aria-hidden>…</span>
+                           )}
                            <button type="button" onClick={(e) => { e.stopPropagation(); setPropertyMenuOpenId(prev => prev === prop.id ? null : prop.id); }} className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white" aria-label="Actions"><MoreVertical className="w-4 h-4" /></button>
                         </div>
                      </div>
@@ -7014,7 +7053,7 @@ Hero Rooms Team`;
                                 ) : null}
                                 {leaseTermSaveError && <p className="text-sm text-red-400 mt-2">{leaseTermSaveError}</p>}
                                 <div className="mt-3">
-                                    <button type="button" disabled={leaseTermSaving || !leaseTermDraft || !leaseTermDraft.contractStart?.trim()} onClick={async () => { if (!selectedPropertyId || !leaseTermDraft) return; const d = leaseTermDraft; if (!d.contractStart?.trim()) { setLeaseTermSaveError('Gültig von ist erforderlich.'); return; } const errStart = validateEuDate(d.contractStart, 'Gültig von'); if (errStart) { setLeaseTermSaveError(errStart); return; } const errEnd = d.contractEnd?.trim() ? validateEuDate(d.contractEnd, 'Gültig bis') : null; if (errEnd) { setLeaseTermSaveError(errEnd); return; } const errFirst = d.firstPaymentDate?.trim() ? validateEuDate(d.firstPaymentDate, 'Erste Mietzahlung ab') : null; if (errFirst) { setLeaseTermSaveError(errFirst); return; } const isoStart = euToIso(d.contractStart); if (!isoStart) { setLeaseTermSaveError('Ungültiges Datum bei Gültig von.'); return; } const isoEnd = d.contractEnd?.trim() ? euToIso(d.contractEnd) : null; const isoFirst = d.firstPaymentDate?.trim() ? euToIso(d.firstPaymentDate) : null; if (isoEnd && isoEnd < isoStart) { setLeaseTermSaveError('Gültig bis muss am oder nach Gültig von liegen.'); return; } if (isoFirst && isoFirst < isoStart) { setLeaseTermSaveError('Erste Mietzahlung ab darf nicht vor Gültig von liegen.'); return; } setLeaseTermSaveError(null); setLeaseTermSaving(true); try { const saved = await unitLeaseTermsService.upsertByPropertyId(selectedPropertyId, { contract_start: isoStart, contract_end: isoEnd ?? undefined, contract_type: d.contractType, first_payment_date: isoFirst ?? undefined, note: d.note?.trim() || undefined }); setLeaseTerm(saved); } catch (e) { setLeaseTermSaveError(e instanceof Error ? e.message : 'Fehler beim Speichern.'); } finally { setLeaseTermSaving(false); } }} className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white">Зберегти термін договору</button>
+                                    <button type="button" disabled={leaseTermSaving || !leaseTermDraft || !leaseTermDraft.contractStart?.trim()} onClick={async () => { if (!selectedPropertyId || !leaseTermDraft) return; const d = leaseTermDraft; if (!d.contractStart?.trim()) { setLeaseTermSaveError('Gültig von ist erforderlich.'); return; } const errStart = validateEuDate(d.contractStart, 'Gültig von'); if (errStart) { setLeaseTermSaveError(errStart); return; } const errEnd = d.contractEnd?.trim() ? validateEuDate(d.contractEnd, 'Gültig bis') : null; if (errEnd) { setLeaseTermSaveError(errEnd); return; } const errFirst = d.firstPaymentDate?.trim() ? validateEuDate(d.firstPaymentDate, 'Erste Mietzahlung ab') : null; if (errFirst) { setLeaseTermSaveError(errFirst); return; } const isoStart = euToIso(d.contractStart); if (!isoStart) { setLeaseTermSaveError('Ungültiges Datum bei Gültig von.'); return; } const isoEnd = d.contractEnd?.trim() ? euToIso(d.contractEnd) : null; const isoFirst = d.firstPaymentDate?.trim() ? euToIso(d.firstPaymentDate) : null; if (isoEnd && isoEnd < isoStart) { setLeaseTermSaveError('Gültig bis muss am oder nach Gültig von liegen.'); return; } if (isoFirst && isoFirst < isoStart) { setLeaseTermSaveError('Erste Mietzahlung ab darf nicht vor Gültig von liegen.'); return; } setLeaseTermSaveError(null); setLeaseTermSaving(true); try { const saved = await unitLeaseTermsService.upsertByPropertyId(selectedPropertyId, { contract_start: isoStart, contract_end: isoEnd ?? undefined, contract_type: d.contractType, first_payment_date: isoFirst ?? undefined, note: d.note?.trim() || undefined }); setLeaseTerm(saved); setLeaseTermEndByPropertyId((prev) => ({ ...prev, [selectedPropertyId]: saved.contract_end ? euToIso(saved.contract_end) : null })); } catch (e) { setLeaseTermSaveError(e instanceof Error ? e.message : 'Fehler beim Speichern.'); } finally { setLeaseTermSaving(false); } }} className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white">Зберегти термін договору</button>
                                 </div>
                             </div>
                             <div className="flex gap-3 pt-2">
