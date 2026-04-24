@@ -777,6 +777,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>(initialId);
   const [isLoadingProperties, setIsLoadingProperties] = useState(initialProps.length === 0);
   const [einzugAuszugTasks, setEinzugAuszugTasks] = useState<CalendarEvent[]>([]);
+  const isPropertiesListOrUnitsView =
+    activeDepartment === 'properties' && (propertiesTab === 'list' || propertiesTab === 'units');
 
   useEffect(() => {
     const uid = worker?.id;
@@ -1106,10 +1108,11 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   });
   const [rentIncreaseFormError, setRentIncreaseFormError] = useState<string | null>(null);
   const [isAddingRentIncrease, setIsAddingRentIncrease] = useState(false);
-  const selectedProperty = useMemo(
-    () => properties.find((p) => p.id === selectedPropertyId) || properties[0] || null,
-    [properties, selectedPropertyId]
-  );
+  const selectedProperty = useMemo(() => {
+    const found = properties.find((p) => p.id === selectedPropertyId) ?? null;
+    if (isPropertiesListOrUnitsView) return found;
+    return found || properties[0] || null;
+  }, [properties, selectedPropertyId, isPropertiesListOrUnitsView]);
   const handleStatsPlanningPriceChange = useCallback(async (value: number) => {
     if (!selectedProperty?.id) return;
     const normalized = Math.max(0, Number.isFinite(value) ? value : 0);
@@ -1188,6 +1191,27 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       )
     );
   }, [filteredProperties, archiveFilter, propertyGroupFilter, propertyListSort]);
+
+  const wasOnPropertiesListOrUnitsViewRef = useRef(false);
+  useEffect(() => {
+    if (!isPropertiesListOrUnitsView) {
+      wasOnPropertiesListOrUnitsViewRef.current = false;
+      return;
+    }
+
+    const firstVisibleId = displayedProperties[0]?.id ?? '';
+    const isEntering = !wasOnPropertiesListOrUnitsViewRef.current;
+    const visibleIds = new Set(displayedProperties.map((p) => p.id));
+
+    setSelectedPropertyId((prev) => {
+      if (!firstVisibleId) return '';
+      if (isEntering) return firstVisibleId;
+      if (!prev || !visibleIds.has(prev)) return firstVisibleId;
+      return prev;
+    });
+
+    wasOnPropertiesListOrUnitsViewRef.current = true;
+  }, [isPropertiesListOrUnitsView, displayedProperties]);
 
   useEffect(() => {
     if (activeDepartment !== 'properties' || propertiesTab !== 'dashboard') return;
