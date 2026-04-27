@@ -87,6 +87,8 @@ import PropertiesDashboardPhase1 from './properties/PropertiesDashboardPhase1';
 import { recognizeInvoiceWithOcr } from '../services/ocrInvoiceClient';
 import { formatLocalDateYmd } from '../lib/localDate';
 import { hasBlockOverlapForPropertyHalfOpen, isPropertyBlockActiveOnDate } from '../lib/oooBlocks';
+import { accountingPropertyDocumentsService, type AccountingPropertyDocumentWithCategory } from '../services/accountingPropertyDocumentsService';
+import { AccountingPropertyDocumentsIntake } from './accounting/AccountingPropertyDocumentsIntake';
 
 const METER_UNIT_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: 'Одиниця' },
@@ -1498,6 +1500,8 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
   const [isExpenseCategoriesModalOpen, setIsExpenseCategoriesModalOpen] = useState(false);
   const [expandedExpenseGroups, setExpandedExpenseGroups] = useState<Record<string, boolean>>({});
   const expenseOcrFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [accountingReadyExpense, setAccountingReadyExpense] = useState<AccountingPropertyDocumentWithCategory[]>([]);
+  const [accountingReadyIncome, setAccountingReadyIncome] = useState<AccountingPropertyDocumentWithCategory[]>([]);
   const [transferPropertyId, setTransferPropertyId] = useState<string>('');
   const [transferWorkerId, setTransferWorkerId] = useState<string>('');
   /** Per stock row: quantity to transfer (1..available). Initialized when opening transfer modal. */
@@ -3869,6 +3873,30 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
     propertyExpenseCategoryService.listCategories(true).then(setExpenseCategories);
   }, [selectedPropertyId]);
 
+  const refreshAccountingCanonicalForProperty = useCallback(() => {
+    if (!selectedPropertyId) {
+      setAccountingReadyExpense([]);
+      setAccountingReadyIncome([]);
+      return;
+    }
+    Promise.all([
+      accountingPropertyDocumentsService.listReadyForProperty(selectedPropertyId, 'expense'),
+      accountingPropertyDocumentsService.listReadyForProperty(selectedPropertyId, 'income'),
+    ])
+      .then(([ex, inc]) => {
+        setAccountingReadyExpense(ex);
+        setAccountingReadyIncome(inc);
+      })
+      .catch(() => {
+        setAccountingReadyExpense([]);
+        setAccountingReadyIncome([]);
+      });
+  }, [selectedPropertyId]);
+
+  useEffect(() => {
+    refreshAccountingCanonicalForProperty();
+  }, [refreshAccountingCanonicalForProperty]);
+
   const refreshMeterData = useCallback(() => {
     if (!selectedPropertyId) return;
     setMeterReadingsLoading(true);
@@ -3940,6 +3968,19 @@ const AccountDashboard: React.FC<AccountDashboardProps> = ({ initialProperties =
       alert('Не вдалося відкрити документ.');
     }
   }, []);
+
+  const openAccountingCanonicalDocument = useCallback(
+    async (d: Pick<AccountingPropertyDocumentWithCategory, 'storage_path' | 'storage_bucket'>) => {
+      try {
+        const url = await accountingPropertyDocumentsService.urlForRow(d);
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } catch (e) {
+        console.error('Accounting document signed URL:', e);
+        alert('Не вдалося відкрити документ.');
+      }
+    },
+    []
+  );
 
   const handleDownloadExpenseDocument = useCallback(async (storagePath: string, fileName: string) => {
     try {
@@ -9239,6 +9280,49 @@ Hero Rooms Team`;
                     </div>
                 </div>
                 {!isInvoicesCollapsed && (
+                <>
+                {accountingReadyExpense.length > 0 && (
+                  <div className="mb-4 rounded-lg border border-emerald-500/25 bg-[#0d1410] p-3">
+                    <h3 className="text-xs font-bold text-emerald-400/90 uppercase tracking-wide mb-2">Бухгалтерія (canonical) — витрати</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead>
+                          <tr className="text-gray-500 border-b border-gray-700/80">
+                            <th className="p-2">Дата</th>
+                            <th className="p-2">№</th>
+                            <th className="p-2">Контрагент</th>
+                            <th className="p-2">Категорія</th>
+                            <th className="p-2 text-right">Сума</th>
+                            <th className="p-2 w-16"> </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {accountingReadyExpense.map((d) => (
+                            <tr key={d.id} className="border-b border-gray-800/50">
+                              <td className="p-2 text-gray-300 tabular-nums">{d.invoice_date || '—'}</td>
+                              <td className="p-2 text-gray-300 font-mono">{d.invoice_no || '—'}</td>
+                              <td className="p-2 text-gray-300 truncate max-w-[140px]" title={d.counterparty_name || ''}>{d.counterparty_name || '—'}</td>
+                              <td className="p-2 text-gray-400">{d.accounting_document_categories?.name || '—'}</td>
+                              <td className="p-2 text-right text-white font-mono">
+                                {d.amount_total != null ? formatCurrencyEUR(d.amount_total) : '—'}
+                              </td>
+                              <td className="p-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void openAccountingCanonicalDocument(d)}
+                                  className="p-1.5 text-emerald-400/90 hover:text-emerald-300"
+                                  title="Переглянути"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
                 <div className="rounded-lg border border-gray-700 overflow-hidden">
                     <div className="overflow-x-auto">
                     <table className="w-full table-fixed text-sm text-left">
@@ -9457,6 +9541,7 @@ Hero Rooms Team`;
                     </table>
                     </div>
                 </div>
+                </>
                 )}
             </section>
 
@@ -10574,6 +10659,49 @@ Hero Rooms Team`;
                             : 'Немає оплат'}
                     </span>
                 </div>
+                {accountingReadyIncome.length > 0 && (
+                  <div className="mb-4 rounded-lg border border-sky-500/25 bg-[#0d1216] p-3">
+                    <h3 className="text-xs font-bold text-sky-400/90 uppercase tracking-wide mb-2">Бухгалтерія (canonical) — дохід</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead>
+                          <tr className="text-gray-500 border-b border-gray-700/80">
+                            <th className="p-2">Дата</th>
+                            <th className="p-2">№</th>
+                            <th className="p-2">Контрагент</th>
+                            <th className="p-2">Категорія</th>
+                            <th className="p-2 text-right">Сума</th>
+                            <th className="p-2 w-16"> </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {accountingReadyIncome.map((d) => (
+                            <tr key={d.id} className="border-b border-gray-800/50">
+                              <td className="p-2 text-gray-300 tabular-nums">{d.invoice_date || '—'}</td>
+                              <td className="p-2 text-gray-300 font-mono">{d.invoice_no || '—'}</td>
+                              <td className="p-2 text-gray-300 truncate max-w-[140px]" title={d.counterparty_name || ''}>{d.counterparty_name || '—'}</td>
+                              <td className="p-2 text-gray-400">{d.accounting_document_categories?.name || '—'}</td>
+                              <td className="p-2 text-right text-white font-mono">
+                                {d.amount_total != null ? formatCurrencyEUR(d.amount_total) : '—'}
+                              </td>
+                              <td className="p-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void openAccountingCanonicalDocument(d)}
+                                  className="p-1.5 text-sky-400/90 hover:text-sky-300"
+                                  title="Переглянути"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+                <div className="mb-1 text-xs text-gray-500">Оплати (sales / proforma)</div>
                 <div className="border border-gray-700 rounded-lg overflow-hidden bg-[#16181D]">
                     <table className="w-full text-sm text-left">
                         <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
@@ -10856,60 +10984,12 @@ Hero Rooms Team`;
 
     if (accountingTab === 'invoices') {
         return (
-            <div className="p-8 bg-[#0D1117] text-white">
-                <h2 className="text-2xl font-bold mb-6">Invoices List</h2>
-                <div className="bg-[#1C1F24] border border-gray-800 rounded-lg overflow-hidden">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-[#23262b] text-gray-400 border-b border-gray-700">
-                            <tr>
-                                <th className="p-4">Invoice #</th>
-                                <th className="p-4">Client</th>
-                                <th className="p-4">Date</th>
-                                <th className="p-4">Due Date</th>
-                                <th className="p-4">Amount</th>
-                                <th className="p-4">Status</th>
-                                <th className="p-4 text-center">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-800">
-                            {invoices.map(inv => (
-                                <tr key={inv.id} className="hover:bg-[#16181D]">
-                                    <td className="p-4 text-gray-400">#{inv.invoiceNumber}</td>
-                                    <td className="p-4 font-bold">{inv.clientName}</td>
-                                    <td className="p-4">{inv.date}</td>
-                                    <td className="p-4">{inv.dueDate}</td>
-                                    <td className="p-4 text-right font-mono">€{inv.totalGross.toFixed(2)}</td>
-                                    <td className="p-4">
-                                        <span 
-                                            onClick={() => toggleInvoiceStatus(inv.id)}
-                                            className={`px-2 py-1 rounded text-xs font-bold cursor-pointer transition-colors ${
-                                                inv.status === 'Paid' 
-                                                    ? 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/30' 
-                                                    : 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30'
-                                            }`}
-                                        >
-                                            {inv.status}
-                                        </span>
-                                    </td>
-                                    <td className="p-4 text-center">
-                                        <button 
-                                            onClick={() => handleViewInvoice(inv)}
-                                            className="text-blue-400 hover:text-blue-300 text-xs font-bold"
-                                        >
-                                            View
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                            {invoices.length === 0 && (
-                                <tr>
-                                    <td colSpan={7} className="p-8 text-center text-gray-500">No invoices found.</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            <AccountingPropertyDocumentsIntake
+                properties={properties}
+                onDataChanged={() => {
+                  refreshAccountingCanonicalForProperty();
+                }}
+            />
         );
     }
 
@@ -12416,7 +12496,7 @@ Hero Rooms Team`;
                       : 'text-gray-500 hover:text-gray-300'
                   }`}
                 >
-                  Invoices
+                  Invoices (property)
                 </button>
                 <button 
                   onClick={() => { setActiveDepartment('accounting'); setAccountingTab('banking'); }} 
