@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Trash2,
   Upload,
@@ -59,6 +59,122 @@ function statusClass(s: ProcessingStatus): string {
   if (s === 'reviewed') return 'text-sky-400';
   if (s === 'archived') return 'text-gray-500';
   return 'text-amber-400/90';
+}
+
+type PropertySelectValue = string | 'all';
+
+function PropertySelect({
+  properties,
+  value,
+  onChange,
+  placeholder,
+  className,
+  allowAll,
+  allLabel = 'All',
+}: {
+  properties: Property[];
+  value: PropertySelectValue;
+  onChange: (v: PropertySelectValue) => void;
+  placeholder: string;
+  className?: string;
+  allowAll: boolean;
+  allLabel?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  const selectedLabel = useMemo(() => {
+    if (allowAll && value === 'all') return allLabel;
+    const id = value === 'all' ? '' : value;
+    if (!id) return placeholder;
+    const p = properties.find((x) => x.id === id);
+    return p ? propertyLabel(p) : placeholder;
+  }, [allowAll, allLabel, placeholder, properties, value]);
+
+  useEffect(() => {
+    const onDocMouseDown = (e: MouseEvent) => {
+      const el = rootRef.current;
+      if (!el) return;
+      if (el.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, []);
+
+  const choose = (v: PropertySelectValue) => {
+    onChange(v);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={rootRef} className={`relative ${className || ''}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((s) => !s)}
+        className="w-full text-left bg-[#111315] border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-gray-200 hover:border-gray-600"
+      >
+        <span className="block truncate">{selectedLabel}</span>
+      </button>
+
+      {open && (
+        <div
+          className="absolute z-[100] mt-1 w-full rounded-lg border border-gray-700 bg-[#0D1117] shadow-xl"
+          onWheelCapture={(e) => {
+            // Prevent page scroll while scrolling the dropdown.
+            e.stopPropagation();
+          }}
+        >
+          <div
+            className="max-h-[320px] overflow-y-auto overscroll-contain py-1"
+            onWheel={(e) => {
+              // When reaching top/bottom on trackpad, browsers may try to scroll the page.
+              e.stopPropagation();
+            }}
+          >
+            {allowAll && (
+              <button
+                type="button"
+                onClick={() => choose('all')}
+                className={`w-full text-left px-2 py-1.5 text-sm hover:bg-gray-800 ${
+                  value === 'all' ? 'text-emerald-300' : 'text-gray-200'
+                }`}
+              >
+                {allLabel}
+              </button>
+            )}
+            {!allowAll && (
+              <button
+                type="button"
+                onClick={() => choose('')}
+                className={`w-full text-left px-2 py-1.5 text-sm hover:bg-gray-800 ${
+                  !value ? 'text-emerald-300' : 'text-gray-200'
+                }`}
+              >
+                {placeholder}
+              </button>
+            )}
+            {properties.map((p) => {
+              const active = value !== 'all' && value === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => choose(p.id)}
+                  className={`w-full text-left px-2 py-1.5 text-sm hover:bg-gray-800 ${
+                    active ? 'text-emerald-300' : 'text-gray-200'
+                  }`}
+                  title={propertyLabel(p)}
+                >
+                  <span className="block truncate">{propertyLabel(p)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function AccountingPropertyDocumentsIntake({ properties, onDataChanged }: Props) {
@@ -486,18 +602,16 @@ export function AccountingPropertyDocumentsIntake({ properties, onDataChanged }:
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] uppercase tracking-wide text-gray-500">Property</label>
-            <select
-              className="bg-[#111315] border border-gray-700 rounded-lg px-2 py-1.5 text-sm min-w-[200px]"
-              value={propertyFilter}
-              onChange={(e) => setPropertyFilter((e.target.value || 'all') as string | 'all')}
-            >
-              <option value="all">All</option>
-              {properties.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {propertyLabel(p)}
-                </option>
-              ))}
-            </select>
+            <div className="min-w-[240px]">
+              <PropertySelect
+                properties={properties}
+                value={propertyFilter}
+                onChange={(v) => setPropertyFilter(v)}
+                placeholder="All"
+                allowAll={true}
+                allLabel="All"
+              />
+            </div>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] uppercase tracking-wide text-gray-500">Category</label>
@@ -813,18 +927,15 @@ export function AccountingPropertyDocumentsIntake({ properties, onDataChanged }:
                         </select>
                       </td>
                       <td className="p-2">
-                        <select
-                          className="min-w-[120px] max-w-[200px] bg-[#111315] border border-gray-700 rounded px-1 py-1 text-xs"
-                          value={row.property_id || ''}
-                          onChange={(e) => patchLocal(row.id, { property_id: e.target.value || null })}
-                        >
-                          <option value="">—</option>
-                          {properties.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {propertyLabel(p)}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="min-w-[180px] max-w-[260px]">
+                          <PropertySelect
+                            properties={properties}
+                            value={(row.property_id || '') as string}
+                            onChange={(v) => patchLocal(row.id, { property_id: v === 'all' ? null : (v as string) || null })}
+                            placeholder="—"
+                            allowAll={false}
+                          />
+                        </div>
                       </td>
                       <td className="p-2">
                         <select
