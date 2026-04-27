@@ -19,6 +19,8 @@ import {
   type AccountingPropertyDocumentWithCategory,
   type AccountingPropertyDocumentLineRow,
   type DocumentAuditEntry,
+  type DocumentListFilters,
+  type OcrStatus,
   type ProcessingStatus,
 } from '../../services/accountingPropertyDocumentsService';
 import {
@@ -33,8 +35,11 @@ type Props = {
 };
 
 function propertyLabel(p: Property): string {
-  const t = (p.title || '').trim();
-  if (t) return t;
+  const address = (p.address || '').trim();
+  const code = (p.title || '').trim();
+  if (address && code) return `${address} — ${code}`;
+  if (code) return code;
+  if (address) return address;
   return p.id.slice(0, 8) + '…';
 }
 
@@ -61,9 +66,19 @@ export function AccountingPropertyDocumentsIntake({ properties, onDataChanged }:
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [ocrRunningId, setOcrRunningId] = useState<string | null>(null);
+  const [batchBusy, setBatchBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [categoryRows, setCategoryRows] = useState<AccountingDocumentCategoryRow[]>([]);
+  // Filters/search
   const [statusFilter, setStatusFilter] = useState<ProcessingStatus | 'all'>('all');
+  const [directionFilter, setDirectionFilter] = useState<AccountingDocumentDirection | 'all'>('all');
+  const [propertyFilter, setPropertyFilter] = useState<string | 'all'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string | 'all'>('all');
+  const [ocrStatusFilter, setOcrStatusFilter] = useState<OcrStatus | 'all'>('all');
+  const [q, setQ] = useState('');
+  const [invoiceDateFrom, setInvoiceDateFrom] = useState<string>('');
+  const [invoiceDateTo, setInvoiceDateTo] = useState<string>('');
+  const [debouncedQ, setDebouncedQ] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [lineByDoc, setLineByDoc] = useState<Record<string, AccountingPropertyDocumentLineRow[]>>({});
   const [auditByDoc, setAuditByDoc] = useState<Record<string, DocumentAuditEntry[]>>({});
@@ -74,13 +89,29 @@ export function AccountingPropertyDocumentsIntake({ properties, onDataChanged }:
   const fileInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedQ(q), 250);
+    return () => window.clearTimeout(t);
+  }, [q]);
+
+  const filters: DocumentListFilters = {
+    processing_status: statusFilter,
+    direction: directionFilter,
+    property_id: propertyFilter,
+    category_id: categoryFilter,
+    ocr_status: ocrStatusFilter,
+    q: debouncedQ,
+    invoice_date_from: invoiceDateFrom || null,
+    invoice_date_to: invoiceDateTo || null,
+  };
+
   const load = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
       const cats = await accountingDocumentCategoryService.ensureDefaults();
       setCategoryRows(cats);
-      const list = await accountingPropertyDocumentsService.listAll(statusFilter);
+      const list = await accountingPropertyDocumentsService.listFiltered(filters);
       setRows(list);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Load failed');
@@ -88,11 +119,34 @@ export function AccountingPropertyDocumentsIntake({ properties, onDataChanged }:
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [
+    statusFilter,
+    directionFilter,
+    propertyFilter,
+    categoryFilter,
+    ocrStatusFilter,
+    debouncedQ,
+    invoiceDateFrom,
+    invoiceDateTo,
+  ]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Keep selection stable but only across currently visible rows.
+  useEffect(() => {
+    const visible = new Set(rows.map((r) => r.id));
+    setSelected((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (visible.has(id)) next.add(id);
+        else changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [rows]);
 
   const toggleExpand = async (id: string) => {
     if (expandedId === id) {
@@ -237,16 +291,8 @@ export function AccountingPropertyDocumentsIntake({ properties, onDataChanged }:
 
   const batchArchive = async () => {
     if (selected.size === 0) return;
-    if (!confirm(`Archive ${selected.size} document(s)?`)) return;
-    setError(null);
-    try {
-      await accountingPropertyDocumentsService.batchSetArchived([...selected]);
-      setSelected(new Set());
-      void load();
-      onDataChanged?.();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Batch archive failed');
-    }
+    await batchApply('batch_archive', batchArchiveSelected, { confirmText: `Archive ${selected.size} document(s)?` });
+    setSelected(new Set());
   };
 
   const onReplacePicked: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
@@ -312,6 +358,11 @@ export function AccountingPropertyDocumentsIntake({ properties, onDataChanged }:
   const categoriesFor = (d: AccountingDocumentDirection) =>
     categoryRows.filter((c) => c.direction === d && c.is_active);
 
+  const categoryOptions = (() => {
+    if (directionFilter === 'expense' || directionFilter === 'income') return categoriesFor(directionFilter);
+    return categoryRows.filter((c) => c.is_active);
+  })();
+
   const toggleSelect = (id: string) => {
     setSelected((s) => {
       const n = new Set(s);
@@ -321,6 +372,79 @@ export function AccountingPropertyDocumentsIntake({ properties, onDataChanged }:
     });
   };
 
+  const selectedRows = rows.filter((r) => selected.has(r.id));
+
+  const batchApply = async (
+    label: string,
+    fn: () => Promise<void>,
+    opts?: { confirmText?: string; refreshAfter?: boolean }
+  ) => {
+    const confirmText = opts?.confirmText;
+    if (confirmText && !confirm(confirmText)) return;
+    setBatchBusy(label);
+    setError(null);
+    try {
+      await fn();
+      if (opts?.refreshAfter !== false) {
+        await load();
+      }
+      onDataChanged?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `${label} failed`);
+    } finally {
+      setBatchBusy(null);
+    }
+  };
+
+  const [batchPropertyId, setBatchPropertyId] = useState<string>(''); // empty means no-op
+  const [batchDirection, setBatchDirection] = useState<AccountingDocumentDirection | ''>('');
+  const [batchCategoryId, setBatchCategoryId] = useState<string>(''); // empty means no-op
+
+  const batchCategories = (() => {
+    const d: AccountingDocumentDirection =
+      batchDirection || (directionFilter === 'expense' || directionFilter === 'income' ? directionFilter : 'expense');
+    return categoriesFor(d);
+  })();
+
+  const batchAssignProperty = async () => {
+    if (!batchPropertyId) return;
+    await accountingPropertyDocumentsService.batchUpdate([...selected], { property_id: batchPropertyId });
+  };
+  const batchAssignDirection = async () => {
+    if (!batchDirection) return;
+    await accountingPropertyDocumentsService.batchUpdate([...selected], { direction: batchDirection, category_id: null });
+  };
+  const batchAssignCategory = async () => {
+    if (!batchCategoryId) return;
+    await accountingPropertyDocumentsService.batchUpdate([...selected], { category_id: batchCategoryId });
+  };
+
+  const batchOcr = async () => {
+    const ids = [...selected];
+    for (const id of ids) {
+      setBatchBusy(`ocr:${id}`);
+      try {
+        await accountingPropertyDocumentsService.runOcr(id);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'OCR failed');
+      }
+    }
+  };
+
+  const batchArchiveSelected = async () => {
+    await accountingPropertyDocumentsService.batchSetArchived([...selected]);
+  };
+
+  const batchDeleteSelected = async () => {
+    await accountingPropertyDocumentsService.batchDelete(
+      selectedRows.map((r) => ({
+        id: r.id,
+        storage_path: r.storage_path,
+        storage_bucket: r.storage_bucket ?? accountingPropertyDocumentsService.BUCKET,
+      }))
+    );
+  };
+
   return (
     <div className="p-6 md:p-8 bg-[#0D1117] text-white min-h-0">
       <h2 className="text-2xl font-bold mb-1">Property accounting (intake)</h2>
@@ -328,35 +452,236 @@ export function AccountingPropertyDocumentsIntake({ properties, onDataChanged }:
         Upload files (one row each). Set direction, property, and category, then Save. <span className="text-emerald-400">ready</span> when all three are set. Use
         OCR to fill header and lines; mark reviewed or archive when done. Migrated legacy files use the property-expense-docs bucket.
       </p>
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <label className="text-xs text-gray-500">Filter</label>
-        <select
-          className="bg-[#111315] border border-gray-700 rounded-lg px-2 py-1.5 text-sm"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as ProcessingStatus | 'all')}
-        >
-          <option value="all">All</option>
-          <option value="draft">draft</option>
-          <option value="ready">ready</option>
-          <option value="reviewed">reviewed</option>
-          <option value="archived">archived</option>
-        </select>
-        {selected.size > 0 && (
+      <div className="flex flex-col gap-3 mb-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] uppercase tracking-wide text-gray-500">Status</label>
+            <select
+              className="bg-[#111315] border border-gray-700 rounded-lg px-2 py-1.5 text-sm"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as ProcessingStatus | 'all')}
+            >
+              <option value="all">All</option>
+              <option value="draft">draft</option>
+              <option value="ready">ready</option>
+              <option value="reviewed">reviewed</option>
+              <option value="archived">archived</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] uppercase tracking-wide text-gray-500">Direction</label>
+            <select
+              className="bg-[#111315] border border-gray-700 rounded-lg px-2 py-1.5 text-sm"
+              value={directionFilter}
+              onChange={(e) => {
+                const v = e.target.value as AccountingDocumentDirection | 'all';
+                setDirectionFilter(v);
+                setCategoryFilter('all');
+              }}
+            >
+              <option value="all">All</option>
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] uppercase tracking-wide text-gray-500">Property</label>
+            <select
+              className="bg-[#111315] border border-gray-700 rounded-lg px-2 py-1.5 text-sm min-w-[200px]"
+              value={propertyFilter}
+              onChange={(e) => setPropertyFilter((e.target.value || 'all') as string | 'all')}
+            >
+              <option value="all">All</option>
+              {properties.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {propertyLabel(p)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] uppercase tracking-wide text-gray-500">Category</label>
+            <select
+              className="bg-[#111315] border border-gray-700 rounded-lg px-2 py-1.5 text-sm min-w-[180px]"
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter((e.target.value || 'all') as string | 'all')}
+            >
+              <option value="all">All</option>
+              {categoryOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] uppercase tracking-wide text-gray-500">OCR</label>
+            <select
+              className="bg-[#111315] border border-gray-700 rounded-lg px-2 py-1.5 text-sm"
+              value={ocrStatusFilter}
+              onChange={(e) => setOcrStatusFilter(e.target.value as OcrStatus | 'all')}
+            >
+              <option value="all">All</option>
+              <option value="idle">idle</option>
+              <option value="processing">processing</option>
+              <option value="ok">ok</option>
+              <option value="failed">failed</option>
+              <option value="pending">pending</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] uppercase tracking-wide text-gray-500">Search</label>
+            <input
+              className="bg-[#111315] border border-gray-700 rounded-lg px-2 py-1.5 text-sm min-w-[240px]"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Counterparty / invoice # / file…"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] uppercase tracking-wide text-gray-500">Invoice date</label>
+            <div className="flex gap-2">
+              <input
+                type="date"
+                className="bg-[#111315] border border-gray-700 rounded-lg px-2 py-1.5 text-sm"
+                value={invoiceDateFrom}
+                onChange={(e) => setInvoiceDateFrom(e.target.value)}
+              />
+              <input
+                type="date"
+                className="bg-[#111315] border border-gray-700 rounded-lg px-2 py-1.5 text-sm"
+                value={invoiceDateTo}
+                onChange={(e) => setInvoiceDateTo(e.target.value)}
+              />
+            </div>
+          </div>
           <button
             type="button"
-            onClick={() => void batchArchive()}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm"
+            onClick={() => void load()}
+            className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-white"
           >
-            <Archive className="w-4 h-4" /> Archive ({selected.size})
+            <RefreshCw className="w-4 h-4" /> Refresh
           </button>
+        </div>
+
+        {selected.size > 0 && (
+          <div className="p-3 rounded-lg border border-gray-700 bg-[#111315] flex flex-wrap items-end gap-3">
+            <div className="text-xs text-gray-400">
+              Selected: <span className="text-white font-semibold">{selected.size}</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase tracking-wide text-gray-500">Batch property</label>
+              <select
+                className="bg-[#0D1117] border border-gray-700 rounded-lg px-2 py-1.5 text-sm min-w-[200px]"
+                value={batchPropertyId}
+                onChange={(e) => setBatchPropertyId(e.target.value)}
+              >
+                <option value="">—</option>
+                {properties.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {propertyLabel(p)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              disabled={!batchPropertyId || !!batchBusy}
+              onClick={() => void batchApply('batch_property', batchAssignProperty, { refreshAfter: true })}
+              className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm disabled:opacity-50"
+            >
+              Apply
+            </button>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase tracking-wide text-gray-500">Batch direction</label>
+              <select
+                className="bg-[#0D1117] border border-gray-700 rounded-lg px-2 py-1.5 text-sm"
+                value={batchDirection}
+                onChange={(e) => {
+                  setBatchDirection(e.target.value as AccountingDocumentDirection | '');
+                  setBatchCategoryId('');
+                }}
+              >
+                <option value="">—</option>
+                <option value="expense">Expense</option>
+                <option value="income">Income</option>
+              </select>
+            </div>
+            <button
+              type="button"
+              disabled={!batchDirection || !!batchBusy}
+              onClick={() =>
+                void batchApply('batch_direction', batchAssignDirection, {
+                  confirmText: 'Change direction for selected documents? Categories will be cleared.',
+                  refreshAfter: true,
+                })
+              }
+              className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm disabled:opacity-50"
+            >
+              Apply
+            </button>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase tracking-wide text-gray-500">Batch category</label>
+              <select
+                className="bg-[#0D1117] border border-gray-700 rounded-lg px-2 py-1.5 text-sm min-w-[200px]"
+                value={batchCategoryId}
+                onChange={(e) => setBatchCategoryId(e.target.value)}
+              >
+                <option value="">—</option>
+                {batchCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              disabled={!batchCategoryId || !!batchBusy}
+              onClick={() => void batchApply('batch_category', batchAssignCategory, { refreshAfter: true })}
+              className="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm disabled:opacity-50"
+            >
+              Apply
+            </button>
+
+            <div className="flex-1" />
+
+            <button
+              type="button"
+              disabled={!!batchBusy}
+              onClick={() => void batchApply('batch_ocr', batchOcr, { refreshAfter: true })}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-violet-700/70 hover:bg-violet-700 text-sm disabled:opacity-50"
+            >
+              <Scan className="w-4 h-4" /> Batch OCR
+            </button>
+            <button
+              type="button"
+              disabled={!!batchBusy}
+              onClick={() =>
+                void batchApply('batch_archive', batchArchiveSelected, {
+                  confirmText: `Archive ${selected.size} document(s)?`,
+                  refreshAfter: true,
+                })
+              }
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm disabled:opacity-50"
+            >
+              <Archive className="w-4 h-4" /> Archive
+            </button>
+            <button
+              type="button"
+              disabled={!!batchBusy}
+              onClick={() =>
+                void batchApply('batch_delete', batchDeleteSelected, {
+                  confirmText: `Delete ${selected.size} document(s)? This cannot be undone.`,
+                  refreshAfter: true,
+                })
+              }
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-700/70 hover:bg-red-700 text-sm disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4" /> Delete
+            </button>
+          </div>
         )}
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-white"
-        >
-          <RefreshCw className="w-4 h-4" /> Refresh
-        </button>
       </div>
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-red-500/10 text-red-400 text-sm border border-red-500/30">{error}</div>

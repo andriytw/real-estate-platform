@@ -68,6 +68,18 @@ export type DocumentAuditEntry = {
   created_at: string;
 };
 
+export type DocumentListFilters = {
+  processing_status?: ProcessingStatus | 'all';
+  direction?: AccountingDocumentDirection | 'all';
+  property_id?: string | 'all';
+  category_id?: string | 'all';
+  ocr_status?: OcrStatus | 'all';
+  /** Case-insensitive substring match on counterparty + invoice # + file name. */
+  q?: string;
+  invoice_date_from?: string | null;
+  invoice_date_to?: string | null;
+};
+
 export function resolveProcessingStatus(
   current: ProcessingStatus,
   merged: { property_id: string | null; category_id: string | null },
@@ -103,13 +115,49 @@ export const accountingPropertyDocumentsService = {
   BUCKET,
 
   async listAll(statusFilter: ProcessingStatus | 'all' = 'all'): Promise<AccountingPropertyDocumentWithCategory[]> {
+    return this.listFiltered({ processing_status: statusFilter });
+  },
+
+  async listFiltered(filters: DocumentListFilters = {}): Promise<AccountingPropertyDocumentWithCategory[]> {
     let q = supabase
       .from('accounting_property_documents')
       .select('*, accounting_document_categories(name, code)')
       .order('created_at', { ascending: false });
-    if (statusFilter !== 'all') {
-      q = q.eq('processing_status', statusFilter);
+
+    if (filters.processing_status && filters.processing_status !== 'all') {
+      q = q.eq('processing_status', filters.processing_status);
     }
+    if (filters.direction && filters.direction !== 'all') {
+      q = q.eq('direction', filters.direction);
+    }
+    if (filters.property_id && filters.property_id !== 'all') {
+      q = q.eq('property_id', filters.property_id);
+    }
+    if (filters.category_id && filters.category_id !== 'all') {
+      q = q.eq('category_id', filters.category_id);
+    }
+    if (filters.ocr_status && filters.ocr_status !== 'all') {
+      q = q.eq('ocr_status', filters.ocr_status);
+    }
+
+    const from = (filters.invoice_date_from || '').trim();
+    const to = (filters.invoice_date_to || '').trim();
+    if (from) q = q.gte('invoice_date', from);
+    if (to) q = q.lte('invoice_date', to);
+
+    const query = (filters.q || '').trim();
+    if (query) {
+      const escaped = query.replace(/[%_]/g, (m) => `\\${m}`);
+      // Supabase uses PostgREST; `or` is best-effort for basic search.
+      q = q.or(
+        [
+          `counterparty_name.ilike.%${escaped}%`,
+          `invoice_no.ilike.%${escaped}%`,
+          `file_name.ilike.%${escaped}%`,
+        ].join(',')
+      );
+    }
+
     const { data, error } = await q;
     if (error) throw new Error(error.message || 'Failed to list documents');
     return (data ?? []) as AccountingPropertyDocumentWithCategory[];
@@ -196,6 +244,27 @@ export const accountingPropertyDocumentsService = {
       .in('id', ids);
     if (error) throw new Error(error.message || 'Batch archive failed');
     await Promise.all(ids.map((id) => appendAudit(id, 'archived', { batch: true })));
+  },
+
+  async batchUpdate(
+    ids: string[],
+    patch: Parameters<typeof accountingPropertyDocumentsService.update>[1]
+  ): Promise<AccountingPropertyDocumentWithCategory[]> {
+    if (ids.length === 0) return [];
+    const out: AccountingPropertyDocumentWithCategory[] = [];
+    for (const id of ids) {
+      out.push(await this.update(id, patch));
+    }
+    // Single refresh-audit entry per row is intentionally omitted here.
+    return out;
+  },
+
+  async batchDelete(
+    rows: Array<Pick<AccountingPropertyDocumentRow, 'id' | 'storage_path' | 'storage_bucket'>>
+  ): Promise<void> {
+    for (const r of rows) {
+      await this.deleteDocument(r.id, r.storage_path, r.storage_bucket || BUCKET);
+    }
   },
 
   async createDraftFromFile(file: File): Promise<AccountingPropertyDocumentWithCategory> {
